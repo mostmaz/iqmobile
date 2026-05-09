@@ -1,0 +1,55 @@
+# Auto-deploy the server to the DigitalOcean droplet on every push to main.
+#
+# Trigger conditions:
+#   - any push to main that touches server/, scripts that affect the
+#     server, or this workflow file. Mobile-only changes are skipped
+#     (no need to restart the API for a UI tweak).
+#   - manual run via the "Run workflow" button in the Actions tab.
+#
+# Required GitHub repo secret:
+#   DEPLOY_SSH_KEY — the *private* half of the ed25519 keypair whose
+#                    public key lives in /home/iqmobile/.ssh/authorized_keys
+#                    on the droplet. Generated locally; never committed.
+
+name: Deploy server to DigitalOcean
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: SSH to droplet and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 164.92.130.71
+          username: iqmobile
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd ~/iqmobile
+            echo "==> git pull"
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+            cd server
+            echo "==> npm ci"
+            npm ci --omit=dev --no-audit --no-fund
+            echo "==> pm2 restart"
+            pm2 restart iqmobile --update-env
+            pm2 save
+            echo "==> health check"
+            sleep 1
+            curl -sSf -m 5 http://127.0.0.1:4001/health
+            echo ""
+            echo "==> deploy ok"
