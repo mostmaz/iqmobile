@@ -1,12 +1,25 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Mobile uses the tunnel URL from app.json so devices on any network can
-// reach the dev server. Web preview runs in the browser on the same
-// machine — bypass the tunnel and hit localhost directly to avoid
-// Cloudflare's browser-only challenge interstitial.
-const tunnelUrl = (Constants.expoConfig?.extra as any)?.apiBaseUrl ?? 'http://10.0.2.2:4000';
-const baseUrl: string = Platform.OS === 'web' ? 'http://localhost:4000' : tunnelUrl;
+// Two backend URLs in app.json's `extra`:
+//   apiBaseUrl     → production (DigitalOcean droplet)
+//   apiBaseUrlDev  → local LAN dev server (Mac running on the same Wi-Fi)
+//
+// Resolution rules:
+//   - Web preview runs in the browser on the same machine — hit localhost
+//     directly to avoid the prod CORS round-trip during dev.
+//   - When __DEV__ (Expo Go / dev build) AND apiBaseUrlDev is set, prefer
+//     it. To force any build to hit production, just delete or comment
+//     out apiBaseUrlDev in app.json.
+//   - Production builds use apiBaseUrl unconditionally.
+const extra = (Constants.expoConfig?.extra as any) || {};
+const prodUrl: string = extra.apiBaseUrl ?? 'http://10.0.2.2:4000';
+const devUrl: string | undefined = extra.apiBaseUrlDev;
+
+const baseUrl: string =
+  Platform.OS === 'web'
+    ? 'http://localhost:4000'
+    : (__DEV__ && devUrl ? devUrl : prodUrl);
 
 let _token: string | null = null;
 export function setToken(token: string | null) {

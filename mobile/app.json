@@ -22,7 +22,8 @@
       "supportsTablet": false
     },
     "extra": {
-      "apiBaseUrl": "http://192.168.3.210:4001",
+      "apiBaseUrl": "http://164.92.130.71",
+      "apiBaseUrlDev": "http://192.168.3.210:4001",
       "forceRTL": true
     },
     "plugins": [
