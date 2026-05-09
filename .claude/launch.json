@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "export PATH=/opt/homebrew/bin:$PATH && cd '/Users/mustafa/Downloads/IQ mobile/server' && exec npm run dev"
+      ],
+      "port": 4000
+    },
+    {
+      "name": "admin-web",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "export PATH=/opt/homebrew/bin:$PATH && cd '/Users/mustafa/Downloads/IQ mobile/admin-web' && exec npm run dev"
+      ],
+      "port": 5173
+    }
+  ]
+}
