@@ -22,8 +22,7 @@
       "supportsTablet": false
     },
     "extra": {
-      "apiBaseUrl": "http://164.92.130.71",
-      "apiBaseUrlDev": "http://192.168.3.210:4001",
+      "apiBaseUrl": "https://api.iqmobile.org",
       "forceRTL": true
     },
     "plugins": [
