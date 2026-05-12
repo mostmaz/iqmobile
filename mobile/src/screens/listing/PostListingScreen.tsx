@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, Alert, TextInput } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,21 @@ export default function PostListingScreen({ navigation }: any) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+
+  // Posting requires a real (non-guest) account. Auto-provisioned guests
+  // get bounced to the AuthGate on first entry to this screen, then
+  // (after they enter a phone) to CompleteProfile via the navigation
+  // gate in RootNav. We only auto-redirect once per mount — if the user
+  // cancels the AuthGate modal we fall back to the inline CTA so they
+  // can retry without being repeatedly hijacked.
+  const isGuest = !!user?.is_guest;
+  const autoRedirected = useRef(false);
+  useEffect(() => {
+    if (isGuest && !autoRedirected.current) {
+      autoRedirected.current = true;
+      navigation.getParent()?.getParent?.()?.navigate('AuthGate');
+    }
+  }, [isGuest, navigation]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -139,6 +154,30 @@ export default function PostListingScreen({ navigation }: any) {
     if (step === 4 && images.length < 3) return setErr(ar.post.needAtLeast3);
     if (step === 5) { create.mutate(); return; }
     setStep(step + 1);
+  }
+
+  // Guest fallback — also reachable if the user dismissed the AuthGate
+  // modal that the useEffect above pushed. A clear inline CTA so they
+  // can retry without leaving the Sell tab.
+  if (isGuest) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <Header title={ar.post.title} onBack={() => navigation.goBack()} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+            سجّل الدخول لنشر إعلان
+          </Text>
+          <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
+            ادخل برقم هاتفك ثم اختر إن كنت شخصاً أو متجراً. يستغرق أقل من دقيقة.
+          </Text>
+          <View style={{ alignSelf: 'stretch', marginTop: 6 }}>
+            <Btn kind="accent" full onPress={() => navigation.getParent()?.getParent?.()?.navigate('AuthGate')}>
+              تسجيل الدخول
+            </Btn>
+          </View>
+        </View>
+      </View>
+    );
   }
 
   return (

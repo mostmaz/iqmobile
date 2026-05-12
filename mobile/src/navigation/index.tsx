@@ -11,7 +11,7 @@
 // We deliberately do NOT gate the whole app on user. Anonymous browsing is
 // the primary use case before someone commits to creating an account.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as SecureStore from '../lib/secureStore';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
@@ -147,12 +147,47 @@ const Root = createNativeStackNavigator();
 export default function RootNav() {
   const { user, loading } = useAuth();
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const needsProfileCompletion = !!user && !user.is_guest && user.profile_completed === false;
 
   useEffect(() => {
     SecureStore.getItem(ONBOARDED_KEY)
       .then((v) => setOnboarded(v === '1'))
       .catch(() => setOnboarded(false));
   }, []);
+
+  // When the user transitions out of CompleteProfile (profile_completed
+  // flips from false → true), the navigator swaps from {CompleteProfile}
+  // back to {Main, AuthGate}. MainTabs mounts fresh and focuses its first
+  // tab (Browse) — but the user got into CompleteProfile by tapping Sell
+  // as a guest, so they want to land on the Sell wizard, not Browse.
+  //
+  // Watching the boolean inside RootNav means this fires AFTER React
+  // has actually re-rendered with MainTabs in the tree, which is the
+  // earliest moment a navigate-to-Sell dispatch will land on a real
+  // route. The ref tracks the previous value so we only redirect on the
+  // false→true transition, not on every render.
+  const wasIncomplete = useRef(false);
+  useEffect(() => {
+    if (needsProfileCompletion) {
+      wasIncomplete.current = true;
+      return;
+    }
+    if (wasIncomplete.current) {
+      wasIncomplete.current = false;
+      // Give React one more tick to finish committing MainTabs.
+      const t = setTimeout(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.dispatch(
+            CommonActions.navigate({
+              name: 'Main',
+              params: { screen: 'Sell', params: { screen: 'SellHome' } },
+            }),
+          );
+        }
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [needsProfileCompletion]);
 
   useEffect(() => {
     // Live notifications + push token only matter when there's a user; the
@@ -180,13 +215,8 @@ export default function RootNav() {
     return <OnboardingScreen onDone={() => setOnboarded(true)} />;
   }
 
-  // Profile-completion gate. A real (non-guest) account must finish the
-  // first-login form (name, plus shop fields if applicable) before they
-  // see the rest of the app. We model this as a separate root-level
-  // screen rather than a modal, so it can't be dismissed: the user
-  // either completes the form or stays here. Guests skip it — they
-  // upgrade to a real account via the AuthGate flow first.
-  const needsProfileCompletion = !!user && !user.is_guest && user.profile_completed === false;
+  // (`needsProfileCompletion` is computed once at the top of this
+  //  component and reused here for the navigator's conditional render.)
 
   return (
     <NavigationContainer ref={navigationRef}>

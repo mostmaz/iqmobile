@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "IQ Mobile",
-    "slug": "iqmobile-2",
+    "slug": "iqmobile",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -11,24 +11,27 @@
       "backgroundColor": "#ECE6DA"
     },
     "android": {
-      "package": "com.iqmobile.app2",
-      "useNextNotificationsApi": true,
+      "package": "org.iqmobile.app",
       "permissions": [
         "NOTIFICATIONS"
       ]
     },
     "ios": {
-      "bundleIdentifier": "com.iqmobile.app2",
+      "bundleIdentifier": "org.iqmobile.app",
       "supportsTablet": false
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
-      "forceRTL": true
+      "forceRTL": true,
+      "eas": {
+        "projectId": "ed963d5c-2d36-4ed9-a907-4cad444d4d59"
+      }
     },
     "plugins": [
       "expo-secure-store",
       "expo-notifications",
-      "expo-localization"
+      "expo-localization",
+      "expo-font"
     ]
   }
 }

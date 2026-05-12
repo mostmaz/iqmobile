@@ -84,9 +84,11 @@ export default function CompleteProfileScreen() {
         shop_lat: sellerType === 'shop' ? coords!.lat : undefined,
         shop_lng: sellerType === 'shop' ? coords!.lng : undefined,
       });
+      // The post-completion redirect to the Sell tab happens in RootNav
+      // (it watches `needsProfileCompletion` and fires once the swap to
+      // MainTabs has actually mounted — a setTimeout from here would
+      // race with React's re-render and silently no-op).
       await refresh();
-      // No explicit navigation — the gate in RootNav unmounts this modal
-      // automatically when user.profile_completed flips to true.
     } catch (e: any) {
       setErr((ar.errors as any)[e.message] || e.message || 'فشل الحفظ');
     } finally {

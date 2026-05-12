@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { I18nManager, View, ActivityIndicator, Text } from 'react-native';
+import { setupPushTapHandler } from './src/push/register';
+import { go } from './src/navigation/ref';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -32,6 +34,27 @@ export default function App() {
     Inter_700Bold,
     JetBrainsMono_500Medium,
   });
+
+  // Notification-tap routing. Server attaches a `kind` (and any extras
+  // it needs) to the data payload of every push. We translate that into
+  // an in-app navigation here. Adding a new kind = add a case below.
+  useEffect(() => {
+    setupPushTapHandler((data) => {
+      switch (data?.kind) {
+        case 'listing.expired':
+        case 'listing.sold':
+        case 'listing.saved':
+          if (data?.listing_id) go('Main', { screen: 'Browse', params: { screen: 'ListingDetail', params: { id: data.listing_id } } });
+          break;
+        case 'broadcast':
+          // Marketing / announcement — just open the app, no specific route.
+          break;
+        default:
+          // Unknown kind: best-effort, just open the app.
+          break;
+      }
+    });
+  }, []);
 
   if (!fontsLoaded) {
     return (

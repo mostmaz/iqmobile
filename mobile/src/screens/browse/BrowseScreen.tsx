@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useRef } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -66,6 +66,13 @@ export default function BrowseScreen({ navigation }: any) {
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
   const resultsCount = items.length;
 
+  // Brand rail uses flexDirection: 'row-reverse' (visually right-to-left),
+  // but the underlying horizontal ScrollView starts scrolled to its left
+  // edge — which means "الكل" (the first child, laid out at the right)
+  // is off-screen until the user scrolls. Snap to the end on layout so
+  // it's always the first thing the user sees.
+  const brandsRef = useRef<ScrollView>(null);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -128,9 +135,13 @@ export default function BrowseScreen({ navigation }: any) {
         </View>
 
         {/* Brands rail */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        <ScrollView
+          ref={brandsRef}
+          horizontal showsHorizontalScrollIndicator={false}
           style={{ marginTop: 14, marginHorizontal: -16 }}
-          contentContainerStyle={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6 }}>
+          contentContainerStyle={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6 }}
+          onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
+        >
           <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
           {BRANDS.map((b) => (
             <Pill key={b.name} active={filters.brand === b.name}
@@ -220,12 +231,21 @@ export default function BrowseScreen({ navigation }: any) {
   );
 }
 
+// Filter-sheet section. Same row-reverse layout as the brand rail, so
+// same fix: scrollToEnd on content layout pins "الكل" (first child,
+// laid out at the right edge) to the visible right side instead of
+// burying it past the right scroll boundary.
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  const ref = useRef<ScrollView>(null);
   return (
     <View style={{ marginBottom: 8 }}>
       <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6, textAlign: 'right' }}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
+      <ScrollView
+        ref={ref}
+        horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+        onContentSizeChange={() => ref.current?.scrollToEnd({ animated: false })}
+      >
         {children}
       </ScrollView>
     </View>

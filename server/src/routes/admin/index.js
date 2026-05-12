@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { issueToken, requireAdmin } from '../../auth.js';
+import { pushTo } from '../../push.js';
 
 const r = Router();
 
@@ -118,6 +119,36 @@ r.get('/bypass-attempts', requireAdmin, (_req, res) => {
      ORDER BY b.created_at DESC LIMIT 200`,
   ).all();
   res.json(rows);
+});
+
+// ─── push notifications ──────────────────────────────────────────────
+// Send a one-off test push to a specific user. Useful for verifying
+// the pipeline end-to-end after device pairing — admin curls this with
+// their own user_id and checks the phone.
+r.post('/push/test', requireAdmin, async (req, res) => {
+  const { user_id, title, body, data } = req.body || {};
+  const id = Number(user_id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'bad_user_id' });
+  const t = title || 'iQ Mobile';
+  const b = body || 'إشعار تجريبي من السيرفر';
+  await pushTo([id], t, b, data || { kind: 'broadcast' });
+  res.json({ ok: true, user_id: id });
+});
+
+// Broadcast a push to every non-guest user with a registered token.
+// Use sparingly — Expo's free push quota is generous but not infinite.
+r.post('/push/broadcast', requireAdmin, async (req, res) => {
+  const { title, body, data } = req.body || {};
+  if (!title || !body) return res.status(400).json({ error: 'missing_fields' });
+  const rows = db.prepare(
+    `SELECT id FROM users
+     WHERE is_guest=0
+       AND expo_push_token IS NOT NULL
+       AND expo_push_token <> ''`,
+  ).all();
+  const ids = rows.map((r) => r.id);
+  await pushTo(ids, title, body, data || { kind: 'broadcast' });
+  res.json({ ok: true, recipients: ids.length });
 });
 
 export default r;
