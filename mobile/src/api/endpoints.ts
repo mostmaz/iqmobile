@@ -157,6 +157,12 @@ export const Auth = {
   // can't send FormData.
   pushToken: (expo_push_token: string) =>
     api('/auth/push-token', { method: 'POST', body: JSON.stringify({ expo_push_token }) }),
+  // Temporary diagnostic endpoint. Used by registerPushToken to log each
+  // step of the token-registration flow server-side so we can see what
+  // fails on devices we can't debug-attach. Safe to swallow errors —
+  // it's logging, not control flow.
+  pushDebug: (msg: string) =>
+    api('/auth/push-debug', { method: 'POST', body: JSON.stringify({ msg }) }).catch(() => {}),
 };
 
 // ─── Listings ─────────────────────────────────────────────────────────

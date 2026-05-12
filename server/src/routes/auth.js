@@ -330,4 +330,14 @@ r.post('/push-token', requireAuth(), (req, res) => {
   res.json({ ok: true });
 });
 
+// Diagnostic endpoint — clients call this from registerPushToken with
+// the result of each step so we can see WHY token registration is
+// failing on a device we can't attach a debugger to. Logs to stdout
+// (visible via `pm2 logs iqmobile`). Strip after the issue is solved.
+r.post('/push-debug', requireAuth(), (req, res) => {
+  const msg = String(req.body?.msg || '').slice(0, 1000);
+  console.log(`[push-debug] user=${req.user.id} :: ${msg}`);
+  res.json({ ok: true });
+});
+
 export default r;

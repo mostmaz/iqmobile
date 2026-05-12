@@ -35,14 +35,23 @@ Notifications.setNotificationHandler({
 });
 
 export async function registerPushToken() {
+  // Wrapped in Auth.pushDebug() calls so server logs show exactly which
+  // step fails on devices we can't debug-attach. Each call is fire-and-
+  // forget — failures don't change the control flow.
   try {
+    Auth.pushDebug?.(`start platform=${Platform.OS}`);
     const settings = await Notifications.getPermissionsAsync();
     let granted = settings.granted;
+    Auth.pushDebug?.(`perm initial granted=${granted} status=${settings.status}`);
     if (!granted) {
       const req = await Notifications.requestPermissionsAsync();
       granted = req.granted;
+      Auth.pushDebug?.(`perm requested granted=${granted} status=${req.status}`);
     }
-    if (!granted) return;
+    if (!granted) {
+      Auth.pushDebug?.('exit: permission not granted');
+      return;
+    }
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
@@ -50,20 +59,30 @@ export async function registerPushToken() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
       });
+      Auth.pushDebug?.('android channel set');
     }
 
     const projectId =
       (Constants.expoConfig?.extra as any)?.eas?.projectId ??
       (Constants as any)?.easConfig?.projectId;
+    Auth.pushDebug?.(`projectId=${projectId || 'MISSING'}`);
 
-    const tokenResp = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : (undefined as any),
-    );
-    if (tokenResp?.data) {
-      await Auth.pushToken(tokenResp.data);
+    try {
+      const tokenResp = await Notifications.getExpoPushTokenAsync(
+        projectId ? { projectId } : (undefined as any),
+      );
+      Auth.pushDebug?.(`getExpoPushTokenAsync ok data=${tokenResp?.data ? tokenResp.data.slice(0, 25) + '...' : 'EMPTY'}`);
+      if (tokenResp?.data) {
+        await Auth.pushToken(tokenResp.data);
+        Auth.pushDebug?.('pushToken POSTed to server ok');
+      }
+    } catch (inner: any) {
+      Auth.pushDebug?.(`getExpoPushTokenAsync THREW: ${inner?.code || ''} ${inner?.message || String(inner)}`.slice(0, 800));
+      throw inner;
     }
-  } catch (e) {
+  } catch (e: any) {
     console.warn('push register failed', e);
+    Auth.pushDebug?.(`outer catch: ${e?.message || String(e)}`.slice(0, 500));
   }
 }
 
