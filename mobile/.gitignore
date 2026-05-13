@@ -2,6 +2,9 @@ node_modules
 .expo
 dist
 web-build
-google-services.json
+# google-services.json: contains a Firebase Web API key, which Google
+# explicitly says is safe to expose — it's restricted to this app's
+# package name + signing cert. Committing so EAS Build (which only
+# uploads git-tracked files) can find it.
 *.tgz
 .env
