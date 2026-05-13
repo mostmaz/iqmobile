@@ -24,6 +24,7 @@
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
       "forceRTL": true,
+      "sentryDsn": "https://f1a835e5f015a4d0f6dc0948a1239a69@o4511382795059200.ingest.de.sentry.io/4511382804955216",
       "eas": {
         "projectId": "ed963d5c-2d36-4ed9-a907-4cad444d4d59"
       }
@@ -32,7 +33,8 @@
       "expo-secure-store",
       "expo-notifications",
       "expo-localization",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ]
   }
 }

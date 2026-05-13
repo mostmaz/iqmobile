@@ -1,4 +1,24 @@
 import 'dotenv/config';
+
+// Sentry must be initialised before any module that might throw. DSN
+// comes from the .env file; empty/missing DSN = SDK is a noop. We do
+// this before importing Express so the global error handlers are
+// active for module-load failures too.
+import * as Sentry from '@sentry/node';
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'production',
+    // 10% of requests sampled for performance traces — keeps Sentry
+    // quota usage low while still surfacing perf regressions.
+    tracesSampleRate: 0.1,
+    // Don't auto-capture every console.log — just unhandled errors +
+    // explicit captureException() calls.
+    integrations: [],
+  });
+  console.log('[iqmobile] sentry initialised');
+}
+
 import express from 'express';
 import cors from 'cors';
 import { db } from './db.js';
@@ -30,6 +50,12 @@ app.use('/reports', reportsRoutes);
 app.use('/notifications', notificationsRoutes);
 app.use('/events', eventsRoutes);
 app.use('/admin', adminRoutes);
+
+// Sentry's Express handler must come AFTER all routes + BEFORE our
+// catch-all. It captures any error that the app threw before bubbling
+// it on to our own 500 responder. Safe to call when Sentry isn't
+// initialised — it just no-ops.
+if (process.env.SENTRY_DSN) Sentry.setupExpressErrorHandler(app);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

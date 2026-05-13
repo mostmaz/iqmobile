@@ -1,8 +1,32 @@
 import 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { I18nManager, View, ActivityIndicator, Text } from 'react-native';
+import * as Sentry from '@sentry/react-native';
+import Constants from 'expo-constants';
 import { setupPushTapHandler } from './src/push/register';
 import { go } from './src/navigation/ref';
+
+// Sentry — runs as early as possible so even crashes during module
+// initialisation are captured. DSN comes from app.json's extra so we
+// don't hardcode it in source. Empty DSN = noop (Sentry SDK skips
+// sending events), which is what we want until the DSN is set.
+const sentryDsn = (Constants.expoConfig?.extra as any)?.sentryDsn;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    // Tag every event with the runtime environment so prod/dev are
+    // easy to separate in the dashboard. __DEV__ is true in Expo Go
+    // and dev EAS builds, false in preview/production builds.
+    environment: __DEV__ ? 'development' : 'production',
+    // 10% of transactions sampled for performance traces — plenty of
+    // signal without burning quota. Crashes/errors are always 100%.
+    tracesSampleRate: 0.1,
+    // Don't auto-capture every console.log — only console.error/warn.
+    integrations: [],
+    // Strip PII Sentry can't tell is sensitive (phone numbers, etc.)
+    sendDefaultPii: false,
+  });
+}
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -25,7 +49,7 @@ const queryClient = new QueryClient();
 // `flexDirection: 'row-reverse'` styles, which RN auto-flips when isRTL=true.
 try { I18nManager.allowRTL(true); } catch {}
 
-export default function App() {
+function AppInner() {
   const [fontsLoaded] = useArabicFonts({
     IBMPlexSansArabic_400Regular,
     IBMPlexSansArabic_500Medium,
@@ -84,3 +108,9 @@ export default function App() {
     </View>
   );
 }
+
+// Sentry.wrap (a) installs a top-level error boundary that reports any
+// React render crash to Sentry instead of just showing the red screen,
+// and (b) tags the app's root component for tracing. When DSN is empty
+// it degrades gracefully — wrap() is a noop.
+export default sentryDsn ? Sentry.wrap(AppInner) : AppInner;
