@@ -30,6 +30,14 @@ if (sentryDsn) {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PostHogProvider } from 'posthog-react-native';
+
+// PostHog — product analytics (DAU, funnels, retention, screen views,
+// taps). Read key + host from app.json so the build can ship without
+// hardcoding them. Empty key = no PostHogProvider gets mounted (see
+// AppInner return), so zero events are sent.
+const posthogKey = (Constants.expoConfig?.extra as any)?.posthogKey || '';
+const posthogHost = (Constants.expoConfig?.extra as any)?.posthogHost || 'https://eu.i.posthog.com';
 import {
   useFonts as useArabicFonts,
   IBMPlexSansArabic_400Regular,
@@ -89,22 +97,54 @@ function AppInner() {
     );
   }
 
+  const body = (
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RootNav />
+          <StatusBar style="dark" />
+        </AuthProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
+  );
+
   // Force the entire app subtree to behave as if isRTL is false, regardless
   // of the persisted I18nManager flag. The Yoga `direction: 'ltr'` style
   // overrides the inherited direction at the layout level — `row-reverse`
   // styles inside this subtree always render as visual right-to-left,
   // which is what every screen in this app expects. This is much more
   // robust than fighting with I18nManager.forceRTL across reload cycles.
+  //
+  // PostHogProvider is only mounted when an API key is configured. With
+  // no key, no provider, no events. The `autocapture` flag turns on the
+  // built-in lifecycle + screen + tap tracking — gives us DAU, session
+  // length, screen views, and click events without any per-component
+  // instrumentation.
   return (
     <View style={{ flex: 1, direction: 'ltr', backgroundColor: theme.bg }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <RootNav />
-            <StatusBar style="dark" />
-          </AuthProvider>
-        </QueryClientProvider>
-      </SafeAreaProvider>
+      {posthogKey ? (
+        <PostHogProvider
+          apiKey={posthogKey}
+          options={{
+            host: posthogHost,
+            // Auto-capture app open/foreground/background. Required for DAU.
+            captureAppLifecycleEvents: true,
+            // Send events in batches every 10s to keep network noise low.
+            flushInterval: 10000,
+          }}
+          // Auto-capture taps on Touchables + screen views from React
+          // Navigation. We can turn `captureTouches` off if we start
+          // hitting event quota; the named manual captures
+          // (listing.viewed, listing.contact_call, etc.) are what we
+          // really care about for product decisions.
+          autocapture={{
+            captureTouches: true,
+            captureScreens: true,
+          }}
+        >
+          {body}
+        </PostHogProvider>
+      ) : body}
     </View>
   );
 }

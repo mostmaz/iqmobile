@@ -8,6 +8,7 @@ import { Btn, FieldLabel, Header, Input, Pill } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { StepDots } from '../../components/marketplace';
 import { Listings, type Condition } from '../../api/endpoints';
+import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
 import { compressForChat } from '../../lib/imageCompress';
@@ -27,6 +28,7 @@ export default function PostListingScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const track = useTrack();
   const [step, setStep] = useState(0);
 
   // Posting requires a real (non-guest) account. Auto-provisioned guests
@@ -127,6 +129,15 @@ export default function PostListingScreen({ navigation }: any) {
     onSuccess: (listing) => {
       qc.invalidateQueries({ queryKey: ['mine'] });
       qc.invalidateQueries({ queryKey: ['browse'] });
+      track('listing.created', {
+        listing_id: listing.id,
+        brand: listing.brand,
+        condition: listing.condition,
+        asking_price: listing.asking_price,
+        governorate: listing.governorate,
+        warranty: warranty,
+        image_count: images.length,
+      });
       navigation.replace('ListingDetail', { id: listing.id });
     },
     onError: (e: any) => setErr((ar.errors as any)[e.message] || e.message),

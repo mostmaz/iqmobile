@@ -3,6 +3,7 @@ import { Auth, type User } from '../api/endpoints';
 import { setToken } from '../api/client';
 import * as SecureStore from '../lib/secureStore';
 import { go } from '../navigation/ref';
+import { useIdentify, useResetIdentity, useTrack } from '../analytics/track';
 
 interface AuthState {
   user: User | null;
@@ -21,6 +22,9 @@ const TOKEN_KEY = 'iq2_token';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const identify = useIdentify();
+  const resetIdentity = useResetIdentity();
+  const track = useTrack();
 
   useEffect(() => {
     (async () => {
@@ -51,7 +55,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await SecureStore.setItem(TOKEN_KEY, token);
     setToken(token);
     setUser(u);
-  }, []);
+    // Tie all subsequent PostHog events to this user. The `is_guest`
+    // and `seller_type` traits become filterable in the dashboard
+    // (e.g. "show DAU but only for real users", "show contact-rate
+    // breakdown for shops vs individuals").
+    if (!u.is_guest) {
+      identify(u.id, {
+        is_guest: u.is_guest,
+        seller_type: u.seller_type,
+        governorate: u.governorate,
+        profile_completed: u.profile_completed,
+      });
+    }
+  }, [identify]);
 
   const login = useCallback(
     async (phone: string, password: string) => {
@@ -72,9 +88,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const phoneLogin = useCallback(
     async (phone: string) => {
       const r = await Auth.phoneLogin(phone);
+      // Server returns the same row whether this is a brand-new account
+      // or a returning user. `profile_completed=false` is a strong
+      // signal it's a fresh signup (the server's complete-profile flow
+      // is the only thing that flips it to true).
+      const isFreshSignup = !r.user.profile_completed;
       await persist(r.token, r.user);
+      track(isFreshSignup ? 'user.signup' : 'user.signin', {
+        method: 'phone',
+      });
     },
-    [persist],
+    [persist, track],
   );
 
   const refresh = useCallback(async () => {
@@ -85,6 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    track('user.logout');
+    resetIdentity();
     await SecureStore.deleteItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
@@ -94,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // the user logs in via AuthGate it pops itself and we land back
     // on the Profile tab with `user` re-populated.)
     go('AuthGate');
-  }, []);
+  }, [track, resetIdentity]);
 
   return <AuthCtx.Provider value={{ user, loading, refresh, login, register, phoneLogin, logout }}>{children}</AuthCtx.Provider>;
 }

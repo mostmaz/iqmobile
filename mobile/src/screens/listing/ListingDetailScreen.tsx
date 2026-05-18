@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator,
   Alert, Dimensions,
@@ -15,6 +15,7 @@ import { ar } from '../../i18n/ar';
 import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
 import { callPhone, openWhatsApp } from '../../lib/contact';
+import { useTrack } from '../../analytics/track';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -22,6 +23,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
+  const track = useTrack();
   const { user } = useAuth();
   const [imgIdx, setImgIdx] = useState(0);
 
@@ -29,6 +31,23 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     queryKey: ['listing', id],
     queryFn: () => Listings.get(id),
   });
+
+  // Fire `listing.viewed` once per detail-page visit. Keyed on the
+  // listing id so re-renders don't double-count, but a fresh navigation
+  // to the same listing later (different mount) does count — that's
+  // the right semantic for "view" on a marketplace.
+  useEffect(() => {
+    if (data?.id) {
+      track('listing.viewed', {
+        listing_id: data.id,
+        brand: data.brand,
+        condition: data.condition,
+        asking_price: data.asking_price,
+        governorate: data.governorate,
+        seller_type: data.seller?.seller_type,
+      });
+    }
+  }, [data?.id, track]);
 
   const save = useMutation({
     mutationFn: () => Listings.save(id),
@@ -173,7 +192,13 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             always offered. Hidden on a seller's own listing. */}
         {!isMine && contactPhone ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
-            <ContactRow phone={contactPhone} whatsapp={contactWhatsApp} />
+            <ContactRow
+              phone={contactPhone}
+              whatsapp={contactWhatsApp}
+              listingId={data.id}
+              brand={data.brand}
+              sellerType={data.seller?.seller_type}
+            />
           </View>
         ) : null}
 
@@ -351,11 +376,26 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 //   - WhatsApp: deeplink wa.me, only when seller provided a number
 //   - Chat: opens the in-app chat so buyers can negotiate without leaving
 function ContactRow({
-  phone, whatsapp,
+  phone, whatsapp, listingId, brand, sellerType,
 }: {
   phone: string;
   whatsapp: string | null;
+  listingId: number;
+  brand: string;
+  sellerType?: string;
 }) {
+  const track = useTrack();
+  // The contact-tap is the closest thing this app has to a "sale" —
+  // we wire both the visible phone-number tap and the bottom buttons
+  // through these wrappers so all three paths report the same event.
+  const trackedCall = () => {
+    track('listing.contact_call', { listing_id: listingId, brand, seller_type: sellerType });
+    callPhone(phone);
+  };
+  const trackedWhatsApp = () => {
+    track('listing.contact_whatsapp', { listing_id: listingId, brand, seller_type: sellerType });
+    if (whatsapp) openWhatsApp(whatsapp);
+  };
   return (
     <View style={{
       backgroundColor: theme.surface,
@@ -364,7 +404,7 @@ function ContactRow({
     }}>
       {/* Public phone — tap to call. */}
       <TouchableOpacity
-        onPress={() => callPhone(phone)}
+        onPress={trackedCall}
         activeOpacity={0.85}
         style={{
           flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
@@ -387,7 +427,7 @@ function ContactRow({
           </View>
         </Btn>
         {whatsapp ? (
-          <Btn kind="successSoft" full onPress={() => openWhatsApp(whatsapp)}>
+          <Btn kind="successSoft" full onPress={trackedWhatsApp}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
               <IconMsgCall size={15} color={theme.success} sw={1.8} />
               <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>واتساب</Text>
