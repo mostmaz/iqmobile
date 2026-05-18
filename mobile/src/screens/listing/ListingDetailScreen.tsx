@@ -207,7 +207,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <Card style={{ paddingVertical: 4, paddingHorizontal: 16 }}>
             {data.storage ? <SpecRow label={ar.listing.storage} value={data.storage} /> : null}
             {data.color ? <SpecRow label={ar.listing.color} value={data.color} /> : null}
-            {data.battery_health != null ? <SpecRow label={ar.listing.battery} value={`${data.battery_health}%`} /> : null}
+            {/* Battery: hide for non-Apple listings (no value), for Apple
+                listings the seller skipped, and defensively for legacy
+                rows that the old server bug stored as 0 instead of null. */}
+            {data.battery_health != null && data.battery_health > 0 ? (
+              <SpecRow label={ar.listing.battery} value={`${data.battery_health}%`} />
+            ) : null}
             {data.warranty_status ? <SpecRow label="الضمان" value={data.warranty_status} /> : null}
             {data.accessories?.length ? <SpecRow label={ar.listing.accessories} value={data.accessories.join('، ')} last /> : null}
           </Card>

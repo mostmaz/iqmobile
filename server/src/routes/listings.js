@@ -120,7 +120,15 @@ r.post('/', requireAuth(), (req, res) => {
     )
     .run(
       req.user.id, brand, model, storage || null, color || null, condition,
-      Number.isFinite(Number(battery_health)) ? Number(battery_health) : null,
+      // Battery: nullable. Stays null for non-Apple brands AND for Apple
+      // listings where the seller left the field blank. The previous
+      // `Number.isFinite(Number(battery_health))` form silently coerced
+      // null/undefined/'' to 0 (since `Number(null)` is 0 and finite),
+      // which caused the listing detail page to show "Battery: 0%" for
+      // every non-Apple listing.
+      battery_health == null || battery_health === ''
+        ? null
+        : Number.isFinite(Number(battery_health)) ? Number(battery_health) : null,
       warranty_status || null,
       JSON.stringify(Array.isArray(accessories) ? accessories : []),
       price, governorate, city || null, description || null,
