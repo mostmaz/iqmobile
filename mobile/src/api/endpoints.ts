@@ -152,6 +152,11 @@ export const Auth = {
     api<{ token: string; user: User }>('/auth/guest', { method: 'POST', body: JSON.stringify({ governorate }) }),
   me: () => api<{ user: User }>('/auth/me'),
   patchMe: (body: any) => api<{ user: User }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
+  // Permanent account deletion. Server cascade-removes the user row
+  // and all dependent data (listings, saves, ratings, chats, files).
+  // Caller must clear the local token + reset analytics identity
+  // right after this resolves.
+  deleteMe: () => api('/auth/me', { method: 'DELETE' }),
   // First-login completion lives in upload.ts (multipart). Imported as
   // a separate function from there since the JSON `api()` helper here
   // can't send FormData.

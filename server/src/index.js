@@ -38,6 +38,12 @@ app.use(cors());
 app.use(express.json({ limit: '256kb' }));
 app.use('/uploads', express.static('./uploads', { maxAge: '7d' }));
 
+// Public static pages (privacy policy, etc.). Nginx fronts both
+// api.iqmobile.org and iqmobile.org with the same upstream, so this
+// URL works at both — Play Store wants iqmobile.org/privacy.
+app.use(express.static('./static', { maxAge: '1h' }));
+app.get('/privacy', (_req, res) => res.sendFile('privacy.html', { root: './static' }));
+
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 app.use('/auth', authRoutes);

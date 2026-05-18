@@ -340,4 +340,42 @@ r.post('/push-debug', requireAuth(), (req, res) => {
   res.json({ ok: true });
 });
 
+// Account deletion — required by Play Store + App Store policy. The
+// user row, all their listings, chats, deals, ratings, saves,
+// notifications, reports, and bypass-attempts cascade out via the
+// ON DELETE CASCADE clauses in the schema. We additionally rm the
+// disk files (profile pic, shop sign, listing photos) so we don't
+// leave orphan media taking up space.
+//
+// Not reversible. The mobile UI gates this behind a destructive
+// confirmation dialog.
+r.delete('/me', requireAuth(), (req, res) => {
+  const me = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
+  if (!me) return res.status(404).json({ error: 'not_found' });
+
+  // Collect every file path *before* the DELETE cascade wipes the rows.
+  const files = [];
+  if (me.profile_image_path) files.push(path.basename(me.profile_image_path));
+  if (me.shop_image_path) files.push(path.basename(me.shop_image_path));
+  const listingImgs = db
+    .prepare(`SELECT li.image_path FROM listing_images li
+              JOIN phone_listings l ON l.id = li.listing_id
+              WHERE l.seller_id = ?`)
+    .all(req.user.id);
+  for (const r of listingImgs) if (r.image_path) files.push(path.basename(r.image_path));
+
+  // Cascade-delete via the user row.
+  db.prepare('DELETE FROM users WHERE id=?').run(req.user.id);
+
+  // Best-effort disk cleanup. Failures here aren't fatal — the user
+  // account is gone, orphan files just waste disk and a future
+  // janitor cron can sweep them.
+  for (const f of files) {
+    try { fs.unlinkSync(path.join(UP, f)); } catch {}
+  }
+
+  console.log(`[auth] deleted account user=${me.id} files=${files.length}`);
+  res.json({ ok: true });
+});
+
 export default r;

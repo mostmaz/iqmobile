@@ -8,7 +8,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
 import { Header, FieldLabel, Btn } from '../../components/ui';
 import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconStar, IconTag } from '../../components/icons';
-import { Listings, Deals } from '../../api/endpoints';
+import { Auth, Listings, Deals } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForChat } from '../../lib/imageCompress';
 import { arOf } from '../../lib/governorates';
@@ -154,6 +154,62 @@ export default function ProfileScreen({ navigation }: any) {
         >
           <IconClose size={18} color={theme.danger} sw={1.7} />
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger, fontWeight: '500' }}>{ar.auth.logout}</Text>
+        </TouchableOpacity>
+
+        {/* Account deletion — required by Play Store + App Store policy.
+            Double confirmation (two-stage Alert) because it's irreversible:
+            the first confirms intent, the second is the actual destructive
+            tap. Modeled after how WhatsApp / Telegram handle it. */}
+        <TouchableOpacity
+          onPress={() => {
+            Alert.alert(
+              'حذف الحساب',
+              'سيتم حذف حسابك وجميع إعلاناتك وصورك نهائياً. لا يمكن التراجع عن هذا الإجراء.',
+              [
+                { text: 'إلغاء', style: 'cancel' },
+                {
+                  text: 'متابعة الحذف',
+                  style: 'destructive',
+                  onPress: () => {
+                    // Second confirmation — last chance to abort.
+                    Alert.alert(
+                      'هل أنت متأكد تماماً؟',
+                      'سنحذف بياناتك من خوادمنا الآن. اضغط "حذف" للتأكيد.',
+                      [
+                        { text: 'إلغاء', style: 'cancel' },
+                        {
+                          text: 'حذف',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await Auth.deleteMe();
+                              // Server is done. Clear local session +
+                              // bounce to the AuthGate, same flow as logout.
+                              await logout();
+                            } catch (e: any) {
+                              Alert.alert('خطأ', e?.message || 'فشل الحذف');
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+              ],
+            );
+          }}
+          activeOpacity={0.7}
+          style={{
+            marginTop: 8, paddingHorizontal: 14, paddingVertical: 14,
+            backgroundColor: 'rgba(180,58,46,0.06)',
+            borderRadius: radius.lg, borderWidth: 1, borderColor: 'rgba(180,58,46,0.25)',
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 12,
+          }}
+        >
+          <IconClose size={18} color={theme.danger} sw={1.7} />
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger, fontWeight: '600' }}>
+            حذف الحساب
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
