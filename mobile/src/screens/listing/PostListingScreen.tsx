@@ -4,9 +4,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
-import { Btn, FieldLabel, Header, Input, Pill } from '../../components/ui';
+import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
-import { StepDots } from '../../components/marketplace';
+import { StepDots, ChipTag } from '../../components/marketplace';
+import { IconPin, IconPhoneIcon, IconCheck } from '../../components/icons';
 import { Listings, type Condition } from '../../api/endpoints';
 import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
@@ -381,26 +382,166 @@ export default function PostListingScreen({ navigation }: any) {
           </>
         )}
         {step === 5 && (
-          <View>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.ink, marginBottom: 8, textAlign: 'right' }}>
-              {brand} {model}
+          <>
+            {/* Eyebrow — explains what they're looking at without yelling. */}
+            <Text style={{
+              fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.4,
+              color: theme.subtle, textTransform: 'uppercase',
+              textAlign: 'right', marginBottom: 8,
+            }}>
+              معاينة الإعلان قبل النشر
             </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right' }}>
-              {(ar.listing as any)[condition]} · {storage}{color ? ` · ${color}` : ''} · {warranty}
-            </Text>
-            <Text style={{ fontFamily: fonts.ltrBold, fontSize: 22, color: theme.accentDeep, marginTop: 10 }}>
-              {Number(askingPrice).toLocaleString()} د.ع
-            </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, marginTop: 6, textAlign: 'right' }}>
-              {govAr}{city ? ` · ${city}` : ''}
-            </Text>
-            <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: theme.subtle, marginTop: 6, textAlign: 'right', writingDirection: 'ltr' }}>
-              {contactPhone}{(waSameAsPhone || contactWhatsapp) ? ` · WhatsApp ${waSameAsPhone ? contactPhone : contactWhatsapp}` : ''}
-            </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, marginTop: 6, textAlign: 'right' }}>
-              {images.length} صور
-            </Text>
-          </View>
+
+            {/* Preview card — visually mirrors the live ListingDetail so
+                the seller knows exactly what buyers will see. */}
+            <View style={{
+              backgroundColor: theme.surface,
+              borderRadius: radius.xxl,
+              borderWidth: 1, borderColor: theme.line,
+              overflow: 'hidden',
+            }}>
+              {/* Cover image (first one). If somehow none uploaded — shouldn't
+                  happen, step 4 enforces ≥3 — show a tasteful placeholder. */}
+              {images.length > 0 ? (
+                <View>
+                  <Image
+                    source={{ uri: images[0] }}
+                    style={{ width: '100%', height: 220, backgroundColor: theme.chipBg }}
+                    resizeMode="cover"
+                  />
+                  {/* Photo count badge, bottom-right of the cover */}
+                  <View style={{
+                    position: 'absolute', bottom: 10, left: 10,
+                    backgroundColor: 'rgba(20,16,12,0.7)',
+                    paddingHorizontal: 10, paddingVertical: 4,
+                    borderRadius: 999,
+                  }}>
+                    <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontSize: 11.5, fontWeight: '700' }}>
+                      📷 {images.length}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={{ height: 220, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: theme.subtle, fontFamily: fonts.mono, letterSpacing: 1.4 }}>
+                    {brand.toUpperCase()}
+                  </Text>
+                </View>
+              )}
+
+              {/* Strip of thumbnails for the remaining photos */}
+              {images.length > 1 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, padding: 10 }}>
+                  {images.slice(1).map((uri, i) => (
+                    <Image key={i} source={{ uri }}
+                      style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.chipBg }}
+                      resizeMode="cover" />
+                  ))}
+                </ScrollView>
+              ) : null}
+
+              {/* Card body */}
+              <View style={{ padding: 16 }}>
+                {/* Chip row — condition / storage / color / warranty */}
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  <ChipTag>{(ar.listing as any)[condition]}</ChipTag>
+                  {storage ? <ChipTag>{storage}</ChipTag> : null}
+                  {color ? <ChipTag>{color}</ChipTag> : null}
+                  <ChipTag>{warranty}</ChipTag>
+                </View>
+
+                <Text numberOfLines={1} style={{
+                  fontFamily: fonts.arBold, fontSize: 19, fontWeight: '700',
+                  color: theme.ink, textAlign: 'right', letterSpacing: -0.3,
+                }}>
+                  {brand} {model}
+                </Text>
+
+                {/* Price block — accent deep, matching the live detail page */}
+                <View style={{ marginTop: 10, alignItems: 'flex-end' }}>
+                  <Text style={{
+                    fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4,
+                    color: theme.subtle, textTransform: 'uppercase',
+                  }}>
+                    السعر المطلوب
+                  </Text>
+                  <Text style={{
+                    marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 28,
+                    color: theme.accentDeep, fontWeight: '700', letterSpacing: -0.5,
+                  }}>
+                    {fmtIQD(Number(askingPrice))}
+                    <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>
+                      {'  '}د.ع
+                    </Text>
+                  </Text>
+                </View>
+
+                {/* Divider */}
+                <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 14 }} />
+
+                {/* Location row */}
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                  <IconPin size={15} color={theme.subtle} sw={1.7} />
+                  <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}>
+                    {govAr}{city ? ` · ${city}` : ''}
+                  </Text>
+                </View>
+
+                {/* Contact row */}
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <IconPhoneIcon size={15} color={theme.subtle} sw={1.7} />
+                  <Text style={{ flex: 1, fontFamily: fonts.mono, fontSize: 13, color: theme.ink, textAlign: 'right', writingDirection: 'ltr' }}>
+                    {contactPhone}
+                    {(waSameAsPhone || contactWhatsapp) ? (
+                      <Text style={{ color: theme.success }}>
+                        {'  ·  '}واتساب
+                      </Text>
+                    ) : null}
+                  </Text>
+                </View>
+
+                {/* Description (if any) */}
+                {description ? (
+                  <>
+                    <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 14 }} />
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, color: theme.subtle, textTransform: 'uppercase', textAlign: 'right', marginBottom: 4 }}>
+                      الوصف
+                    </Text>
+                    <Text numberOfLines={4} style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink, textAlign: 'right', lineHeight: 22 }}>
+                      {description}
+                    </Text>
+                  </>
+                ) : null}
+
+                {/* Accessories row */}
+                {accessories.length > 0 ? (
+                  <>
+                    <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 14 }} />
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, color: theme.subtle, textTransform: 'uppercase', textAlign: 'right', marginBottom: 6 }}>
+                      الملحقات
+                    </Text>
+                    <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 }}>
+                      {accessories.map((a) => <ChipTag key={a}>{a}</ChipTag>)}
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Ready-to-publish hint below the card */}
+            <View style={{
+              marginTop: 14, paddingHorizontal: 14, paddingVertical: 12,
+              backgroundColor: theme.successSoft, borderRadius: radius.lg,
+              borderWidth: 1, borderColor: theme.success,
+              flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+            }}>
+              <IconCheck size={16} color={theme.success} sw={2.2} />
+              <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13, color: theme.success, textAlign: 'right', lineHeight: 20 }}>
+                جاهز للنشر. اضغط "نشر" بالأسفل لإطلاق إعلانك.
+              </Text>
+            </View>
+          </>
         )}
 
       </ScrollView>

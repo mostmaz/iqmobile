@@ -33,6 +33,13 @@ const CONDITIONS: Condition[] = ['new', 'used', 'refurbished'];
 const PRICE_STEP = 100_000;
 const PRICE_MIN = 0;
 const PRICE_MAX = 5_000_000;
+// Defaults shown in the steppers when the user opens the filter sheet
+// without any price filter yet active. Tuned to the modal price band
+// for used Iraqi phone sales (100K = bottom of the realistic market,
+// 1M = where most flagships sit). Buyers can step outside this range
+// in either direction to broaden the search.
+const PRICE_DEFAULT_MIN = 100_000;
+const PRICE_DEFAULT_MAX = 1_000_000;
 
 // Initial page = 15 cards (fast first paint), then load 15 more each time
 // the FlatList nears its end. Keeps the grid responsive on first tab open.
@@ -174,20 +181,22 @@ export default function BrowseScreen({ navigation }: any) {
             <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
               <PriceStepper
                 label="من"
-                value={filters.min_price ?? 0}
+                value={filters.min_price ?? PRICE_DEFAULT_MIN}
                 onChange={(v) => {
                   // keep min ≤ max so the range stays valid
-                  const max = filters.max_price ?? PRICE_MAX;
+                  const max = filters.max_price ?? PRICE_DEFAULT_MAX;
                   const next = Math.min(v, max);
+                  // Stepping all the way down to 0 = "no minimum" (clear filter).
                   patch({ min_price: next === 0 ? undefined : next });
                 }}
               />
               <PriceStepper
                 label="إلى"
-                value={filters.max_price ?? PRICE_MAX}
+                value={filters.max_price ?? PRICE_DEFAULT_MAX}
                 onChange={(v) => {
-                  const min = filters.min_price ?? 0;
+                  const min = filters.min_price ?? PRICE_DEFAULT_MIN;
                   const next = Math.max(v, min);
+                  // Stepping up to the cap = "no maximum" (open-ended).
                   patch({ max_price: next === PRICE_MAX ? undefined : next });
                 }}
                 openEndedAtMax

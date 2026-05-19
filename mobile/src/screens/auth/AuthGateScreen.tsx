@@ -77,7 +77,7 @@ export default function AuthGateScreen({ navigation }: any) {
         <Text style={{
           marginTop: 6, fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, lineHeight: 21, textAlign: 'right',
         }}>
-          رقم هاتفك هو حسابك. لا حاجة لكلمة مرور — سنرسل رمز تحقق قصيراً قريباً.
+          رقم هاتفك هو حسابك. لا حاجة لكلمة مرور.
         </Text>
 
         {/* phone */}
@@ -119,9 +119,6 @@ export default function AuthGateScreen({ navigation }: any) {
           <Btn kind="accent" full onPress={submit} busy={busy}>
             متابعة
           </Btn>
-          <Text style={{ marginTop: 12, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, textAlign: 'center', color: theme.subtle, textTransform: 'uppercase' }}>
-            رمز SMS قريباً
-          </Text>
         </View>
       </ScrollView>
     </View>
