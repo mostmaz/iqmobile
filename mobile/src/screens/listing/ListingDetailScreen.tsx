@@ -107,6 +107,13 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     onError: (e: any) => Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message),
   });
 
+  // Chat-start spinner state. MUST live above the loading early-return —
+  // declaring it after the `if (isLoading) return …` is a Hooks-order
+  // violation that crashes the screen the moment `data` arrives ("Rendered
+  // more hooks than during the previous render"). All hooks-using state
+  // belongs in the unconditional prefix of the component.
+  const [chatStarting, setChatStarting] = useState(false);
+
   if (isLoading || !data) {
     return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg }}><ActivityIndicator color={theme.accent} /></View>;
   }
@@ -137,7 +144,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // also rejects guest tokens with `guest_blocked` so this is defence in
   // depth. The cross-stack jump targets the Chats tab's own Chat screen
   // (registered in ChatsStackNav) — same pattern AuthGate uses.
-  const [chatStarting, setChatStarting] = useState(false);
+  // (`chatStarting` state lives above the loading early-return — see note there.)
   async function startChat() {
     if (!user || user.is_guest) {
       (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
