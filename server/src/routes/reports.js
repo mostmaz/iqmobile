@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { reportLimiter } from '../limits.js';
 
 const r = Router();
 
 const REASONS = ['fake_listing','wrong_specs','scam_attempt','inappropriate_chat','bypass_attempt','other'];
 const TARGETS = ['listing','user','chat'];
 
-r.post('/', requireAuth(), (req, res) => {
+r.post('/', requireAuth(), reportLimiter, (req, res) => {
   const { target_kind, target_id, reason, detail } = req.body || {};
   if (!TARGETS.includes(target_kind)) return res.status(400).json({ error: 'bad_target' });
   if (!REASONS.includes(reason)) return res.status(400).json({ error: 'bad_reason' });

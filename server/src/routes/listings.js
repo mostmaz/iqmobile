@@ -6,15 +6,35 @@ import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, isBrand } from '../governorates.js';
+import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();
 
 const UP = path.resolve('./uploads');
 fs.mkdirSync(UP, { recursive: true });
+
+// Allowlist real photo formats only. Without this, an attacker could
+// upload an SVG with `mimetype: image/jpeg` (multer trusts the client's
+// declared mime) and it'd be served back as `Content-Type: image/svg+xml`
+// from /uploads (express.static infers type from the .svg filename),
+// triggering JS execution inside any webview that opens the URL.
+// Whitelist + filename-extension rewrite kills both attack legs.
+const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function pickSafeExt(originalname, mimetype) {
+  const ext = (path.extname(originalname || '') || '').toLowerCase();
+  if (ALLOWED_IMAGE_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  // Derive from mime when the client lied about the extension.
+  if (mimetype === 'image/png') return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  return '.jpg';
+}
+
 const imgStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UP),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').slice(0, 6) || '.jpg';
+    const ext = pickSafeExt(file.originalname, file.mimetype);
     cb(null, 'lst_' + crypto.randomBytes(12).toString('hex') + ext);
   },
 });
@@ -22,10 +42,35 @@ const imgUpload = multer({
   storage: imgStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\//.test(file.mimetype)) return cb(new Error('not_image'));
+    // Must be an allowed photo mime AND have a recognised extension. We
+    // can't fully prevent a forged mime here (the magic-byte sniff would
+    // need to read the body) but combined with the rewritten extension
+    // above the worst case is "we serve a JPEG named .jpg that was
+    // actually a PNG" — harmless.
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) return cb(new Error('not_image'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    // Empty ext is OK — pickSafeExt will assign .jpg from the mime.
+    if (ext && !ALLOWED_IMAGE_EXT.has(ext)) return cb(new Error('not_image'));
     cb(null, true);
   },
 });
+
+// Length caps for free-text fields. Cap is express.json({limit:'256kb'})
+// at the top, but individual columns shouldn't be allowed to balloon
+// inside that budget — a 200KB description blows up every browse-page
+// payload and bloats the DB row forever.
+const MAX_MODEL = 80;
+const MAX_COLOR = 30;
+const MAX_STORAGE = 16;
+const MAX_CITY = 60;
+const MAX_DESC = 2000;
+const MAX_WARRANTY = 60;
+function trim(v, max) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  return s.slice(0, max);
+}
 
 const CONDITIONS = ['new', 'used', 'repaired', 'refurbished'];
 const MAX_IMAGES = 10;
@@ -85,12 +130,20 @@ function normalizeIraqiPhone(input) {
 }
 
 // ─── create listing ──────────────────────────────────────────────────
-r.post('/', requireAuth(), (req, res) => {
+r.post('/', requireAuth(), createLimiter, (req, res) => {
   const {
-    brand, model, storage, color, condition, battery_health,
-    warranty_status, accessories, asking_price, governorate, city, description,
+    brand, condition, battery_health,
+    accessories, asking_price, governorate,
     contact_phone, contact_whatsapp,
   } = req.body || {};
+  // Trim every free-text field client-side data could blow up. A 1MB
+  // description in a phone listing isn't a feature.
+  const model = trim(req.body?.model, MAX_MODEL);
+  const storage = trim(req.body?.storage, MAX_STORAGE);
+  const color = trim(req.body?.color, MAX_COLOR);
+  const city = trim(req.body?.city, MAX_CITY);
+  const description = trim(req.body?.description, MAX_DESC);
+  const warranty_status = trim(req.body?.warranty_status, MAX_WARRANTY);
   if (!brand || !model || !condition || !asking_price || !governorate)
     return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
@@ -287,7 +340,7 @@ r.delete('/:id(\\d+)', requireAuth(), (req, res) => {
 });
 
 // ─── upload images ───────────────────────────────────────────────────
-r.post('/:id(\\d+)/images', requireAuth(), imgUpload.array('images', MAX_IMAGES), (req, res) => {
+r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('images', MAX_IMAGES), (req, res) => {
   const row = loadListing(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });

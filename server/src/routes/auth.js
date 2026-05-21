@@ -6,15 +6,30 @@ import crypto from 'node:crypto';
 import { db, now } from '../db.js';
 import { hashPassword, verifyPassword, issueToken, requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate } from '../governorates.js';
+import { authLimiter, guestLimiter } from '../limits.js';
 
 const r = Router();
 
 const UP = path.resolve('./uploads');
 fs.mkdirSync(UP, { recursive: true });
+
+// Same image hygiene as routes/listings.js — see the long comment there
+// for the SVG → stored-XSS rationale. Photos only; no SVGs, no GIFs, no
+// pretending image/jpeg via a .svg file extension.
+const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function pickSafeExt(originalname, mimetype) {
+  const ext = (path.extname(originalname || '') || '').toLowerCase();
+  if (ALLOWED_IMAGE_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  if (mimetype === 'image/png') return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  return '.jpg';
+}
+
 const profileStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UP),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').slice(0, 6) || '.jpg';
+    const ext = pickSafeExt(file.originalname, file.mimetype);
     cb(null, 'pf_' + crypto.randomBytes(10).toString('hex') + ext);
   },
 });
@@ -22,10 +37,15 @@ const profileUpload = multer({
   storage: profileStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\//.test(file.mimetype)) return cb(new Error('not_image'));
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) return cb(new Error('not_image'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    if (ext && !ALLOWED_IMAGE_EXT.has(ext)) return cb(new Error('not_image'));
     cb(null, true);
   },
 });
+
+// Display-name cap. Without it, a long name DoSes every browse-row payload.
+const MAX_DISPLAY_NAME = 50;
 
 // Iraqi mobile: 11 digits starting 07XXXXXXXXX. Accept loose user input
 // (spaces, dashes, +964, 00964) and normalise to the local form.
@@ -71,7 +91,7 @@ function publicUser(row) {
 // Minimal signup — phone + password + account type. Display name and
 // governorate get sensible defaults so users can finish onboarding without
 // a long form; they refine them later in EditProfile. (OTP comes later.)
-r.post('/register', (req, res) => {
+r.post('/register', authLimiter, (req, res) => {
   const { password, display_name, governorate, city, seller_type, shop_years } = req.body || {};
   const phone = normalizePhone(req.body?.phone);
   if (!phone || !password) return res.status(400).json({ error: 'missing_fields' });
@@ -86,7 +106,8 @@ r.post('/register', (req, res) => {
   // Default display name to the last 4 digits of the phone so the in-app
   // profile reads as "مستخدم 4567" instead of an empty string. Default
   // governorate is Baghdad (largest market) — user changes it later.
-  const finalName = (display_name && String(display_name).trim()) || `مستخدم ${phone.slice(-4)}`;
+  const trimmedName = display_name ? String(display_name).trim().slice(0, MAX_DISPLAY_NAME) : '';
+  const finalName = trimmedName || `مستخدم ${phone.slice(-4)}`;
   const finalGov = governorate || 'Baghdad';
 
   const exists = db.prepare('SELECT id FROM users WHERE phone=?').get(phone);
@@ -117,7 +138,7 @@ r.post('/signup', (req, res, next) => {
 // every user can post / chat / save without typing credentials. When we
 // later require real signup for sellers, the client prompts the guest to
 // upgrade and we update the row's phone + password.
-r.post('/guest', (req, res) => {
+r.post('/guest', guestLimiter, (req, res) => {
   const { governorate } = req.body || {};
   const gov = governorate && isGovernorate(governorate) ? governorate : 'Baghdad';
   // 26 hex chars — unique-enough to never collide with the 11-digit Iraqi
@@ -134,7 +155,7 @@ r.post('/guest', (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
-r.post('/login', (req, res) => {
+r.post('/login', authLimiter, (req, res) => {
   const { password } = req.body || {};
   const phone = normalizePhone(req.body?.phone);
   if (!phone || !password) return res.status(400).json({ error: 'missing_fields' });
@@ -156,7 +177,7 @@ r.post('/login', (req, res) => {
 // SECURITY NOTE: this is intentionally trust-on-first-use until SMS OTP
 // lands. Anyone who knows your phone number can claim it. Don't ship to
 // production without OTP — see the SIM verification discussion below.
-r.post('/phone-login', optionalAuth(), (req, res) => {
+r.post('/phone-login', authLimiter, optionalAuth(), (req, res) => {
   const phone = normalizePhone(req.body?.phone);
   if (!phone) return res.status(400).json({ error: 'bad_phone' });
 

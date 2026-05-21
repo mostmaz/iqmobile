@@ -11,10 +11,23 @@ const r = Router();
 
 const UP = path.resolve('./uploads');
 fs.mkdirSync(UP, { recursive: true });
+
+// Same image hygiene as routes/listings.js — see the long comment there.
+// Blocks the SVG-mimetype-renamed-to-image/jpeg → stored XSS path.
+const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function pickSafeExt(originalname, mimetype) {
+  const ext = (path.extname(originalname || '') || '').toLowerCase();
+  if (ALLOWED_IMAGE_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  if (mimetype === 'image/png') return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  return '.jpg';
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UP),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').slice(0, 6) || '.jpg';
+    const ext = pickSafeExt(file.originalname, file.mimetype);
     cb(null, 'msg_' + crypto.randomBytes(12).toString('hex') + ext);
   },
 });
@@ -22,7 +35,9 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\//.test(file.mimetype)) return cb(new Error('not_image'));
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) return cb(new Error('not_image'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    if (ext && !ALLOWED_IMAGE_EXT.has(ext)) return cb(new Error('not_image'));
     cb(null, true);
   },
 });
