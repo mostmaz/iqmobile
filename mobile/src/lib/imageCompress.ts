@@ -1,13 +1,46 @@
-// Compress an image picked from expo-image-picker to fit under MAX_BYTES.
-// Strategy: resize longest dim to MAX_DIM, then re-encode JPEG at progressively
-// lower quality until size fits. expo-image-manipulator works on native + web.
-import * as ImageManipulator from 'expo-image-manipulator';
+// Image compression for upload.
+//
+// Goal: ship the smallest acceptable file from the user's photo gallery
+// to our server. On Iraqi mobile data plans every kilobyte matters — a
+// 6MB photo from a new iPhone is a 30-second upload on a typical
+// connection, vs. ~3 seconds for the same image compressed to 400KB.
+//
+// Strategy per preset:
+//   1. Resize the long edge to the preset's `maxDim` (single biggest win
+//      — a 4032×3024 source compresses to under 1MB just from this).
+//   2. Try WebP first (≈25-35% smaller than JPEG at the same visual
+//      quality on Android — iOS image-manipulator falls back to JPEG
+//      internally, which is fine because expo-image decodes both).
+//   3. If that's still over the byte budget, drop quality progressively
+//      reusing the already-resized intermediate (no need to re-decode
+//      the original from disk each iteration).
+//   4. If quality 0.35 still doesn't fit, halve the dimensions and try
+//      once more.
+//
+// Three sized presets keep avatar / chat / listing uploads in their
+// natural size bucket — previously every image (including a 56×56
+// avatar) shipped 800KB.
 
-// Marketplace photos: aim for ~600KB on the wire, max 1280px on the long edge.
-// This keeps uploads snappy on Iraqi mobile data plans and stays well under
-// the 5MB server cap. Phones display these at <600px wide anyway.
-const MAX_BYTES = 800 * 1024;        // 800 KB target
-const MAX_DIM = 1280;                 // long-edge cap
+import * as ImageManipulator from 'expo-image-manipulator';
+import { Platform } from 'react-native';
+
+type Preset = {
+  maxDim: number;
+  maxBytes: number;
+  initialQuality: number;
+};
+
+const PRESETS: Record<'listing' | 'chat' | 'avatar', Preset> = {
+  // Listing photos: rendered up to 320px tall in the gallery (≈800px on a
+  // 3× device). 1280 long edge gives a crisp zoom and stays under 1MB.
+  listing: { maxDim: 1280, maxBytes: 600 * 1024, initialQuality: 0.7 },
+  // Chat photo bubble: renders at 200×200. 800px is overkill but matches
+  // what users expect for "send a photo".
+  chat:    { maxDim: 800,  maxBytes: 400 * 1024, initialQuality: 0.65 },
+  // Profile + shop sign avatars: rendered at 56×56 and 140 tall. 400px
+  // is generous — under 80KB at quality 0.7.
+  avatar:  { maxDim: 400,  maxBytes: 100 * 1024, initialQuality: 0.7 },
+};
 
 async function fileSize(uri: string): Promise<number> {
   try {
@@ -19,38 +52,68 @@ async function fileSize(uri: string): Promise<number> {
   }
 }
 
-export async function compressForChat(uri: string): Promise<string> {
-  // 1) Resize first (fastest big win on most photos).
-  let result = await ImageManipulator.manipulateAsync(
+// expo-image-manipulator's WebP support landed in SDK 51+. We still
+// guard with a try/catch because the underlying native libs vary by
+// device and a malformed source occasionally falls through to a
+// runtime error rather than a graceful return.
+const SUPPORTS_WEBP = Platform.OS === 'android';
+const WEBP = (ImageManipulator as any).SaveFormat?.WEBP ?? 'webp';
+
+async function compressOnce(uri: string, width: number, compress: number, format: any) {
+  return ImageManipulator.manipulateAsync(
     uri,
-    [{ resize: { width: MAX_DIM } }],
-    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
+    [{ resize: { width } }],
+    { compress, format },
   );
+}
+
+export async function compressImage(uri: string, preset: keyof typeof PRESETS): Promise<string> {
+  const p = PRESETS[preset];
+
+  // 1. Resize + initial WebP (Android) or JPEG (iOS) encode.
+  let result;
+  if (SUPPORTS_WEBP) {
+    try {
+      result = await compressOnce(uri, p.maxDim, p.initialQuality, WEBP);
+    } catch {
+      result = await compressOnce(uri, p.maxDim, p.initialQuality, ImageManipulator.SaveFormat.JPEG);
+    }
+  } else {
+    result = await compressOnce(uri, p.maxDim, p.initialQuality, ImageManipulator.SaveFormat.JPEG);
+  }
 
   let size = await fileSize(result.uri);
-  if (size === 0 || size <= MAX_BYTES) return result.uri;
+  if (size === 0 || size <= p.maxBytes) return result.uri;
 
-  // 2) If still too big, re-encode at lower qualities until it fits.
-  for (const q of [0.65, 0.5, 0.4, 0.3]) {
-    result = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: MAX_DIM } }],
-      { compress: q, format: ImageManipulator.SaveFormat.JPEG },
-    );
+  // 2. Quality-only retries — reuse the already-resized intermediate so
+  //    we don't re-decode the original from disk on every iteration.
+  for (const q of [0.55, 0.45, 0.35]) {
+    result = await compressOnce(result.uri, p.maxDim, q, ImageManipulator.SaveFormat.JPEG);
     size = await fileSize(result.uri);
-    if (size <= MAX_BYTES) return result.uri;
+    if (size <= p.maxBytes) return result.uri;
   }
 
-  // 3) Last resort: shrink dimensions further at quality 0.4.
-  for (const w of [1280, 1024, 800, 640]) {
-    result = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: w } }],
-      { compress: 0.4, format: ImageManipulator.SaveFormat.JPEG },
-    );
-    size = await fileSize(result.uri);
-    if (size <= MAX_BYTES) return result.uri;
-  }
-  // give up — return whatever we have; server will reject if over cap
+  // 3. Last-resort: halve the dimensions and try once more.
+  const halfWidth = Math.max(320, Math.floor(p.maxDim / 2));
+  result = await compressOnce(result.uri, halfWidth, 0.45, ImageManipulator.SaveFormat.JPEG);
   return result.uri;
+}
+
+// Back-compat alias. Multiple sites historically called this for
+// listing photos too; resolve to the listing preset so behaviour
+// doesn't regress on the existing call paths.
+export async function compressForChat(uri: string): Promise<string> {
+  return compressImage(uri, 'listing');
+}
+
+export async function compressForListing(uri: string): Promise<string> {
+  return compressImage(uri, 'listing');
+}
+
+export async function compressForAvatar(uri: string): Promise<string> {
+  return compressImage(uri, 'avatar');
+}
+
+export async function compressForChatBubble(uri: string): Promise<string> {
+  return compressImage(uri, 'chat');
 }

@@ -11,7 +11,7 @@ import { theme, fonts, radius } from '../../theme';
 import { Btn, fmtIQD, Header } from '../../components/ui';
 import { Chats, Deals, type Chat, type ChatMessage, type Deal } from '../../api/endpoints';
 import { sendChatImage, fullImageUrl } from '../../api/upload';
-import { compressForChat } from '../../lib/imageCompress';
+import { compressForChatBubble } from '../../lib/imageCompress';
 import { parsePrice } from '../../lib/format';
 import { ar } from '../../i18n/ar';
 import { subscribeSSE } from '../../sse/client';
@@ -97,7 +97,7 @@ export default function ChatScreen({ route, navigation }: any) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
     });
     if (r.canceled || !r.assets?.[0]?.uri) return;
-    const compressed = await compressForChat(r.assets[0].uri);
+    const compressed = await compressForChatBubble(r.assets[0].uri);
     setSending(true);
     try { await sendChatImage(id, compressed); refresh(); }
     catch (e: any) { Alert.alert('خطأ', e.message); }

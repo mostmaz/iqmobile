@@ -18,7 +18,7 @@ import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Input } from '../../components/ui';
 import { IconCheck, IconPin, IconID } from '../../components/icons';
 import { completeProfile } from '../../api/upload';
-import { compressForChat } from '../../lib/imageCompress';
+import { compressForAvatar } from '../../lib/imageCompress';
 import { ar } from '../../i18n/ar';
 
 export default function CompleteProfileScreen() {
@@ -51,7 +51,7 @@ export default function CompleteProfileScreen() {
       });
       if (r.canceled || !r.assets?.[0]?.uri) return;
       try {
-        const compressed = await compressForChat(r.assets[0].uri);
+        const compressed = await compressForAvatar(r.assets[0].uri);
         setShopImage(compressed);
       } catch (e: any) {
         Alert.alert('خطأ', e?.message || 'تعذر تحميل الصورة');

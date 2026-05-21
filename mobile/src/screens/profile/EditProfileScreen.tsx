@@ -14,7 +14,7 @@ import { Btn, FieldLabel, Header, Input } from '../../components/ui';
 import { IconPin, IconCheck } from '../../components/icons';
 import { Auth } from '../../api/endpoints';
 import { updateShopImage, fullImageUrl } from '../../api/upload';
-import { compressForChat } from '../../lib/imageCompress';
+import { compressForAvatar } from '../../lib/imageCompress';
 import { useAuth } from '../../auth/AuthContext';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
 import { GovPicker } from '../../components/GovPicker';
@@ -76,7 +76,7 @@ export default function EditProfileScreen({ navigation }: any) {
     if (r.canceled || !r.assets?.[0]?.uri) return;
     setShopBusy(true);
     try {
-      const compressed = await compressForChat(r.assets[0].uri);
+      const compressed = await compressForAvatar(r.assets[0].uri);
       await updateShopImage(compressed);
       await refresh();
     } catch (e: any) {

@@ -13,7 +13,7 @@ import { Listings, type Condition } from '../../api/endpoints';
 import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
-import { compressForChat } from '../../lib/imageCompress';
+import { compressForListing } from '../../lib/imageCompress';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
 import { digitsOnly, parsePrice } from '../../lib/format';
 import { useAuth } from '../../auth/AuthContext';
@@ -134,18 +134,20 @@ export default function PostListingScreen({ navigation }: any) {
       selectionLimit: remaining,
     });
     if (r.canceled) return;
-    // Compress per-asset with individual try/catch so a single corrupt
-    // photo doesn't drop the entire batch on the floor. Previously a
-    // failed compress threw out of Promise.all and lost every picked
-    // image including the ones that compressed fine.
-    const compressed: string[] = [];
-    for (const a of (r.assets || [])) {
-      try {
-        compressed.push(await compressForChat(a.uri));
-      } catch {
-        // Skip the bad asset; the rest still make it into the list.
-      }
-    }
+    // Compress in parallel — picking 10 photos that each take 600ms to
+    // resize used to add up to 6s of staring at a spinner; doing them
+    // concurrently brings that down to roughly the slowest single
+    // image. Per-asset try/catch keeps a single corrupt photo from
+    // dropping the whole batch (the previous Promise.all without
+    // wrapping would throw on the first failure and lose every other
+    // compressed result).
+    const settled = await Promise.all(
+      (r.assets || []).map(async (a) => {
+        try { return await compressForListing(a.uri); }
+        catch { return null; }
+      }),
+    );
+    const compressed = settled.filter((u): u is string => !!u);
     setImages((cur) => [...cur, ...compressed].slice(0, 10));
   }
 

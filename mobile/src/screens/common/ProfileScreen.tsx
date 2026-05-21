@@ -11,7 +11,7 @@ import { Header, FieldLabel, Btn } from '../../components/ui';
 import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconStar, IconTag } from '../../components/icons';
 import { Auth, Listings, Deals } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
-import { compressForChat } from '../../lib/imageCompress';
+import { compressForAvatar } from '../../lib/imageCompress';
 import { arOf } from '../../lib/governorates';
 import { ar } from '../../i18n/ar';
 
@@ -61,7 +61,7 @@ export default function ProfileScreen({ navigation }: any) {
     });
     if (r.canceled || !r.assets?.[0]?.uri) return;
     try {
-      const compressed = await compressForChat(r.assets[0].uri);
+      const compressed = await compressForAvatar(r.assets[0].uri);
       await uploadProfileImage(compressed);
       await refresh();
     } catch (e: any) { Alert.alert('خطأ', e.message); }
