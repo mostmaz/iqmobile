@@ -8,9 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
-import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall } from '../../components/icons';
+import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat } from '../../components/icons';
 import { ChipTag, SpecRow } from '../../components/marketplace';
-import { Listings, Reports } from '../../api/endpoints';
+import { Listings, Reports, Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { ar } from '../../i18n/ar';
 import { arOf } from '../../lib/governorates';
@@ -132,6 +132,38 @@ export default function ListingDetailScreen({ route, navigation }: any) {
       Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
     }
   }
+  // Start (or reuse) a chat thread for this listing as the buyer. Guests
+  // bounce through AuthGate first since chat is real-user only — server
+  // also rejects guest tokens with `guest_blocked` so this is defence in
+  // depth. The cross-stack jump targets the Chats tab's own Chat screen
+  // (registered in ChatsStackNav) — same pattern AuthGate uses.
+  const [chatStarting, setChatStarting] = useState(false);
+  async function startChat() {
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
+    if (chatStarting) return;
+    setChatStarting(true);
+    try {
+      const chat = await Chats.startForListing(id);
+      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally {
+      setChatStarting(false);
+    }
+  }
+
+  // Seller-side: jump to ChatsList filtered to this listing.
+  function openBuyerChats() {
+    (navigation as any).getParent()?.navigate('Chats', {
+      screen: 'ChatsHome',
+      params: { listing_id: id },
+    });
+  }
+
   function reportListing() {
     Alert.alert('إبلاغ عن الإعلان', '', [
       { text: 'إعلان مزيف', onPress: () => submitReport('fake_listing') },
@@ -250,7 +282,25 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               listingId={data.id}
               brand={data.brand}
               sellerType={data.seller?.seller_type}
+              onStartChat={startChat}
+              chatStarting={chatStarting}
             />
+          </View>
+        ) : null}
+
+        {/* Seller-side CTA: jump to ChatsList filtered to this listing.
+            Lets the seller see all incoming buyer conversations for a
+            given listing in one tap. Hidden on guests + non-mine views. */}
+        {isMine ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+            <Btn kind="ghost" full onPress={openBuyerChats}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                <IconChat size={16} color={theme.ink} sw={1.7} />
+                <Text style={{ color: theme.ink, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>
+                  {ar.listing.buyerChats}
+                </Text>
+              </View>
+            </Btn>
           </View>
         ) : null}
 
@@ -447,13 +497,15 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 //   - WhatsApp: deeplink wa.me, only when seller provided a number
 //   - Chat: opens the in-app chat so buyers can negotiate without leaving
 function ContactRow({
-  phone, whatsapp, listingId, brand, sellerType,
+  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting,
 }: {
   phone: string;
   whatsapp: string | null;
   listingId: number;
   brand: string;
   sellerType?: string;
+  onStartChat: () => void;
+  chatStarting: boolean;
 }) {
   const track = useTrack();
   // The contact-tap is the closest thing this app has to a "sale" —
@@ -466,6 +518,10 @@ function ContactRow({
   const trackedWhatsApp = () => {
     track('listing.contact_whatsapp', { listing_id: listingId, brand, seller_type: sellerType });
     if (whatsapp) openWhatsApp(whatsapp);
+  };
+  const trackedChat = () => {
+    track('listing.contact_chat', { listing_id: listingId, brand, seller_type: sellerType });
+    onStartChat();
   };
   return (
     <View style={{
@@ -490,6 +546,9 @@ function ContactRow({
         <IconPhoneIcon size={16} color={theme.subtle} sw={1.7} />
       </TouchableOpacity>
 
+      {/* Action row: Call / WhatsApp / Chat. Chat sits alongside Call so
+          buyers see all three contact paths together. Chat handler bounces
+          guests through AuthGate before any server call. */}
       <View style={{ marginTop: 8, flexDirection: 'row-reverse', gap: 8 }}>
         <Btn kind="success" full onPress={() => callPhone(phone)}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
@@ -505,6 +564,14 @@ function ContactRow({
             </View>
           </Btn>
         ) : null}
+      </View>
+      <View style={{ marginTop: 8 }}>
+        <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+            <IconChat size={15} color="#fff" sw={1.8} />
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>{ar.listing.chat}</Text>
+          </View>
+        </Btn>
       </View>
     </View>
   );

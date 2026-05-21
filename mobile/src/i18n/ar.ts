@@ -67,6 +67,7 @@ export const ar = {
     markSold: 'تحديد كمباع',
     remove: 'حذف',
     renew: 'تجديد',
+    buyerChats: 'محادثات المشترين',
   },
   post: {
     title: 'انشر إعلان جديد',
@@ -100,6 +101,9 @@ export const ar = {
     blockedHint: 'لا يمكن إرسال أرقام هاتف قبل تأكيد الصفقة',
     type: 'اكتب رسالة…',
     phoneUnlocked: 'تم تأكيد الصفقة — رقم البائع متاح',
+    empty: 'لا توجد محادثات بعد — تصفح إعلاناً وابدأ محادثة مع البائع.',
+    emptyForListing: 'لا توجد محادثات لهذا الإعلان بعد.',
+    newMessage: 'رسالة جديدة',
   },
   deal: {
     proposed: 'اقتراح سعر',
@@ -131,6 +135,7 @@ export const ar = {
   errors: {
     // Auth / account
     bad_credentials: 'بيانات تسجيل الدخول غير صحيحة',
+    guest_blocked: 'يجب إنشاء حساب للمتابعة.',
     phone_taken: 'رقم الهاتف مستخدم مسبقاً',
     weak_password: 'كلمة المرور قصيرة',
     bad_phone: 'رقم الهاتف غير صحيح',

@@ -1,21 +1,29 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView,
-  Platform, Alert, Linking, Modal,
+  Platform, Alert, Modal,
 } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
-import { Btn, fmtIQD, Header } from '../../components/ui';
-import { Chats, Deals, type Chat, type ChatMessage, type Deal } from '../../api/endpoints';
+import { Btn, fmtIQD } from '../../components/ui';
+import { IconArrowLeft } from '../../components/icons';
+import { Chats, Deals, type Chat, type ChatMessage } from '../../api/endpoints';
 import { sendChatImage, fullImageUrl } from '../../api/upload';
 import { compressForChatBubble } from '../../lib/imageCompress';
 import { parsePrice } from '../../lib/format';
 import { ar } from '../../i18n/ar';
 import { subscribeSSE } from '../../sse/client';
 import { useAuth } from '../../auth/AuthContext';
+
+// Hide the propose-price / accept / counter / seller-confirm flow for v1.
+// The phone numbers are now public on each listing, so we don't need the
+// deal-confirmation gate to unlock them. The server endpoints stay live
+// (they remain useful for record-keeping) — just don't render their
+// buttons inside the chat. Flip this to `true` when re-enabling.
+const DEAL_FLOW_ENABLED = false;
 
 export default function ChatScreen({ route, navigation }: any) {
   const { id } = route.params as { id: number };
@@ -58,14 +66,22 @@ export default function ChatScreen({ route, navigation }: any) {
     return () => { unsub(); };
   }, [id, refresh]);
 
+  // Auto-scroll to the bottom when a new message arrives. Stash the
+  // timeout id in a ref so we can clear it on unmount AND on each
+  // subsequent re-fire — previously every message-list change queued a
+  // new setTimeout that leaked on unmount or rapid arrivals.
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (messages && listRef.current) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
-    }
+    if (!messages || !listRef.current) return;
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
+    return () => {
+      if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    };
   }, [messages?.length]);
 
   async function send() {
-    if (!body.trim()) return;
+    if (!body.trim() || sending) return;
     setSending(true); setWarning(null);
     try {
       const r = await Chats.sendText(id, body);
@@ -73,35 +89,48 @@ export default function ChatScreen({ route, navigation }: any) {
       if (r.blocked) setWarning(ar.chat.blockedHint);
       refresh();
     } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
     } finally { setSending(false); }
   }
 
   async function sendQuick(s: string) {
-    setBody(s);
+    // Early-return when already sending — rapid taps on a quick-reply chip
+    // used to fire two parallel sends and clobber the typed draft.
+    if (sending) return;
+    // Don't replace the user's typed draft. Pass `s` directly so whatever
+    // they were typing stays in the input.
     setSending(true);
     try {
       const r = await Chats.sendText(id, s);
-      setBody('');
       if (r.blocked) setWarning(ar.chat.blockedHint);
       refresh();
     } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
     } finally { setSending(false); }
   }
 
   async function pickAndSendImage() {
+    if (sending) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
+      return;
+    }
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
     });
     if (r.canceled || !r.assets?.[0]?.uri) return;
-    const compressed = await compressForChatBubble(r.assets[0].uri);
     setSending(true);
-    try { await sendChatImage(id, compressed); refresh(); }
-    catch (e: any) { Alert.alert('خطأ', e.message); }
-    finally { setSending(false); }
+    try {
+      // Wrap BOTH compress + send in the try — a corrupt HEIC or OOM
+      // during compression used to throw outside the catch, leaving
+      // `sending` stuck true and the user with no error message.
+      const compressed = await compressForChatBubble(r.assets[0].uri);
+      await sendChatImage(id, compressed);
+      refresh();
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally { setSending(false); }
   }
 
   async function proposePrice() {
@@ -152,8 +181,20 @@ export default function ChatScreen({ route, navigation }: any) {
 
   const role = chat.role;
   const deal = chat.active_deal;
-  const phoneVisible = chat.phone_visible;
-  const sellerPhone = chat.seller?.phone;
+  // Counterparty is whichever party isn't the viewer. Server already
+  // strips sensitive fields from each side; we just need the display
+  // name + avatar shape here.
+  const counterparty = role === 'buyer' ? chat.seller : chat.buyer;
+  const counterpartyName = counterparty?.display_name || 'مستخدم';
+  const listingId = chat.listing?.id;
+  const listingLabel = chat.listing ? `${chat.listing.brand} ${chat.listing.model}` : null;
+
+  function openListing() {
+    if (!listingId) return;
+    // Local stack has its own ListingDetail (registered in navigation/index.tsx
+    // ChatsStackNav), so this resolves inside the Chats tab.
+    navigation.navigate('ListingDetail', { id: listingId });
+  }
 
   return (
     <KeyboardAvoidingView
@@ -161,15 +202,63 @@ export default function ChatScreen({ route, navigation }: any) {
       style={{ flex: 1, backgroundColor: theme.bg }}
       keyboardVerticalOffset={insets.top}
     >
-      <Header
-        title={chat.listing ? `${chat.listing.brand} ${chat.listing.model}` : 'محادثة'}
-        eyebrow={`${ar.chat.listingHeader} · ${chat.listing ? fmtIQD(chat.listing.asking_price) + ' د.ع' : ''}`}
-        onBack={() => navigation.goBack()}
-      />
+      {/* Custom chat header — counterparty name on top, listing brand+model
+          on the subline as a TouchableOpacity that opens the listing
+          detail. Replaces the previous device-only Header which gave no
+          indication of who you were chatting with. */}
+      <View style={{
+        paddingTop: insets.top + 8,
+        paddingBottom: 10,
+        paddingHorizontal: 14,
+        backgroundColor: theme.bg,
+        borderBottomWidth: 1,
+        borderColor: theme.line,
+        flexDirection: 'row-reverse',
+        alignItems: 'center',
+        gap: 10,
+      }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={{
+            fontFamily: fonts.arBold, fontWeight: '700', fontSize: 16,
+            color: theme.ink, textAlign: 'right',
+          }}>
+            {counterpartyName}
+          </Text>
+          {listingLabel ? (
+            <TouchableOpacity onPress={openListing} activeOpacity={0.7}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <Text numberOfLines={1} style={{
+                  fontFamily: fonts.ar, fontSize: 12.5,
+                  color: theme.accent, textAlign: 'right',
+                  textDecorationLine: 'underline',
+                }}>
+                  {listingLabel}
+                </Text>
+                {chat.listing ? (
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: theme.subtle }}>
+                    · {fmtIQD(chat.listing.asking_price)} د.ع
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
+          width: 38, height: 38, borderRadius: 999,
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          {/* Visual back arrow points "back" in RTL — flip horizontally so
+              the chevron points right (towards the previous screen). */}
+          <View style={{ transform: [{ scaleX: -1 }] }}>
+            <IconArrowLeft size={20} color={theme.ink} sw={1.7} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
       {/* Phone is now public on the listing itself — no unlock banner or
-          deal-confirmation flow surfaced in chat. The Deal data model is
-          still maintained server-side for record-keeping. */}
+          deal-confirmation flow surfaced in chat for v1. The Deal data
+          model is still maintained server-side for record-keeping. */}
 
       <FlatList
         ref={listRef}
@@ -202,7 +291,7 @@ export default function ChatScreen({ route, navigation }: any) {
         flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 + insets.bottom,
         backgroundColor: theme.surface, borderTopWidth: 1, borderColor: theme.line, alignItems: 'center',
       }}>
-        {role === 'seller' && !deal ? (
+        {DEAL_FLOW_ENABLED && role === 'seller' && !deal ? (
           <TouchableOpacity onPress={() => setProposeOpen(true)} style={{ paddingHorizontal: 10, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.accentSoft }}>
             <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.accentDeep }}>اقتراح سعر</Text>
           </TouchableOpacity>

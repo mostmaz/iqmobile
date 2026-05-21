@@ -213,6 +213,10 @@ export const Listings = {
 export const Chats = {
   startForListing: (listingId: number) => api<Chat>(`/listings/${listingId}/chat`, { method: 'POST' }),
   list: (role?: 'buyer' | 'seller') => api<Chat[]>(`/chats${role ? `?role=${role}` : ''}`),
+  // Sellers viewing "incoming buyer chats for THIS listing" from their
+  // own ListingDetail. Backed by the same GET /chats endpoint with a
+  // `listing_id` filter — see server/src/routes/chats.js.
+  listForListing: (listingId: number) => api<Chat[]>(`/chats?listing_id=${listingId}`),
   get: (id: number) => api<Chat>(`/chats/${id}`),
   messages: (id: number) => api<ChatMessage[]>(`/chats/${id}/messages`),
   sendText: (id: number, body: string) =>

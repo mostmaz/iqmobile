@@ -26,9 +26,8 @@ import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
 import MyListingsScreen from '../screens/listing/MyListingsScreen';
-// In-app chat is hidden for now — the Chats tab and Chat / ChatsList
-// screens are no longer reachable. Server data + screen files remain so
-// we can switch them back on later without rebuilding.
+import ChatScreen from '../screens/chat/ChatScreen';
+import ChatsListScreen from '../screens/chat/ChatsListScreen';
 import DealsScreen from '../screens/deal/DealsScreen';
 import RateUserScreen from '../screens/deal/RateUserScreen';
 import SavedScreen from '../screens/profile/SavedScreen';
@@ -89,6 +88,18 @@ function SellStackNav() {
     </BrowseStack.Navigator>
   );
 }
+// Chats stack — the inbox lives at ChatsHome, individual conversations
+// at Chat. ListingDetail is also registered here so the device-name tap
+// inside ChatScreen has a route to navigate to.
+function ChatsStackNav() {
+  return (
+    <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
+      <BrowseStack.Screen name="ChatsHome" component={ChatsListScreen} />
+      <BrowseStack.Screen name="Chat" component={ChatScreen} />
+      <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+    </BrowseStack.Navigator>
+  );
+}
 
 const Tabs = createBottomTabNavigator();
 function MainTabs() {
@@ -137,6 +148,7 @@ function MainTabs() {
           },
         })}
       />
+      <Tabs.Screen name="Chats" component={ChatsStackNav} />
       <Tabs.Screen name="Profile" component={ProfileStackNav} />
     </Tabs.Navigator>
   );

@@ -8,12 +8,13 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme, fonts, radius } from '../theme';
-import { IconHome, IconBookmark, IconPlus, IconPerson } from '../components/icons';
+import { IconHome, IconBookmark, IconPlus, IconPerson, IconChat } from '../components/icons';
 
 const LABELS: Record<string, string> = {
   Browse: 'تصفح',
   Saved: 'المفضلة',
   Sell: 'بيع',
+  Chats: 'المحادثات',
   Profile: 'حسابي',
 };
 
@@ -21,6 +22,7 @@ const ICONS: Record<string, (p: { size?: number; color?: string; sw?: number; fi
   Browse: IconHome,
   Saved: IconBookmark,
   Sell: IconPlus,
+  Chats: IconChat,
   Profile: IconPerson,
 };
 

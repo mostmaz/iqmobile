@@ -50,8 +50,21 @@ const QUICK_MESSAGES = [
 ];
 r.get('/quick-messages', requireAuth(), (_req, res) => res.json(QUICK_MESSAGES));
 
+// Guest reject — chat requires a real account on either side. The mobile
+// client gates this client-side too, but defending in depth here stops
+// scripted abuse and curl-from-laptop probing.
+function rejectGuest(req, res) {
+  const u = db.prepare('SELECT is_guest FROM users WHERE id=?').get(req.user.id);
+  if (u?.is_guest) {
+    res.status(403).json({ error: 'guest_blocked' });
+    return true;
+  }
+  return false;
+}
+
 // Buyer opens (or reuses) a chat for a listing.
 r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
+  if (rejectGuest(req, res)) return;
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
   if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id === req.user.id) return res.status(400).json({ error: 'cannot_chat_self' });
@@ -138,12 +151,22 @@ function enrichChat(chat, viewerId) {
 }
 
 // List my chats.
+// Optional ?listing_id=N filter narrows the result to chats for a single
+// listing — used by sellers viewing "incoming buyer chats for THIS
+// listing" from the listing detail screen. The user's role is still
+// enforced by the buyer_id/seller_id filter so a buyer querying their
+// OWN listing_id only sees their side of it.
 r.get('/chats', requireAuth(), (req, res) => {
   const role = req.query.role; // 'buyer' | 'seller' | undefined
+  const listingId = Number(req.query.listing_id);
   let sql = 'SELECT * FROM chats WHERE (buyer_id=? OR seller_id=?)';
   const params = [req.user.id, req.user.id];
   if (role === 'buyer') { sql = 'SELECT * FROM chats WHERE buyer_id=?'; params.length = 0; params.push(req.user.id); }
   else if (role === 'seller') { sql = 'SELECT * FROM chats WHERE seller_id=?'; params.length = 0; params.push(req.user.id); }
+  if (Number.isInteger(listingId) && listingId > 0) {
+    sql += ' AND listing_id=?';
+    params.push(listingId);
+  }
   sql += ' ORDER BY last_message_at DESC LIMIT 100';
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((row) => enrichChat(row, req.user.id)));
@@ -172,7 +195,12 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
 // Send a message — text and/or image. Phone numbers are blocked unless the
 // chat already has a confirmed deal.
 // chatGuard runs BEFORE multer so unauthorized callers never write a file.
-r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('image'), (req, res) => {
+// rejectGuest also runs first so guest accounts can't send messages even
+// if they somehow ended up as a chat participant.
+r.post('/chats/:id(\\d+)/messages', requireAuth(), (req, res, next) => {
+  if (rejectGuest(req, res)) return;
+  next();
+}, chatGuard, upload.single('image'), (req, res) => {
   const chat = req.chat;
 
   // Trim THEN cap so a 2000-char run of spaces doesn't sneak past the

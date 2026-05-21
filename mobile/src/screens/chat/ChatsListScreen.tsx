@@ -1,31 +1,100 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts, radius } from '../../theme';
-import { Header, Pill, fmtIQD } from '../../components/ui';
+import { Btn, Header, fmtIQD } from '../../components/ui';
 import { Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useAuth } from '../../auth/AuthContext';
+import { subscribeSSE } from '../../sse/client';
+import { ar } from '../../i18n/ar';
 
-export default function ChatsListScreen({ navigation }: any) {
+export default function ChatsListScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [role, setRole] = useState<'all' | 'buyer' | 'seller'>('all');
+  const qc = useQueryClient();
+  // Two modes:
+  //   - Filtered: arrived from a seller's own ListingDetail "view buyer
+  //     chats" CTA → only chats for that listing.
+  //   - Global: from the Chats tab → every chat the user has.
+  const listingId: number | undefined = route?.params?.listing_id;
+
+  // Chat is real-users only (matches the server-side `guest_blocked` reject
+  // on chat-create + send-message). Show a sign-in CTA for guests instead
+  // of firing /chats and getting a 403/empty result.
+  const isGuest = !user || !!user.is_guest;
+
   const { data, refetch, isRefetching } = useQuery({
-    queryKey: ['chats', role],
-    queryFn: () => Chats.list(role === 'all' ? undefined : role),
+    queryKey: ['chats', listingId ?? 'all'],
+    queryFn: () => (listingId ? Chats.listForListing(listingId) : Chats.list()),
+    enabled: !isGuest,
   });
+
+  // Refetch on every focus so a message sent in another tab / from a push
+  // tap reflects the moment the user comes back here.
+  useFocusEffect(useCallback(() => {
+    if (!isGuest) qc.invalidateQueries({ queryKey: ['chats'] });
+  }, [isGuest, qc]));
+
+  // Live updates — SSE `chat.message` invalidates the inbox so the list
+  // re-sorts the new conversation to the top without a manual refresh.
+  useEffect(() => {
+    const unsub = subscribeSSE((event) => {
+      if (event === 'chat.message') qc.invalidateQueries({ queryKey: ['chats'] });
+    });
+    return () => { unsub(); };
+  }, [qc]);
+
+  if (isGuest) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <Header title={ar.tabs.chats} onBack={listingId ? () => navigation.goBack() : undefined} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+            سجّل الدخول للمحادثة
+          </Text>
+          <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
+            تواصل مع البائعين والمشترين مباشرة بعد التسجيل بهاتفك.
+          </Text>
+          <View style={{ alignSelf: 'stretch', marginTop: 6 }}>
+            <Btn kind="accent" full onPress={() => (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')}>
+              تسجيل الدخول
+            </Btn>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // When the seller arrives via "view buyer chats for THIS listing",
+  // surface the listing they're filtering on as a small chip so the
+  // context is obvious. Derive label from the first row's listing
+  // summary — all rows share the same listing_id by definition.
+  const filterChip = listingId && data && data.length > 0 && data[0].listing
+    ? `إعلان: ${data[0].listing.brand} ${data[0].listing.model}`
+    : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
-      <Header title="المحادثات" />
-      <View style={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6, marginBottom: 8 }}>
-        <Pill active={role === 'all'} onPress={() => setRole('all')}>الكل</Pill>
-        <Pill active={role === 'buyer'} onPress={() => setRole('buyer')}>كمشتري</Pill>
-        <Pill active={role === 'seller'} onPress={() => setRole('seller')}>كبائع</Pill>
-      </View>
+      <Header
+        title={ar.tabs.chats}
+        onBack={listingId ? () => navigation.goBack() : undefined}
+      />
+      {filterChip ? (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          <View style={{
+            alignSelf: 'flex-start',
+            backgroundColor: theme.accentSoft,
+            borderRadius: 999,
+            paddingHorizontal: 12, paddingVertical: 6,
+          }}>
+            <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.accentDeep }}>{filterChip}</Text>
+          </View>
+        </View>
+      ) : null}
       <FlatList
         data={data || []}
         keyExtractor={(it) => String(it.id)}
@@ -50,25 +119,26 @@ export default function ChatsListScreen({ navigation }: any) {
                   <Text style={{ fontFamily: fonts.arBold, color: theme.subtle }}>{counter?.display_name?.[0] || '?'}</Text>
                 )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
                   {counter?.display_name || '...'}
                 </Text>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
                   {item.listing ? `${item.listing.brand} ${item.listing.model} · ${fmtIQD(item.listing.asking_price)} د.ع` : '—'}
                 </Text>
               </View>
-              {item.active_deal ? (
-                <View style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: theme.accentSoft, borderRadius: 999 }}>
-                  <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.accentDeep }}>
-                    {item.active_deal.status === 'seller_confirmed' ? 'مؤكد' : 'في تفاوض'}
-                  </Text>
-                </View>
-              ) : null}
+              {/* Deal-status badge hidden for v1 — the propose-price /
+                  confirm flow is gated off (DEAL_FLOW_ENABLED in
+                  ChatScreen). When the flow returns, restore the
+                  badge that lived here previously. */}
             </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد محادثات</Text>}
+        ListEmptyComponent={
+          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar, lineHeight: 22 }}>
+            {listingId ? ar.chat.emptyForListing : ar.chat.empty}
+          </Text>
+        }
       />
     </View>
   );
