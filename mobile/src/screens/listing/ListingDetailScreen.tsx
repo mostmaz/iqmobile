@@ -281,7 +281,11 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {/* Contact CTAs — always available. Phone is public, WhatsApp
             shown only when the seller provided a number, in-app chat is
             always offered. Hidden on a seller's own listing. */}
-        {!isMine && contactPhone ? (
+        {/* Always render ContactRow for non-owners. Chat is always available;
+            Call + WhatsApp render only when their backing field is set, so
+            listings that opted out of a phone number still surface the chat
+            entry point. */}
+        {!isMine ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
             <ContactRow
               phone={contactPhone}
@@ -506,7 +510,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 function ContactRow({
   phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting,
 }: {
-  phone: string;
+  phone: string | null;
   whatsapp: string | null;
   listingId: number;
   brand: string;
@@ -519,6 +523,7 @@ function ContactRow({
   // we wire both the visible phone-number tap and the bottom buttons
   // through these wrappers so all three paths report the same event.
   const trackedCall = () => {
+    if (!phone) return;
     track('listing.contact_call', { listing_id: listingId, brand, seller_type: sellerType });
     callPhone(phone);
   };
@@ -536,43 +541,51 @@ function ContactRow({
       borderColor: theme.line, borderWidth: 1, borderRadius: radius.xxl,
       padding: 14,
     }}>
-      {/* Public phone — tap to call. */}
-      <TouchableOpacity
-        onPress={trackedCall}
-        activeOpacity={0.85}
-        style={{
-          flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
-          paddingHorizontal: 12, paddingVertical: 10,
-          backgroundColor: theme.bg, borderRadius: 12,
-          borderWidth: 1, borderColor: theme.line,
-        }}
-      >
-        <Text style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: theme.ink, fontWeight: '700', letterSpacing: 0.3, writingDirection: 'ltr' }}>
-          {phone}
-        </Text>
-        <IconPhoneIcon size={16} color={theme.subtle} sw={1.7} />
-      </TouchableOpacity>
+      {/* Public phone pill — only when the seller actually exposed a
+          number. Listings without a phone skip straight to the chat
+          button below. */}
+      {phone ? (
+        <TouchableOpacity
+          onPress={trackedCall}
+          activeOpacity={0.85}
+          style={{
+            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 12, paddingVertical: 10,
+            backgroundColor: theme.bg, borderRadius: 12,
+            borderWidth: 1, borderColor: theme.line,
+          }}
+        >
+          <Text style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: theme.ink, fontWeight: '700', letterSpacing: 0.3, writingDirection: 'ltr' }}>
+            {phone}
+          </Text>
+          <IconPhoneIcon size={16} color={theme.subtle} sw={1.7} />
+        </TouchableOpacity>
+      ) : null}
 
-      {/* Action row: Call / WhatsApp / Chat. Chat sits alongside Call so
-          buyers see all three contact paths together. Chat handler bounces
-          guests through AuthGate before any server call. */}
-      <View style={{ marginTop: 8, flexDirection: 'row-reverse', gap: 8 }}>
-        <Btn kind="success" full onPress={() => callPhone(phone)}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-            <IconPhoneIcon size={15} color="#fff" sw={1.8} />
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>اتصال</Text>
-          </View>
-        </Btn>
-        {whatsapp ? (
-          <Btn kind="successSoft" full onPress={trackedWhatsApp}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-              <IconMsgCall size={15} color={theme.success} sw={1.8} />
-              <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>واتساب</Text>
-            </View>
-          </Btn>
-        ) : null}
-      </View>
-      <View style={{ marginTop: 8 }}>
+      {/* Action row: Call / WhatsApp render only when their backing
+          field is set. We skip the row entirely if neither is available
+          (the chat button below covers reach in that case). */}
+      {phone || whatsapp ? (
+        <View style={{ marginTop: phone ? 8 : 0, flexDirection: 'row-reverse', gap: 8 }}>
+          {phone ? (
+            <Btn kind="success" full onPress={() => callPhone(phone)}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                <IconPhoneIcon size={15} color="#fff" sw={1.8} />
+                <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>اتصال</Text>
+              </View>
+            </Btn>
+          ) : null}
+          {whatsapp ? (
+            <Btn kind="successSoft" full onPress={trackedWhatsApp}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                <IconMsgCall size={15} color={theme.success} sw={1.8} />
+                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>واتساب</Text>
+              </View>
+            </Btn>
+          ) : null}
+        </View>
+      ) : null}
+      <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
         <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             <IconChat size={15} color="#fff" sw={1.8} />

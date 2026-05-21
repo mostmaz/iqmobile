@@ -32,6 +32,7 @@ export const BRANDS = [
   'OnePlus',
   'Google',
   'Nokia',
+  'Motorola',
   'Other',
 ];
 

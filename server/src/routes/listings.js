@@ -155,8 +155,12 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
 
   // Contact phone is required so buyers always have a tap-to-call path.
-  const phone = normalizeIraqiPhone(contact_phone);
-  if (!phone) return res.status(400).json({ error: 'bad_contact_phone' });
+  // Contact phone is optional — sellers can choose to be reachable only via
+  // the in-app chat (especially for sellers who don't want to expose their
+  // number publicly). When provided we still normalise + validate, but a
+  // missing value is no longer a 400.
+  const phone = contact_phone ? normalizeIraqiPhone(contact_phone) : null;
+  if (contact_phone && !phone) return res.status(400).json({ error: 'bad_contact_phone' });
   // WhatsApp is optional. The mobile post wizard surfaces a "same number"
   // toggle that simply copies contact_phone into this field client-side.
   const wa = contact_whatsapp ? normalizeIraqiPhone(contact_whatsapp) : null;

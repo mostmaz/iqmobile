@@ -44,3 +44,4 @@ yarn-error.log*
 # Firebase's own docs — the keys inside are restricted by package name /
 # bundle id + signing cert / team id, useless extracted alone. We commit
 # them because EAS Build only uploads git-tracked files.
+server/scripts/samsung-images/
