@@ -11,6 +11,7 @@ import { Btn, fmtIQD, Header } from '../../components/ui';
 import { Chats, Deals, type Chat, type ChatMessage, type Deal } from '../../api/endpoints';
 import { sendChatImage, fullImageUrl } from '../../api/upload';
 import { compressForChat } from '../../lib/imageCompress';
+import { parsePrice } from '../../lib/format';
 import { ar } from '../../i18n/ar';
 import { subscribeSSE } from '../../sse/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -103,22 +104,25 @@ export default function ChatScreen({ route, navigation }: any) {
   }
 
   async function proposePrice() {
-    const p = Number(priceInput);
-    if (!p) return;
+    // `parsePrice` normalises Arabic-Indic digits and rejects non-positive
+    // values — the previous `Number(priceInput)` returned NaN for ٥٠٠... and
+    // 0 for blank, and either way the call silently no-op'd with no message.
+    const p = parsePrice(priceInput);
+    if (p == null) { Alert.alert('خطأ', (ar.errors as any).bad_price); return; }
     try {
       await Deals.proposePrice(id, p);
       setProposeOpen(false); setPriceInput(''); refresh();
-    } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message); }
+    } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e.message] || (ar.errors as any).network); }
   }
 
   async function counterOffer() {
     if (!chat?.active_deal) return;
-    const p = Number(priceInput);
-    if (!p) return;
+    const p = parsePrice(priceInput);
+    if (p == null) { Alert.alert('خطأ', (ar.errors as any).bad_price); return; }
     try {
       await Deals.counter(chat.active_deal.id, p);
       setCounterOpen(false); setPriceInput(''); refresh();
-    } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message); }
+    } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e.message] || (ar.errors as any).network); }
   }
 
   async function buyerAccept() {

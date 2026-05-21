@@ -53,7 +53,13 @@ CREATE TABLE IF NOT EXISTS phone_listings (
   model TEXT NOT NULL,
   storage TEXT,
   color TEXT,
-  condition TEXT NOT NULL CHECK(condition IN ('new','used','sealed','refurbished')),
+  -- No CHECK constraint here on purpose. Route-level validation
+  -- (CONDITIONS in routes/listings.js) is the source of truth so we can
+  -- add new conditions (e.g. repaired) without a migration. The original
+  -- DDL had CHECK(condition IN (new,used,sealed,refurbished)) which
+  -- rejected repaired until migration v2 ran -- pointlessly racy on a
+  -- brand-new DB. Migration v2 below mirrors this same relaxed schema.
+  condition TEXT NOT NULL,
   battery_health INTEGER,
   warranty_status TEXT,
   accessories_json TEXT NOT NULL DEFAULT '[]',

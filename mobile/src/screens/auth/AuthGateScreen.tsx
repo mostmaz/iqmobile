@@ -15,6 +15,7 @@ import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Input } from '../../components/ui';
 import { IconArrowLeft, IconPhoneIcon, IconCheck } from '../../components/icons';
 import { ar } from '../../i18n/ar';
+import { digitsOnly } from '../../lib/format';
 
 const TRUST_STRIP = [
   'تشتري وتبيع من نفس الحساب — بلا عمولة',
@@ -30,7 +31,10 @@ export default function AuthGateScreen({ navigation }: any) {
   const [err, setErr] = useState('');
 
   async function submit() {
-    const digits = phone.replace(/\D/g, '');
+    // Normalise Arabic-Indic numerals (٠١٢…) to Latin first so a user
+    // typing on the default Iraqi keyboard isn't blocked by the digit
+    // filter — `replace(/\D/g, '')` would otherwise strip ٠٧٧… entirely.
+    const digits = digitsOnly(phone);
     if (digits.length < 10) { setErr('أدخل رقم هاتف صحيح'); return; }
     setBusy(true); setErr('');
     try {

@@ -14,6 +14,7 @@ import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
 import { compressForChat } from '../../lib/imageCompress';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
+import { digitsOnly, parsePrice } from '../../lib/format';
 import { useAuth } from '../../auth/AuthContext';
 
 const BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei', 'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Other'];
@@ -154,12 +155,15 @@ export default function PostListingScreen({ navigation }: any) {
   function next() {
     setErr('');
     if (step === 0 && (!brand || !model)) return setErr('أدخل العلامة والموديل');
-    if (step === 2 && (!askingPrice || Number(askingPrice) <= 0)) return setErr('أدخل سعراً صحيحاً');
+    if (step === 2 && parsePrice(askingPrice) == null) return setErr('أدخل سعراً صحيحاً');
     if (step === 3) {
-      const digits = contactPhone.replace(/\D/g, '');
+      // Accept Arabic-Indic digits (٠١٢…) in phone fields. Iraqi keyboards
+      // default to them, so a raw /\D/g filter would silently empty the
+      // field and block the wizard at step 3 for many real users.
+      const digits = digitsOnly(contactPhone);
       if (digits.length < 10) return setErr('أدخل رقم هاتف صحيح للتواصل');
       if (!waSameAsPhone && contactWhatsapp) {
-        const waDigits = contactWhatsapp.replace(/\D/g, '');
+        const waDigits = digitsOnly(contactWhatsapp);
         if (waDigits.length < 10) return setErr('رقم واتساب غير صحيح');
       }
     }
@@ -270,7 +274,7 @@ export default function PostListingScreen({ navigation }: any) {
             }}>
               <TextInput
                 value={askingPrice ? Number(askingPrice).toLocaleString('en-US') : ''}
-                onChangeText={(v) => setAskingPrice(v.replace(/\D/g, ''))}
+                onChangeText={(v) => setAskingPrice(digitsOnly(v))}
                 placeholder="500,000"
                 placeholderTextColor={theme.subtle}
                 keyboardType="phone-pad"

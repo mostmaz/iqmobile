@@ -122,22 +122,59 @@ export const ar = {
     submit: 'إرسال التقييم',
     leaveComment: 'ملاحظة (اختياري)',
   },
+  // Server error codes → Arabic. Every code returned by the API that
+  // can plausibly land in front of a user lives here. Anything missing
+  // falls through to the raw English snake_case via the
+  //   (ar.errors as any)[e.message] || ar.errors.network
+  // pattern used at the call sites — so adding a new code is just a
+  // matter of dropping a line in here.
   errors: {
+    // Auth / account
     bad_credentials: 'بيانات تسجيل الدخول غير صحيحة',
     phone_taken: 'رقم الهاتف مستخدم مسبقاً',
     weak_password: 'كلمة المرور قصيرة',
+    bad_phone: 'رقم الهاتف غير صحيح',
+    bad_contact_phone: 'رقم التواصل غير صحيح',
+    bad_contact_whatsapp: 'رقم واتساب غير صحيح',
+    name_too_short: 'الاسم قصير جداً',
+    name_edit_limit_reached: 'لا يمكن تعديل الاسم أكثر من مرتين',
+    shop_image_edit_limit_reached: 'لا يمكن تعديل صورة المتجر أكثر من مرتين',
+    shop_location_edit_limit_reached: 'لا يمكن تعديل موقع المتجر أكثر من مرتين',
+    shop_image_required: 'صورة المتجر مطلوبة',
+    shop_location_required: 'موقع المتجر مطلوب',
+    unauthorized: 'يجب تسجيل الدخول للمتابعة',
+    forbidden: 'لا تملك صلاحية تنفيذ هذا الإجراء',
+    // Listings
     bad_governorate: 'محافظة غير صحيحة',
     bad_brand: 'علامة غير صحيحة',
     bad_condition: 'حالة غير صحيحة',
     bad_price: 'سعر غير صحيح',
-    cannot_chat_self: 'لا يمكنك محادثة نفسك',
+    bad_status: 'حالة إعلان غير صحيحة',
+    missing_fields: 'يرجى تعبئة جميع الحقول المطلوبة',
+    not_found: 'العنصر غير موجود أو تم حذفه',
     listing_not_active: 'الإعلان غير نشط',
+    listing_expired: 'انتهت صلاحية الإعلان',
+    cannot_renew: 'لا يمكن تجديد هذا الإعلان حالياً',
+    // Images
+    too_many_images: 'الحد الأقصى 10 صور',
+    not_image: 'الملف ليس صورة',
+    empty_image: 'الصورة فارغة',
+    no_file: 'لم يتم اختيار صورة',
+    no_files: 'لم يتم اختيار صور',
+    image_too_large: 'الصورة كبيرة جداً (الحد الأقصى 5 ميغابايت)',
+    // Chat / deals
+    cannot_chat_self: 'لا يمكنك محادثة نفسك',
+    empty_message: 'الرسالة فارغة',
     bad_state: 'لا يمكن تنفيذ هذه العملية الآن',
     seller_only: 'البائع فقط يمكنه تنفيذ هذا الإجراء',
     buyer_only: 'المشتري فقط يمكنه تنفيذ هذا الإجراء',
     not_confirmed: 'يجب تأكيد الصفقة أولاً',
     already_rated: 'تم التقييم مسبقاً',
-    too_many_images: 'الحد الأقصى 10 صور',
+    bad_stars: 'تقييم غير صحيح',
+    bad_reason: 'سبب غير صحيح',
+    // Generic
+    rate_limited: 'محاولات كثيرة جداً — حاول لاحقاً',
+    internal: 'حدث خطأ غير متوقع. حاول مرة أخرى.',
     network: 'خطأ في الاتصال',
   },
 } as const;
