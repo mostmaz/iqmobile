@@ -33,19 +33,15 @@ import eventsRoutes from './routes/events.js';
 import adminRoutes from './routes/admin/index.js';
 import { startExpirer } from './expirer.js';
 
-// Loud-warning on missing JWT_SECRET in production. The default
-// fallback in auth.js is the literal string 'dev-secret' — anyone who
-// reads our open-source code could forge a token. We DO NOT exit the
-// process here because the deploy pipeline doesn't currently set the
-// env var, and crashing on startup would take prod down on every
-// deploy. Once JWT_SECRET is set on the droplet (server/.env), upgrade
-// this to `process.exit(1)`.
-//
-// Setting JWT_SECRET will invalidate every existing token (all users
-// will be silently logged out and need to re-enter their phone), so
-// it's a one-time blip we want to do deliberately, not by accident.
+// Hard-fail on missing JWT_SECRET in production. The fallback in
+// auth.js is the literal string 'dev-secret' — anyone who reads our
+// open-source code could forge a token. Earlier this was a warning
+// (so an unset env var wouldn't crash an already-deployed prod box)
+// but the droplet's .env now has JWT_SECRET set, so we can refuse to
+// start without it and prevent silent regression on future deploys.
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-  console.error('[iqmobile] WARNING: JWT_SECRET is unset — tokens are signed with the literal string "dev-secret". Anyone reading the source can forge a login. Set JWT_SECRET in server/.env ASAP.');
+  console.error('FATAL: JWT_SECRET env var is required when NODE_ENV=production. Set it in server/.env (openssl rand -hex 32) and restart.');
+  process.exit(1);
 }
 
 const app = express();
