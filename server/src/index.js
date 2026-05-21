@@ -57,21 +57,34 @@ const app = express();
 app.set('trust proxy', 1);
 
 // CORS: native mobile clients send no Origin header so they're always
-// allowed (the function below returns no error and no
-// Access-Control-Allow-Origin, which is fine for fetch from RN). Web
-// origins must match the explicit allowlist — locks out third-party
-// sites from credential-stuffing /auth/login via the browser.
+// allowed (the function below resolves with `false`, which still lets
+// the request through but omits Access-Control-Allow-Origin — fine for
+// native fetch). Browser-origin requests must match the explicit
+// allowlist; anything else gets no Allow-Origin header back, which the
+// browser then blocks at the preflight without us needing to return
+// a 4xx — and crucially WITHOUT throwing into the 500 handler.
+//
+// Localhost is always allowed: a victim's browser will never send
+// `Origin: http://localhost:*` for a malicious site, so allowing it is
+// safe even in production and makes dev painless.
 const CORS_ORIGINS = new Set([
   'https://iqmobile.org',
   'https://www.iqmobile.org',
-  // Allow localhost during dev (matches mobile/src/api/client.ts dev URLs).
-  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:4000', 'http://localhost:8081', 'http://localhost:19006'] : []),
+  'http://localhost:4000',
+  'http://localhost:8081',
+  'http://localhost:19006',
 ]);
 app.use(cors({
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // native fetch / curl / server-to-server
+    if (!origin) return cb(null, true);
     if (CORS_ORIGINS.has(origin)) return cb(null, true);
-    return cb(new Error('not_allowed_by_cors'));
+    // Resolve with `false`, NOT new Error(...). Throwing here bubbles
+    // into our global 500 handler and leaks the failure reason in the
+    // response body. `false` makes cors() omit the Allow-Origin header
+    // and let the request through unchanged — the browser will block
+    // its own preflight on the missing header, which is the correct
+    // outcome with zero info-leak.
+    return cb(null, false);
   },
 }));
 
