@@ -35,15 +35,22 @@ export function connectSSE() {
   disconnectSSE();
   const token = getToken();
   if (!token) return;
-  const url = `${getBaseUrl()}/events?token=${encodeURIComponent(token)}`;
 
   if (Platform.OS === 'web') {
+    // Browser EventSource has no header support, so the only auth path
+    // is the query string. Used only in the web preview build.
+    const url = `${getBaseUrl()}/events?token=${encodeURIComponent(token)}`;
     const Native: any = (globalThis as any).EventSource;
     if (!Native) return;
     es = new Native(url) as ESLike;
   } else {
-    // @ts-ignore
-    es = new RNEventSource(url) as ESLike;
+    // react-native-sse supports custom headers — use them so the JWT
+    // never ends up in nginx access logs or proxy caches. The server
+    // checks Authorization header first, falls back to ?token= for
+    // the browser case above.
+    const url = `${getBaseUrl()}/events`;
+    // @ts-ignore — RNEventSource accepts a second-arg options bag
+    es = new RNEventSource(url, { headers: { Authorization: `Bearer ${token}` } }) as ESLike;
   }
   for (const ev of EVENTS) {
     es.addEventListener(ev, (e: any) => {

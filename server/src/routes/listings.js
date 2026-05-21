@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
-import { isGovernorate, isBrand } from '../governorates.js';
+import { isGovernorate, isBrand, normalizeGovernorate } from '../governorates.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();
@@ -133,7 +133,7 @@ function normalizeIraqiPhone(input) {
 r.post('/', requireAuth(), createLimiter, (req, res) => {
   const {
     brand, condition, battery_health,
-    accessories, asking_price, governorate,
+    accessories, asking_price,
     contact_phone, contact_whatsapp,
   } = req.body || {};
   // Trim every free-text field client-side data could blow up. A 1MB
@@ -144,11 +144,13 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   const city = trim(req.body?.city, MAX_CITY);
   const description = trim(req.body?.description, MAX_DESC);
   const warranty_status = trim(req.body?.warranty_status, MAX_WARRANTY);
+  // Accept Arabic governorate names or case-insensitive English; persist
+  // the canonical English form so browse + filter joins stay clean.
+  const governorate = normalizeGovernorate(req.body?.governorate);
   if (!brand || !model || !condition || !asking_price || !governorate)
     return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
   if (!CONDITIONS.includes(condition)) return res.status(400).json({ error: 'bad_condition' });
-  if (!isGovernorate(governorate)) return res.status(400).json({ error: 'bad_governorate' });
   const price = Number(asking_price);
   if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
 
@@ -288,6 +290,18 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
 // ─── update listing ──────────────────────────────────────────────────
 const EDITABLE = ['storage','color','battery_health','warranty_status','asking_price','description','city','status'];
 
+// Per-field max-length cap on PATCH. POST already has these via trim();
+// without the matching guard on PATCH, a seller could edit the listing
+// post-creation to a 1MB description and bloat every browse payload
+// forever. Keep the keys consistent with the constants up top.
+const EDIT_CAPS = {
+  storage: MAX_STORAGE,
+  color: MAX_COLOR,
+  warranty_status: MAX_WARRANTY,
+  description: MAX_DESC,
+  city: MAX_CITY,
+};
+
 r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   const row = loadListing(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
@@ -305,7 +319,12 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
       fields.push('asking_price=?'); params.push(n); continue;
     }
     fields.push(`${k}=?`);
-    params.push(req.body[k]);
+    // Apply length cap when this field has one. trim() also nulls out
+    // empty strings — matches the POST path so PATCH doesn't accept
+    // values POST would have rejected.
+    const cap = EDIT_CAPS[k];
+    const value = cap ? trim(req.body[k], cap) : req.body[k];
+    params.push(value);
   }
   if (Array.isArray(req.body.accessories)) {
     fields.push('accessories_json=?');

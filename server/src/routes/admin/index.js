@@ -3,10 +3,14 @@ import bcrypt from 'bcryptjs';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { pushTo } from '../../push.js';
+import { authLimiter } from '../../limits.js';
 
 const r = Router();
 
-r.post('/auth/login', (req, res) => {
+// Admin login uses the same rate limit as user login — five attempts per
+// minute. A leaked admin username without this would be brute-forceable
+// in seconds.
+r.post('/auth/login', authLimiter, (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'missing_fields' });
   const row = db.prepare('SELECT * FROM admins WHERE username=?').get(username);
@@ -39,12 +43,16 @@ r.patch('/settings', requireAdmin, (req, res) => {
 
 // ─── users ────────────────────────────────────────────────────────────
 r.get('/users', requireAdmin, (req, res) => {
-  const q = req.query.q;
+  // Cap q to 64 chars before LIKE-wrapping. Without a cap, a 10KB q
+  // gets concatenated into the SQL bind and travels to better-sqlite3
+  // for every comparison — pointless work that a typo or fuzz call
+  // can trigger.
+  const q = req.query.q ? String(req.query.q).slice(0, 64) : '';
   let sql = 'SELECT id, phone, display_name, governorate, city, rating_avg, rating_count, verified, created_at FROM users';
   const params = [];
   if (q) {
     sql += ' WHERE phone LIKE ? OR display_name LIKE ?';
-    const like = '%' + String(q) + '%';
+    const like = '%' + q + '%';
     params.push(like, like);
   }
   sql += ' ORDER BY created_at DESC LIMIT 200';
@@ -73,7 +81,12 @@ r.get('/listings', requireAdmin, (req, res) => {
 });
 
 r.patch('/listings/:id(\\d+)/remove', requireAdmin, (req, res) => {
-  db.prepare("UPDATE phone_listings SET status='removed', updated_at=? WHERE id=?").run(now(), req.params.id);
+  // Return 404 when the listing doesn't exist so the admin UI doesn't
+  // silently 200 on probes or fat-finger IDs. Matches the
+  // /users/:id/verify pattern above.
+  const r2 = db.prepare("UPDATE phone_listings SET status='removed', updated_at=? WHERE id=?")
+    .run(now(), req.params.id);
+  if (r2.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 
@@ -91,7 +104,9 @@ r.get('/reports', requireAdmin, (req, res) => {
 r.patch('/reports/:id(\\d+)', requireAdmin, (req, res) => {
   const { status } = req.body || {};
   if (!['reviewed','dismissed','open'].includes(status)) return res.status(400).json({ error: 'bad_status' });
-  db.prepare('UPDATE reports SET status=? WHERE id=?').run(status, req.params.id);
+  // Same 404-on-no-row treatment as /listings/:id/remove.
+  const r2 = db.prepare('UPDATE reports SET status=? WHERE id=?').run(status, req.params.id);
+  if (r2.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });
 

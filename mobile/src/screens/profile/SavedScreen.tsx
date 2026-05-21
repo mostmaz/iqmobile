@@ -1,20 +1,68 @@
-import React from 'react';
-import { View, Text, FlatList, RefreshControl } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, FlatList, RefreshControl, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts } from '../../theme';
-import { Header } from '../../components/ui';
+import { Btn, Header } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { Listings } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
+import { useAuth } from '../../auth/AuthContext';
 
 export default function SavedScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Saved listings are per-account. For a guest (no real account yet)
+  // the server has nothing to return and would just 401 on every focus —
+  // gate the query off so we don't log-spam and so the inline CTA below
+  // can offer signup instead of an empty list.
+  const isGuest = !user || !!user.is_guest;
   const { data, refetch, isRefetching } = useQuery({
     queryKey: ['saved'],
     queryFn: () => Listings.saved(),
+    enabled: !isGuest,
   });
+
+  // Refresh on every tab focus so an unsave done from ListingDetail
+  // doesn't leave a stale card sitting on this screen.
+  useFocusEffect(useCallback(() => {
+    if (!isGuest) qc.invalidateQueries({ queryKey: ['saved'] });
+  }, [isGuest, qc]));
+
+  async function unsave(id: number) {
+    // Don't let a network/401 produce an unhandled rejection — toast the
+    // failure so the user knows the action didn't take (the optimistic
+    // refresh would otherwise quietly snap the card back).
+    try {
+      await Listings.unsave(id);
+      qc.invalidateQueries({ queryKey: ['saved'] });
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    }
+  }
+
+  if (isGuest) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <Header title={ar.profile.saved} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+            سجّل الدخول لحفظ الإعلانات
+          </Text>
+          <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
+            بعد التسجيل تظهر هنا كل الإعلانات التي حفظتها لمراجعتها لاحقاً.
+          </Text>
+          <View style={{ alignSelf: 'stretch', marginTop: 6 }}>
+            <Btn kind="accent" full onPress={() => (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')}>
+              تسجيل الدخول
+            </Btn>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
@@ -29,7 +77,7 @@ export default function SavedScreen({ navigation }: any) {
             listing={item}
             saved
             onPress={() => navigation.navigate('ListingDetail', { id: item.id })}
-            onToggleSave={async () => { await Listings.unsave(item.id); qc.invalidateQueries({ queryKey: ['saved'] }); }}
+            onToggleSave={() => unsave(item.id)}
           />
         )}
         ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد مفضلات</Text>}

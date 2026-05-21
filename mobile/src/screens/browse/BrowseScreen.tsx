@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,8 +48,27 @@ const PAGE_SIZE = 15;
 export default function BrowseScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useState<BrowseFilters>({});
+  // Separate "live" search text (typed in the box) from the debounced
+  // value that actually drives `filters.q`. Without this, every Arabic
+  // IME composition keystroke fires a network request keyed by the
+  // partial query — visibly janky on slow networks and burns server
+  // CPU on the LIKE join.
+  const [searchText, setSearchText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
+
+  // 300ms debounce: long enough that holding a key doesn't fire, short
+  // enough that the result list feels responsive once the user pauses.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((s) => {
+        const next = searchText.trim();
+        if (s.q === next || (!s.q && !next)) return s;
+        return { ...s, q: next || undefined };
+      });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchText]);
 
   const {
     data, isLoading, refetch, isRefetching,
@@ -67,7 +86,7 @@ export default function BrowseScreen({ navigation }: any) {
   useFocusEffect(useCallback(() => { qc.invalidateQueries({ queryKey: ['browse'] }); }, [qc]));
 
   function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); }
-  function clear() { setFilters({}); }
+  function clear() { setFilters({}); setSearchText(''); }
 
   // Flatten paginated pages into one list for the FlatList.
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
@@ -101,7 +120,14 @@ export default function BrowseScreen({ navigation }: any) {
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={{ padding: 4 }} activeOpacity={0.6}>
+          {/* Bell opens the notifications inbox. Previously the wrapper
+              looked tappable (with a red unread dot!) but had no onPress —
+              users tapped it expecting Notifications and got nothing. */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Notifications')}
+            style={{ padding: 4 }}
+            activeOpacity={0.6}
+          >
             <IconBell size={20} color={theme.ink} sw={1.7} />
             <View style={{
               position: 'absolute', top: 2, right: 2,
@@ -124,7 +150,7 @@ export default function BrowseScreen({ navigation }: any) {
             borderWidth: 1, borderColor: theme.line,
           }}>
             <IconSearch size={18} color={theme.subtle} sw={1.7} />
-            <Input value={filters.q || ''} onChangeText={(v) => patch({ q: v })} placeholder={ar.browse.search} bare />
+            <Input value={searchText} onChangeText={setSearchText} placeholder={ar.browse.search} bare />
           </View>
           {/* Pill button with both icon AND visible "فلتر" label so users
               never have to guess what the funnel glyph means. */}

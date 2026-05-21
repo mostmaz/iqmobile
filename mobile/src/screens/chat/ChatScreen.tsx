@@ -128,18 +128,22 @@ export default function ChatScreen({ route, navigation }: any) {
   async function buyerAccept() {
     if (!chat?.active_deal) return;
     try { await Deals.buyerAccept(chat.active_deal.id); refresh(); }
-    catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message); }
+    catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network); }
   }
   async function buyerReject() {
     if (!chat?.active_deal) return;
     try { await Deals.buyerReject(chat.active_deal.id); refresh(); }
-    catch (e: any) { Alert.alert('خطأ', e.message); }
+    // Look up the server error code in the Arabic map before falling
+    // back. Previously a `bad_state` reply (e.g. trying to reject a
+    // buyer_accepted deal after the state-machine tightening) rendered
+    // the literal English string in the Arabic UI.
+    catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network); }
   }
   async function sellerConfirm() {
     if (!chat?.active_deal) return;
     Alert.alert('تأكيد الصفقة', `وافق المشتري على ${chat.active_deal.final_price.toLocaleString()} د.ع. أؤكد الصفقة؟`, [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'تأكيد', onPress: async () => { try { await Deals.sellerConfirm(chat.active_deal!.id); refresh(); } catch (e: any) { Alert.alert('خطأ', e.message); } } },
+      { text: 'تأكيد', onPress: async () => { try { await Deals.sellerConfirm(chat.active_deal!.id); refresh(); } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network); } } },
     ]);
   }
 

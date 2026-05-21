@@ -101,10 +101,15 @@ export function setupPushTapHandler(
 
   // Cold-start case — app was launched by tapping a notification. The
   // listener above only fires for live taps, so we also drain whatever
-  // notification was tapped before we mounted.
-  Notifications.getLastNotificationResponseAsync().then((resp) => {
-    if (!resp) return;
-    const data = (resp.notification.request.content.data || {}) as Record<string, any>;
-    try { onTap(data); } catch (e) { console.warn('push cold-tap handler failed', e); }
-  });
+  // notification was tapped before we mounted. Catch the promise — a
+  // hiccup in the Expo notifications transport at boot was previously
+  // an unhandled promise rejection (visible as a yellow box in dev, and
+  // can crash the JS thread under strict modes).
+  Notifications.getLastNotificationResponseAsync()
+    .then((resp) => {
+      if (!resp) return;
+      const data = (resp.notification.request.content.data || {}) as Record<string, any>;
+      try { onTap(data); } catch (e) { console.warn('push cold-tap handler failed', e); }
+    })
+    .catch((e) => console.warn('push cold-tap lookup failed', e));
 }
