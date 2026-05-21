@@ -210,6 +210,16 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   const [withImgs] = attachImages([row]);
   const seller = sellerCard(row.seller_id);
 
+  // Whether THIS caller has saved THIS listing — drives the bookmark
+  // icon's filled/empty state and the "احفظ"/"محفوظ" button label on
+  // the detail screen. Always false for guests (they have no saves).
+  let is_saved = false;
+  if (req.user) {
+    is_saved = !!db
+      .prepare('SELECT 1 FROM saved_listings WHERE user_id=? AND listing_id=?')
+      .get(req.user.id, row.id);
+  }
+
   // Listing-level contact info is public (no deal-confirmation gate). The
   // legacy `seller_phone` / `phone_visible` fields are preserved for old
   // mobile builds — they now point to the listing's own contact_phone.
@@ -218,6 +228,7 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     seller,
     seller_phone: row.contact_phone || null,
     phone_visible: !!row.contact_phone,
+    is_saved,
   });
 });
 

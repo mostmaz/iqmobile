@@ -212,8 +212,8 @@ export const IconPlus = ({ size = 20, color = 'currentColor', sw = 2 }: IP) => (
     <Path d="M12 5v14M5 12h14" />
   </Svg>
 );
-export const IconBookmark = ({ size = 18, color = 'currentColor', sw = 1.7 }: IP & { filled?: boolean }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+export const IconBookmark = ({ size = 18, color = 'currentColor', sw = 1.7, filled = false }: IP & { filled?: boolean }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
     <Path d="M6 4h12v17l-6-4-6 4z" />
   </Svg>
 );

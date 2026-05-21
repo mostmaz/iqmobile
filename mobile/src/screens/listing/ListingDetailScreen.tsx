@@ -49,10 +49,43 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     }
   }, [data?.id, track]);
 
-  const save = useMutation({
-    mutationFn: () => Listings.save(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['saved'] }),
+  // Saved-state mirror. Server tells us via `data.is_saved` on initial load
+  // (always false for guests), and we mirror it locally so the bookmark
+  // icon + "احفظ"/"محفوظ" button flip instantly on tap — no waiting for
+  // the round-trip. Synced back to the server response when the query
+  // refetches.
+  const [isSaved, setIsSaved] = useState(false);
+  useEffect(() => {
+    if (data) setIsSaved(!!(data as any).is_saved);
+  }, [data?.id, (data as any)?.is_saved]);
+
+  // Toggle save/unsave. Anonymous users get bounced through AuthGate
+  // first — without that, the mutation 401s silently and the user thinks
+  // the action worked.
+  const toggleSave = useMutation({
+    mutationFn: () => (isSaved ? Listings.unsave(id) : Listings.save(id)),
+    onMutate: () => {
+      // Optimistic flip so the icon responds the instant the user taps.
+      setIsSaved((v) => !v);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['saved'] });
+      qc.invalidateQueries({ queryKey: ['listing', id] });
+    },
+    onError: (e: any) => {
+      // Roll back the optimistic flip and surface the error.
+      setIsSaved((v) => !v);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
+    },
   });
+  function onSaveTap() {
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
+    toggleSave.mutate();
+  }
 
   // Mark-as-sold / restore mutation. Refetches the listing after the toggle,
   // also invalidates browse + mine so the grids reflect the new state. Shows
@@ -82,11 +115,27 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const contactPhone = (data as any).contact_phone || data.seller_phone || null;
   const contactWhatsApp = (data as any).contact_whatsapp || null;
 
+  // Wrap a Reports.submit() call so guests are bounced to AuthGate first,
+  // failures surface as an Arabic Alert (instead of vanishing silently), and
+  // success confirms the submission so the user knows the tap took effect.
+  async function submitReport(reason: string) {
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
+    try {
+      await Reports.submit('listing', id, reason);
+      Alert.alert('شكراً', 'تم إرسال البلاغ. سنراجعه قريباً.');
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
+    }
+  }
   function reportListing() {
     Alert.alert('إبلاغ عن الإعلان', '', [
-      { text: 'إعلان مزيف', onPress: () => Reports.submit('listing', id, 'fake_listing') },
-      { text: 'مواصفات خاطئة', onPress: () => Reports.submit('listing', id, 'wrong_specs') },
-      { text: 'محاولة احتيال', onPress: () => Reports.submit('listing', id, 'scam_attempt') },
+      { text: 'إعلان مزيف', onPress: () => submitReport('fake_listing') },
+      { text: 'مواصفات خاطئة', onPress: () => submitReport('wrong_specs') },
+      { text: 'محاولة احتيال', onPress: () => submitReport('scam_attempt') },
       { text: 'إلغاء', style: 'cancel' },
     ]);
   }
@@ -124,7 +173,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               <View style={{ transform: [{ scaleX: -1 }] }}><IconArrowLeft size={18} color="#fff" sw={1.7} /></View>
             </FloatBtn>
             <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-              <FloatBtn onPress={() => save.mutate()}><IconBookmark size={16} color="#fff" sw={1.7} /></FloatBtn>
+              <FloatBtn onPress={onSaveTap} active={isSaved}>
+                <IconBookmark size={16} color={isSaved ? theme.accent : '#fff'} sw={1.7} filled={isSaved} />
+              </FloatBtn>
               <FloatBtn><IconShare size={16} color="#fff" sw={1.7} /></FloatBtn>
             </View>
           </View>
@@ -253,12 +304,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-                {data.seller.rating_count > 0 ? (
+                {/* Rating block — show only when we have BOTH a count and
+                    a finite rating value. Old/malformed seller rows have
+                    rating_count>0 with a null rating_avg, which would
+                    crash on `.toFixed`. */}
+                {data.seller.rating_count > 0 && Number.isFinite(data.seller.rating_avg as any) ? (
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
                       <IconStar size={14} filled color={theme.accent} />
                       <Text style={{ fontFamily: fonts.ltrBold, fontSize: 14, fontWeight: '700', color: theme.ink }}>
-                        {data.seller.rating_avg.toFixed(1)}
+                        {Number(data.seller.rating_avg).toFixed(1)}
                       </Text>
                     </View>
                     <Text style={{ marginTop: 2, fontFamily: fonts.ltr, fontSize: 11, color: theme.subtle }}>
@@ -321,7 +376,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         <View style={{ padding: 16, gap: 10 }}>
           {!isMine ? (
             <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-              <Btn kind="ghost" full onPress={() => save.mutate()}>{save.isSuccess ? ar.listing.saved : ar.listing.save}</Btn>
+              <Btn kind={isSaved ? 'accent' : 'ghost'} full onPress={onSaveTap} busy={toggleSave.isPending}>
+                {isSaved ? ar.listing.saved : ar.listing.save}
+              </Btn>
               <Btn kind="danger" full onPress={reportListing}>{ar.listing.report}</Btn>
             </View>
           ) : (
@@ -364,7 +421,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 <Btn kind="danger" full onPress={() => {
                   Alert.alert('حذف', 'هل أنت متأكد؟', [
                     { text: 'إلغاء', style: 'cancel' },
-                    { text: 'حذف', style: 'destructive', onPress: async () => { await Listings.remove(id); navigation.goBack(); } },
+                    { text: 'حذف', style: 'destructive', onPress: async () => {
+                      try {
+                        await Listings.remove(id);
+                        qc.invalidateQueries({ queryKey: ['mine'] });
+                        qc.invalidateQueries({ queryKey: ['browse'] });
+                        navigation.goBack();
+                      } catch (e: any) {
+                        Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
+                      }
+                    } },
                   ]);
                 }}>{ar.listing.remove}</Btn>
               </View>
@@ -444,11 +510,15 @@ function ContactRow({
   );
 }
 
-function FloatBtn({ children, onPress }: { children: React.ReactNode; onPress?: () => void }) {
+function FloatBtn({ children, onPress, active }: { children: React.ReactNode; onPress?: () => void; active?: boolean }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{
       width: 38, height: 38, borderRadius: 999,
-      backgroundColor: 'rgba(20,16,12,0.55)',
+      // When active (e.g. "this listing is saved"), drop the dark scrim
+      // and use a solid white pill — the colored icon then reads as a
+      // clear "ON" state instead of just changing color against a near-
+      // identical dark backdrop.
+      backgroundColor: active ? '#fff' : 'rgba(20,16,12,0.55)',
       alignItems: 'center', justifyContent: 'center',
     }}>
       {children}

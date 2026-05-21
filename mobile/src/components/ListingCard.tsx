@@ -88,11 +88,14 @@ export function ListingCard({
           </View>
         </View>
 
-        {!compact && listing.seller && listing.seller.rating_count > 0 ? (
+        {/* Show the star line only when we have both a count AND a finite
+            rating value. A legacy/malformed seller row with rating_count>0
+            but rating_avg=null would otherwise crash on .toFixed(). */}
+        {!compact && listing.seller && listing.seller.rating_count > 0 && Number.isFinite(listing.seller.rating_avg as any) ? (
           <View style={{ marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             <IconStar size={12} filled color={theme.accent} />
             <Text style={{ fontFamily: fonts.ltr, fontSize: 11.5, color: theme.subtle }}>
-              {listing.seller.rating_avg.toFixed(1)} · {listing.seller.rating_count}
+              {Number(listing.seller.rating_avg).toFixed(1)} · {listing.seller.rating_count}
             </Text>
             <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>· {listing.seller.display_name}</Text>
           </View>

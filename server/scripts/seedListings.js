@@ -180,8 +180,11 @@ const seedAll = db.transaction(() => {
       const gov = rand(GOVS);
       const phone = rand(PHONES);
       const created = ts2025(month, day);
-      // Give listings a 2-year TTL so they all show as active for now
-      const expires = now() + 60 * 24 * 60 * 60 * 1000;
+      // Give listings a 2-year TTL so they all show as active for now.
+      // (Previously read `60 * 24*60*60*1000` — sixty days — which silently
+      // expired the entire demo grid 60 days after seeding. The 2-year
+      // window matches the comment and outlasts our pre-launch demo phase.)
+      const expires = now() + 730 * 24 * 60 * 60 * 1000;
       const batteryHealth = (brand === 'Apple' && condition !== 'new')
         ? (75 + Math.floor(Math.random() * 25))
         : null;

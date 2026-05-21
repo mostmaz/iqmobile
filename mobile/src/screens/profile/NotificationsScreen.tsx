@@ -46,7 +46,14 @@ export default function NotificationsScreen({ navigation }: any) {
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => {
             Notifications.read(item.id);
-            if (item.payload?.chat_id) navigation.navigate('Chat', { id: item.payload.chat_id });
+            // Chat tab is currently hidden (see navigation/index.tsx), so we
+            // can't navigate('Chat',…) — it would throw "action NAVIGATE was
+            // not handled" and crash the screen. For chat-message notifs we
+            // fall back to opening the related listing detail when the
+            // payload carries one; otherwise just mark-as-read silently.
+            if (item.payload?.listing_id) {
+              navigation.navigate('ListingDetail', { id: item.payload.listing_id });
+            }
           }} style={{ padding: 12, marginBottom: 8, borderRadius: radius.lg, backgroundColor: item.read ? theme.surface : theme.accentSoft, borderWidth: 1, borderColor: item.read ? theme.line : theme.accent }}>
             <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
               {KIND_LABEL[item.kind] || item.kind}

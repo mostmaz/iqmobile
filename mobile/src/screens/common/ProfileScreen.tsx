@@ -105,7 +105,15 @@ export default function ProfileScreen({ navigation }: any) {
         <View style={{ flexDirection: 'row-reverse', gap: 8, marginBottom: 14 }}>
           <StatTile value={String(stats.listings)} label="إعلان" />
           <StatTile value={String(stats.deals)} label="صفقة" />
-          <StatTile value={user.rating_count > 0 ? user.rating_avg.toFixed(1) : '—'} label={`${user.rating_count} تقييم`} />
+          <StatTile
+            // Guard against legacy/malformed user rows where rating_count>0
+            // but rating_avg is null — that combo previously crashed the
+            // profile screen on `.toFixed`.
+            value={user.rating_count > 0 && Number.isFinite(user.rating_avg as any)
+              ? Number(user.rating_avg).toFixed(1)
+              : '—'}
+            label={`${user.rating_count} تقييم`}
+          />
         </View>
 
         <FieldLabel>القوائم</FieldLabel>
