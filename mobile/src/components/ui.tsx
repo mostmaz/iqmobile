@@ -199,6 +199,10 @@ interface IInput {
   ltr?: boolean; // model names stay LTR even in RTL screens
   bare?: boolean; // no border / background — for use inside a FieldBox
   autofill?: AutofillKind;
+  // When false, the field shows the locked-input look and refuses
+  // keystrokes (vs. an empty onChangeText, which lets the user type
+  // into a visually editable field then silently swallows everything).
+  editable?: boolean;
 }
 
 const AC_MAP: Record<AutofillKind, 'tel' | 'password' | 'username' | 'name'> = {
@@ -208,7 +212,7 @@ const TCT_MAP: Record<AutofillKind, 'telephoneNumber' | 'password' | 'username' 
   phone: 'telephoneNumber', password: 'password', username: 'username', name: 'name',
 };
 
-export function Input({ value, onChangeText, placeholder, secure, numeric, multiline, ltr, bare, autofill }: IInput) {
+export function Input({ value, onChangeText, placeholder, secure, numeric, multiline, ltr, bare, autofill, editable = true }: IInput) {
   // Autofill suppression — layered approach because no single prop is
   // honored by every Android skin (MIUI, OneUI, ColorOS each ignore
   // different ones).
@@ -233,7 +237,13 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
   //   Android system-autofill signal (rejects the field AND its
   //   children, closing a loophole that plain "no" leaves open).
   let kbType: any = numeric ? 'phone-pad' : 'default';
-  if (Platform.OS === 'android' && !numeric && !secure && !autofill) {
+  // Skip the visible-password autofill-suppression trick on multiline
+  // fields. On Samsung/MIUI IMEs, visible-password forces single-line
+  // behaviour and breaks Enter-for-newline — which silently destroyed
+  // multiline UX on rating comments and chat composer. Multiline
+  // fields can't trigger autofill anyway (system autofill ignores
+  // them), so the suppression isn't needed.
+  if (Platform.OS === 'android' && !numeric && !secure && !autofill && !multiline) {
     kbType = 'visible-password';
   }
   return (
@@ -245,6 +255,7 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
       secureTextEntry={secure === true}
       keyboardType={kbType}
       multiline={multiline}
+      editable={editable}
       autoCapitalize="none"
       autoCorrect={false}
       spellCheck={false}
@@ -252,7 +263,7 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
       textContentType={autofill ? TCT_MAP[autofill] : 'none'}
       importantForAutofill={autofill ? 'yes' : 'noExcludeDescendants'}
       style={{
-        backgroundColor: bare ? 'transparent' : theme.surface,
+        backgroundColor: bare ? 'transparent' : (editable ? theme.surface : theme.chipBg),
         borderRadius: bare ? 0 : radius.lg,
         borderWidth: bare ? 0 : 1,
         borderColor: theme.line,
@@ -260,7 +271,7 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
         paddingVertical: bare ? 0 : 12,
         fontFamily: fonts.ar,
         fontSize: 14.5,
-        color: theme.ink,
+        color: editable ? theme.ink : theme.subtle,
         textAlign: ltr ? 'left' : 'right',
         writingDirection: ltr ? 'ltr' : 'rtl',
         minHeight: multiline ? 88 : undefined,

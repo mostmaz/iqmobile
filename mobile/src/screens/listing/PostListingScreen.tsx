@@ -134,20 +134,27 @@ export default function PostListingScreen({ navigation }: any) {
       selectionLimit: remaining,
     });
     if (r.canceled) return;
-    // Compress in parallel — picking 10 photos that each take 600ms to
-    // resize used to add up to 6s of staring at a spinner; doing them
-    // concurrently brings that down to roughly the slowest single
-    // image. Per-asset try/catch keeps a single corrupt photo from
-    // dropping the whole batch (the previous Promise.all without
-    // wrapping would throw on the first failure and lose every other
-    // compressed result).
-    const settled = await Promise.all(
-      (r.assets || []).map(async (a) => {
-        try { return await compressForListing(a.uri); }
-        catch { return null; }
-      }),
-    );
-    const compressed = settled.filter((u): u is string => !!u);
+    // Compress concurrently but cap to 3-at-a-time. A naïve Promise.all
+    // over 10 photos was much faster than sequential, but each
+    // manipulateAsync holds a decoded bitmap in memory (a 4032×3024
+    // photo decodes to ~48 MB) — 10 in parallel can spike to ~480 MB
+    // peak and OOM-kill the app on a 2 GB Android Go device. A
+    // concurrency of 3 keeps the perceived wait near "slowest single
+    // image" without the memory cliff. Per-asset try/catch preserves
+    // partial-batch recovery on a single corrupt source.
+    const CONCURRENCY = 3;
+    const assets = r.assets || [];
+    const compressed: string[] = [];
+    for (let i = 0; i < assets.length; i += CONCURRENCY) {
+      const chunk = assets.slice(i, i + CONCURRENCY);
+      const settled = await Promise.all(
+        chunk.map(async (a) => {
+          try { return await compressForListing(a.uri); }
+          catch { return null; }
+        }),
+      );
+      for (const u of settled) if (u) compressed.push(u);
+    }
     setImages((cur) => [...cur, ...compressed].slice(0, 10));
   }
 

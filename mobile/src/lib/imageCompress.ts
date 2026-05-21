@@ -99,13 +99,10 @@ export async function compressImage(uri: string, preset: keyof typeof PRESETS): 
   return result.uri;
 }
 
-// Back-compat alias. Multiple sites historically called this for
-// listing photos too; resolve to the listing preset so behaviour
-// doesn't regress on the existing call paths.
-export async function compressForChat(uri: string): Promise<string> {
-  return compressImage(uri, 'listing');
-}
-
+// Per-use-case helpers. Each call site picks the right preset (so an
+// avatar doesn't go through the listing-photo pipeline and ship 800KB
+// for what renders at 56px). All three are thin wrappers over the
+// shared compressImage() so we can tune presets in one place.
 export async function compressForListing(uri: string): Promise<string> {
   return compressImage(uri, 'listing');
 }

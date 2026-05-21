@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, Linking } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -7,6 +7,7 @@ import { Header, fmtIQD } from '../../components/ui';
 import { Deals } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { useAuth } from '../../auth/AuthContext';
+import { callPhone } from '../../lib/contact';
 
 export default function DealsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -28,9 +29,13 @@ export default function DealsScreen({ navigation }: any) {
           const isBuyer = user?.id === item.buyer_id;
           const counterparty = isBuyer ? item.seller : item.buyer;
           return (
-            <TouchableOpacity
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('Chat', { id: item.chat_id })}
+            // Chat tab is hidden in the active nav stack (see
+            // navigation/index.tsx) — the previous onPress tried to
+            // navigate('Chat', …) and threw "action NAVIGATE not handled"
+            // on every tap. Until chat ships, deals are a read-only card
+            // — the Call + Rate buttons inside the card cover the only
+            // meaningful actions a confirmed deal needs.
+            <View
               style={{
                 padding: 12, marginBottom: 8, borderRadius: radius.lg,
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
@@ -54,7 +59,10 @@ export default function DealsScreen({ navigation }: any) {
               </Text>
               {item.status === 'seller_confirmed' && isBuyer && item.seller?.phone ? (
                 <View style={{ marginTop: 8, flexDirection: 'row-reverse', gap: 6 }}>
-                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.seller!.phone}`)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.success }}>
+                  {/* callPhone goes through the same Iraqi-phone normaliser
+                      + .catch(Alert) the rest of the app uses, so a device
+                      without a dialer doesn't redbox / unhandled-reject. */}
+                  <TouchableOpacity onPress={() => callPhone(item.seller!.phone!)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.success }}>
                     <Text style={{ color: '#fff', fontFamily: fonts.arBold }}>📞 {item.seller.phone}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => navigation.navigate('RateUser', { dealId: item.id })} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: theme.accentSoft }}>
@@ -62,7 +70,7 @@ export default function DealsScreen({ navigation }: any) {
                   </TouchableOpacity>
                 </View>
               ) : null}
-            </TouchableOpacity>
+            </View>
           );
         }}
         ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد صفقات بعد</Text>}

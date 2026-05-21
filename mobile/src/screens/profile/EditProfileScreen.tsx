@@ -42,34 +42,63 @@ export default function EditProfileScreen({ navigation }: any) {
   const shopLocLeft = user?.shop_location_edits_remaining ?? 2;
   const isShop = user?.seller_type === 'shop';
 
+  // Guard every mutation against guest sessions. EditProfile is reachable
+  // from a stack-restored state on a guest token (e.g. after the user
+  // logged out mid-edit), and previously `Auth.patchMe` from that path
+  // either 401'd silently or — worse — wrote a guest identity to the
+  // server's user row.
+  function ensureRealUser(): boolean {
+    if (!user || user.is_guest) {
+      Alert.alert('تسجيل الدخول', 'سجّل الدخول لتعديل الملف الشخصي.');
+      navigation.goBack();
+      return false;
+    }
+    return true;
+  }
+
   async function save() {
+    if (!ensureRealUser()) return;
     setBusy(true);
     try {
-      // Build patch payload — only include fields the user can still edit.
-      const body: any = {
-        governorate: GOV_AR_TO_EN[govAr],
-        city: city || null,
-      };
+      // Only include fields that BOTH the user can still edit AND that
+      // actually changed. Previously governorate/city were always sent,
+      // which on a server with a per-field edit budget would silently
+      // burn an edit on every save tap.
+      const body: any = {};
+      const govEn = GOV_AR_TO_EN[govAr];
+      if (govEn && govEn !== user?.governorate) body.governorate = govEn;
+      const newCity = city || null;
+      if (newCity !== (user?.city || null)) body.city = newCity;
       if (nameLeft > 0 && name !== user?.display_name) body.display_name = name;
       if (isShop && shopLocLeft > 0 && coords && (coords.lat !== user?.shop_lat || coords.lng !== user?.shop_lng)) {
         body.shop_lat = coords.lat;
         body.shop_lng = coords.lng;
       }
+      // Bail with no network call if nothing changed.
+      if (Object.keys(body).length === 0) {
+        navigation.goBack();
+        return;
+      }
       await Auth.patchMe(body);
       await refresh();
       navigation.goBack();
     } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
     } finally { setBusy(false); }
   }
 
   async function pickAndUploadShopImage() {
+    if (!ensureRealUser()) return;
     if (shopImgLeft === 0) {
       Alert.alert('انتهت التعديلات', 'لقد استنفذت تعديلات صورة لافتة المتجر.');
       return;
     }
+    if (shopBusy) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) {
+      Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
+      return;
+    }
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1, allowsEditing: true,
     });
@@ -80,11 +109,12 @@ export default function EditProfileScreen({ navigation }: any) {
       await updateShopImage(compressed);
       await refresh();
     } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e.message] || e.message);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
     } finally { setShopBusy(false); }
   }
 
   async function fetchLocation() {
+    if (!ensureRealUser()) return;
     if (shopLocLeft === 0) {
       Alert.alert('انتهت التعديلات', 'لقد استنفذت تعديلات موقع المتجر.');
       return;
@@ -92,7 +122,10 @@ export default function EditProfileScreen({ navigation }: any) {
     setLocBusy(true);
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') return;
+      if (perm.status !== 'granted') {
+        Alert.alert('الموقع', 'فعّل إذن الموقع من إعدادات الجهاز.');
+        return;
+      }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
     } catch {
@@ -117,7 +150,13 @@ export default function EditProfileScreen({ navigation }: any) {
       <Header title={ar.profile.edit} onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }}>
         <FieldLabel>{ar.auth.displayName}</FieldLabel>
-        <Input value={name} onChangeText={nameLeft > 0 ? setName : () => {}} />
+        {/* When the name field is locked (budget exhausted) we previously
+            kept it visually editable but silently swallowed keystrokes via
+            an empty onChangeText. Users typed, hit save, and saw nothing
+            change with no feedback. `editable={false}` flips it to the
+            standard locked-input look so the EditsLeft message reads as
+            the obvious reason. */}
+        <Input value={name} onChangeText={setName} editable={nameLeft > 0} />
         <EditsLeft left={nameLeft} label="الاسم" />
 
         <FieldLabel style={{ marginTop: 16 }}>{ar.auth.governorate}</FieldLabel>
