@@ -4,7 +4,8 @@
 // we lock the input and show the user how many edits they had.
 
 import React, { useState } from 'react';
-import { View, ScrollView, Alert, Text, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, ScrollView, Alert, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -139,7 +140,7 @@ export default function EditProfileScreen({ navigation }: any) {
               {shopBusy ? (
                 <ActivityIndicator color={theme.accent} />
               ) : user?.shop_image_path ? (
-                <Image source={{ uri: fullImageUrl(user.shop_image_path) }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                <Img source={{ uri: fullImageUrl(user.shop_image_path) }} style={{ width: '100%', height: '100%' }} />
               ) : (
                 <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}>اضغط لاختيار صورة</Text>
               )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert, TextInput, BackHandler } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler } from 'react-native';
+import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -432,7 +433,7 @@ export default function PostListingScreen({ navigation }: any) {
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
               {images.map((uri, i) => (
                 <View key={i} style={{ position: 'relative' }}>
-                  <Image source={{ uri }} style={{ width: 100, height: 100, borderRadius: radius.md, backgroundColor: theme.surface }} />
+                  <Img source={{ uri }} style={{ width: 100, height: 100, borderRadius: radius.md, backgroundColor: theme.surface }} />
                   <TouchableOpacity onPress={() => removeImg(i)} style={{ position: 'absolute', top: -6, left: -6, width: 22, height: 22, borderRadius: 999, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ color: '#fff' }}>×</Text>
                   </TouchableOpacity>
@@ -469,10 +470,9 @@ export default function PostListingScreen({ navigation }: any) {
                   happen, step 4 enforces ≥3 — show a tasteful placeholder. */}
               {images.length > 0 ? (
                 <View>
-                  <Image
+                  <Img
                     source={{ uri: images[0] }}
                     style={{ width: '100%', height: 220, backgroundColor: theme.chipBg }}
-                    resizeMode="cover"
                   />
                   {/* Photo count badge, bottom-right of the cover */}
                   <View style={{
@@ -499,9 +499,8 @@ export default function PostListingScreen({ navigation }: any) {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, padding: 10 }}>
                   {images.slice(1).map((uri, i) => (
-                    <Image key={i} source={{ uri }}
-                      style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.chipBg }}
-                      resizeMode="cover" />
+                    <Img key={i} source={{ uri }}
+                      style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.chipBg }} />
                   ))}
                 </ScrollView>
               ) : null}

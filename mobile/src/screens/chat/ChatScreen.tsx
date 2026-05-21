@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView,
-  Platform, Alert, Linking, Image, Modal,
+  Platform, Alert, Linking, Modal,
 } from 'react-native';
+import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -249,7 +250,7 @@ function MessageBubble({ m, mine }: { m: ChatMessage; mine: boolean }) {
       borderWidth: mine ? 0 : 1, borderColor: theme.line,
     }}>
       {m.image_path ? (
-        <Image source={{ uri: fullImageUrl(m.image_path) }} style={{ width: 200, height: 200, borderRadius: radius.md, backgroundColor: theme.bg, marginBottom: m.body ? 6 : 0 }} resizeMode="cover" />
+        <Img source={{ uri: fullImageUrl(m.image_path) }} style={{ width: 200, height: 200, borderRadius: radius.md, backgroundColor: theme.bg, marginBottom: m.body ? 6 : 0 }} />
       ) : null}
       {m.body ? (
         <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: mine ? theme.bg : theme.ink, lineHeight: 20, textAlign: 'right' }}>

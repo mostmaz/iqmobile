@@ -152,9 +152,21 @@ r.post('/push/test', requireAdmin, async (req, res) => {
 
 // Broadcast a push to every non-guest user with a registered token.
 // Use sparingly — Expo's free push quota is generous but not infinite.
+//
+// Two-step flow to make a typo expensive:
+//   1) Call with ?dry=1 (or { dry: true } in body). Returns the recipient
+//      count + a preview echo of the title/body. No notifications are sent.
+//   2) Call without dry=1 AND with ?confirm=1 in the query. Sends the
+//      broadcast. Missing confirm flag = 400 instead of a quiet send.
+//
+// The two-step guards against the case where someone hits Enter on a
+// draft push without re-reading — a single typo otherwise reaches every
+// installed device with no recall.
 r.post('/push/broadcast', requireAdmin, async (req, res) => {
   const { title, body, data } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'missing_fields' });
+  const isDry = req.query.dry === '1' || req.body?.dry === true;
+  const isConfirmed = req.query.confirm === '1';
   const rows = db.prepare(
     `SELECT id FROM users
      WHERE is_guest=0
@@ -162,6 +174,18 @@ r.post('/push/broadcast', requireAdmin, async (req, res) => {
        AND expo_push_token <> ''`,
   ).all();
   const ids = rows.map((r) => r.id);
+
+  if (isDry) {
+    return res.json({ ok: true, dry: true, would_send_to: ids.length, title, body });
+  }
+  if (!isConfirmed) {
+    return res.status(400).json({
+      error: 'confirm_required',
+      hint: 'add ?confirm=1 to actually send, or ?dry=1 for a recipient-count preview',
+      would_send_to: ids.length,
+    });
+  }
+
   await pushTo(ids, title, body, data || { kind: 'broadcast' });
   res.json({ ok: true, recipients: ids.length });
 });

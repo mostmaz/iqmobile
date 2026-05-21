@@ -8,7 +8,8 @@
 // against them), and the modal pops itself.
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -30,23 +31,33 @@ export default function CompleteProfileScreen() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [locBusy, setLocBusy] = useState(false);
+  // Busy-lock on the picker so rapid taps don't launch multiple system
+  // picker sheets in parallel — that races the setShopImage calls and on
+  // some Android devices crashes the host activity.
+  const [pickBusy, setPickBusy] = useState(false);
 
   async function pickShopImage() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
-      return;
-    }
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1, allowsEditing: true,
-    });
-    if (r.canceled || !r.assets?.[0]?.uri) return;
+    if (pickBusy) return;
+    setPickBusy(true);
     try {
-      const compressed = await compressForChat(r.assets[0].uri);
-      setShopImage(compressed);
-    } catch (e: any) {
-      Alert.alert('خطأ', e.message);
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
+        return;
+      }
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 1, allowsEditing: true,
+      });
+      if (r.canceled || !r.assets?.[0]?.uri) return;
+      try {
+        const compressed = await compressForChat(r.assets[0].uri);
+        setShopImage(compressed);
+      } catch (e: any) {
+        Alert.alert('خطأ', e?.message || 'تعذر تحميل الصورة');
+      }
+    } finally {
+      setPickBusy(false);
     }
   }
 
@@ -143,13 +154,13 @@ export default function CompleteProfileScreen() {
           <>
             <View style={{ marginTop: 18 }}>
               <FieldLabel>صورة لافتة المتجر</FieldLabel>
-              <TouchableOpacity onPress={pickShopImage} activeOpacity={0.85} style={{
+              <TouchableOpacity onPress={pickShopImage} disabled={pickBusy} activeOpacity={0.85} style={{
                 height: 160, borderRadius: radius.lg, borderWidth: 2, borderStyle: 'dashed',
                 borderColor: theme.line, backgroundColor: theme.surface,
                 alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
               }}>
                 {shopImage ? (
-                  <Image source={{ uri: shopImage }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  <Img source={{ uri: shopImage }} style={{ width: '100%', height: '100%' }} />
                 ) : (
                   <View style={{ alignItems: 'center', gap: 6 }}>
                     <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}>

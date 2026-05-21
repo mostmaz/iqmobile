@@ -295,9 +295,22 @@ CREATE TABLE IF NOT EXISTS app_settings (
   }
 }
 
-// idempotent column adds — reserved for future migrations
+// Idempotent column adds — reserved for future migrations.
+//
+// We swallow "duplicate column name" errors (the expected case when the
+// column already exists), but log anything else loudly. The previous
+// bare `catch {}` masked real failures (disk full, lock contention,
+// genuinely bad SQL) and the app would boot into a half-migrated state
+// where route code expecting the column crashed later with a confusing
+// "no such column" instead of failing at startup.
 function addColumnIfMissing(table, columnDef) {
-  try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`); } catch {}
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (/duplicate column name/i.test(msg)) return; // expected, normal idempotent path
+    console.error(`[db] addColumnIfMissing ${table}.(${columnDef}) failed:`, msg);
+  }
 }
 addColumnIfMissing('users', 'profile_image_path TEXT');
 addColumnIfMissing('users', 'verified INTEGER NOT NULL DEFAULT 0');

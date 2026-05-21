@@ -175,7 +175,12 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
 r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('image'), (req, res) => {
   const chat = req.chat;
 
-  let body = (req.body?.body || '').toString().slice(0, 2000) || null;
+  // Trim THEN cap so a 2000-char run of spaces doesn't sneak past the
+  // empty-message check below. `.slice(0, 2000) || null` previously
+  // accepted "                 " (all whitespace) — visible only as an
+  // empty bubble on both sides, useful only for spam-bumping the chat.
+  const rawBody = (req.body?.body || '').toString().trim().slice(0, 2000);
+  const body = rawBody || null;
   if (req.file && req.file.size <= 0) {
     try { fs.unlinkSync(req.file.path); } catch {}
     return res.status(400).json({ error: 'empty_image' });

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Alert, Dimensions,
 } from 'react-native';
+import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
@@ -160,7 +161,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               </View>
             ) : (
               (data.images || []).map((im) => (
-                <Image key={im.id} source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: 320 }} resizeMode="cover" />
+                <Img key={im.id} source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: 320 }} />
               ))
             )}
           </ScrollView>
@@ -283,7 +284,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                   }}>
                     {data.seller.profile_image_path ? (
-                      <Image source={{ uri: fullImageUrl(data.seller.profile_image_path) }} style={{ width: 44, height: 44 }} />
+                      <Img source={{ uri: fullImageUrl(data.seller.profile_image_path) }} style={{ width: 44, height: 44 }} />
                     ) : (
                       <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.chipInk, fontWeight: '700' }}>
                         {data.seller.display_name?.[0]}
@@ -327,10 +328,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                   the card under the name row. */}
               {data.seller.seller_type === 'shop' && (data.seller as any).shop_image_path ? (
                 <View style={{ marginTop: 10, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.chipBg }}>
-                  <Image
+                  <Img
                     source={{ uri: fullImageUrl((data.seller as any).shop_image_path) }}
                     style={{ width: '100%', height: 140 }}
-                    resizeMode="cover"
                   />
                 </View>
               ) : null}

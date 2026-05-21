@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Img } from './Img';
 import { theme, fonts, radius, shadowSoft } from '../theme';
 import { fmtIQD } from './ui';
 import { IconStar, IconPin } from './icons';
@@ -23,7 +24,7 @@ export function ListingCard({
     }}>
       <View style={{ height: compact ? 132 : 180, backgroundColor: theme.chipBg }}>
         {cover ? (
-          <Image source={{ uri: fullImageUrl(cover) }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <Img source={{ uri: fullImageUrl(cover) }} style={{ width: '100%', height: '100%' }} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: theme.subtle, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4 }}>

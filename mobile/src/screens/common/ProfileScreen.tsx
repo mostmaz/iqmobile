@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Img } from '../../components/Img';
 import { CommonActions } from '@react-navigation/native';
 import { navigationRef } from '../../navigation/ref';
 import * as ImagePicker from 'expo-image-picker';
@@ -84,7 +85,7 @@ export default function ProfileScreen({ navigation }: any) {
         }}>
           <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8} style={{ width: 56, height: 56, borderRadius: 999, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
             {user.profile_image_path ? (
-              <Image source={{ uri: fullImageUrl(user.profile_image_path) }} style={{ width: 56, height: 56 }} />
+              <Img source={{ uri: fullImageUrl(user.profile_image_path) }} style={{ width: 56, height: 56 }} />
             ) : (
               <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 22 }}>{initial}</Text>
             )}

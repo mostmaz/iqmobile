@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, Image } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
+import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -44,7 +45,7 @@ export default function ChatsListScreen({ navigation }: any) {
             >
               <View style={{ width: 44, height: 44, borderRadius: 999, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                 {counter?.profile_image_path ? (
-                  <Image source={{ uri: fullImageUrl(counter.profile_image_path) }} style={{ width: 44, height: 44 }} />
+                  <Img source={{ uri: fullImageUrl(counter.profile_image_path) }} style={{ width: 44, height: 44 }} />
                 ) : (
                   <Text style={{ fontFamily: fonts.arBold, color: theme.subtle }}>{counter?.display_name?.[0] || '?'}</Text>
                 )}

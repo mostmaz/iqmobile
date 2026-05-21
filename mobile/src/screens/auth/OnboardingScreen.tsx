@@ -44,6 +44,11 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
   // province. Skipping (denied / failed) leaves the default 'Baghdad' the
   // server assigned at guest-signup time.
   async function start() {
+    // Same busy-lock guards `start` AND `skipLocation` so a user can't
+    // double-tap one button while the other is mid-flight and trigger
+    // two parallel onDone() invocations (which would race the
+    // SecureStore.setItem and double-mount RootNav's main subtree).
+    if (busy) return;
     if (!onDone) { navigation?.goBack(); return; }
     setBusy(true);
     try {
@@ -64,9 +69,13 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
   }
 
   async function skipLocation() {
+    if (busy) return;
     if (!onDone) { navigation?.goBack(); return; }
-    try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
-    onDone();
+    setBusy(true);
+    try {
+      try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
+      onDone();
+    } finally { setBusy(false); }
   }
 
   return (
@@ -190,7 +199,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
                   </Text>
                 </View>
               </Btn>
-              <Btn kind="ghost" full onPress={skipLocation}>تخطي — أحدد المحافظة لاحقاً</Btn>
+              <Btn kind="ghost" full onPress={skipLocation} busy={busy}>تخطي — أحدد المحافظة لاحقاً</Btn>
             </>
           ) : (
             <Btn kind="accent" full onPress={start}>تم</Btn>
