@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Alert, TextInput, BackHandler } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -80,6 +80,30 @@ export default function PostListingScreen({ navigation }: any) {
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [waSameAsPhone, setWaSameAsPhone] = useState(false);
 
+  // Android hardware-back: if the user has typed anything (any field
+  // dirty) confirm before nuking the wizard. Without this, an accidental
+  // back tap at step 4 (after compressing 10 photos) destroys their work
+  // with zero recovery — a common Play Store complaint pattern.
+  const isDirty =
+    !!model || !!color || !!batteryHealth || accessories.length > 0 ||
+    !!askingPrice || !!city || !!description || images.length > 0 ||
+    !!contactPhone || !!contactWhatsapp;
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isDirty) return false; // let the default back behaviour run
+      Alert.alert(
+        'تأكيد الخروج',
+        'ستفقد الإعلان الذي بدأت بكتابته. هل تريد الخروج؟',
+        [
+          { text: 'متابعة الكتابة', style: 'cancel' },
+          { text: 'خروج', style: 'destructive', onPress: () => navigation.goBack() },
+        ],
+      );
+      return true; // we handled it; don't fall through to the default
+    });
+    return () => sub.remove();
+  }, [isDirty, navigation]);
+
   // Battery-health % is only a meaningful spec on Apple devices (iOS
   // surfaces an exact number). For other brands we hide the field.
   const showBattery = brand === 'Apple';
@@ -91,16 +115,36 @@ export default function PostListingScreen({ navigation }: any) {
   async function pickImages() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return;
+      Alert.alert('الصور', 'فعّل إذن الصون من إعدادات الجهاز.'); return;
+    }
+    // Guard against the off-by-one where `images.length === 10` makes
+    // `selectionLimit: 0`, which expo-image-picker treats as "no limit"
+    // on some Android versions — letting the user blow past the cap
+    // and then silently lose extras to .slice(0, 10) below.
+    const remaining = 10 - images.length;
+    if (remaining <= 0) {
+      Alert.alert('الحد الأقصى', 'الحد الأقصى 10 صور.');
+      return;
     }
     const r = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
-      selectionLimit: 10 - images.length,
+      selectionLimit: remaining,
     });
     if (r.canceled) return;
-    const compressed = await Promise.all((r.assets || []).map((a) => compressForChat(a.uri)));
+    // Compress per-asset with individual try/catch so a single corrupt
+    // photo doesn't drop the entire batch on the floor. Previously a
+    // failed compress threw out of Promise.all and lost every picked
+    // image including the ones that compressed fine.
+    const compressed: string[] = [];
+    for (const a of (r.assets || [])) {
+      try {
+        compressed.push(await compressForChat(a.uri));
+      } catch {
+        // Skip the bad asset; the rest still make it into the list.
+      }
+    }
     setImages((cur) => [...cur, ...compressed].slice(0, 10));
   }
 
@@ -125,24 +169,41 @@ export default function PostListingScreen({ navigation }: any) {
         contact_phone: contactPhone,
         contact_whatsapp: wa,
       });
-      if (images.length > 0) await uploadListingImages(listing.id, images);
+      // Roll back the listing if image upload fails — otherwise we leave
+      // a phantom no-image listing on the server, the user sees an error
+      // and re-submits, and we end up with duplicates. Best-effort:
+      // if the rollback itself fails, log and surface the original
+      // upload error so the user knows what went wrong.
+      if (images.length > 0) {
+        try {
+          await uploadListingImages(listing.id, images);
+        } catch (uploadErr) {
+          try { await Listings.remove(listing.id); } catch {}
+          throw uploadErr;
+        }
+      }
       return listing;
     },
     onSuccess: (listing) => {
       qc.invalidateQueries({ queryKey: ['mine'] });
       qc.invalidateQueries({ queryKey: ['browse'] });
-      track('listing.created', {
-        listing_id: listing.id,
-        brand: listing.brand,
-        condition: listing.condition,
-        asking_price: listing.asking_price,
-        governorate: listing.governorate,
-        warranty: warranty,
-        image_count: images.length,
-      });
+      // safeTrack so a PostHog throw can't block navigation.replace —
+      // user just spent five steps posting their phone; the wizard MUST
+      // hand off to the detail screen even if analytics is broken.
+      try {
+        track('listing.created', {
+          listing_id: listing.id,
+          brand: listing.brand,
+          condition: listing.condition,
+          asking_price: listing.asking_price,
+          governorate: listing.governorate,
+          warranty: warranty,
+          image_count: images.length,
+        });
+      } catch {}
       navigation.replace('ListingDetail', { id: listing.id });
     },
-    onError: (e: any) => setErr((ar.errors as any)[e.message] || e.message),
+    onError: (e: any) => setErr((ar.errors as any)[e?.message] || (ar.errors as any).network),
   });
 
   // Step layout (6 total):

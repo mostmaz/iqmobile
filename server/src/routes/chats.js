@@ -61,6 +61,21 @@ function loadChatForUser(req, res) {
   return row;
 }
 
+// Middleware version of the chat ownership check — runs BEFORE multer so
+// a non-participant can't fill our disk by spamming POSTs to chat IDs
+// they don't own (multer was happily writing 5MB files to ./uploads
+// before the auth check ran). Caches the loaded row on req.chat so
+// the handler doesn't redo the SELECT.
+function chatGuard(req, res, next) {
+  const row = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.buyer_id !== req.user.id && row.seller_id !== req.user.id) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  req.chat = row;
+  next();
+}
+
 function activeDealFor(chatId) {
   return db
     .prepare(
@@ -141,9 +156,9 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
 
 // Send a message — text and/or image. Phone numbers are blocked unless the
 // chat already has a confirmed deal.
-r.post('/chats/:id(\\d+)/messages', requireAuth(), upload.single('image'), (req, res) => {
-  const chat = loadChatForUser(req, res);
-  if (!chat) return;
+// chatGuard runs BEFORE multer so unauthorized callers never write a file.
+r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('image'), (req, res) => {
+  const chat = req.chat;
 
   let body = (req.body?.body || '').toString().slice(0, 2000) || null;
   if (req.file && req.file.size <= 0) {

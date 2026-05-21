@@ -79,13 +79,15 @@ r.post('/deals/:id(\\d+)/buyer-accept', requireAuth(), (req, res) => {
   res.json(updated);
 });
 
-// ─── buyer rejects / cancels deal ────────────────────────────────────
+// ─── buyer rejects a proposal ────────────────────────────────────────
+// Reject is only valid in 'proposed'. Once the buyer has accepted, the
+// deal is a commitment — the only escape is /cancel (and even that's
+// seller-only after acceptance; see below).
 r.post('/deals/:id(\\d+)/buyer-reject', requireAuth(), (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.buyer_id !== req.user.id) return res.status(403).json({ error: 'buyer_only' });
-  if (!['proposed','buyer_accepted'].includes(deal.status))
-    return res.status(409).json({ error: 'bad_state' });
+  if (deal.status !== 'proposed') return res.status(409).json({ error: 'bad_state' });
 
   const t = now();
   db.prepare("UPDATE deals SET status='rejected', updated_at=? WHERE id=?").run(t, deal.id);
@@ -105,16 +107,28 @@ r.post('/deals/:id(\\d+)/counter-offer', requireAuth(), (req, res) => {
   const price = Number(req.body?.final_price);
   if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
 
-  const t = now();
-  db.prepare("UPDATE deals SET status='cancelled', updated_at=? WHERE id=?").run(t, deal.id);
+  // Block counter-offers against listings that have since flipped to
+  // sold/expired/removed — otherwise a buyer can keep firing offers
+  // at the seller (and triggering push notifications) on a listing
+  // that's no longer for sale.
+  if (!listingActive(deal.listing_id)) return res.status(409).json({ error: 'listing_not_active' });
 
-  // The new "deal" is still tagged 'proposed' so the seller can propose
-  // back at the same final_price (effectively accepting) — same UX path.
-  const ins = db.prepare(
-    `INSERT INTO deals(chat_id, listing_id, buyer_id, seller_id, final_price, status, created_at, updated_at)
-     VALUES(?,?,?,?,?,?,?,?)`,
-  ).run(deal.chat_id, deal.listing_id, deal.buyer_id, deal.seller_id, Math.round(price), 'proposed', t, t);
-  const counter = db.prepare('SELECT * FROM deals WHERE id=?').get(ins.lastInsertRowid);
+  const t = now();
+  let counter;
+  // Atomic: cancel the prior deal + insert the new counter in one
+  // transaction. Without this, a crash between the two statements
+  // leaves the chat with either zero open deals or two 'proposed'
+  // ones, both of which break the UI.
+  db.transaction(() => {
+    db.prepare("UPDATE deals SET status='cancelled', updated_at=? WHERE id=?").run(t, deal.id);
+    // The new "deal" is still tagged 'proposed' so the seller can propose
+    // back at the same final_price (effectively accepting) — same UX path.
+    const ins = db.prepare(
+      `INSERT INTO deals(chat_id, listing_id, buyer_id, seller_id, final_price, status, created_at, updated_at)
+       VALUES(?,?,?,?,?,?,?,?)`,
+    ).run(deal.chat_id, deal.listing_id, deal.buyer_id, deal.seller_id, Math.round(price), 'proposed', t, t);
+    counter = db.prepare('SELECT * FROM deals WHERE id=?').get(ins.lastInsertRowid);
+  })();
 
   notify(deal.seller_id, 'deal.counter_offer', { deal: counter }, {
     title: 'عرض مضاد من المشتري',
@@ -157,12 +171,27 @@ r.post('/deals/:id(\\d+)/seller-confirm', requireAuth(), (req, res) => {
   res.json({ ...updated, seller_phone: sellerPhone });
 });
 
-// ─── either party cancels (only before seller-confirm) ──────────────
+// ─── cancel a deal ───────────────────────────────────────────────────
+// State-machine:
+//   proposed       → either party may cancel (no commitment yet)
+//   buyer_accepted → ONLY the seller may cancel. The buyer has already
+//                    committed to the price; if they could yank that
+//                    commitment back the instant before the seller
+//                    confirms (and unlocks their phone), every seller
+//                    would be exposed to last-second buyer cold feet.
+//                    The buyer can still walk away in practice by not
+//                    answering — that's a marketplace, not contract law.
+//   seller_confirmed → cannot be cancelled by either side; deal is done.
 r.post('/deals/:id(\\d+)/cancel', requireAuth(), (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
-  if (!['proposed','buyer_accepted'].includes(deal.status))
+  if (deal.status === 'proposed') {
+    // either party can cancel; fall through
+  } else if (deal.status === 'buyer_accepted') {
+    if (req.user.id !== deal.seller_id) return res.status(403).json({ error: 'seller_only' });
+  } else {
     return res.status(409).json({ error: 'bad_state' });
+  }
   const t = now();
   db.prepare("UPDATE deals SET status='cancelled', updated_at=? WHERE id=?").run(t, deal.id);
   const updated = db.prepare('SELECT * FROM deals WHERE id=?').get(deal.id);
