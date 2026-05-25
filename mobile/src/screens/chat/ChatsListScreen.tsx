@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts, radius } from '../../theme';
-import { Btn, Header, fmtIQD } from '../../components/ui';
+import { Header, fmtIQD } from '../../components/ui';
 import { Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useAuth } from '../../auth/AuthContext';
@@ -22,22 +22,21 @@ export default function ChatsListScreen({ navigation, route }: any) {
   //   - Global: from the Chats tab → every chat the user has.
   const listingId: number | undefined = route?.params?.listing_id;
 
-  // Chat is real-users only (matches the server-side `guest_blocked` reject
-  // on chat-create + send-message). Show a sign-in CTA for guests instead
-  // of firing /chats and getting a 403/empty result.
-  const isGuest = !user || !!user.is_guest;
-
+  // Chat is open to guests now. Their auto-provisioned guest user row
+  // owns any chats they start; the inbox just lists them like any other
+  // user's chats. First-launch guests with no chats yet see the empty
+  // state copy from ar.chat.empty.
   const { data, refetch, isRefetching } = useQuery({
     queryKey: ['chats', listingId ?? 'all'],
     queryFn: () => (listingId ? Chats.listForListing(listingId) : Chats.list()),
-    enabled: !isGuest,
+    enabled: !!user,  // need any auth token (even a guest one) to call /chats
   });
 
   // Refetch on every focus so a message sent in another tab / from a push
   // tap reflects the moment the user comes back here.
   useFocusEffect(useCallback(() => {
-    if (!isGuest) qc.invalidateQueries({ queryKey: ['chats'] });
-  }, [isGuest, qc]));
+    if (user) qc.invalidateQueries({ queryKey: ['chats'] });
+  }, [user, qc]));
 
   // Live updates — SSE `chat.message` invalidates the inbox so the list
   // re-sorts the new conversation to the top without a manual refresh.
@@ -47,27 +46,6 @@ export default function ChatsListScreen({ navigation, route }: any) {
     });
     return () => { unsub(); };
   }, [qc]);
-
-  if (isGuest) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
-        <Header title={ar.tabs.chats} onBack={listingId ? () => navigation.goBack() : undefined} />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
-            سجّل الدخول للمحادثة
-          </Text>
-          <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
-            تواصل مع البائعين والمشترين مباشرة بعد التسجيل بهاتفك.
-          </Text>
-          <View style={{ alignSelf: 'stretch', marginTop: 6 }}>
-            <Btn kind="accent" full onPress={() => (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')}>
-              تسجيل الدخول
-            </Btn>
-          </View>
-        </View>
-      </View>
-    );
-  }
 
   // When the seller arrives via "view buyer chats for THIS listing",
   // surface the listing they're filtering on as a small chip so the

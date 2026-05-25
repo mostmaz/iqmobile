@@ -140,17 +140,13 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     }
   }
   // Start (or reuse) a chat thread for this listing as the buyer. Guests
-  // bounce through AuthGate first since chat is real-user only — server
-  // also rejects guest tokens with `guest_blocked` so this is defence in
-  // depth. The cross-stack jump targets the Chats tab's own Chat screen
-  // (registered in ChatsStackNav) — same pattern AuthGate uses.
+  // are allowed — chat is the lowest-friction "is it available?" channel
+  // and forcing AuthGate before that question is over-eager. The
+  // auto-provisioned guest session already has a user row; chats land
+  // under that id. When the guest later upgrades via phoneLogin, the same
+  // row is promoted in-place and the chat history carries over.
   // (`chatStarting` state lives above the loading early-return — see note there.)
   async function startChat() {
-    if (!user || user.is_guest) {
-      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
-        ?? navigation.navigate('AuthGate' as never);
-      return;
-    }
     if (chatStarting) return;
     setChatStarting(true);
     try {

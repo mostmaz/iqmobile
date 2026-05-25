@@ -144,12 +144,21 @@ r.post('/guest', guestLimiter, (req, res) => {
   // 26 hex chars — unique-enough to never collide with the 11-digit Iraqi
   // mobile namespace, and prefixed so admin tooling can spot guests.
   const syntheticPhone = `guest:${crypto.randomBytes(13).toString('hex')}`;
+  // Append a 4-digit suffix to "ضيف" so when a seller receives a chat
+  // from a guest buyer, their inbox shows e.g. "ضيف 4382" instead of
+  // every guest collapsing to the same "ضيف" label. The suffix is the
+  // user's eventual id (looked up after INSERT) so it's stable + unique.
+  // Until the row exists we can't know the id, so insert with a
+  // placeholder then UPDATE — cheap, runs once per guest.
   const ins = db
     .prepare(
       `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, is_guest, created_at)
        VALUES(?,?,?,?,?,?,?)`,
     )
     .run(syntheticPhone, '', 'ضيف', gov, 'individual', 1, now());
+  const guestSuffix = String(ins.lastInsertRowid).padStart(4, '0').slice(-4);
+  db.prepare('UPDATE users SET display_name=? WHERE id=?')
+    .run(`ضيف ${guestSuffix}`, ins.lastInsertRowid);
   const user = db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
   const token = issueToken({ id: user.id });
   res.json({ token, user: publicUser(user) });
@@ -193,9 +202,15 @@ r.post('/phone-login', authLimiter, optionalAuth(), (req, res) => {
   if (req.user) {
     const me = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
     if (me?.is_guest) {
-      const finalName = me.display_name && me.display_name !== 'ضيف'
-        ? me.display_name
-        : `مستخدم ${phone.slice(-4)}`;
+      // Replace synthetic guest display names ("ضيف" or "ضيف 4382") with
+      // "مستخدم <last 4 of phone>" on upgrade. Keep anything the user
+      // explicitly set (e.g. via CompleteProfile before upgrading).
+      const isSyntheticGuestName = !me.display_name
+        || me.display_name === 'ضيف'
+        || /^ضيف\s+\d+$/.test(me.display_name);
+      const finalName = isSyntheticGuestName
+        ? `مستخدم ${phone.slice(-4)}`
+        : me.display_name;
       db.prepare(
         'UPDATE users SET phone=?, is_guest=0, display_name=? WHERE id=?',
       ).run(phone, finalName, me.id);

@@ -50,21 +50,14 @@ const QUICK_MESSAGES = [
 ];
 r.get('/quick-messages', requireAuth(), (_req, res) => res.json(QUICK_MESSAGES));
 
-// Guest reject — chat requires a real account on either side. The mobile
-// client gates this client-side too, but defending in depth here stops
-// scripted abuse and curl-from-laptop probing.
-function rejectGuest(req, res) {
-  const u = db.prepare('SELECT is_guest FROM users WHERE id=?').get(req.user.id);
-  if (u?.is_guest) {
-    res.status(403).json({ error: 'guest_blocked' });
-    return true;
-  }
-  return false;
-}
-
 // Buyer opens (or reuses) a chat for a listing.
+// Guests are now allowed to chat — the previous `rejectGuest` gate was
+// removed because forcing buyers through AuthGate before they could even
+// ask "is it available?" added too much friction. Guests have a real
+// user row (auto-provisioned at app launch), so chats they start are
+// tied to that row; when they later upgrade via phoneLogin → the same
+// row is promoted in-place and their existing chats carry over.
 r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
-  if (rejectGuest(req, res)) return;
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
   if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id === req.user.id) return res.status(400).json({ error: 'cannot_chat_self' });
@@ -195,12 +188,9 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
 // Send a message — text and/or image. Phone numbers are blocked unless the
 // chat already has a confirmed deal.
 // chatGuard runs BEFORE multer so unauthorized callers never write a file.
-// rejectGuest also runs first so guest accounts can't send messages even
-// if they somehow ended up as a chat participant.
-r.post('/chats/:id(\\d+)/messages', requireAuth(), (req, res, next) => {
-  if (rejectGuest(req, res)) return;
-  next();
-}, chatGuard, upload.single('image'), (req, res) => {
+// (Guest-block middleware removed — guests can now send chat messages;
+// see the rationale on POST /listings/:id/chat above.)
+r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('image'), (req, res) => {
   const chat = req.chat;
 
   // Trim THEN cap so a 2000-char run of spaces doesn't sneak past the
