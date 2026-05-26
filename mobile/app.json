@@ -2,7 +2,7 @@
   "expo": {
     "name": "IQ Mobile",
     "slug": "iqmobile",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 9
+      "versionCode": 10
     },
     "ios": {
       "bundleIdentifier": "org.iqmobile.app",
