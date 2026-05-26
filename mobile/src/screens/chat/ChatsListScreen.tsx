@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts, radius } from '../../theme';
-import { Header, fmtIQD } from '../../components/ui';
+import { Header, Btn, fmtIQD } from '../../components/ui';
+import { IconChat } from '../../components/icons';
 import { Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useAuth } from '../../auth/AuthContext';
@@ -26,11 +27,19 @@ export default function ChatsListScreen({ navigation, route }: any) {
   // owns any chats they start; the inbox just lists them like any other
   // user's chats. First-launch guests with no chats yet see the empty
   // state copy from ar.chat.empty.
-  const { data, refetch, isRefetching } = useQuery({
+  const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['chats', listingId ?? 'all'],
     queryFn: () => (listingId ? Chats.listForListing(listingId) : Chats.list()),
     enabled: !!user,  // need any auth token (even a guest one) to call /chats
   });
+  // We render the empty state only when the query has actually settled
+  // with zero rows — not while the first fetch is in flight. Without this
+  // guard the "no chats yet" copy flashes on screen for the half-second
+  // before data arrives, then gets replaced by the real list, which reads
+  // as a bug.
+  const filtered = (data || []).filter((c: any) => c.buyer_id !== c.seller_id);
+  const hasFetched = !isLoading && data !== undefined;
+  const isEmpty = hasFetched && filtered.length === 0;
 
   // Refetch on every focus so a message sent in another tab / from a push
   // tap reflects the moment the user comes back here.
@@ -73,12 +82,13 @@ export default function ChatsListScreen({ navigation, route }: any) {
           </View>
         </View>
       ) : null}
+      {/* Defensive filter on `data` (see filtered constant): a chat where
+          buyer_id === seller_id shouldn't exist (server rejects with
+          cannot_chat_self), but if a zombie row ever slipped through it
+          would render with the viewer's own name as the "counterparty" —
+          confusing. Drop them on the floor. */}
       <FlatList
-        // Defensive filter: a chat where buyer_id === seller_id shouldn't
-        // exist (server rejects with cannot_chat_self), but if a zombie
-        // row ever slipped through it would render with the viewer's own
-        // name as the "counterparty" — confusing. Drop them on the floor.
-        data={(data || []).filter((c: any) => c.buyer_id !== c.seller_id)}
+        data={filtered}
         keyExtractor={(it) => String(it.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
@@ -128,9 +138,50 @@ export default function ChatsListScreen({ navigation, route }: any) {
           );
         }}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar, lineHeight: 22 }}>
-            {listingId ? ar.chat.emptyForListing : ar.chat.empty}
-          </Text>
+          // Three states under the same FlatList:
+          //   1. Initial load (no data yet): centered spinner — avoids
+          //      flashing the empty-state copy before the first request
+          //      settles.
+          //   2. Fetched but empty: full empty state (icon + heading +
+          //      supporting line). When we're on the global Chats tab
+          //      (no listingId filter) also render a "Browse listings"
+          //      CTA so the user has somewhere to go from the dead end.
+          //   3. (Non-empty case never hits ListEmptyComponent.)
+          !hasFetched ? (
+            <View style={{ alignItems: 'center', paddingTop: 60 }}>
+              <ActivityIndicator color={theme.accent} />
+            </View>
+          ) : isEmpty ? (
+            <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 28 }}>
+              <View style={{
+                width: 72, height: 72, borderRadius: 999,
+                backgroundColor: theme.chipBg,
+                alignItems: 'center', justifyContent: 'center',
+                marginBottom: 16,
+              }}>
+                <IconChat size={32} color={theme.subtle} sw={1.6} />
+              </View>
+              <Text style={{
+                fontFamily: fonts.arBold, fontWeight: '700',
+                fontSize: 17, color: theme.ink, textAlign: 'center',
+                marginBottom: 6,
+              }}>
+                {ar.chat.emptyTitle}
+              </Text>
+              <Text style={{
+                fontFamily: fonts.ar, fontSize: 13,
+                color: theme.subtle, textAlign: 'center', lineHeight: 20,
+                marginBottom: 22,
+              }}>
+                {listingId ? ar.chat.emptyForListing : ar.chat.emptyDesc}
+              </Text>
+              {!listingId ? (
+                <Btn kind="primary" onPress={() => (navigation as any).getParent()?.navigate('Browse')}>
+                  {ar.chat.emptyCta}
+                </Btn>
+              ) : null}
+            </View>
+          ) : null
         }
       />
     </View>

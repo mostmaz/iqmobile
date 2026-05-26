@@ -264,8 +264,28 @@ export default function ChatScreen({ route, navigation }: any) {
         ref={listRef}
         data={messages || []}
         keyExtractor={(it) => String(it.id)}
-        contentContainerStyle={{ padding: 12, paddingBottom: 16, gap: 6 }}
+        // contentContainerStyle uses flexGrow:1 so the empty-state View
+        // can `flex:1` to center itself vertically inside the list area
+        // (without it the empty state hugs the top because the
+        // ListEmptyComponent only gets the minimum height it asks for).
+        contentContainerStyle={{ padding: 12, paddingBottom: 16, gap: 6, flexGrow: 1 }}
         renderItem={({ item }) => <MessageBubble m={item} mine={item.sender_id === user?.id} />}
+        // Empty state for a fresh chat — no messages yet. Sender opens
+        // the chat from a listing detail (POST /listings/:id/chat
+        // either reuses or creates), so the most useful prompt is "say
+        // hi" rather than just blank space.
+        ListEmptyComponent={
+          messages === undefined ? null : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 15, color: theme.ink, textAlign: 'center', marginBottom: 6 }}>
+                {ar.chat.noMessagesTitle}
+              </Text>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', lineHeight: 20 }}>
+                {ar.chat.noMessagesDesc}
+              </Text>
+            </View>
+          )
+        }
       />
 
       {warning ? (
