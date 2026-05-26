@@ -20,21 +20,8 @@ export const GOVERNORATES = [
   'Wasit',
 ];
 
-export const BRANDS = [
-  'Apple',
-  'Samsung',
-  'Xiaomi',
-  'Realme',
-  'Tecno',
-  'Huawei',
-  'OPPO',
-  'Vivo',
-  'OnePlus',
-  'Google',
-  'Nokia',
-  'Motorola',
-  'Other',
-];
+// Brand list moved to the DB — see `brands.js`. isBrand() lives there too.
+// Kept this comment as a discovery hint for anyone searching `BRANDS`.
 
 // Arabic → canonical English. Mirrored from mobile/src/lib/governorates.ts
 // so the server can accept Arabic input gracefully even when a client
@@ -83,6 +70,6 @@ export function isGovernorate(g) {
   return normalizeGovernorate(g) != null;
 }
 
-export function isBrand(b) {
-  return BRANDS.includes(b);
-}
+// isBrand moved to ./brands.js (DB-backed) — import it directly from
+// there to avoid the circular-import cycle (db.js → governorates.js
+// would re-enter brands.js → db.js).

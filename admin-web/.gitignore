@@ -1,3 +1,6 @@
 node_modules
-dist
 .vite
+# `dist` is NOT ignored here — we ship the pre-built admin-web bundle
+# in git so Express can serve /dashboard/ from disk on the droplet
+# without having to npm-build admin-web during deploy. Re-build before
+# commit (npm run build).

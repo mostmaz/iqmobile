@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Auth, type User } from '../api/endpoints';
 import { setToken } from '../api/client';
 import * as SecureStore from '../lib/secureStore';
 import { go } from '../navigation/ref';
 import { useIdentify, useResetIdentity, useTrack } from '../analytics/track';
+import { ar } from '../i18n/ar';
 
 // `track()` calls the PostHog SDK which can throw if the transport
 // fails to initialise (no network at boot, no key configured, etc.).
@@ -46,26 +48,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const me = await Auth.me();
             setUser(me.user);
           } catch (e: any) {
-            // Distinguish a real 401 (stale token, server-side purge,
-            // secret rotation) from a transient network failure. The
-            // old code nuked the token on either path, which meant a
-            // single dropped packet at boot on flaky Iraqi
-            // connectivity logged the user out permanently. Now we
-            // only delete on a clean 401; on a network error we keep
-            // the token and try again next launch.
-            if (e?.status === 401) {
+            // Distinguish three failure modes:
+            //   - 403 `user_suspended` — admin suspended this account.
+            //     Nuke the token, fall back to a fresh guest session so
+            //     the user can keep browsing / sign in as someone else,
+            //     and surface an Arabic banner via the auth-error path.
+            //   - 401 unauthorized — stale token, server-side purge,
+            //     or secret rotation. Same recovery path (new guest)
+            //     but no banner.
+            //   - Anything else (network error) — leave the token in
+            //     place and try again next launch. Critical fix from
+            //     earlier: a single dropped packet at boot on flaky
+            //     Iraqi connectivity used to log users out forever.
+            if (e?.status === 403 && e?.message === 'user_suspended') {
               await SecureStore.deleteItem(TOKEN_KEY);
               setToken(null);
-              // Fall back to a fresh guest so the app still works
-              // without auth-gated screens — same as the no-token path.
+              try {
+                const r = await Auth.guest();
+                await persist(r.token, r.user);
+              } catch {}
+              // Alert imported at the top — surface the suspension
+              // message in Arabic. User can still browse as a fresh
+              // guest after dismissing.
+              Alert.alert('حساب معلّق', (ar.errors as any).user_suspended);
+            } else if (e?.status === 401) {
+              await SecureStore.deleteItem(TOKEN_KEY);
+              setToken(null);
               try {
                 const r = await Auth.guest();
                 await persist(r.token, r.user);
               } catch {}
             } else {
-              // Network/server error — leave the token in place; the
-              // next /auth/me call (post-refresh, post-foreground)
-              // will recover automatically.
+              // Network/server error — keep the token; next /auth/me
+              // (post-refresh, post-foreground) will recover.
             }
           }
         } else {

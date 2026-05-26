@@ -136,6 +136,7 @@ export const ar = {
     // Auth / account
     bad_credentials: 'بيانات تسجيل الدخول غير صحيحة',
     guest_blocked: 'يجب إنشاء حساب للمتابعة.',
+    user_suspended: 'تم تعليق حسابك. تواصل مع الدعم.',
     phone_taken: 'رقم الهاتف مستخدم مسبقاً',
     weak_password: 'كلمة المرور قصيرة',
     bad_phone: 'رقم الهاتف غير صحيح',

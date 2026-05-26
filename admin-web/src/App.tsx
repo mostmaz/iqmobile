@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Login } from './auth/Login';
 import { getToken, setStoredToken } from './api';
+import { OverviewPage } from './pages/OverviewPage';
+import { BrandsPage } from './pages/BrandsPage';
 import { ListingsPage } from './pages/ListingsPage';
 import { UsersPage } from './pages/UsersPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -8,15 +10,21 @@ import { DealsPage } from './pages/DealsPage';
 import { BypassAttemptsPage } from './pages/BypassAttemptsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-type Page = 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings';
+type Page =
+  | 'overview' | 'brands' | 'listings' | 'users' | 'reports'
+  | 'deals' | 'bypass' | 'settings';
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
-  const [page, setPage] = useState<Page>('listings');
+  // Default landing is the Overview page (KPIs + charts). Operators
+  // appreciate the snapshot before diving into individual tables.
+  const [page, setPage] = useState<Page>('overview');
 
   if (!authed) return <Login onAuth={() => setAuthed(true)} />;
 
   const NAV: Array<{ key: Page; label: string }> = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'brands', label: 'Brands' },
     { key: 'listings', label: 'Listings' },
     { key: 'users', label: 'Users' },
     { key: 'deals', label: 'Deals' },
@@ -26,7 +34,7 @@ export function App() {
   ];
 
   return (
-    <div style={{ maxWidth: 1100, margin: '24px auto', padding: '0 16px' }}>
+    <div style={{ maxWidth: 1200, margin: '24px auto', padding: '0 16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1>IQ Mobile · Marketplace Admin</h1>
         <button className="secondary" onClick={() => { setStoredToken(null); setAuthed(false); }}>Logout</button>
@@ -39,6 +47,8 @@ export function App() {
           </a>
         ))}
       </div>
+      {page === 'overview' && <OverviewPage />}
+      {page === 'brands' && <BrandsPage />}
       {page === 'listings' && <ListingsPage />}
       {page === 'users' && <UsersPage />}
       {page === 'reports' && <ReportsPage />}

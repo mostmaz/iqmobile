@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
-import { isGovernorate, isBrand, normalizeGovernorate } from '../governorates.js';
+import { isGovernorate, normalizeGovernorate } from '../governorates.js';
+import { isBrand } from '../brands.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();

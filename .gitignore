@@ -45,3 +45,14 @@ yarn-error.log*
 # bundle id + signing cert / team id, useless extracted alone. We commit
 # them because EAS Build only uploads git-tracked files.
 server/scripts/samsung-images/
+
+# Production Android signing — never commit these.
+mobile/android/iqmobile-release.keystore
+mobile/android/keystore.properties
+mobile/android/local.properties
+
+# Allow the admin-web build output to ship in git — the deploy pipeline
+# doesn't currently build admin-web on the droplet (workflow file edit
+# blocked by PAT scope), so we serve the pre-built dist from disk.
+!admin-web/dist
+!admin-web/dist/**

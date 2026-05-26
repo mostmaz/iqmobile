@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
+import { db } from './db.js';
 
 const SECRET = process.env.JWT_SECRET || 'dev-secret';
 const TTL = process.env.JWT_TTL || '30d';
@@ -29,6 +30,11 @@ export function verifyToken(token) {
 // what they're doing. We just need a valid logged-in user; per-action
 // authorization (am I the seller of this listing? the buyer of this chat?)
 // is enforced in each route.
+//
+// Suspension check: users.suspended_at is set by the admin dashboard. A
+// suspended user's existing JWT continues to be cryptographically valid,
+// but we reject it here with 403 `user_suspended` so the mobile client
+// can surface the explanation screen.
 export function requireAuth() {
   return (req, res, next) => {
     const header = req.headers.authorization || '';
@@ -36,6 +42,8 @@ export function requireAuth() {
     const payload = token && verifyToken(token);
     if (!payload || !payload.id || payload.kind === 'admin')
       return res.status(401).json({ error: 'unauthorized' });
+    const u = db.prepare('SELECT suspended_at FROM users WHERE id=?').get(payload.id);
+    if (u?.suspended_at) return res.status(403).json({ error: 'user_suspended' });
     req.user = payload;
     next();
   };

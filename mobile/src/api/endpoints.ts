@@ -254,6 +254,20 @@ export const Reports = {
     api('/reports', { method: 'POST', body: JSON.stringify({ target_kind, target_id, reason, detail }) }),
 };
 
+// ─── Brands ──────────────────────────────────────────────────────────
+// Brand catalog is server-side now (was hardcoded). BrowseScreen reads
+// from here on focus, cached 5 min via React Query.
+export interface BrandRow {
+  id: number;
+  name: string;
+  display_ar: string | null;
+  position: number;
+  count: number;
+}
+export const Brands = {
+  list: () => api<BrandRow[]>('/brands'),
+};
+
 export const Notifications = {
   list: () => api<NotificationRow[]>('/notifications'),
   readAll: () => api('/notifications/read-all', { method: 'POST' }),

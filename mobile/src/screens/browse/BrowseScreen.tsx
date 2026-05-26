@@ -2,26 +2,20 @@ import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react'
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Input, Pill } from '../../components/ui';
 import { IconSearch, IconFilter, IconBell, IconCheck, IconPlus, IconMinus } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { Listings, type BrowseFilters, type Condition } from '../../api/endpoints';
+import { Listings, Brands, type BrowseFilters, type Condition } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { GOV_AR_LIST, GOV_AR_TO_EN } from '../../lib/governorates';
 
-// Counts here are illustrative until we wire a real aggregate query —
-// they help users gauge inventory density per brand at a glance.
-const BRANDS: Array<{ name: string; count: number }> = [
-  { name: 'Apple', count: 142 },
-  { name: 'Samsung', count: 98 },
-  { name: 'Xiaomi', count: 64 },
-  { name: 'Google', count: 22 },
-  { name: 'OnePlus', count: 18 },
-  { name: 'Huawei', count: 31 },
-];
+// Brand list comes from the server now (table-backed, admin-editable).
+// We used to hardcode it here with illustrative counts; that meant adding
+// a new brand required a code change + APK rebuild. Now the dashboard
+// can add brands and the next /brands fetch picks them up.
 // 'sealed' was retired from the UI — server still accepts it on legacy
 // listings, just not surfaced as a picker option anymore.
 const CONDITIONS: Condition[] = ['new', 'used', 'refurbished'];
@@ -69,6 +63,16 @@ export default function BrowseScreen({ navigation }: any) {
     }, 300);
     return () => clearTimeout(t);
   }, [searchText]);
+
+  // Brand catalog — server-side now (table-backed, admin-editable).
+  // staleTime 5min so we don't refetch on every focus; the dashboard
+  // adding a brand is rare enough that a few minutes of stale UI is fine.
+  const { data: brandsData } = useQuery({
+    queryKey: ['brands'],
+    queryFn: () => Brands.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const brands = brandsData || [];
 
   const {
     data, isLoading, refetch, isRefetching,
@@ -176,11 +180,11 @@ export default function BrowseScreen({ navigation }: any) {
           onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
         >
           <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
-          {BRANDS.map((b) => (
+          {brands.map((b) => (
             <Pill key={b.name} active={filters.brand === b.name}
               onPress={() => patch({ brand: filters.brand === b.name ? undefined : b.name })}
               count={b.count}>
-              {b.name}
+              {b.display_ar || b.name}
             </Pill>
           ))}
         </ScrollView>

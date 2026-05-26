@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { api, setStoredToken } from '../api';
 
 export function Login({ onAuth }: { onAuth: () => void }) {
-  const [u, setU] = useState('admin');
-  const [p, setP] = useState('admin');
+  // Pre-filled `admin/admin` defaults dropped — they made the seedAdmin
+  // default credentials too easy to forget about. Operator types them
+  // explicitly now.
+  const [u, setU] = useState('');
+  const [p, setP] = useState('');
   const [err, setErr] = useState('');
 
   async function submit(e: React.FormEvent) {

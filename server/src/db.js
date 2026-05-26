@@ -189,6 +189,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- Brand catalog. Moved out of the hardcoded BRANDS array in
+-- governorates.js so admin operators can add/rename/remove brands from
+-- the dashboard without an APK rebuild. 'name' is the canonical English
+-- identifier we store in phone_listings.brand; 'display_ar' is the
+-- optional Arabic label the mobile UI prefers when set.
+CREATE TABLE IF NOT EXISTS brands (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  display_ar TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_brands_position ON brands(position);
 `);
 
 // ─── migrations ──────────────────────────────────────────────────────
@@ -331,6 +345,33 @@ addColumnIfMissing('users', 'shop_image_edit_count INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'shop_lat REAL');
 addColumnIfMissing('users', 'shop_lng REAL');
 addColumnIfMissing('users', 'shop_location_edit_count INTEGER NOT NULL DEFAULT 0');
+
+// Soft-suspension marker. Non-null = user is banned from the API
+// (requireAuth() rejects them with 403 'user_suspended'). null = active.
+// Toggled from the admin dashboard's Users page.
+addColumnIfMissing('users', 'suspended_at INTEGER');
+
+// Seed the brands table on first boot. Mirrors the historical hardcoded
+// list from governorates.js so existing listings stay valid. Skips if
+// any brand row exists (so re-runs / restarts don't double-insert and
+// don't fight an admin-edited table).
+{
+  const have = db.prepare('SELECT COUNT(*) AS n FROM brands').get().n;
+  if (have === 0) {
+    const ins = db.prepare(
+      'INSERT INTO brands(name, display_ar, position, created_at) VALUES(?,?,?,?)',
+    );
+    const t = Date.now();
+    const SEED = [
+      'Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei',
+      'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Motorola', 'Other',
+    ];
+    db.transaction(() => {
+      SEED.forEach((name, i) => ins.run(name, null, i + 1, t));
+    })();
+    console.log(`[db] seeded ${SEED.length} brands`);
+  }
+}
 
 // seed default settings
 const setSetting = db.prepare('INSERT OR IGNORE INTO app_settings(key, value) VALUES(?,?)');

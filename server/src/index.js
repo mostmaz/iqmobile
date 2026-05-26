@@ -31,7 +31,10 @@ import reportsRoutes from './routes/reports.js';
 import notificationsRoutes from './routes/notifications.js';
 import eventsRoutes from './routes/events.js';
 import adminRoutes from './routes/admin/index.js';
+import brandsRoutes from './routes/brands.js';
 import { startExpirer } from './expirer.js';
+import path from 'node:path';
+import fs from 'node:fs';
 
 // Hard-fail on missing JWT_SECRET in production. The fallback in
 // auth.js is the literal string 'dev-secret' — anyone who reads our
@@ -97,6 +100,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
+app.use('/brands', brandsRoutes);
 // chats + messages + deals are split across these routers but share URL space
 app.use('/', chatsRoutes);   // mounts /listings/:id/chat, /chats, /chats/:id/messages, /messages/inbox, /quick-messages
 app.use('/', dealsRoutes);   // mounts /chats/:id/propose-price, /deals/:id/...
@@ -105,6 +109,21 @@ app.use('/reports', reportsRoutes);
 app.use('/notifications', notificationsRoutes);
 app.use('/events', eventsRoutes);
 app.use('/admin', adminRoutes);
+
+// Admin dashboard SPA — served from the same Express process at
+// /dashboard/*. The Vite build outputs to admin-web/dist relative to
+// the repo root; resolve that path from this file's CWD (server/) so
+// gradle/pm2 cwd quirks don't break it.
+const ADMIN_WEB_DIST = path.resolve('./../admin-web/dist');
+if (fs.existsSync(ADMIN_WEB_DIST)) {
+  app.use('/dashboard', express.static(ADMIN_WEB_DIST, { maxAge: '1h' }));
+  // SPA fallback: every /dashboard/* path serves index.html so deep
+  // links / browser refresh on a sub-route both work.
+  app.get('/dashboard/*', (_req, res) => res.sendFile(path.join(ADMIN_WEB_DIST, 'index.html')));
+  console.log('[iqmobile] admin dashboard mounted at /dashboard');
+} else {
+  console.log('[iqmobile] admin dashboard not built (admin-web/dist missing) — /dashboard 404s until built');
+}
 
 // Sentry's Express handler must come AFTER all routes + BEFORE our
 // catch-all. It captures any error that the app threw before bubbling
