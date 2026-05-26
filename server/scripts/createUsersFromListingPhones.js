@@ -58,32 +58,31 @@ function normalizePhone(input) {
 // All are *additional* to the normalizePhone length check.
 //   - Not starting with 07 → not an Iraqi mobile (landlines, foreign).
 //   - Length != 11 after normalisation → too short / too long.
-//   - Trailing 7+ digit sequence is a stride-1 ascending/descending run
-//     ("12345678", "98765432") → test placeholder data.
+//   - Contains "1234" or "2345" substring → typical keyboard-mash test
+//     data. Catches 07712345678, 07701234567, 07701234565.
+//   - Contains "12354" → catches the "1-2-3-5-4" variant test phone
+//     (07712354656). Yes it's a one-off pattern, but real Iraqi
+//     phones don't include "12354" in any common prefix block.
 function isLikelyTestOrInvalid(phone) {
   if (!phone) return true;
   if (!phone.startsWith('07')) return true;        // not a mobile
   if (phone.length !== 11) return true;             // Iraqi mobile is 11 digits
-  // Trailing-8 stride-1 detector: 12345678, 23456789, 87654321, …
-  const tail = phone.slice(-8);
-  if (/^\d{8}$/.test(tail)) {
-    let asc = true, desc = true;
-    for (let i = 1; i < tail.length; i++) {
-      const diff = tail.charCodeAt(i) - tail.charCodeAt(i - 1);
-      if (diff !== 1) asc = false;
-      if (diff !== -1) desc = false;
-    }
-    if (asc || desc) return true;
-  }
-  // Trailing-7 also (e.g. 07701234567)
-  const tail7 = phone.slice(-7);
-  if (/^\d{7}$/.test(tail7)) {
-    let asc = true;
-    for (let i = 1; i < tail7.length; i++) {
-      if (tail7.charCodeAt(i) - tail7.charCodeAt(i - 1) !== 1) { asc = false; break; }
-    }
-    if (asc) return true;
-  }
+  if (phone.includes('1234')) return true;
+  if (phone.includes('12354')) return true;
+  return false;
+}
+
+// Some listings carry a real-looking phone but the seller's
+// display_name is literally "ضيف" ("guest") — that's data from a
+// guest who opened the app, typed a placeholder phone, and posted
+// without filling in their name. Treat the row as test data on the
+// account-creation pass: we still keep the listing, just don't
+// generate an account from its phone.
+function isGuestSellerName(name) {
+  if (!name) return false;
+  const trimmed = name.trim();
+  if (trimmed === 'ضيف') return true;
+  if (/^ضيف\s/.test(trimmed)) return true;
   return false;
 }
 
@@ -143,9 +142,12 @@ const txn = db.transaction(() => {
     }
 
     const phone = normalizePhone(lst.contact_phone);
-    if (!phone || isLikelyTestOrInvalid(phone)) {
+    if (!phone || isLikelyTestOrInvalid(phone) || isGuestSellerName(lst.seller_name)) {
       stats.skipped_invalid_or_test++;
-      skipped.push({ id: lst.id, why: 'invalid/test', phone: lst.contact_phone, seller: lst.seller_name });
+      const why = !phone ? 'unparseable phone'
+                : isLikelyTestOrInvalid(phone) ? 'test-pattern phone'
+                : 'guest-named seller';
+      skipped.push({ id: lst.id, why, phone: lst.contact_phone, seller: lst.seller_name });
       continue;
     }
 
