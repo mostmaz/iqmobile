@@ -74,12 +74,27 @@ export default function ChatsListScreen({ navigation, route }: any) {
         </View>
       ) : null}
       <FlatList
-        data={data || []}
+        // Defensive filter: a chat where buyer_id === seller_id shouldn't
+        // exist (server rejects with cannot_chat_self), but if a zombie
+        // row ever slipped through it would render with the viewer's own
+        // name as the "counterparty" — confusing. Drop them on the floor.
+        data={(data || []).filter((c: any) => c.buyer_id !== c.seller_id)}
         keyExtractor={(it) => String(it.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => {
           const counter = user?.id === item.buyer_id ? item.seller : item.buyer;
+          // Name fallbacks, in order of preference:
+          //   1. counter.display_name (the happy path)
+          //   2. literal Arabic "مستخدم" (user) — better than the empty
+          //      "..." placeholder when the server returned an enriched
+          //      row but the other user's display_name happens to be
+          //      blank (legacy guests pre-display-name auto-naming).
+          const counterName = counter?.display_name?.trim() || ar.chat.fallbackUser;
+          const initial = counterName.charAt(0).toUpperCase();
+          const listingLabel = item.listing
+            ? `${item.listing.brand} ${item.listing.model} · ${fmtIQD(item.listing.asking_price)} د.ع`
+            : ar.chat.listingMissing;
           return (
             <TouchableOpacity
               activeOpacity={0.85}
@@ -94,15 +109,15 @@ export default function ChatsListScreen({ navigation, route }: any) {
                 {counter?.profile_image_path ? (
                   <Img source={{ uri: fullImageUrl(counter.profile_image_path) }} style={{ width: 44, height: 44 }} />
                 ) : (
-                  <Text style={{ fontFamily: fonts.arBold, color: theme.subtle }}>{counter?.display_name?.[0] || '?'}</Text>
+                  <Text style={{ fontFamily: fonts.arBold, color: theme.subtle }}>{initial}</Text>
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
-                  {counter?.display_name || '...'}
+                  {counterName}
                 </Text>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
-                  {item.listing ? `${item.listing.brand} ${item.listing.model} · ${fmtIQD(item.listing.asking_price)} د.ع` : '—'}
+                  {listingLabel}
                 </Text>
               </View>
               {/* Deal-status badge hidden for v1 — the propose-price /

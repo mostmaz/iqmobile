@@ -124,6 +124,21 @@ export interface NotificationRow {
   payload: any;
   read: boolean;
   created_at: number;
+  // Server-enriched summaries (see server/src/routes/notifications.js):
+  // chat_summary is populated for any notif whose payload carries a
+  // chat_id (chat.message + deal.* mostly). listing_summary is the
+  // fallback for kinds that ship a bare listing_id (listing.expired,
+  // rating.received, …). Either field can be null on rows where the
+  // related row was deleted between create + read.
+  chat_summary?: {
+    chat_id: number;
+    other_name: string | null;
+    listing_label: string | null;
+  } | null;
+  listing_summary?: {
+    brand: string;
+    model: string;
+  } | null;
 }
 
 export interface RatingRow {

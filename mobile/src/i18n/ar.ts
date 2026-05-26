@@ -104,6 +104,8 @@ export const ar = {
     empty: 'لا توجد محادثات بعد — تصفح إعلاناً وابدأ محادثة مع البائع.',
     emptyForListing: 'لا توجد محادثات لهذا الإعلان بعد.',
     newMessage: 'رسالة جديدة',
+    fallbackUser: 'مستخدم',
+    listingMissing: 'إعلان غير متاح',
   },
   deal: {
     proposed: 'اقتراح سعر',

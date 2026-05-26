@@ -148,6 +148,20 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // (`chatStarting` state lives above the loading early-return — see note there.)
   async function startChat() {
     if (chatStarting) return;
+    // Defense in depth: the Chat CTA is already hidden when `isMine` is
+    // true (see ContactRow gating below), but a stale render, a deep-link
+    // push tap, or any future code path that calls startChat without the
+    // !isMine guard would still hit the server, which returns 400
+    // cannot_chat_self. Catch it here so the user sees the Arabic
+    // explanation immediately instead of a generic network error.
+    // (Use optional-chained `data?.seller_id` because TypeScript can't
+    // narrow `data` here — startChat is hoisted above the loading
+    // early-return so the type at this site is still `Listing |
+    // undefined`. The runtime check is a no-op once data is loaded.)
+    if (user?.id && data?.seller_id && user.id === data.seller_id) {
+      Alert.alert('خطأ', (ar.errors as any).cannot_chat_self);
+      return;
+    }
     setChatStarting(true);
     try {
       const chat = await Chats.startForListing(id);

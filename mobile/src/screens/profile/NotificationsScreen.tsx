@@ -4,7 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
-import { Notifications } from '../../api/endpoints';
+import { Notifications, type NotificationRow } from '../../api/endpoints';
+import { navigationRef } from '../../navigation/ref';
 import { ar } from '../../i18n/ar';
 
 const KIND_LABEL: Record<string, string> = {
@@ -20,6 +21,22 @@ const KIND_LABEL: Record<string, string> = {
   'listing.expired': 'انتهى إعلانك',
 };
 
+// Compose the secondary line under the kind label: "<sender> · <listing>".
+// Falls back gracefully when the server enrichment came back empty
+// (chat deleted, listing removed, …) so the row never looks broken.
+function subline(item: NotificationRow): string | null {
+  const cs = item.chat_summary;
+  if (cs && (cs.other_name || cs.listing_label)) {
+    const parts: string[] = [];
+    if (cs.other_name) parts.push(cs.other_name);
+    if (cs.listing_label) parts.push(cs.listing_label);
+    return parts.join(' · ');
+  }
+  const ls = item.listing_summary;
+  if (ls) return `${ls.brand} ${ls.model}`;
+  return null;
+}
+
 export default function NotificationsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -33,6 +50,31 @@ export default function NotificationsScreen({ navigation }: any) {
     qc.invalidateQueries({ queryKey: ['notifications'] });
   }
 
+  // Route the tap to the most useful destination:
+  //   - chat.message (with chat_summary.chat_id) → open the Chat screen
+  //     inside the Chats tab using the global navigation ref. The
+  //     Chats tab is now visible (see navigation/index.tsx) — the
+  //     previous version of this screen used ListingDetail as a
+  //     fallback because the tab was hidden.
+  //   - anything else with a listing_id → ListingDetail in the local stack
+  //   - otherwise → just mark-read silently
+  function onTap(item: NotificationRow) {
+    Notifications.read(item.id);
+    const chatId = item.chat_summary?.chat_id || item.payload?.chat_id;
+    if (chatId) {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('Main', {
+          screen: 'Chats',
+          params: { screen: 'Chat', params: { id: chatId } },
+        });
+      }
+      return;
+    }
+    if (item.payload?.listing_id) {
+      navigation.navigate('ListingDetail', { id: item.payload.listing_id });
+    }
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header title={ar.profile.notifications} onBack={() => navigation.goBack()} right={
@@ -43,26 +85,32 @@ export default function NotificationsScreen({ navigation }: any) {
         keyExtractor={(it) => String(it.id)}
         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => {
-            Notifications.read(item.id);
-            // Chat tab is currently hidden (see navigation/index.tsx), so we
-            // can't navigate('Chat',…) — it would throw "action NAVIGATE was
-            // not handled" and crash the screen. For chat-message notifs we
-            // fall back to opening the related listing detail when the
-            // payload carries one; otherwise just mark-as-read silently.
-            if (item.payload?.listing_id) {
-              navigation.navigate('ListingDetail', { id: item.payload.listing_id });
-            }
-          }} style={{ padding: 12, marginBottom: 8, borderRadius: radius.lg, backgroundColor: item.read ? theme.surface : theme.accentSoft, borderWidth: 1, borderColor: item.read ? theme.line : theme.accent }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
-              {KIND_LABEL[item.kind] || item.kind}
-            </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, marginTop: 2, textAlign: 'right' }}>
-              {new Date(item.created_at).toLocaleString('ar')}
-            </Text>
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          const sub = subline(item);
+          return (
+            <TouchableOpacity
+              onPress={() => onTap(item)}
+              activeOpacity={0.85}
+              style={{
+                padding: 12, marginBottom: 8, borderRadius: radius.lg,
+                backgroundColor: item.read ? theme.surface : theme.accentSoft,
+                borderWidth: 1, borderColor: item.read ? theme.line : theme.accent,
+              }}
+            >
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
+                {KIND_LABEL[item.kind] || item.kind}
+              </Text>
+              {sub ? (
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.ink, marginTop: 3, textAlign: 'right' }}>
+                  {sub}
+                </Text>
+              ) : null}
+              <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, marginTop: 4, textAlign: 'right' }}>
+                {new Date(item.created_at).toLocaleString('ar')}
+              </Text>
+            </TouchableOpacity>
+          );
+        }}
         ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إشعارات</Text>}
       />
     </View>
