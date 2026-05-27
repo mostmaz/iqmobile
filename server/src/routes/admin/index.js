@@ -8,8 +8,24 @@ import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
-import { getBrandsWithCounts, invalidateBrandsCache } from '../../brands.js';
+import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
+import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow } from '../../importParse.js';
+
+// Iraqi phone normaliser — duplicated from routes/listings.js so the
+// admin quick-add accepts the same input shapes (+964, 00964, with
+// spaces/dashes, etc.) and persists the canonical 0XXXXXXXXXX form.
+// Kept local rather than exported to avoid cross-router coupling.
+function normalizeIraqiPhone(input) {
+  if (!input) return null;
+  let d = String(input).replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('00964')) d = d.slice(5);
+  else if (d.startsWith('964')) d = d.slice(3);
+  if (!d.startsWith('0')) d = '0' + d;
+  if (d.length < 10 || d.length > 12) return null;
+  return d;
+}
 
 const r = Router();
 
@@ -129,6 +145,83 @@ r.get('/listings', requireAdmin, (req, res) => {
   if (status) { sql += ' WHERE l.status=?'; params.push(status); }
   sql += ' ORDER BY l.created_at DESC LIMIT 200';
   res.json(db.prepare(sql).all(...params));
+});
+
+// Quick-add: create a listing from the admin dashboard. Find-or-create
+// the seller user keyed on phone (same logic as the import-approve
+// handler below) so the operator can type a phone + brand + model +
+// price and have the listing live in one POST. Used by the "Quick Add"
+// form on the admin Listings page.
+r.post('/listings', requireAdmin, (req, res) => {
+  const phone = normalizeIraqiPhone(req.body?.phone);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+
+  const brand = String(req.body?.brand || '').trim();
+  const model = String(req.body?.model || '').trim().slice(0, 80);
+  const askingPrice = Number(req.body?.asking_price);
+  const governorate = normalizeGovernorate(req.body?.governorate);
+  const condition = String(req.body?.condition || 'used').trim();
+  const storage = String(req.body?.storage || '').trim().slice(0, 16);
+  const color = String(req.body?.color || '').trim().slice(0, 30);
+  const city = String(req.body?.city || '').trim().slice(0, 60);
+  const description = String(req.body?.description || '').trim().slice(0, 2000);
+  const wa = req.body?.contact_whatsapp ? normalizeIraqiPhone(req.body.contact_whatsapp) : null;
+  const displayNameInput = String(req.body?.display_name || '').trim();
+
+  if (!brand || !model || !governorate) return res.status(400).json({ error: 'missing_fields' });
+  if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
+  if (!Number.isFinite(askingPrice) || askingPrice <= 0) return res.status(400).json({ error: 'bad_price' });
+  if (!['new', 'used', 'repaired', 'refurbished'].includes(condition)) return res.status(400).json({ error: 'bad_condition' });
+  if (req.body?.contact_whatsapp && !wa) return res.status(400).json({ error: 'bad_contact_whatsapp' });
+
+  // find-or-create the seller. Mirrors the /admin/import/:id/approve path.
+  let seller = db.prepare('SELECT * FROM users WHERE phone=?').get(phone);
+  if (!seller) {
+    const displayName = (displayNameInput || `مستخدم ${phone.slice(-4)}`).slice(0, 50);
+    const id = db.prepare(
+      `INSERT INTO users(phone, password_hash, display_name, governorate,
+                          seller_type, is_guest, created_at)
+       VALUES(?, '', ?, ?, 'individual', 0, ?)`,
+    ).run(phone, displayName, governorate, now()).lastInsertRowid;
+    seller = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  }
+
+  const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
+  const t = now();
+  const listingId = db.prepare(`
+    INSERT INTO phone_listings(
+      seller_id, brand, model, storage, color, condition,
+      battery_health, warranty_status, accessories_json, asking_price,
+      governorate, city, description, status,
+      contact_phone, contact_whatsapp,
+      created_at, expires_at, updated_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    seller.id, brand, model, storage || null, color || null, condition,
+    null, null, '[]', askingPrice,
+    governorate, city || null, description || null, 'active',
+    phone, wa,
+    t, t + TTL_MS, t,
+  ).lastInsertRowid;
+
+  res.json({ ok: true, listing_id: listingId, seller_id: seller.id });
+});
+
+// Lookup endpoint for the quick-add form's duplicate-phone indicator —
+// returns the count of non-removed listings the typed phone already owns,
+// plus a short list so the operator can verify before submitting.
+r.get('/listings/by-phone', requireAdmin, (req, res) => {
+  const phone = normalizeIraqiPhone(req.query?.phone);
+  if (!phone) return res.json({ count: 0, listings: [] });
+  const rows = db.prepare(`
+    SELECT l.id, l.brand, l.model, l.status, l.asking_price, l.created_at
+    FROM phone_listings l
+    JOIN users u ON u.id = l.seller_id
+    WHERE u.phone = ? AND l.status != 'removed'
+    ORDER BY l.created_at DESC
+    LIMIT 10
+  `).all(phone);
+  res.json({ count: rows.length, listings: rows });
 });
 
 r.patch('/listings/:id(\\d+)/remove', requireAdmin, (req, res) => {
