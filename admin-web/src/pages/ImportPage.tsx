@@ -27,7 +27,15 @@ type Parsed = {
   governorate: string | null;
   city: string | null;
   description: string;
+  // The original Facebook photo-viewer URLs from the scrape. They are
+  // NOT directly downloadable (FB requires auth + JS) — surfaced only as
+  // clickable links so the operator can open each post in a browser
+  // tab, save the images locally, and drop them onto the upload zone
+  // below. The actual images live in `uploaded_images`.
   image_urls: string[];
+  // Server-staged image paths (added by POST /admin/import/:id/images).
+  // Become listing_images rows on approve.
+  uploaded_images?: string[];
   warnings: Warning[];
 };
 type Job = {
@@ -143,6 +151,51 @@ export function ImportPage() {
     } finally { setBusyId(null); }
   }
 
+  // Upload one or more image files to a pending job. Each file goes
+  // through multer on the server; the response carries the updated
+  // full uploaded_images array, which we splat onto local state so the
+  // thumbnails appear without a full /queue refetch.
+  async function uploadImages(jobId: number, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setBusyId(jobId);
+    try {
+      const fd = new FormData();
+      for (let i = 0; i < files.length; i++) fd.append('images', files[i]);
+      const url = `${API_BASE}/admin/import/${jobId}/images`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${getToken()}` },
+        body: fd,
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || 'upload_failed');
+      setJobs((prev) => prev.map((job) => job.id === jobId
+        ? { ...job, parsed: { ...job.parsed, uploaded_images: j.images } }
+        : job));
+    } catch (e: any) {
+      alert(`Image upload failed: ${e?.message || 'error'}`);
+    } finally { setBusyId(null); }
+  }
+
+  async function removeImage(jobId: number, idx: number) {
+    try {
+      const url = `${API_BASE}/admin/import/${jobId}/images/${idx}`;
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error || 'delete_failed');
+      }
+      setJobs((prev) => prev.map((job) => job.id === jobId
+        ? { ...job, parsed: { ...job.parsed, uploaded_images: (job.parsed.uploaded_images || []).filter((_, i) => i !== idx) } }
+        : job));
+    } catch (e: any) {
+      alert(`Remove failed: ${e?.message || 'error'}`);
+    }
+  }
+
   async function reject(job: Job) {
     if (!confirm(`Reject job #${job.id}? It will not create a listing.`)) return;
     setBusyId(job.id);
@@ -253,6 +306,53 @@ export function ImportPage() {
               </div>
             )}
 
+            {/* Image manager — only for pending jobs. Shows already-uploaded
+                images as 60×60 thumbs with × remove buttons; a final
+                "+ drop here" tile opens the file picker (and accepts
+                drag-drop). The original FB photo-viewer URLs from the
+                CSV are linked below so the operator can open each in
+                a tab, save the JPGs, and drag them onto this zone. */}
+            {job.status === 'pending' && (
+              <div style={{ marginTop: 12, padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6 }}>
+                  Images attached: {v.uploaded_images?.length || 0}
+                  {v.image_urls?.length ? ` (CSV had ${v.image_urls.length} FB links — open + save below)` : ''}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(v.uploaded_images || []).map((url, i) => (
+                    <div key={`${url}-${i}`} style={{ position: 'relative', width: 60, height: 60 }}>
+                      <img src={`${API_BASE}${url}`} alt=""
+                           style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
+                      <button onClick={() => removeImage(job.id, i)}
+                              title="Remove"
+                              style={{
+                                position: 'absolute', top: -6, right: -6,
+                                width: 18, height: 18, borderRadius: 999,
+                                background: '#d34', color: '#fff', border: 'none',
+                                fontSize: 11, lineHeight: '16px', padding: 0,
+                                cursor: 'pointer',
+                              }}>×</button>
+                    </div>
+                  ))}
+                  <DropZone
+                    busy={busyId === job.id}
+                    onPick={(files) => uploadImages(job.id, files)}
+                  />
+                </div>
+                {v.image_urls?.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#888' }}>
+                    Source FB photos (open + save → drop above):{' '}
+                    {v.image_urls.map((u, i) => (
+                      <a key={i} href={u} target="_blank" rel="noreferrer"
+                         style={{ color: '#7aa', marginLeft: 4 }}>
+                        [{i + 1}]
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Raw FB description preview */}
             {v.description && (
               <div style={{ marginTop: 10, fontSize: 12, color: '#bbb', lineHeight: 1.6, direction: 'rtl', textAlign: 'right' }}>
@@ -296,6 +396,42 @@ function Field({ label, value, onChange, type = 'text' }:
       <span className="muted">{label}</span>
       <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
              style={{ padding: '6px 8px', fontSize: 13 }} />
+    </label>
+  );
+}
+
+// Drop-zone tile that doubles as a file-picker. The label-wrap-input
+// pattern is the simplest way to make a plain `<input type=file>`
+// match the styling around it without an extra Button + DOM-level
+// .click() trampoline.
+function DropZone({ onPick, busy }: { onPick: (files: FileList | null) => void; busy: boolean }) {
+  const [dragging, setDragging] = useState(false);
+  return (
+    <label
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragOver={(e) => { e.preventDefault(); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault(); setDragging(false);
+        if (busy) return;
+        onPick(e.dataTransfer?.files || null);
+      }}
+      style={{
+        width: 60, height: 60, borderRadius: 4,
+        border: '2px dashed ' + (dragging ? '#7aa' : '#555'),
+        background: dragging ? 'rgba(120,170,170,0.08)' : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        cursor: busy ? 'wait' : 'pointer',
+        color: '#888', fontSize: 22, lineHeight: 1,
+        opacity: busy ? 0.5 : 1,
+      }}
+      title="Click or drop images"
+    >
+      {busy ? '…' : '+'}
+      <input type="file" multiple accept="image/jpeg,image/png,image/webp"
+             style={{ display: 'none' }}
+             disabled={busy}
+             onChange={(e) => { onPick(e.target.files); (e.target as HTMLInputElement).value = ''; }} />
     </label>
   );
 }

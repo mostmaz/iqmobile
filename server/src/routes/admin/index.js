@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { pushTo } from '../../push.js';
@@ -16,6 +19,43 @@ const r = Router();
 const csvUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+// Disk multer for the per-job image upload. Same hygiene as
+// routes/chats.js + routes/listings.js — block SVG-renamed-to-jpeg
+// and any extension/MIME we don't recognise (stored-XSS class
+// vulnerability if the mobile <Image> ever falls back to a webview).
+const UPLOADS = path.resolve('./uploads');
+fs.mkdirSync(UPLOADS, { recursive: true });
+const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function pickSafeExt(originalname, mimetype) {
+  const ext = (path.extname(originalname || '') || '').toLowerCase();
+  if (ALLOWED_IMAGE_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  if (mimetype === 'image/png') return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  return '.jpg';
+}
+const imageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOADS),
+    filename: (_req, file, cb) => {
+      // Same filename shape as the Samsung seed staging
+      // (`lst_<16hex>.<ext>`) so all listing-image files share a
+      // recognisable prefix.
+      const ext = pickSafeExt(file.originalname, file.mimetype);
+      cb(null, 'lst_' + crypto.randomBytes(12).toString('hex') + ext);
+    },
+  }),
+  // 5 MB × 10 files per request matches what the mobile create-listing
+  // flow caps at. We expect the admin to drop 1-5 images per FB post.
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) return cb(new Error('not_image'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    if (ext && !ALLOWED_IMAGE_EXT.has(ext)) return cb(new Error('not_image'));
+    cb(null, true);
+  },
 });
 
 // Admin login uses the same rate limit as user login — five attempts per
@@ -486,6 +526,60 @@ r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
   res.json({ inserted: rows.length, source });
 });
 
+// Attach images to a pending job. Files are saved to uploads/ with the
+// same lst_<hex>.<ext> shape as listing images created via the mobile
+// flow; the paths are appended to parsed.uploaded_images on the job.
+// On approve the existing handler walks that array and inserts a row
+// per image into listing_images.
+//
+// We deliberately accept multipart on a pending job *without* writing
+// to listing_images directly — the job might still be edited/rejected,
+// and we don't want orphaned listing_images pointing at a phantom
+// listing_id. Storing the paths on the job lets them be discarded
+// trivially on reject (or kept as audit, see comment in reject route).
+r.post('/import/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 10), (req, res) => {
+  const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
+  // Clean up any files multer already wrote if the job lookup fails or
+  // the job isn't pending — otherwise we leak orphan files on disk.
+  const cleanupFiles = () => {
+    for (const f of req.files || []) {
+      try { fs.unlinkSync(f.path); } catch {}
+    }
+  };
+  if (!job) { cleanupFiles(); return res.status(404).json({ error: 'not_found' }); }
+  if (job.status !== 'pending') { cleanupFiles(); return res.status(400).json({ error: 'not_pending' }); }
+  const parsed = JSON.parse(job.parsed_json || '{}');
+  parsed.uploaded_images = parsed.uploaded_images || [];
+  for (const f of req.files || []) {
+    parsed.uploaded_images.push(`/uploads/${f.filename}`);
+  }
+  db.prepare('UPDATE import_jobs SET parsed_json=? WHERE id=?').run(JSON.stringify(parsed), job.id);
+  res.json({ ok: true, uploaded: (req.files || []).length, images: parsed.uploaded_images });
+});
+
+// Remove one staged image from a pending job by its array index.
+// Best-effort unlink — if the file is already gone (e.g. uploads/ got
+// wiped) we still update the JSON to keep the queue consistent.
+r.delete('/import/:id(\\d+)/images/:idx(\\d+)', requireAdmin, (req, res) => {
+  const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (job.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const parsed = JSON.parse(job.parsed_json || '{}');
+  const idx = parseInt(req.params.idx, 10);
+  if (!Array.isArray(parsed.uploaded_images) || idx < 0 || idx >= parsed.uploaded_images.length) {
+    return res.status(404).json({ error: 'image_not_found' });
+  }
+  const [removed] = parsed.uploaded_images.splice(idx, 1);
+  if (removed && removed.startsWith('/uploads/')) {
+    // path.resolve(removed) would escape the uploads dir; use basename
+    // join so a malicious path can't traverse out.
+    const filename = path.basename(removed);
+    try { fs.unlinkSync(path.join(UPLOADS, filename)); } catch {}
+  }
+  db.prepare('UPDATE import_jobs SET parsed_json=? WHERE id=?').run(JSON.stringify(parsed), job.id);
+  res.json({ ok: true });
+});
+
 r.get('/import/queue', requireAdmin, (req, res) => {
   const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
     ? req.query.status : 'pending';
@@ -585,9 +679,26 @@ r.post('/import/:id(\\d+)/approve', requireAdmin, (req, res) => {
     t, t + TTL_MS, t,
   ).lastInsertRowid;
 
+  // Attach any staged images uploaded via /admin/import/:id/images.
+  // The files are already on disk under uploads/; we just need to
+  // record one listing_images row per path with sequential position.
+  if (Array.isArray(p.uploaded_images) && p.uploaded_images.length > 0) {
+    const insImage = db.prepare(
+      'INSERT INTO listing_images(listing_id, image_path, position, created_at) VALUES(?,?,?,?)',
+    );
+    p.uploaded_images.forEach((imgPath, idx) => {
+      insImage.run(listingId, imgPath, idx, t);
+    });
+  }
+
   db.prepare('UPDATE import_jobs SET status=?, reviewed_at=?, listing_id=? WHERE id=?')
     .run('approved', t, listingId, job.id);
-  res.json({ ok: true, listing_id: listingId, seller_id: seller.id });
+  res.json({
+    ok: true,
+    listing_id: listingId,
+    seller_id: seller.id,
+    images_attached: (p.uploaded_images || []).length,
+  });
 });
 
 export default r;
