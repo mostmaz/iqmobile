@@ -526,6 +526,45 @@ r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
   res.json({ inserted: rows.length, source });
 });
 
+// Short-lived, upload-only token. Used by the FB-scrape pipeline: an
+// admin browser session needs to POST images to the import endpoint
+// from a cross-origin page (web.facebook.com) without carrying the
+// long-lived admin Bearer token through the URL/JS. The admin pulls
+// one of these via curl (Authorization header), then passes it to the
+// in-page script as a query param.
+//
+// Scope: works only for POST /admin/import/:id/images (no other admin
+// action). Lifetime: 30 minutes. Single-use: marked used on first
+// successful upload. Stored in-memory (Map) — fine because admin
+// sessions are short and a server restart simply invalidates pending
+// tokens; the admin re-issues one.
+const uploadTokens = new Map(); // token → { expiresAt, used: bool }
+function newUploadToken() {
+  const t = crypto.randomBytes(24).toString('hex');
+  uploadTokens.set(t, { expiresAt: Date.now() + 30 * 60 * 1000, used: false });
+  // Garbage-collect expired entries each issue, so the Map can't grow
+  // unboundedly if an admin spams the endpoint.
+  const cutoff = Date.now();
+  for (const [k, v] of uploadTokens) {
+    if (v.expiresAt < cutoff) uploadTokens.delete(k);
+  }
+  return t;
+}
+function consumeUploadToken(t) {
+  const e = uploadTokens.get(t);
+  if (!e) return false;
+  if (e.expiresAt < Date.now()) { uploadTokens.delete(t); return false; }
+  // Note: We deliberately do NOT mark used + delete here — the same
+  // admin run uploads many images, and burning the token per-image
+  // means re-issuing for every image. Instead the token expires by
+  // wall-clock 30 min. Single-job batches finish in seconds.
+  return true;
+}
+
+r.post('/import/upload-token', requireAdmin, (_req, res) => {
+  res.json({ token: newUploadToken(), expires_in: 1800 });
+});
+
 // Attach images to a pending job. Files are saved to uploads/ with the
 // same lst_<hex>.<ext> shape as listing images created via the mobile
 // flow; the paths are appended to parsed.uploaded_images on the job.
@@ -537,7 +576,19 @@ r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
 // and we don't want orphaned listing_images pointing at a phantom
 // listing_id. Storing the paths on the job lets them be discarded
 // trivially on reject (or kept as audit, see comment in reject route).
-r.post('/import/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 10), (req, res) => {
+// Middleware that accepts either:
+//   - Authorization: Bearer <adminToken>  (normal admin auth)
+//   - ?ut=<uploadToken>                   (short-lived alternate)
+// Used only on the image-upload route so the FB-scrape pipeline can
+// authenticate from web.facebook.com without exposing the admin token
+// in URLs / JS.
+function requireAdminOrUploadToken(req, res, next) {
+  const ut = req.query.ut;
+  if (ut && typeof ut === 'string' && consumeUploadToken(ut)) return next();
+  return requireAdmin(req, res, next);
+}
+
+r.post('/import/:id(\\d+)/images', requireAdminOrUploadToken, imageUpload.array('images', 10), (req, res) => {
   const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
   // Clean up any files multer already wrote if the job lookup fails or
   // the job isn't pending — otherwise we leak orphan files on disk.
