@@ -9,10 +9,11 @@ import { ReportsPage } from './pages/ReportsPage';
 import { DealsPage } from './pages/DealsPage';
 import { BypassAttemptsPage } from './pages/BypassAttemptsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ImportPage } from './pages/ImportPage';
 
 type Page =
   | 'overview' | 'brands' | 'listings' | 'users' | 'reports'
-  | 'deals' | 'bypass' | 'settings';
+  | 'deals' | 'bypass' | 'settings' | 'import';
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -29,6 +30,7 @@ export function App() {
     { key: 'users', label: 'Users' },
     { key: 'deals', label: 'Deals' },
     { key: 'reports', label: 'Reports' },
+    { key: 'import', label: 'Import' },
     { key: 'bypass', label: 'Bypass attempts' },
     { key: 'settings', label: 'Settings' },
   ];
@@ -53,6 +55,7 @@ export function App() {
       {page === 'users' && <UsersPage />}
       {page === 'reports' && <ReportsPage />}
       {page === 'deals' && <DealsPage />}
+      {page === 'import' && <ImportPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}
     </div>

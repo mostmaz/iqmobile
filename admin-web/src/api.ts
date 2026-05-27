@@ -12,7 +12,9 @@ export function setStoredToken(t: string | null) {
 // iqmobile.org/dashboard/, but the API lives at api.iqmobile.org — so we
 // switch to the absolute URL there. import.meta.env.PROD is true during
 // `npm run build` output and false for `npm run dev`.
-const API_BASE = import.meta.env.PROD ? 'https://api.iqmobile.org' : '';
+// Exported because the Import page needs it for the FormData upload
+// (which can't go through api() — that helper sets a JSON content-type).
+export const API_BASE = import.meta.env.PROD ? 'https://api.iqmobile.org' : '';
 
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {

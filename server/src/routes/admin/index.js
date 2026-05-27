@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import multer from 'multer';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache } from '../../brands.js';
+import { parseCsvRow } from '../../importParse.js';
 
 const r = Router();
+
+// In-memory multer for the Import upload — the CSV is parsed inline,
+// rows go straight into import_jobs as JSON. Cap at 5 MB; a single CSV
+// of 1000+ FB posts is typically well under 1 MB.
+const csvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Admin login uses the same rate limit as user login — five attempts per
 // minute. A leaked admin username without this would be brute-forceable
@@ -391,6 +401,193 @@ r.get('/overview', requireAdmin, (_req, res) => {
     recent_listings,
     recent_signups,
   });
+});
+
+// ─── import queue ─────────────────────────────────────────────────────
+//
+// Workflow:
+//   1. Admin uploads a CSV (Facebook-marketplace scrape format) via
+//      POST /admin/import/upload?source=<name>. Each row is parsed by
+//      importParse.parseCsvRow and inserted as a pending job.
+//   2. GET /admin/import/queue?status=pending returns the parsed jobs.
+//   3. Admin edits any field via PATCH /admin/import/:id.
+//   4. POST /admin/import/:id/approve creates the user (if needed,
+//      keyed on phone) and the phone_listings row, marks the job
+//      approved + links to listing_id.
+//   5. POST /admin/import/:id/reject marks the job rejected.
+//
+// Naïve CSV parser inline below — no quotes-with-embedded-newlines
+// support because the FB scrape format doesn't use them. Each line is
+// split on commas honouring "..." quoted fields. If we ever need full
+// RFC 4180 handling, swap in `csv-parse`.
+function csvParseLine(line) {
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQ) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') { inQ = false; }
+      else cur += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { out.push(cur); cur = ''; }
+      else cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+function csvParse(text) {
+  // Split on actual line breaks — but a quoted cell can contain newlines.
+  // We walk char-by-char to handle that. Reuses csvParseLine per row.
+  const rows = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') { inQ = !inQ; cur += c; }
+    else if (c === '\n' && !inQ) { rows.push(cur); cur = ''; }
+    else if (c === '\r' && !inQ) { /* skip */ }
+    else cur += c;
+  }
+  if (cur.trim()) rows.push(cur);
+  if (rows.length === 0) return [];
+  const headers = csvParseLine(rows[0]);
+  return rows.slice(1).map((line) => {
+    const cells = csvParseLine(line);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = cells[idx] ?? ''; });
+    return obj;
+  });
+}
+
+r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no_file' });
+  const source = (req.query.source || req.body?.source || 'csv').toString().slice(0, 80);
+  let text;
+  try { text = req.file.buffer.toString('utf8'); }
+  catch { return res.status(400).json({ error: 'not_utf8' }); }
+  let rows;
+  try { rows = csvParse(text); }
+  catch (e) { return res.status(400).json({ error: 'csv_parse_failed', detail: String(e?.message || e) }); }
+  if (rows.length === 0) return res.status(400).json({ error: 'empty_csv' });
+
+  const ins = db.prepare(
+    'INSERT INTO import_jobs(source, raw_json, parsed_json, status, created_at) VALUES(?,?,?,?,?)',
+  );
+  const t = now();
+  const txn = db.transaction(() => {
+    for (const row of rows) {
+      const parsed = parseCsvRow(row);
+      ins.run(source, JSON.stringify(row), JSON.stringify(parsed), 'pending', t);
+    }
+  });
+  txn();
+  res.json({ inserted: rows.length, source });
+});
+
+r.get('/import/queue', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
+    ? req.query.status : 'pending';
+  const rows = db.prepare(
+    `SELECT id, source, raw_json, parsed_json, status, notes, created_at,
+            reviewed_at, listing_id
+     FROM import_jobs WHERE status=? ORDER BY created_at DESC, id DESC LIMIT 500`,
+  ).all(status);
+  res.json(rows.map((row) => ({
+    ...row,
+    raw: JSON.parse(row.raw_json || '{}'),
+    parsed: JSON.parse(row.parsed_json || '{}'),
+  })));
+});
+
+r.patch('/import/:id(\\d+)', requireAdmin, (req, res) => {
+  const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (job.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  // Merge incoming fields into parsed_json. Whitelist keys so the
+  // operator can't sneak in arbitrary listing columns via this PATCH.
+  const allowed = ['phone', 'whatsapp', 'display_name', 'brand', 'model',
+                   'storage', 'asking_price', 'governorate', 'city',
+                   'description', 'image_urls', 'warnings'];
+  const cur = JSON.parse(job.parsed_json || '{}');
+  for (const k of allowed) {
+    if (k in (req.body || {})) cur[k] = req.body[k];
+  }
+  db.prepare('UPDATE import_jobs SET parsed_json=? WHERE id=?')
+    .run(JSON.stringify(cur), job.id);
+  res.json({ ok: true, parsed: cur });
+});
+
+r.post('/import/:id(\\d+)/reject', requireAdmin, (req, res) => {
+  const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (job.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const notes = (req.body?.notes || '').toString().slice(0, 500);
+  db.prepare('UPDATE import_jobs SET status=?, notes=?, reviewed_at=? WHERE id=?')
+    .run('rejected', notes || null, now(), job.id);
+  res.json({ ok: true });
+});
+
+r.post('/import/:id(\\d+)/approve', requireAdmin, (req, res) => {
+  const job = db.prepare('SELECT * FROM import_jobs WHERE id=?').get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'not_found' });
+  if (job.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const p = JSON.parse(job.parsed_json || '{}');
+
+  // Validate the minimum required fields so we don't approve junk into
+  // phone_listings. The admin must fix the row first.
+  const missing = [];
+  if (!p.phone) missing.push('phone');
+  if (!p.brand) missing.push('brand');
+  if (!p.model) missing.push('model');
+  if (!Number.isInteger(p.asking_price) || p.asking_price <= 0) missing.push('asking_price');
+  if (!p.governorate) missing.push('governorate');
+  if (missing.length) return res.status(400).json({ error: 'missing_required', missing });
+
+  // find-or-create the seller user keyed on phone (same logic as the
+  // createUsersFromListingPhones.js migration). If a user with this
+  // phone exists, reuse them; if not, create a non-guest account with
+  // no password (phone-login is the only entry — same shape as the
+  // batch-migrated accounts).
+  let seller = db.prepare('SELECT * FROM users WHERE phone=?').get(p.phone);
+  if (!seller) {
+    const displayName = (p.display_name && p.display_name.trim())
+      || `مستخدم ${p.phone.slice(-4)}`;
+    const id = db.prepare(
+      `INSERT INTO users(phone, password_hash, display_name, governorate,
+                          seller_type, is_guest, created_at)
+       VALUES(?, '', ?, ?, 'individual', 0, ?)`,
+    ).run(p.phone, displayName.slice(0, 50), p.governorate, now()).lastInsertRowid;
+    seller = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  }
+
+  // Insert the listing. We don't have condition/battery_health from the
+  // CSV — default condition='used' (most-common case for FB resale) and
+  // leave the other detail fields null. The admin can edit the listing
+  // later via the Listings page if needed.
+  const TTL_MS = 730 * 24 * 60 * 60 * 1000; // 2 years, same as Samsung seed
+  const t = now();
+  const insListing = db.prepare(`
+    INSERT INTO phone_listings(
+      seller_id, brand, model, storage, color, condition,
+      battery_health, warranty_status, accessories_json, asking_price,
+      governorate, city, description, status,
+      contact_phone, contact_whatsapp,
+      created_at, expires_at, updated_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `);
+  const listingId = insListing.run(
+    seller.id, p.brand, p.model, p.storage || null, null, 'used',
+    null, null, '[]', p.asking_price,
+    p.governorate, p.city || null, (p.description || '').slice(0, 4000), 'active',
+    p.phone, p.whatsapp || null,
+    t, t + TTL_MS, t,
+  ).lastInsertRowid;
+
+  db.prepare('UPDATE import_jobs SET status=?, reviewed_at=?, listing_id=? WHERE id=?')
+    .run('approved', t, listingId, job.id);
+  res.json({ ok: true, listing_id: listingId, seller_id: seller.id });
 });
 
 export default r;

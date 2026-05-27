@@ -203,6 +203,33 @@ CREATE TABLE IF NOT EXISTS brands (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_brands_position ON brands(position);
+
+-- Listing-import staging queue. The admin uploads a CSV of scraped FB
+-- posts; each row lands here as a pending job with a best-effort parse
+-- (phone/price/storage/brand). The dashboard's Import page lets an
+-- operator review, edit any field inline, then Approve (creates a real
+-- phone_listings row + finds-or-creates the seller user keyed on
+-- contact_phone) or Reject (just marks done, no listing). Avoids the
+-- previous pattern of writing one-off seed scripts per CSV and lets us
+-- bring messy Facebook data into a real moderation flow.
+--   raw_json:    the original CSV row, JSON-encoded — kept for audit
+--   parsed_json: {phone, brand, model, storage, asking_price,
+--                 governorate, city, description, display_name,
+--                 image_urls[]}
+--   status:      pending | approved | rejected
+--   listing_id:  set on approve → links to the phone_listings row
+CREATE TABLE IF NOT EXISTS import_jobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL,
+  raw_json TEXT NOT NULL,
+  parsed_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  notes TEXT,
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER,
+  listing_id INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status, created_at DESC);
 `);
 
 // ─── migrations ──────────────────────────────────────────────────────
