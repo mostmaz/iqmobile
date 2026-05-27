@@ -72,6 +72,17 @@ const CORS_ORIGINS = new Set([
   'http://localhost:4000',
   'http://localhost:8081',
   'http://localhost:19006',
+  // Used by the Import-Queue image scraper: an admin opens a Facebook
+  // photo URL in their already-logged-in Chrome (via the Claude-in-
+  // Chrome extension), and the injected script POSTs the rendered
+  // image bytes directly to /admin/import/:id/images. Safe to allow
+  // because dashboard auth is Bearer-token-only — the browser does
+  // NOT auto-attach Authorization headers on cross-origin requests,
+  // so a malicious FB page can't replay the admin token even with
+  // CORS open. Only a script that explicitly carries the token (i.e.
+  // our injected one) can authenticate.
+  'https://web.facebook.com',
+  'https://www.facebook.com',
 ]);
 app.use(cors({
   origin(origin, cb) {
