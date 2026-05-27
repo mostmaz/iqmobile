@@ -254,6 +254,29 @@ r.get('/listings/by-phone', requireAdmin, (req, res) => {
   res.json({ count: rows.length, listings: rows });
 });
 
+// Batch soft-delete. Body: { ids: [number, ...] }. Returns how many
+// rows actually changed (some ids may have already been status='removed'
+// or never existed — server doesn't fail the whole batch for those).
+// Wrapped in a transaction so a typo on row 50 doesn't leave 49 already
+// updated.
+r.patch('/listings/remove-batch', requireAdmin, (req, res) => {
+  const raw = Array.isArray(req.body?.ids) ? req.body.ids : null;
+  if (!raw || raw.length === 0) return res.status(400).json({ error: 'missing_ids' });
+  // Defensive coercion — accept stringy numbers from JSON, drop anything
+  // that doesn't look like a positive integer. Caps batch at 500 so a
+  // runaway client can't hammer one giant statement.
+  const ids = [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
+  if (ids.length === 0) return res.status(400).json({ error: 'no_valid_ids' });
+  const t = now();
+  const placeholders = ids.map(() => '?').join(',');
+  const stmt = db.prepare(
+    `UPDATE phone_listings SET status='removed', updated_at=?
+     WHERE id IN (${placeholders}) AND status != 'removed'`,
+  );
+  const result = db.transaction(() => stmt.run(t, ...ids))();
+  res.json({ ok: true, removed: result.changes });
+});
+
 r.patch('/listings/:id(\\d+)/remove', requireAdmin, (req, res) => {
   // Return 404 when the listing doesn't exist so the admin UI doesn't
   // silently 200 on probes or fat-finger IDs. Matches the

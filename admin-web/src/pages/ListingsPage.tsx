@@ -100,12 +100,17 @@ const EMPTY_FORM = {
 export function ListingsPage() {
   const [rows, setRows] = useState<Listing[]>([]);
   const [status, setStatus] = useState<string>('');
+  // Per-id checkbox state. Cleared when the filter changes (otherwise
+  // selections "carry over" silently to a new view, which is confusing
+  // when the user then clicks Remove and rows they can't see also go).
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [removingBatch, setRemovingBatch] = useState(false);
 
   async function load() {
     const r = await api<Listing[]>(`/admin/listings${status ? `?status=${status}` : ''}`);
     setRows(r);
   }
-  useEffect(() => { load(); }, [status]);
+  useEffect(() => { load(); setSelected(new Set()); }, [status]);
 
   async function remove(id: number) {
     if (!confirm('Remove this listing?')) return;
@@ -113,12 +118,65 @@ export function ListingsPage() {
     load();
   }
 
+  // Rows visible in the current view that aren't already removed —
+  // those are the only ones the batch action can act on (the server
+  // also filters but we mirror it here so the count + select-all are
+  // honest about what's actually deletable).
+  const selectable = useMemo(
+    () => rows.filter((r) => r.status !== 'removed'),
+    [rows],
+  );
+  const selectableIds = useMemo(() => selectable.map((r) => r.id), [selectable]);
+  const allSelected = selectable.length > 0 && selectable.every((r) => selected.has(r.id));
+  const someSelected = selectable.some((r) => selected.has(r.id));
+
+  function toggleOne(id: number) {
+    setSelected((cur) => {
+      const next = new Set(cur);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelected((cur) => {
+      if (allSelected) return new Set();
+      const next = new Set(cur);
+      selectableIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }
+
+  async function removeSelected() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!confirm(`Soft-delete ${ids.length} listing(s)? Sets status='removed'. Reversible via DB.`)) return;
+    setRemovingBatch(true);
+    try {
+      const r = await api<{ removed: number }>('/admin/listings/remove-batch', {
+        method: 'PATCH',
+        body: JSON.stringify({ ids }),
+      });
+      setSelected(new Set());
+      await load();
+      // Quick toast — no full-page alert spam when the count matches.
+      // Only surface the mismatch case (someone else removed a row
+      // between the load and the click, or an id was already-removed).
+      if (r.removed !== ids.length) {
+        alert(`Removed ${r.removed} of ${ids.length}. ${ids.length - r.removed} were already removed or no longer exist.`);
+      }
+    } catch (e: any) {
+      alert(`Batch remove failed: ${e?.message || 'unknown'}`);
+    } finally {
+      setRemovingBatch(false);
+    }
+  }
+
   return (
     <div>
       <QuickAddCard onCreated={load} />
       <div className="card">
         <h2>Listings</h2>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           {['', 'active', 'reserved', 'sold', 'expired', 'removed'].map((s) => (
             <button key={s || 'all'}
               className={status === s ? '' : 'secondary'}
@@ -126,16 +184,54 @@ export function ListingsPage() {
               {s || 'All'}
             </button>
           ))}
+          {/* Batch action — only visible when at least one row is ticked.
+              Disabled while a request is in flight so a double-click
+              doesn't fire two PATCHes (the second one would just hit
+              the WHERE status != 'removed' guard and no-op, but it's
+              still a spurious round-trip). */}
+          {someSelected ? (
+            <button
+              className="danger"
+              onClick={removeSelected}
+              disabled={removingBatch}
+              style={{ marginInlineStart: 'auto' }}
+            >
+              {removingBatch ? 'Removing…' : `Remove ${selected.size} selected`}
+            </button>
+          ) : null}
         </div>
         <table>
           <thead>
             <tr>
+              <th style={{ width: 28 }}>
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  // The DOM `indeterminate` property is not exposed via
+                  // JSX attributes — ref callback is the canonical way
+                  // to drive it. Set true when some but not all visible
+                  // selectable rows are ticked.
+                  ref={(el) => { if (el) el.indeterminate = !allSelected && someSelected; }}
+                  onChange={toggleAll}
+                  disabled={selectable.length === 0}
+                  title={selectable.length ? 'Select all on this page' : 'Nothing to select'}
+                />
+              </th>
               <th>ID</th><th>Phone</th><th>Seller</th><th>Price</th><th>Loc</th><th>Status</th><th>When</th><th></th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
+                <td>
+                  {r.status !== 'removed' ? (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleOne(r.id)}
+                    />
+                  ) : null}
+                </td>
                 <td>{r.id}</td>
                 <td>{r.brand} {r.model}</td>
                 <td>{r.seller_name}<br/><small style={{ color: '#9ca3af' }}>{r.seller_phone}</small></td>
