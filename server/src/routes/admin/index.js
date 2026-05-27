@@ -207,6 +207,36 @@ r.post('/listings', requireAdmin, (req, res) => {
   res.json({ ok: true, listing_id: listingId, seller_id: seller.id });
 });
 
+// Attach images to a listing created via Quick Add. The admin web
+// compresses each photo client-side (canvas → JPEG q=0.8 @ max 1600px)
+// before uploading, so the server only needs to validate MIME + write
+// to disk + add listing_images rows. Per-position is appended at the
+// end of any existing images. Returns the full list back so the UI can
+// confirm what landed.
+r.post('/listings/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 10), (req, res) => {
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  // Multer may have already written files before we know the listing
+  // doesn't exist — clean them up so we don't leak orphans on the
+  // disk that uploads/ lives on.
+  const cleanup = () => { for (const f of req.files || []) { try { fs.unlinkSync(f.path); } catch {} } };
+  if (!listing) { cleanup(); return res.status(404).json({ error: 'not_found' }); }
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'no_files' });
+
+  const t = now();
+  const startPos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM listing_images WHERE listing_id=?')
+    .get(listing.id).next;
+  const ins = db.prepare(
+    'INSERT INTO listing_images(listing_id, image_path, position, created_at) VALUES(?,?,?,?)',
+  );
+  const added = [];
+  req.files.forEach((f, idx) => {
+    const imagePath = `/uploads/${f.filename}`;
+    ins.run(listing.id, imagePath, startPos + idx, t);
+    added.push(imagePath);
+  });
+  res.json({ ok: true, added });
+});
+
 // Lookup endpoint for the quick-add form's duplicate-phone indicator —
 // returns the count of non-removed listings the typed phone already owns,
 // plus a short list so the operator can verify before submitting.
