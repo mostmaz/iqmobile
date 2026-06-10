@@ -17,14 +17,24 @@ export function ListingCard({
   // Status badge: ink for "reserved" (neutral), accent for "sold" (final).
   const statusBg = listing.status === 'sold' ? theme.accent : theme.ink;
   const showStatus = listing.status !== 'active';
+  // Horizontal card: image on the leading (physical-left) side, details on
+  // the right. Yoga runs LTR app-wide (see App.tsx), so plain `row` puts the
+  // first child on the left. Image fills the left column edge-to-edge
+  // (contentFit="cover") for a tight thumbnail.
+  const imgW = compact ? 104 : 128;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
       ...shadowSoft, overflow: 'hidden', marginBottom: 12,
+      flexDirection: 'row', minHeight: compact ? 116 : 152,
     }}>
-      <View style={{ height: compact ? 132 : 180, backgroundColor: theme.chipBg }}>
+      {/* Image — leading (left) column. The column stretches to the card
+          height (row alignItems defaults to 'stretch'); the image is
+          absolutely positioned so it fills that height instead of imposing
+          its own intrinsic pixel size (which would blow the card up). */}
+      <View style={{ width: imgW, backgroundColor: theme.chipBg }}>
         {cover ? (
-          <Img source={{ uri: fullImageUrl(cover) }} style={{ width: '100%', height: '100%' }} />
+          <Img source={{ uri: fullImageUrl(cover) }} contentFit="cover" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: theme.subtle, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4 }}>
@@ -32,37 +42,36 @@ export function ListingCard({
             </Text>
           </View>
         )}
-        {/* Save heart — top-start. The unified-account redesign retired the
-            seller-type pill that used to occupy this corner. */}
+        {/* Save heart — top-left over the image. */}
         {onToggleSave ? (
           <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); onToggleSave(); }} style={{
-            position: 'absolute', top: 10, left: 10,
-            width: 36, height: 36, borderRadius: 999,
+            position: 'absolute', top: 8, left: 8,
+            width: 32, height: 32, borderRadius: 999,
             backgroundColor: saved ? 'rgba(255,255,255,0.92)' : 'rgba(20,16,12,0.55)',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <Text style={{ color: saved ? theme.accent : '#fff', fontSize: 18 }}>{saved ? '♥' : '♡'}</Text>
+            <Text style={{ color: saved ? theme.accent : '#fff', fontSize: 16 }}>{saved ? '♥' : '♡'}</Text>
           </TouchableOpacity>
         ) : null}
         {showStatus ? (
           <View style={{
-            position: 'absolute', top: 10, right: 10,
+            position: 'absolute', top: 8, right: 8,
             backgroundColor: statusBg,
-            paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999,
+            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
           }}>
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4 }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 }}>
               {(ar.listing as any)[listing.status]}
             </Text>
           </View>
         ) : null}
       </View>
-      <View style={{ padding: compact ? 12 : 14 }}>
+
+      {/* Details — trailing (right) column */}
+      <View style={{ flex: 1, padding: compact ? 11 : 13, justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right' }} numberOfLines={1}>
-              {listing.brand} {listing.model}
-            </Text>
-          </View>
+          <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right', flex: 1, minWidth: 0 }} numberOfLines={1}>
+            {listing.brand} {listing.model}
+          </Text>
           <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: theme.subtle, letterSpacing: 0.6 }}>
             {fmtRelativeTime(listing.created_at)}
           </Text>
@@ -76,14 +85,14 @@ export function ListingCard({
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 6 : 10 }}>
-          <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 17 : 20, color: theme.accentDeep, letterSpacing: -0.3 }}>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 6 : 10, gap: 8 }}>
+          <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3 }}>
             {fmtIQD(listing.asking_price)}
             <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
           </Text>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
             <IconPin size={12} color={theme.subtle} />
-            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>
               {arOf(listing.governorate)}{!compact && listing.city ? ` · ${listing.city}` : ''}
             </Text>
           </View>
@@ -98,7 +107,7 @@ export function ListingCard({
             <Text style={{ fontFamily: fonts.ltr, fontSize: 11.5, color: theme.subtle }}>
               {Number(listing.seller.rating_avg).toFixed(1)} · {listing.seller.rating_count}
             </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>· {listing.seller.display_name}</Text>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flexShrink: 1 }}>· {listing.seller.display_name}</Text>
           </View>
         ) : null}
       </View>

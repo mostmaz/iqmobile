@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  Alert, Dimensions,
+  Alert, Dimensions, Modal,
 } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useTrack } from '../../analytics/track';
 
 const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 
 export default function ListingDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
@@ -27,6 +28,8 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const track = useTrack();
   const { user } = useAuth();
   const [imgIdx, setImgIdx] = useState(0);
+  // Full-screen image viewer: holds the tapped image index, or null when closed.
+  const [viewerIdx, setViewerIdx] = useState<number | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -209,8 +212,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 <Text style={{ color: theme.subtle, fontFamily: fonts.ar }}>لا توجد صور</Text>
               </View>
             ) : (
-              (data.images || []).map((im) => (
-                <Img key={im.id} source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: 320 }} />
+              (data.images || []).map((im, i) => (
+                <TouchableOpacity key={im.id} activeOpacity={1} onPress={() => setViewerIdx(i)}>
+                  <Img source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: 320 }} />
+                </TouchableOpacity>
               ))
             )}
           </ScrollView>
@@ -509,6 +514,15 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           )}
         </View>
       </ScrollView>
+
+      {/* Tap any gallery photo to open it full-screen (swipe between, tap ✕). */}
+      {viewerIdx != null && (data.images?.length || 0) > 0 ? (
+        <FullScreenGallery
+          images={data.images!}
+          startIndex={viewerIdx}
+          onClose={() => setViewerIdx(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -620,5 +634,70 @@ function FloatBtn({ children, onPress, active }: { children: React.ReactNode; on
     }}>
       {children}
     </TouchableOpacity>
+  );
+}
+
+// Full-screen, swipeable image viewer. Opens on tapping a gallery photo,
+// renders each image with contentFit="contain" (nothing cropped) on a near-
+// black backdrop, pages horizontally, and closes via the ✕ or hardware back.
+function FullScreenGallery({
+  images, startIndex, onClose,
+}: { images: { id: any; image_path: string }[]; startIndex: number; onClose: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [idx, setIdx] = useState(startIndex);
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  // Jump to the tapped image on open. `contentOffset` covers iOS; the
+  // deferred scrollTo covers Android, where the initial contentOffset on a
+  // paging ScrollView is unreliable.
+  useEffect(() => {
+    const t = setTimeout(() => scrollRef.current?.scrollTo({ x: startIndex * SCREEN_W, animated: false }), 0);
+    return () => clearTimeout(t);
+  }, [startIndex]);
+
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.97)' }}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+          contentOffset={{ x: startIndex * SCREEN_W, y: 0 }}
+          onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
+        >
+          {images.map((im) => (
+            <View key={im.id} style={{ width: SCREEN_W, height: SCREEN_H, alignItems: 'center', justifyContent: 'center' }}>
+              <Img source={{ uri: fullImageUrl(im.image_path) }} contentFit="contain" style={{ width: SCREEN_W, height: SCREEN_H }} />
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Close */}
+        <TouchableOpacity
+          onPress={onClose}
+          activeOpacity={0.85}
+          style={{
+            position: 'absolute', top: insets.top + 8, left: 14,
+            width: 40, height: 40, borderRadius: 999,
+            backgroundColor: 'rgba(255,255,255,0.18)',
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 20, lineHeight: 22, fontWeight: '600' }}>✕</Text>
+        </TouchableOpacity>
+
+        {/* Image counter */}
+        {images.length > 1 ? (
+          <View style={{
+            position: 'absolute', top: insets.top + 14, right: 16,
+            paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+            backgroundColor: 'rgba(255,255,255,0.18)',
+          }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.ltr, fontSize: 13, fontWeight: '600' }}>
+              {idx + 1} / {images.length}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
   );
 }
