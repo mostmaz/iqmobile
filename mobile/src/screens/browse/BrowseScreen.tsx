@@ -8,7 +8,7 @@ import { Btn, Input, Pill } from '../../components/ui';
 import { IconSearch, IconFilter, IconBell, IconCheck, IconPlus, IconMinus } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { Listings, Brands, type BrowseFilters, type Condition } from '../../api/endpoints';
+import { Listings, Brands, type BrowseFilters, type Condition, type BrandRow } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { GOV_AR_LIST, GOV_AR_TO_EN } from '../../lib/governorates';
 
@@ -73,6 +73,29 @@ export default function BrowseScreen({ navigation }: any) {
     staleTime: 5 * 60 * 1000,
   });
   const brands = brandsData || [];
+
+  // Brand rail order: a curated head (apple → tecno), then the remaining
+  // brands in their server order, then the "Other" catch-all last. ("الكل"
+  // is rendered separately as the first pill.) Head brands missing from the
+  // server list are simply skipped — only existing brands ever render.
+  const sortedBrands = useMemo(() => {
+    const HEAD = ['apple', 'samsung', 'honor', 'xiaomi', 'realme', 'infinix', 'tecno'];
+    const isOther = (b: BrandRow) => {
+      const n = b.name.trim().toLowerCase();
+      const a = (b.display_ar || '').trim();
+      return n === 'other' || n === 'others' || a === 'أخرى' || a === 'اخرى' || a === 'آخر';
+    };
+    const rank = (b: BrandRow) => {
+      if (isOther(b)) return 9999;                       // catch-all goes last
+      const i = HEAD.indexOf(b.name.trim().toLowerCase());
+      return i === -1 ? 500 : i;                         // head first, rest in the middle
+    };
+    return [...brands].sort((a, b) => {
+      const d = rank(a) - rank(b);
+      // Ties (the "rest" bucket) keep their server position order.
+      return d !== 0 ? d : (a.position ?? 0) - (b.position ?? 0);
+    });
+  }, [brands]);
 
   const {
     data, isLoading, refetch, isRefetching,
@@ -180,7 +203,7 @@ export default function BrowseScreen({ navigation }: any) {
           onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
         >
           <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
-          {brands.map((b) => (
+          {sortedBrands.map((b) => (
             <Pill key={b.name} active={filters.brand === b.name}
               onPress={() => patch({ brand: filters.brand === b.name ? undefined : b.name })}
               count={b.count}>
