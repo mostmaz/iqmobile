@@ -8,8 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
 import { Header, FieldLabel, Btn } from '../../components/ui';
-import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconStar, IconTag } from '../../components/icons';
-import { Auth, Listings, Deals } from '../../api/endpoints';
+import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag } from '../../components/icons';
+import { Auth, Listings } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
 import { arOf } from '../../lib/governorates';
@@ -18,14 +18,11 @@ import { ar } from '../../i18n/ar';
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { user, logout, refresh } = useAuth();
-  const [stats, setStats] = useState({ listings: 0, deals: 0 });
+  const [stats, setStats] = useState({ listings: 0 });
 
   useEffect(() => {
     if (!user) return;
-    Promise.all([
-      Listings.mine('all').then((rows) => rows.length).catch(() => 0),
-      Deals.mine(undefined, 'seller_confirmed').then((rows) => rows.length).catch(() => 0),
-    ]).then(([listings, deals]) => setStats({ listings, deals }));
+    Listings.mine('all').then((rows) => setStats({ listings: rows.length })).catch(() => {});
   }, [user]);
 
   // Logged-out state. Happens after explicit logout if the user cancels the
@@ -69,7 +66,6 @@ export default function ProfileScreen({ navigation }: any) {
 
   const items: { Icon: any; label: string; onPress: () => void }[] = [
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
-    { Icon: IconStar, label: ar.profile.deals, onPress: () => navigation.navigate('Deals') },
     { Icon: IconBell, label: ar.profile.notifications, onPress: () => navigation.navigate('Notifications') },
     { Icon: IconID, label: ar.profile.edit, onPress: () => navigation.navigate('EditProfile') },
     { Icon: IconShield, label: 'كيف يعمل التطبيق', onPress: () => navigation.navigate('HowItWorks') },
@@ -105,7 +101,6 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={{ flexDirection: 'row-reverse', gap: 8, marginBottom: 14 }}>
           <StatTile value={String(stats.listings)} label="إعلان" />
-          <StatTile value={String(stats.deals)} label="صفقة" />
           <StatTile
             // Guard against legacy/malformed user rows where rating_count>0
             // but rating_avg is null — that combo previously crashed the
@@ -116,6 +111,36 @@ export default function ProfileScreen({ navigation }: any) {
             label={`${user.rating_count} تقييم`}
           />
         </View>
+
+        {/* Guest banner — guests see a prominent "sign in" CTA so they
+            can upgrade their auto-provisioned session to a real account
+            without hunting for it. Hidden for real users (they already
+            see the logout/delete row below). Navigates via Root nav
+            since AuthGate lives at the root (Main / AuthGate) level. */}
+        {user.is_guest ? (
+          <TouchableOpacity
+            onPress={() => navigation.getParent()?.getParent()?.navigate('AuthGate')}
+            activeOpacity={0.85}
+            style={{
+              backgroundColor: theme.accent, borderRadius: radius.lg,
+              paddingHorizontal: 14, paddingVertical: 14, marginBottom: 14,
+              flexDirection: 'row-reverse', alignItems: 'center', gap: 12,
+            }}
+          >
+            <IconID size={20} color="#fff" sw={1.8} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff', fontWeight: '700', textAlign: 'right' }}>
+                {ar.auth.login}
+              </Text>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2, textAlign: 'right' }}>
+                سجّل دخولك للاحتفاظ بإعلاناتك ومحادثاتك.
+              </Text>
+            </View>
+            <View style={{ transform: [{ scaleX: -1 }] }}>
+              <IconChevronLeft size={14} color="#fff" sw={2} />
+            </View>
+          </TouchableOpacity>
+        ) : null}
 
         <FieldLabel>القوائم</FieldLabel>
         {items.map((s, i) => (
