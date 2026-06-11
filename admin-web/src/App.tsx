@@ -3,6 +3,7 @@ import { Login } from './auth/Login';
 import { getToken, setStoredToken } from './api';
 import { OverviewPage } from './pages/OverviewPage';
 import { BrandsPage } from './pages/BrandsPage';
+import { BannersPage } from './pages/BannersPage';
 import { ListingsPage } from './pages/ListingsPage';
 import { UsersPage } from './pages/UsersPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -12,7 +13,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ImportPage } from './pages/ImportPage';
 
 type Page =
-  | 'overview' | 'brands' | 'listings' | 'users' | 'reports'
+  | 'overview' | 'brands' | 'banners' | 'listings' | 'users' | 'reports'
   | 'deals' | 'bypass' | 'settings' | 'import';
 
 export function App() {
@@ -26,6 +27,7 @@ export function App() {
   const NAV: Array<{ key: Page; label: string }> = [
     { key: 'overview', label: 'Overview' },
     { key: 'brands', label: 'Brands' },
+    { key: 'banners', label: 'Banners' },
     { key: 'listings', label: 'Listings' },
     { key: 'users', label: 'Users' },
     { key: 'deals', label: 'Deals' },
@@ -51,6 +53,7 @@ export function App() {
       </div>
       {page === 'overview' && <OverviewPage />}
       {page === 'brands' && <BrandsPage />}
+      {page === 'banners' && <BannersPage />}
       {page === 'listings' && <ListingsPage />}
       {page === 'users' && <UsersPage />}
       {page === 'reports' && <ReportsPage />}
