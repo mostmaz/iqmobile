@@ -261,27 +261,20 @@ export default function BrowseScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {/* Active governorate — compact dropdown chip just above the brand
-            rail so it's always one tap away and the user can see at a
-            glance which governorate the listings are filtered to. Starts
-            at the user's detected (or default) governorate via the
-            govAutoApplied useEffect above; tapping opens the modal where
-            "كل المحافظات" clears the filter. */}
-        <View style={{ marginTop: 12, flexDirection: 'row-reverse' }}>
-          <GovPicker
-            valueAr={govArValue}
-            onChangeAr={onGovChange}
-            allowAll
-            allLabel="كل المحافظات"
-            compact
-          />
-        </View>
+        {/* The compact governorate chip that used to live here was removed
+            per user request — the governorate selector should only be
+            visible inside the filter sheet, not on the main browse
+            surface. The auto-apply useEffect above still mirrors
+            user.governorate into filters.governorate on first mount, so
+            the listings ARE filtered by gov even though no UI surface
+            advertises it on the home page; the filter sheet's
+            GovPicker shows the active governorate when opened. */}
 
         {/* Brands rail */}
         <ScrollView
           ref={brandsRef}
           horizontal showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 10, marginHorizontal: -16 }}
+          style={{ marginTop: 14, marginHorizontal: -16 }}
           contentContainerStyle={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6 }}
           onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
         >
