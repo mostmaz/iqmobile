@@ -26,7 +26,10 @@ export function ListingCard({
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
       ...shadowSoft, overflow: 'hidden', marginBottom: 12,
-      flexDirection: 'row', minHeight: compact ? 116 : 152,
+      // Heights trimmed 10% from the previous 152 / 116 baseline. Inner
+      // padding + chip margins trimmed proportionally below so the
+      // content density stays the same — the card is just shorter.
+      flexDirection: 'row', minHeight: compact ? 104 : 137,
     }}>
       {/* Image — leading (left) column. The column stretches to the card
           height (row alignItems defaults to 'stretch'); the image is
@@ -66,8 +69,9 @@ export function ListingCard({
         ) : null}
       </View>
 
-      {/* Details — trailing (right) column */}
-      <View style={{ flex: 1, padding: compact ? 11 : 13, justifyContent: 'center' }}>
+      {/* Details — trailing (right) column. Padding tightened with the
+          10% height cut so the rows breathe at the new card height. */}
+      <View style={{ flex: 1, padding: compact ? 10 : 12, justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right', flex: 1, minWidth: 0 }} numberOfLines={1}>
             {listing.brand} {listing.model}
@@ -78,14 +82,14 @@ export function ListingCard({
         </View>
 
         {!compact ? (
-          <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
             <ChipTag>{(ar.listing as any)[listing.condition]}</ChipTag>
             {listing.storage ? <ChipTag>{listing.storage}</ChipTag> : null}
             {listing.color ? <ChipTag>{listing.color}</ChipTag> : null}
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 6 : 10, gap: 8 }}>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 5 : 9, gap: 8 }}>
           <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3 }}>
             {fmtIQD(listing.asking_price)}
             <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
@@ -102,7 +106,7 @@ export function ListingCard({
             rating value. A legacy/malformed seller row with rating_count>0
             but rating_avg=null would otherwise crash on .toFixed(). */}
         {!compact && listing.seller && listing.seller.rating_count > 0 && Number.isFinite(listing.seller.rating_avg as any) ? (
-          <View style={{ marginTop: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+          <View style={{ marginTop: 7, flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             <IconStar size={12} filled color={theme.accent} />
             <Text style={{ fontFamily: fonts.ltr, fontSize: 11.5, color: theme.subtle }}>
               {Number(listing.seller.rating_avg).toFixed(1)} · {listing.seller.rating_count}
