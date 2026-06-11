@@ -898,4 +898,154 @@ r.post('/import/:id(\\d+)/approve', requireAdmin, (req, res) => {
   });
 });
 
+// ─── banners CRUD ────────────────────────────────────────────────────
+// Promotional banners shown on the mobile feed (placement='home', injected
+// at slot 2) and on brand-filtered views (placement='brand'; brand=NULL =
+// "every brand", a brand name = that brand only). Image is uploaded to
+// /uploads through the same multer pipeline as listing images. Public read
+// surface is routes/banners.js (enabled rows only).
+const BANNER_PLACEMENTS = new Set(['home', 'brand']);
+const BANNER_LINK_TYPES = new Set(['listing', 'external']);
+
+// Best-effort cleanup of a just-uploaded file when validation rejects the
+// request — otherwise a bad POST/PATCH leaves an orphan in /uploads.
+function dropUpload(file) {
+  if (file && file.path) { try { fs.unlinkSync(file.path); } catch { /* ignore */ } }
+}
+
+// `enabled` arrives as a string from multipart create ('0'/'1') and as a
+// JSON number/bool from the toggle PATCH (0/1, false/true) — treat all the
+// falsey shapes as "off".
+function isOff(v) {
+  return v === 0 || v === '0' || v === false || v === 'false';
+}
+
+// A listing link must point at a real listing; an external link must be a
+// plain http(s) URL. Returns an error code string, or null when valid.
+function validateBannerLink(link_type, link_value) {
+  if (!link_value) return 'bad_link';
+  if (link_type === 'listing') {
+    const lid = Number(link_value);
+    if (!Number.isInteger(lid) || lid <= 0) return 'bad_link';
+    const exists = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(lid);
+    return exists ? null : 'listing_not_found';
+  }
+  return /^https?:\/\/.+/i.test(link_value) ? null : 'bad_link';
+}
+
+r.get('/banners', requireAdmin, (_req, res) => {
+  res.json(db.prepare('SELECT * FROM banners ORDER BY placement ASC, position ASC, id ASC').all());
+});
+
+r.post('/banners', requireAdmin, imageUpload.single('image'), (req, res) => {
+  const b = req.body || {};
+  const fail = (code) => { dropUpload(req.file); return res.status(400).json({ error: code }); };
+
+  if (!req.file) return res.status(400).json({ error: 'image_required' });
+
+  const placement = String(b.placement || '').trim();
+  if (!BANNER_PLACEMENTS.has(placement)) return fail('bad_placement');
+
+  // brand only applies to brand placement; blank = "every brand" (NULL).
+  const brand = (placement === 'brand' && b.brand) ? String(b.brand).trim() : null;
+  if (brand && !isBrand(brand)) return fail('bad_brand');
+
+  // governorate applies to every placement; blank = all governorates (NULL).
+  const govRaw = b.governorate ? String(b.governorate).trim() : '';
+  const governorate = govRaw ? normalizeGovernorate(govRaw) : null;
+  if (govRaw && !governorate) return fail('bad_governorate');
+
+  const link_type = String(b.link_type || '').trim();
+  if (!BANNER_LINK_TYPES.has(link_type)) return fail('bad_link_type');
+
+  const link_value = String(b.link_value || '').trim();
+  const linkErr = validateBannerLink(link_type, link_value);
+  if (linkErr) return fail(linkErr);
+
+  const lastPos = db.prepare('SELECT COALESCE(MAX(position),0) AS p FROM banners').get().p;
+  const position = (b.position !== undefined && Number.isFinite(Number(b.position)) && Number(b.position) >= 0)
+    ? Math.floor(Number(b.position)) : lastPos + 1;
+  const enabled = isOff(b.enabled) ? 0 : 1;
+  const image_path = `/uploads/${req.file.filename}`;
+
+  const id = db.prepare(
+    `INSERT INTO banners(placement, brand, governorate, image_path, link_type, link_value, enabled, position, created_at)
+     VALUES(?,?,?,?,?,?,?,?,?)`,
+  ).run(placement, brand, governorate, image_path, link_type, link_value, enabled, position, now()).lastInsertRowid;
+
+  res.json(db.prepare('SELECT * FROM banners WHERE id=?').get(id));
+});
+
+r.patch('/banners/:id(\\d+)', requireAdmin, imageUpload.single('image'), (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT * FROM banners WHERE id=?').get(id);
+  if (!row) { dropUpload(req.file); return res.status(404).json({ error: 'not_found' }); }
+
+  const b = req.body || {};
+  const fail = (code) => { dropUpload(req.file); return res.status(400).json({ error: code }); };
+  const fields = [];
+  const params = [];
+
+  const placement = b.placement !== undefined ? String(b.placement).trim() : row.placement;
+  if (b.placement !== undefined) {
+    if (!BANNER_PLACEMENTS.has(placement)) return fail('bad_placement');
+    fields.push('placement=?'); params.push(placement);
+  }
+  if (b.brand !== undefined) {
+    const brand = b.brand ? String(b.brand).trim() : null;
+    if (brand && !isBrand(brand)) return fail('bad_brand');
+    // brand is meaningless for the home placement — store NULL there.
+    fields.push('brand=?'); params.push(placement === 'brand' ? brand : null);
+  }
+  if (b.governorate !== undefined) {
+    const govRaw = b.governorate ? String(b.governorate).trim() : '';
+    const governorate = govRaw ? normalizeGovernorate(govRaw) : null;
+    if (govRaw && !governorate) return fail('bad_governorate');
+    fields.push('governorate=?'); params.push(governorate);
+  }
+  const link_type = b.link_type !== undefined ? String(b.link_type).trim() : row.link_type;
+  if (b.link_type !== undefined) {
+    if (!BANNER_LINK_TYPES.has(link_type)) return fail('bad_link_type');
+    fields.push('link_type=?'); params.push(link_type);
+  }
+  if (b.link_value !== undefined) {
+    const linkErr = validateBannerLink(link_type, String(b.link_value).trim());
+    if (linkErr) return fail(linkErr);
+    fields.push('link_value=?'); params.push(String(b.link_value).trim());
+  } else if (b.link_type !== undefined) {
+    // Type changed but value left as-is — make sure the old value still fits.
+    const linkErr = validateBannerLink(link_type, row.link_value);
+    if (linkErr) return fail(linkErr);
+  }
+  if (b.enabled !== undefined) {
+    fields.push('enabled=?'); params.push(isOff(b.enabled) ? 0 : 1);
+  }
+  if (b.position !== undefined) {
+    const p = Number(b.position);
+    if (!Number.isFinite(p) || p < 0) return fail('bad_position');
+    fields.push('position=?'); params.push(Math.floor(p));
+  }
+
+  // A new file replaces the image; we unlink the old one after the update.
+  let oldImage = null;
+  if (req.file) {
+    fields.push('image_path=?'); params.push(`/uploads/${req.file.filename}`);
+    oldImage = row.image_path;
+  }
+
+  if (fields.length === 0) return res.json(row);
+  db.prepare(`UPDATE banners SET ${fields.join(', ')} WHERE id=?`).run(...params, id);
+  if (oldImage) { try { fs.unlinkSync(path.join(UPLOADS, path.basename(oldImage))); } catch { /* ignore */ } }
+  res.json(db.prepare('SELECT * FROM banners WHERE id=?').get(id));
+});
+
+r.delete('/banners/:id(\\d+)', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT * FROM banners WHERE id=?').get(id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  db.prepare('DELETE FROM banners WHERE id=?').run(id);
+  try { fs.unlinkSync(path.join(UPLOADS, path.basename(row.image_path))); } catch { /* ignore */ }
+  res.json({ ok: true });
+});
+
 export default r;

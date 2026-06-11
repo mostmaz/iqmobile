@@ -32,6 +32,7 @@ import notificationsRoutes from './routes/notifications.js';
 import eventsRoutes from './routes/events.js';
 import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
+import bannersRoutes from './routes/banners.js';
 import { startExpirer } from './expirer.js';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -112,6 +113,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
 app.use('/brands', brandsRoutes);
+app.use('/banners', bannersRoutes);
 // chats + messages + deals are split across these routers but share URL space
 app.use('/', chatsRoutes);   // mounts /listings/:id/chat, /chats, /chats/:id/messages, /messages/inbox, /quick-messages
 app.use('/', dealsRoutes);   // mounts /chats/:id/propose-price, /deals/:id/...

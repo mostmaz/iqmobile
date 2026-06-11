@@ -204,6 +204,32 @@ CREATE TABLE IF NOT EXISTS brands (
 );
 CREATE INDEX IF NOT EXISTS idx_brands_position ON brands(position);
 
+-- Promotional banners, dashboard-managed. Three surfaces driven by
+-- (placement, brand):
+--   placement='home'                   → the main feed (injected at slot 2)
+--   placement='brand', brand=NULL      → shows on EVERY brand-filtered view
+--   placement='brand', brand='Samsung' → shows only when that brand is filtered
+-- Each banner is an uploaded image that links to either an in-app listing
+-- (link_type='listing', link_value=listing id) or an external site
+-- (link_type='external', link_value=https URL). The enabled column is the
+-- on/off toggle; mobile only ever fetches enabled rows.
+CREATE TABLE IF NOT EXISTS banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  placement TEXT NOT NULL CHECK(placement IN ('home','brand')),
+  brand TEXT,
+  -- Geo target: NULL = all governorates, else a canonical English name
+  -- ('Baghdad', 'Mosul', …). Lets a shop run a Baghdad banner and a
+  -- separate Mosul one for the same placement.
+  governorate TEXT,
+  image_path TEXT NOT NULL,
+  link_type TEXT NOT NULL CHECK(link_type IN ('listing','external')),
+  link_value TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_banners_lookup ON banners(placement, enabled, position);
+
 -- Listing-import staging queue. The admin uploads a CSV of scraped FB
 -- posts; each row lands here as a pending job with a best-effort parse
 -- (phone/price/storage/brand). The dashboard's Import page lets an
@@ -231,6 +257,20 @@ CREATE TABLE IF NOT EXISTS import_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status, created_at DESC);
 `);
+
+// Additive column migrations — safe to run every boot (PRAGMA-guarded so
+// each no-ops once applied). Used to add new nullable columns to tables
+// that already exist in a deployed database. Table/column names here are
+// hardcoded literals, never user input.
+for (const [table, column, type] of [
+  ['banners', 'governorate', 'TEXT'],
+]) {
+  const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+  if (!has) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    console.log(`[iqmobile] migration: ${table}.${column} added`);
+  }
+}
 
 // ─── migrations ──────────────────────────────────────────────────────
 // Migration v2: drop the restrictive CHECK on condition so 'repaired' (and
