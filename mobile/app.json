@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 21
+      "versionCode": 22
     },
     "ios": {
       "bundleIdentifier": "org.iqmobile.app",
