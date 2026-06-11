@@ -155,30 +155,41 @@ export default function BrowseScreen({ navigation }: any) {
   // Flatten paginated pages into one list for the FlatList.
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
 
-  // Promo banner for the current view: the home banner when no brand filter
-  // is active, otherwise the brand's banner(s) (server returns the
-  // specific-brand one first, then any "every brand" one — we show the top).
-  // Failures are non-fatal — the feed just renders without it.
-  // Geo target: an explicit governorate filter wins, otherwise the user's
-  // own governorate. Nationwide banners (governorate=null) always match too.
+  // Promo banners. The HOME banner is universal — it shows on every view
+  // (the all-brands feed AND each brand filter). When a brand is selected we
+  // ALSO pull that brand's banners; the two pools then rotate together at the
+  // single slot. Geo target: an explicit governorate filter wins, otherwise
+  // the user's own; nationwide banners (governorate=null) always match too.
+  // Failures are non-fatal — the feed just renders without a banner.
   const bannerGov = filters.governorate ?? user?.governorate ?? undefined;
-  const { data: bannerData } = useQuery({
-    queryKey: ['banners', filters.brand ?? '__home__', bannerGov ?? '__all__'],
-    queryFn: () => (filters.brand ? Banners.brand(filters.brand, bannerGov) : Banners.home(bannerGov)),
+  const { data: homeBanners } = useQuery({
+    queryKey: ['banners', 'home', bannerGov ?? '__all__'],
+    queryFn: () => Banners.home(bannerGov),
     staleTime: 5 * 60 * 1000,
   });
-  // Pick which banner to show. Rotate only within the most-specific matching
-  // tier so targeting still wins (a Baghdad/Samsung banner beats a nationwide
-  // one), but when a slot has several equally-specific banners they take turns
-  // — advancing on each refresh / filter change / tab re-open via bannerTick.
+  const { data: brandBanners } = useQuery({
+    queryKey: ['banners', 'brand', filters.brand ?? '', bannerGov ?? '__all__'],
+    queryFn: () => Banners.brand(filters.brand as string, bannerGov),
+    enabled: !!filters.brand,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Pick which banner to show, rotating when several are eligible. Within each
+  // pool we keep only the most-specific tier (a Baghdad/Samsung banner beats a
+  // nationwide one); then the home pool (always) and the brand pool (when a
+  // brand is filtered) rotate together via bannerTick — advancing on refresh /
+  // filter change / tab re-open.
   const banner: BannerRow | null = useMemo(() => {
-    const list = bannerData ?? [];
-    if (list.length === 0) return null;
-    const score = (b: BannerRow) => (b.brand != null ? 1 : 0) + (b.governorate != null ? 1 : 0);
-    const best = Math.max(...list.map(score));
-    const top = list.filter((b) => score(b) === best);
-    return top[bannerTick % top.length];
-  }, [bannerData, bannerTick]);
+    const topTier = (list?: BannerRow[]): BannerRow[] => {
+      if (!list || list.length === 0) return [];
+      const score = (b: BannerRow) => (b.brand != null ? 1 : 0) + (b.governorate != null ? 1 : 0);
+      const best = Math.max(...list.map(score));
+      return list.filter((b) => score(b) === best);
+    };
+    const pool = [...topTier(homeBanners), ...(filters.brand ? topTier(brandBanners) : [])];
+    if (pool.length === 0) return null;
+    return pool[bannerTick % pool.length];
+  }, [homeBanners, brandBanners, filters.brand, bannerTick]);
 
   // Feed data with the banner spliced into the 2nd slot ("in place of the
   // second listing"). Banner items carry a __banner tag so renderItem and
