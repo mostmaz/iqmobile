@@ -12,7 +12,8 @@ import { Banner } from '../../components/Banner';
 import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
-import { GOV_AR_LIST, GOV_AR_TO_EN, arOf } from '../../lib/governorates';
+import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
+import { GovPicker } from '../../components/GovPicker';
 
 // Brand list comes from the server now (table-backed, admin-editable).
 // We used to hardcode it here with illustrative counts; that meant adding
@@ -115,8 +116,38 @@ export default function BrowseScreen({ navigation }: any) {
 
   useFocusEffect(useCallback(() => { qc.invalidateQueries({ queryKey: ['browse'] }); }, [qc]));
 
+  // Auto-apply the user's governorate as the active filter on first mount.
+  // This is what "show device of this governorate only when location is
+  // detected" means in practice: the onboarding flow (or a manual gov
+  // change from EditProfile) writes user.governorate; here we mirror it
+  // into filters.governorate so opening Browse already shows just-local
+  // listings. The user can still tap the picker → "كل المحافظات" to
+  // broaden the view.
+  //
+  // We do this ONCE per session (govAutoApplied ref) so a user who
+  // intentionally cleared the filter doesn't see it snap back the next
+  // time the component re-renders.
+  const govAutoApplied = useRef(false);
+  useEffect(() => {
+    if (govAutoApplied.current) return;
+    if (!user?.governorate) return;
+    govAutoApplied.current = true;
+    setFilters((s) => (s.governorate ? s : { ...s, governorate: user.governorate }));
+  }, [user?.governorate]);
+
   function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); }
   function clear() { setFilters({}); setSearchText(''); }
+
+  // Translate the picker's Arabic value ↔ filters.governorate's English
+  // canonical name. Empty string = "all governorates" (filter cleared).
+  const govArValue = filters.governorate ? GOV_EN_TO_AR[filters.governorate] || '' : '';
+  function onGovChange(ar: string) {
+    if (!ar) {
+      patch({ governorate: undefined });
+    } else {
+      patch({ governorate: GOV_AR_TO_EN[ar] || undefined });
+    }
+  }
 
   // Flatten paginated pages into one list for the FlatList.
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
@@ -230,11 +261,27 @@ export default function BrowseScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
+        {/* Active governorate — compact dropdown chip just above the brand
+            rail so it's always one tap away and the user can see at a
+            glance which governorate the listings are filtered to. Starts
+            at the user's detected (or default) governorate via the
+            govAutoApplied useEffect above; tapping opens the modal where
+            "كل المحافظات" clears the filter. */}
+        <View style={{ marginTop: 12, flexDirection: 'row-reverse' }}>
+          <GovPicker
+            valueAr={govArValue}
+            onChangeAr={onGovChange}
+            allowAll
+            allLabel="كل المحافظات"
+            compact
+          />
+        </View>
+
         {/* Brands rail */}
         <ScrollView
           ref={brandsRef}
           horizontal showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 14, marginHorizontal: -16 }}
+          style={{ marginTop: 10, marginHorizontal: -16 }}
           contentContainerStyle={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6 }}
           onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
         >
@@ -257,13 +304,20 @@ export default function BrowseScreen({ navigation }: any) {
               <Pill active={!filters.condition} onPress={() => patch({ condition: undefined })}>{ar.browse.allConditions}</Pill>
               {CONDITIONS.map((c) => <Pill key={c} active={filters.condition === c} onPress={() => patch({ condition: c })}>{(ar.listing as any)[c]}</Pill>)}
             </Section>
-            <Section label="المحافظة">
-              <Pill active={!filters.governorate} onPress={() => patch({ governorate: undefined })}>{ar.browse.allGovs}</Pill>
-              {GOV_AR_LIST.map((g) => {
-                const en = GOV_AR_TO_EN[g];
-                return <Pill key={g} active={filters.governorate === en} onPress={() => patch({ governorate: en })}>{g}</Pill>;
-              })}
-            </Section>
+            {/* Governorate — same dropdown used by the compact chip
+                above the brand rail, just rendered here in the full row
+                variant so the filter sheet has its own self-contained
+                "current location" surface. Two triggers, one source of
+                truth (filters.governorate). */}
+            <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, textAlign: 'right' }}>
+              المحافظة
+            </Text>
+            <GovPicker
+              valueAr={govArValue}
+              onChangeAr={onGovChange}
+              allowAll
+              allLabel={ar.browse.allGovs}
+            />
             <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle, textAlign: 'right' }}>
               السعر (د.ع)
             </Text>
