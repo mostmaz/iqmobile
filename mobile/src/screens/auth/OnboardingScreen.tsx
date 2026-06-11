@@ -17,7 +17,7 @@
 // stack screen reachable from Profile (with navigation).
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as SecureStore from '../../lib/secureStore';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
@@ -26,6 +26,7 @@ import {
   IconArrowLeft, IconSearch, IconCamera, IconChat, IconStar, IconPin,
 } from '../../components/icons';
 import { detectGovernorate } from '../../lib/locateGov';
+import { GOV_AR_LIST, GOV_AR_TO_EN } from '../../lib/governorates';
 import { Auth } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -38,16 +39,22 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
   const isRevisit = !onDone;
   const { refresh } = useAuth();
   const [busy, setBusy] = useState(false);
+  // When location is denied / undetectable we force a manual governorate
+  // pick before the user can enter the app (obligatory — no skip path).
+  const [govPickerOpen, setGovPickerOpen] = useState(false);
 
   // First-launch gate: ask for location → if granted, reverse-geocode →
   // patch the user's governorate so Browse + Post default to their actual
   // province. Skipping (denied / failed) leaves the default 'Baghdad' the
   // server assigned at guest-signup time.
+  // Primary action: auto-detect the governorate from location. On success we
+  // set it and enter the app. If the user denies the permission (or we can't
+  // resolve it) we no longer fall back to the default — we open an obligatory
+  // manual picker (govPickerOpen) the user must answer before continuing.
+  // The busy-lock guards every entry point so a double-tap can't fire two
+  // parallel onDone() invocations (which would race the SecureStore write
+  // and double-mount RootNav's main subtree).
   async function start() {
-    // Same busy-lock guards `start` AND `skipLocation` so a user can't
-    // double-tap one button while the other is mid-flight and trigger
-    // two parallel onDone() invocations (which would race the
-    // SecureStore.setItem and double-mount RootNav's main subtree).
     if (busy) return;
     if (!onDone) { navigation?.goBack(); return; }
     setBusy(true);
@@ -58,23 +65,38 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
           await Auth.patchMe({ governorate: detected.governorate, city: detected.city || undefined });
           await refresh();
         } catch {}
+        try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
+        onDone();
+      } else {
+        // Denied / undetectable → require a manual selection to continue.
+        setGovPickerOpen(true);
       }
-      try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
-      onDone();
-    } catch (e: any) {
-      // Don't block onboarding on location issues — just continue.
-      try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
-      onDone();
+    } catch {
+      setGovPickerOpen(true);
     } finally { setBusy(false); }
   }
 
-  async function skipLocation() {
+  // Secondary action: skip location and pick by hand. Still obligatory —
+  // there's no "decide later" path now.
+  function selectManually() {
     if (busy) return;
     if (!onDone) { navigation?.goBack(); return; }
+    setGovPickerOpen(true);
+  }
+
+  // Commit a hand-picked governorate (Arabic label → English value), then
+  // enter the app.
+  async function pickGovernorate(govAr: string) {
+    if (busy) return;
     setBusy(true);
     try {
+      const govEn = GOV_AR_TO_EN[govAr];
+      if (govEn) {
+        try { await Auth.patchMe({ governorate: govEn }); await refresh(); } catch {}
+      }
       try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
-      onDone();
+      setGovPickerOpen(false);
+      onDone?.();
     } finally { setBusy(false); }
   }
 
@@ -199,13 +221,54 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
                   </Text>
                 </View>
               </Btn>
-              <Btn kind="ghost" full onPress={skipLocation} busy={busy}>تخطي — أحدد المحافظة لاحقاً</Btn>
+              <Btn kind="ghost" full onPress={selectManually} busy={busy}>أختر محافظتي يدوياً</Btn>
             </>
           ) : (
             <Btn kind="accent" full onPress={start}>تم</Btn>
           )}
         </View>
       </ScrollView>
+
+      {/* Obligatory governorate picker — shown when location is denied or the
+          user chooses to pick by hand. Non-dismissible: there's no close
+          button and Android back is a no-op, so the only way forward is to
+          select a governorate. */}
+      <Modal visible={govPickerOpen} animationType="slide" transparent onRequestClose={() => { /* obligatory */ }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+          <View style={{
+            backgroundColor: theme.bg,
+            borderTopLeftRadius: 22, borderTopRightRadius: 22,
+            paddingTop: 16, paddingBottom: insets.bottom + 16, maxHeight: '80%',
+          }}>
+            <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+                حدد محافظتك
+              </Text>
+              <Text style={{ marginTop: 4, fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
+                لم نتمكن من تحديد موقعك. اختر محافظتك للمتابعة — ستظهر لك الإعلانات القريبة منك.
+              </Text>
+            </View>
+            <FlatList
+              data={GOV_AR_LIST}
+              keyExtractor={(g) => g}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: theme.line, marginHorizontal: 20 }} />}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => pickGovernorate(item)}
+                  activeOpacity={0.7}
+                  disabled={busy}
+                  style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14 }}
+                >
+                  <IconPin size={15} color={theme.accent} sw={1.7} />
+                  <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 15, fontWeight: '500', color: theme.ink, textAlign: 'right' }}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

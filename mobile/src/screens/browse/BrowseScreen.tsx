@@ -5,12 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Input, Pill } from '../../components/ui';
-import { IconSearch, IconFilter, IconBell, IconCheck, IconPlus, IconMinus } from '../../components/icons';
+import { IconSearch, IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { Listings, Brands, type BrowseFilters, type Condition, type BrandRow } from '../../api/endpoints';
+import { Banner } from '../../components/Banner';
+import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
+import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
-import { GOV_AR_LIST, GOV_AR_TO_EN } from '../../lib/governorates';
+import { GOV_AR_LIST, GOV_AR_TO_EN, arOf } from '../../lib/governorates';
 
 // Brand list comes from the server now (table-backed, admin-editable).
 // We used to hardcode it here with illustrative counts; that meant adding
@@ -50,6 +52,7 @@ export default function BrowseScreen({ navigation }: any) {
   const [searchText, setSearchText] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
+  const { user } = useAuth();
 
   // 300ms debounce: long enough that holding a key doesn't fire, short
   // enough that the result list feels responsive once the user pauses.
@@ -117,7 +120,30 @@ export default function BrowseScreen({ navigation }: any) {
 
   // Flatten paginated pages into one list for the FlatList.
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
-  const resultsCount = items.length;
+
+  // Promo banner for the current view: the home banner when no brand filter
+  // is active, otherwise the brand's banner(s) (server returns the
+  // specific-brand one first, then any "every brand" one — we show the top).
+  // Failures are non-fatal — the feed just renders without it.
+  // Geo target: an explicit governorate filter wins, otherwise the user's
+  // own governorate. Nationwide banners (governorate=null) always match too.
+  const bannerGov = filters.governorate ?? user?.governorate ?? undefined;
+  const { data: bannerData } = useQuery({
+    queryKey: ['banners', filters.brand ?? '__home__', bannerGov ?? '__all__'],
+    queryFn: () => (filters.brand ? Banners.brand(filters.brand, bannerGov) : Banners.home(bannerGov)),
+    staleTime: 5 * 60 * 1000,
+  });
+  const banner: BannerRow | null = bannerData?.[0] ?? null;
+
+  // Feed data with the banner spliced into the 2nd slot ("in place of the
+  // second listing"). Banner items carry a __banner tag so renderItem and
+  // keyExtractor can tell them apart from listings.
+  const feedData = useMemo(() => {
+    if (!banner) return items as any[];
+    const out: any[] = [...items];
+    out.splice(1, 0, { __banner: banner });
+    return out;
+  }, [items, banner]);
 
   // Brand rail uses flexDirection: 'row-reverse' (visually right-to-left),
   // but the underlying horizontal ScrollView starts scrolled to its left
@@ -147,6 +173,23 @@ export default function BrowseScreen({ navigation }: any) {
               </Text>
             </View>
           </View>
+          {/* Current scope chip — "all Iraq" or the picked governorate. Lives
+              in the existing top row so it adds no vertical height. Tap to
+              open the filter sheet (where the governorate is chosen). */}
+          <TouchableOpacity
+            onPress={() => setShowFilter(true)}
+            activeOpacity={0.7}
+            style={{
+              flexShrink: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+              borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, marginHorizontal: 8,
+            }}
+          >
+            <IconPin size={13} color={theme.accent} sw={1.7} />
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12, fontWeight: '600', color: theme.ink }}>
+              {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
+            </Text>
+          </TouchableOpacity>
           {/* Bell opens the notifications inbox. Previously the wrapper
               looked tappable (with a red unread dot!) but had no onPress —
               users tapped it expecting Notifications and got nothing. */}
@@ -163,14 +206,7 @@ export default function BrowseScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <Text style={{ fontFamily: fonts.arBold, fontSize: 28, fontWeight: '700', letterSpacing: -0.5, lineHeight: 34, color: theme.ink, textAlign: 'right' }}>
-          {ar.browse.title}
-        </Text>
-        <Text style={{ marginTop: 4, fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right' }}>
-          <Text style={{ fontFamily: fonts.ltrBold, color: theme.ink, fontWeight: '600' }}>{resultsCount}</Text> نتيجة · موبايلات في عموم العراق
-        </Text>
-
-        <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14 }}>
+        <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
           <View style={{
             flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
             backgroundColor: theme.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 11,
@@ -264,12 +300,16 @@ export default function BrowseScreen({ navigation }: any) {
       </View>
 
       <FlatList
-        data={items}
-        keyExtractor={(item) => String(item.id)}
+        data={feedData}
+        keyExtractor={(item) => (item.__banner ? `banner-${item.__banner.id}` : String(item.id))}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => (
-          <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+          item.__banner ? (
+            <Banner banner={item.__banner} onOpenListing={(id) => navigation.navigate('ListingDetail', { id })} />
+          ) : (
+            <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+          )
         )}
         // Load the next 15 when the user has scrolled within ~half a screen
         // of the bottom. The guard avoids re-firing while a fetch is inflight

@@ -283,6 +283,32 @@ export const Brands = {
   list: () => api<BrandRow[]>('/brands'),
 };
 
+// ─── Banners ─────────────────────────────────────────────────────────
+// Dashboard-managed promo banners (enabled-only from the server). `home`
+// banners are injected into the feed; `brand` banners show on brand-filtered
+// views — the server returns the specific-brand ones first, then any
+// "every brand" banners (brand === null).
+export interface BannerRow {
+  id: number;
+  placement: 'home' | 'brand';
+  brand: string | null;
+  governorate: string | null;
+  image_path: string;
+  link_type: 'listing' | 'external';
+  link_value: string;
+  position: number;
+}
+export const Banners = {
+  home: (gov?: string) =>
+    api<BannerRow[]>(`/banners?placement=home${gov ? `&gov=${encodeURIComponent(gov)}` : ''}`),
+  brand: (brand?: string, gov?: string) =>
+    api<BannerRow[]>(
+      `/banners?placement=brand` +
+      `${brand ? `&brand=${encodeURIComponent(brand)}` : ''}` +
+      `${gov ? `&gov=${encodeURIComponent(gov)}` : ''}`,
+    ),
+};
+
 export const Notifications = {
   list: () => api<NotificationRow[]>('/notifications'),
   readAll: () => api('/notifications/read-all', { method: 'POST' }),
