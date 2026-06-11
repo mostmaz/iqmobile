@@ -54,6 +54,9 @@ export default function BrowseScreen({ navigation }: any) {
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
+  // Rotates which banner shows when a slot has several equally-specific
+  // ones — bumped on pull-to-refresh, filter change, and re-opening the tab.
+  const [bannerTick, setBannerTick] = useState(0);
 
   // 300ms debounce: long enough that holding a key doesn't fire, short
   // enough that the result list feels responsive once the user pauses.
@@ -114,7 +117,7 @@ export default function BrowseScreen({ navigation }: any) {
       lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE,
   });
 
-  useFocusEffect(useCallback(() => { qc.invalidateQueries({ queryKey: ['browse'] }); }, [qc]));
+  useFocusEffect(useCallback(() => { qc.invalidateQueries({ queryKey: ['browse'] }); setBannerTick((t) => t + 1); }, [qc]));
 
   // Auto-apply the user's governorate as the active filter on first mount.
   // This is what "show device of this governorate only when location is
@@ -135,7 +138,7 @@ export default function BrowseScreen({ navigation }: any) {
     setFilters((s) => (s.governorate ? s : { ...s, governorate: user.governorate }));
   }, [user?.governorate]);
 
-  function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); }
+  function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); setBannerTick((t) => t + 1); }
   function clear() { setFilters({}); setSearchText(''); }
 
   // Translate the picker's Arabic value ↔ filters.governorate's English
@@ -164,7 +167,18 @@ export default function BrowseScreen({ navigation }: any) {
     queryFn: () => (filters.brand ? Banners.brand(filters.brand, bannerGov) : Banners.home(bannerGov)),
     staleTime: 5 * 60 * 1000,
   });
-  const banner: BannerRow | null = bannerData?.[0] ?? null;
+  // Pick which banner to show. Rotate only within the most-specific matching
+  // tier so targeting still wins (a Baghdad/Samsung banner beats a nationwide
+  // one), but when a slot has several equally-specific banners they take turns
+  // — advancing on each refresh / filter change / tab re-open via bannerTick.
+  const banner: BannerRow | null = useMemo(() => {
+    const list = bannerData ?? [];
+    if (list.length === 0) return null;
+    const score = (b: BannerRow) => (b.brand != null ? 1 : 0) + (b.governorate != null ? 1 : 0);
+    const best = Math.max(...list.map(score));
+    const top = list.filter((b) => score(b) === best);
+    return top[bannerTick % top.length];
+  }, [bannerData, bannerTick]);
 
   // Feed data with the banner spliced into the 2nd slot ("in place of the
   // second listing"). Banner items carry a __banner tag so renderItem and
@@ -350,7 +364,7 @@ export default function BrowseScreen({ navigation }: any) {
         data={feedData}
         keyExtractor={(item) => (item.__banner ? `banner-${item.__banner.id}` : String(item.id))}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
           item.__banner ? (
             <Banner banner={item.__banner} onOpenListing={(id) => navigation.navigate('ListingDetail', { id })} />
