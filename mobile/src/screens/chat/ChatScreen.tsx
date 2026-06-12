@@ -47,6 +47,13 @@ export default function ChatScreen({ route, navigation }: any) {
   const { data: messages } = useQuery<ChatMessage[]>({
     queryKey: ['messages', id],
     queryFn: () => Chats.messages(id),
+    // Belt-and-suspenders alongside SSE: a dropped event (mobile flake,
+    // background tab, server emit racing with addClient) used to leave
+    // the screen stale until manual refresh. Polling at 3s keeps live
+    // updates working even when SSE silently fails; React Query dedupes
+    // against the SSE-triggered invalidation. Stops automatically when
+    // the screen unmounts (no observer = no fetch).
+    refetchInterval: 3000,
   });
   const { data: quick } = useQuery({ queryKey: ['quickMessages'], queryFn: Chats.quickMessages });
 

@@ -87,8 +87,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // No token yet — auto-create a guest session so every action
           // (post a listing, chat, save) just works without any auth UI.
           // Real signup is offered as an upgrade later.
-          const r = await Auth.guest();
-          await persist(r.token, r.user);
+          //
+          // Retry with backoff if the call fails: a flaky network at
+          // boot used to drop the user into a no-token state, and every
+          // subsequent API call returned 401 → "يجب تسجيل الدخول للمتابعة"
+          // even though the user never explicitly logged out. We'd
+          // rather sit on the loading screen a few extra seconds than
+          // hand the user a broken app.
+          let backoff = 1000;
+          for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+              const r = await Auth.guest();
+              await persist(r.token, r.user);
+              break;
+            } catch {
+              if (attempt === 4) throw new Error('guest_provision_failed');
+              await new Promise((resolve) => setTimeout(resolve, backoff));
+              backoff = Math.min(backoff * 2, 8000);
+            }
+          }
         }
       } catch {
         // Outer catch covers SecureStore/setToken failures. Don't nuke
@@ -172,13 +189,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // alive in memory keyed by query-key alone, and after the new
     // user's token is set the first render still reads the stale data.
     qc.clear();
+    // Immediately spin up a fresh guest session so dismissing AuthGate
+    // doesn't strand the user in a no-token state — without this, any
+    // API call (chat, save, listing detail) after dismissal returns
+    // 401 → "يجب تسجيل الدخول للمتابعة". Same pattern as the initial
+    // boot path. Errors are swallowed; AuthGate is the next UI either way.
+    try {
+      const r = await Auth.guest();
+      await persist(r.token, r.user);
+    } catch {}
     // Drop the user on the phone-entry screen. Done centrally so any
     // logout button in the app produces the same redirect behavior.
     // (The original screen stays mounted underneath the modal — when
     // the user logs in via AuthGate it pops itself and we land back
     // on the Profile tab with `user` re-populated.)
     go('AuthGate');
-  }, [track, resetIdentity, qc]);
+  }, [track, resetIdentity, qc, persist]);
 
   return <AuthCtx.Provider value={{ user, loading, refresh, login, register, phoneLogin, logout }}>{children}</AuthCtx.Provider>;
 }

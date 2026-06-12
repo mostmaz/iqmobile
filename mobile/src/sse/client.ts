@@ -56,10 +56,15 @@ export function connectSSE() {
     es.addEventListener(ev, (e: any) => {
       let data: any = null;
       try { data = JSON.parse(e.data); } catch {}
+      // Logged so we can confirm via `adb logcat -s ReactNativeJS` whether
+      // live updates are actually arriving on this device — silent SSE
+      // failures are hard to tell apart from "server didn't send" otherwise.
+      console.log('[SSE]', ev, data);
       for (const h of handlers) h(ev, data);
     });
   }
-  es.addEventListener('error', () => {});
+  es.addEventListener('open', () => console.log('[SSE] open'));
+  es.addEventListener('error', (e: any) => console.log('[SSE] error', e?.type, e?.message || ''));
 }
 
 export function disconnectSSE() {
