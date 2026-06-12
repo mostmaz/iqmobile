@@ -205,6 +205,10 @@ export interface BrowseFilters {
   seller_type?: SellerType;
   limit?: number;
   offset?: number;
+  // Rotation seed for the capped featured slots (top 2 per view). Bumped on
+  // refresh/filter/focus so which featured listings hold the slots rotates,
+  // while staying stable across pages of one pagination session.
+  seed?: number;
 }
 function qs(params: BrowseFilters) {
   const u = new URLSearchParams();

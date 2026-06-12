@@ -202,6 +202,11 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
 // ─── browse listings ─────────────────────────────────────────────────
 // Public — anonymous visitors can browse before they sign up. Auth only
 // kicks in for save / chat / post.
+// At most this many featured listings occupy the top of any view; the rest
+// of the featured pool falls back to its natural recency position so the
+// feed never reads as all-ads.
+const FEATURED_CAP = 2;
+
 r.get('/', optionalAuth(), (req, res) => {
   const { brand, model, governorate, condition, storage, color, verified_only, q, seller_type } = req.query;
   const minPrice = Number(req.query.min_price);
@@ -211,47 +216,85 @@ r.get('/', optionalAuth(), (req, res) => {
   // so a misbehaving client can't exhaust the table in one shot.
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
   const offset = Math.max(0, Number(req.query.offset) || 0);
+  // Rotation seed for the featured slots. The client bumps this on every
+  // refresh / filter change / tab re-open (same tick that rotates banners),
+  // so WHICH two featured listings hold the top slots rotates per refresh
+  // while staying stable across the pages of one pagination session.
+  const seed = Math.max(0, Math.floor(Number(req.query.seed) || 0));
 
   // Browse shows active + reserved + sold listings. Sold ones stay visible
   // (with a "مباع" badge on the card) so the catalog reads as "what was for
   // sale here", not "live inventory only" — gives the marketplace a sense
   // of activity and helps buyers see what brands/prices have been moving.
   // 'removed' (soft-deleted) and 'expired' are excluded.
-  let sql = `
-    SELECT l.* FROM phone_listings l
-    JOIN users u ON u.id = l.seller_id
-    WHERE l.status IN ('active','reserved','sold') AND l.expires_at > ?
-  `;
+  let where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
   const params = [Date.now()];
-  if (brand && isBrand(String(brand))) { sql += ' AND l.brand=?'; params.push(brand); }
-  if (model) { sql += ' AND l.model LIKE ?'; params.push('%' + String(model) + '%'); }
-  if (governorate && isGovernorate(String(governorate))) { sql += ' AND l.governorate=?'; params.push(governorate); }
-  if (condition && CONDITIONS.includes(String(condition))) { sql += ' AND l.condition=?'; params.push(condition); }
-  if (storage) { sql += ' AND l.storage=?'; params.push(storage); }
-  if (color) { sql += ' AND l.color=?'; params.push(color); }
-  if (Number.isFinite(minPrice)) { sql += ' AND l.asking_price >= ?'; params.push(minPrice); }
-  if (Number.isFinite(maxPrice)) { sql += ' AND l.asking_price <= ?'; params.push(maxPrice); }
-  if (verified_only === '1' || verified_only === 'true') { sql += ' AND u.verified=1'; }
+  if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
+  if (model) { where += ' AND l.model LIKE ?'; params.push('%' + String(model) + '%'); }
+  if (governorate && isGovernorate(String(governorate))) { where += ' AND l.governorate=?'; params.push(governorate); }
+  if (condition && CONDITIONS.includes(String(condition))) { where += ' AND l.condition=?'; params.push(condition); }
+  if (storage) { where += ' AND l.storage=?'; params.push(storage); }
+  if (color) { where += ' AND l.color=?'; params.push(color); }
+  if (Number.isFinite(minPrice)) { where += ' AND l.asking_price >= ?'; params.push(minPrice); }
+  if (Number.isFinite(maxPrice)) { where += ' AND l.asking_price <= ?'; params.push(maxPrice); }
+  if (verified_only === '1' || verified_only === 'true') { where += ' AND u.verified=1'; }
   if (seller_type === 'individual' || seller_type === 'shop') {
-    sql += ' AND u.seller_type=?'; params.push(seller_type);
+    where += ' AND u.seller_type=?'; params.push(seller_type);
   }
   if (q) {
-    sql += ' AND (l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?)';
+    where += ' AND (l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?)';
     const like = '%' + String(q) + '%';
     params.push(like, like, like);
   }
-  // Featured listings (featured_until in the future) float to the top of
-  // whatever view they match, ordered by their most recent boost; everything
-  // else sorts by recency. The expirer re-stamps boosted_at a few times a day
-  // so a paid listing keeps cycling back to the top for its duration.
+
   const nowTs = Date.now();
-  sql += `
-    ORDER BY
-      (CASE WHEN l.featured_until > ? THEN 1 ELSE 0 END) DESC,
-      (CASE WHEN l.featured_until > ? THEN l.boosted_at ELSE l.created_at END) DESC
-    LIMIT ? OFFSET ?`;
-  params.push(nowTs, nowTs, limit, offset);
-  const rows = db.prepare(sql).all(...params);
+
+  // Featured slots: collect every currently-featured listing matching the
+  // same filters (ordered by most recent boost), then rotate the window of
+  // FEATURED_CAP ids by the seed. The chosen ids render at the very top of
+  // page 1; the rest of the pool stays in the regular recency stream below,
+  // so capped-out featured listings are demoted — never hidden.
+  const pool = db.prepare(
+    `SELECT l.id FROM phone_listings l
+     JOIN users u ON u.id = l.seller_id
+     WHERE ${where} AND l.featured_until > ?
+     ORDER BY l.boosted_at DESC, l.id DESC`,
+  ).all(...params, nowTs);
+  const chosen = [];
+  if (pool.length > 0) {
+    const start = seed % pool.length;
+    for (let i = 0; i < Math.min(FEATURED_CAP, pool.length); i++) {
+      chosen.push(pool[(start + i) % pool.length].id);
+    }
+  }
+
+  // Regular stream: recency order, minus the listings already shown in the
+  // featured slots. Offsets shift by chosen.length because page 1 spent that
+  // many of its `limit` rows on the featured slots — `chosen` is recomputed
+  // identically on every page of a session (same filters + same seed), so
+  // pagination stays consistent.
+  const exclude = chosen.length ? ` AND l.id NOT IN (${chosen.map(() => '?').join(',')})` : '';
+  const regularSql = `
+    SELECT l.* FROM phone_listings l
+    JOIN users u ON u.id = l.seller_id
+    WHERE ${where}${exclude}
+    ORDER BY l.created_at DESC LIMIT ? OFFSET ?`;
+
+  let rows;
+  if (offset === 0) {
+    rows = [];
+    if (chosen.length > 0) {
+      const ph = chosen.map(() => '?').join(',');
+      const featRows = db.prepare(`SELECT * FROM phone_listings WHERE id IN (${ph})`).all(...chosen);
+      const byId = new Map(featRows.map((r2) => [r2.id, r2]));
+      rows.push(...chosen.map((id) => byId.get(id)).filter(Boolean));
+    }
+    const fill = limit - rows.length;
+    if (fill > 0) rows.push(...db.prepare(regularSql).all(...params, ...chosen, fill, 0));
+  } else {
+    rows = db.prepare(regularSql).all(...params, ...chosen, limit, Math.max(0, offset - chosen.length));
+  }
+
   const withImgs = attachImages(rows);
   // attach a thin seller card + a computed featured flag (so the card can
   // show a "مميز" badge without trusting the client clock).

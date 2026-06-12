@@ -97,9 +97,13 @@ export default function BrowseScreen({ navigation }: any) {
     data, isLoading, refetch, isRefetching,
     fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['browse', filters],
+    // bannerTick doubles as the featured-slot rotation seed: it's part of
+    // the key so a refresh/filter/focus starts a fresh pagination session,
+    // and every page of that session sends the same seed — keeping the
+    // server's featured-slot pick (and thus offsets) consistent across pages.
+    queryKey: ['browse', filters, bannerTick],
     queryFn: ({ pageParam = 0 }) =>
-      Listings.browse({ ...filters, limit: PAGE_SIZE, offset: pageParam as number }),
+      Listings.browse({ ...filters, seed: bannerTick, limit: PAGE_SIZE, offset: pageParam as number }),
     initialPageParam: 0,
     // Stop paginating when the server returns a partial page.
     getNextPageParam: (lastPage, allPages) =>

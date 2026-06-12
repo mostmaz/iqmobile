@@ -56,6 +56,8 @@ interface Listing {
   seller_name: string;
   seller_phone: string;
   created_at: number;
+  featured_until: number | null;
+  feature_tier: string | null;
 }
 
 interface PhoneDupeResp {
@@ -116,6 +118,21 @@ export function ListingsPage() {
     if (!confirm('Remove this listing?')) return;
     await api(`/admin/listings/${id}/remove`, { method: 'PATCH' });
     load();
+  }
+
+  // Manual feature — for direct (WhatsApp/cash) payments that skip the
+  // in-app airtime request. 0 days = unfeature.
+  async function feature(l: Listing) {
+    const isFeatured = !!(l.featured_until && l.featured_until > Date.now());
+    const cur = isFeatured ? `(featured until ${new Date(l.featured_until!).toLocaleDateString()})` : '(not featured)';
+    const days = prompt(`Feature "${l.brand} ${l.model}" for how many days? ${cur}\nEnter 0 to unfeature.`, '5');
+    if (days === null) return;
+    const n = Number(days);
+    if (!Number.isFinite(n) || n < 0) { alert('Enter a number ≥ 0.'); return; }
+    try {
+      await api(`/admin/listings/${l.id}/feature`, { method: 'PATCH', body: JSON.stringify({ days: n }) });
+      await load();
+    } catch (e: any) { alert(`Feature failed: ${e?.message || 'unknown'}`); }
   }
 
   // Rows visible in the current view that aren't already removed —
@@ -237,9 +254,27 @@ export function ListingsPage() {
                 <td>{r.seller_name}<br/><small style={{ color: '#9ca3af' }}>{r.seller_phone}</small></td>
                 <td>{r.asking_price.toLocaleString()}</td>
                 <td>{r.governorate}{r.city ? ` · ${r.city}` : ''}</td>
-                <td><span className="pill open">{r.status}</span></td>
+                <td>
+                  <span className="pill open">{r.status}</span>
+                  {r.featured_until && r.featured_until > Date.now() ? (
+                    <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 2 }}>
+                      ★ {r.feature_tier || 'featured'} → {new Date(r.featured_until).toLocaleDateString()}
+                    </div>
+                  ) : null}
+                </td>
                 <td><small>{new Date(r.created_at).toLocaleDateString()}</small></td>
-                <td>{r.status !== 'removed' ? <button className="danger" onClick={() => remove(r.id)}>Remove</button> : null}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {r.status !== 'removed' ? (
+                    <>
+                      <button
+                        className={r.featured_until && r.featured_until > Date.now() ? '' : 'secondary'}
+                        onClick={() => feature(r)}
+                        title="Feature this listing (manual / direct payment)"
+                      >★</button>{' '}
+                      <button className="danger" onClick={() => remove(r.id)}>Remove</button>
+                    </>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

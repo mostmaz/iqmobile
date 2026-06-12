@@ -279,6 +279,34 @@ r.patch('/listings/remove-batch', requireAdmin, (req, res) => {
   res.json({ ok: true, removed: result.changes });
 });
 
+// Manual feature/unfeature — for sellers who pay directly (WhatsApp / cash)
+// without filing an in-app request. days>0 features from now for that many
+// days (boost cadence defaults to 3×/day); days=0 clears the featured state.
+r.patch('/listings/:id(\\d+)/feature', requireAdmin, (req, res) => {
+  const l = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!l) return res.status(404).json({ error: 'not_found' });
+  const days = Number(req.body?.days);
+  if (!Number.isFinite(days) || days < 0) return res.status(400).json({ error: 'bad_days' });
+  const t = now();
+  if (days === 0) {
+    db.prepare(
+      `UPDATE phone_listings
+       SET featured_until=NULL, feature_tier=NULL, boosted_at=NULL, next_boost_at=NULL, boost_interval_ms=NULL
+       WHERE id=?`,
+    ).run(l.id);
+    return res.json({ ok: true, featured_until: null });
+  }
+  const bpd = Number(req.body?.boosts_per_day) > 0 ? Math.floor(Number(req.body.boosts_per_day)) : 3;
+  const interval = Math.floor(DAY_MS / bpd);
+  const until = t + days * DAY_MS;
+  db.prepare(
+    `UPDATE phone_listings
+     SET featured_until=?, feature_tier='manual', boosted_at=?, next_boost_at=?, boost_interval_ms=?
+     WHERE id=?`,
+  ).run(until, t, t + interval, interval, l.id);
+  res.json({ ok: true, featured_until: until });
+});
+
 r.patch('/listings/:id(\\d+)/remove', requireAdmin, (req, res) => {
   // Return 404 when the listing doesn't exist so the admin UI doesn't
   // silently 200 on probes or fat-finger IDs. Matches the
