@@ -93,6 +93,19 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     submit.mutate();
   }
 
+  // "لم أحوّل الرصيد بعد" — the user opened the dialer but never completed
+  // the transfer. Cancels the pending request so the form (with their
+  // previous selections still in state) comes back and they can retry.
+  const cancelPending = useMutation({
+    mutationFn: () => Features.cancelRequest(listingId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['features-mine'] }),
+    onError: () => {
+      // Stale state (request already approved/rejected/cancelled) — just
+      // refetch; the screen re-renders to whatever is actually true.
+      qc.invalidateQueries({ queryKey: ['features-mine'] });
+    },
+  });
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <Header title="ميّز إعلانك" badge="SHOP" onBack={() => navigation.goBack()} />
@@ -102,11 +115,19 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         ) : null}
 
         {hasPending ? (
-          <StatusCard
-            tone="pending"
-            title="طلبك قيد المراجعة"
-            body="استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد. إن لم تكمل التحويل بعد، اطلب الرمز من تطبيق الهاتف."
-          />
+          <>
+            <StatusCard
+              tone="pending"
+              title="طلبك قيد المراجعة"
+              body="استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد."
+            />
+            {/* Escape hatch: opened the dialer but never sent the balance →
+                cancel the pending request and bring the form back to retry. */}
+            <Btn kind="ghost" full busy={cancelPending.isPending} onPress={() => cancelPending.mutate()}>
+              لم أحوّل الرصيد بعد — أعد المحاولة
+            </Btn>
+            <View style={{ height: 16 }} />
+          </>
         ) : existing?.status === 'approved' && existing.featured_until && existing.featured_until > Date.now() ? (
           <StatusCard
             tone="ok"

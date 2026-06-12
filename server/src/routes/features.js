@@ -72,6 +72,19 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(id));
 });
 
+// Cancel the caller's own PENDING request for a listing — the "لم أحوّل
+// الرصيد بعد" escape hatch. A user who opened the dialer but never completed
+// the transfer would otherwise be stuck behind the one-pending-per-listing
+// guard with no way to restart the flow. Approved/rejected requests are
+// immutable history and can't be cancelled.
+r.delete('/listings/:id(\\d+)/feature-request', requireAuth(), (req, res) => {
+  const result = db.prepare(
+    "DELETE FROM feature_requests WHERE listing_id=? AND user_id=? AND status='pending'",
+  ).run(req.params.id, req.user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'no_pending_request' });
+  res.json({ ok: true });
+});
+
 // The seller's own feature requests, newest first, with a thin listing label
 // so the app can show "بانتظار الموافقة / مفعّل / مرفوض" per listing.
 r.get('/features/mine', requireAuth(), (req, res) => {

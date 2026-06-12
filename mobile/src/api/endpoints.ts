@@ -367,6 +367,10 @@ export const Features = {
   tiers: () => api<FeatureTiersResponse>('/features/tiers'),
   request: (listingId: number, body: { tier: string; carrier: FeatureCarrier; sender_phone: string; note?: string }) =>
     api<FeatureRequest>(`/listings/${listingId}/feature-request`, { method: 'POST', body: JSON.stringify(body) }),
+  // Cancels the caller's pending request for this listing — the "لم أحوّل
+  // الرصيد بعد" escape hatch when the dial was never completed.
+  cancelRequest: (listingId: number) =>
+    api(`/listings/${listingId}/feature-request`, { method: 'DELETE' }),
   mine: () => api<FeatureRequest[]>('/features/mine'),
 };
 
