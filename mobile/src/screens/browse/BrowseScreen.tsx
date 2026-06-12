@@ -23,13 +23,14 @@ import { GovPicker } from '../../components/GovPicker';
 // listings, just not surfaced as a picker option anymore.
 const CONDITIONS: Condition[] = ['new', 'used', 'refurbished'];
 
-// Price filter operates in 100,000 IQD steps. Range chosen to cover the
-// realistic Iraqi phone market: cheapest used Androids are ~50K, top-spec
-// new flagships rarely exceed ~3M, with some unusual outliers — so we cap
-// at 5M and surface the cap as "+" (open-ended) on the max stepper.
+// Price filter operates in 100,000 IQD steps across a 100K–2M range — the
+// band where virtually the whole Iraqi phone market lives. Both ends are
+// soft: the floor (100K) means "no minimum" (cheaper outliers still match)
+// and the cap (2M, shown as "2,000,000+") means "no maximum", so pricier
+// flagships aren't excluded — the bounds just keep the steppers short.
 const PRICE_STEP = 100_000;
-const PRICE_MIN = 0;
-const PRICE_MAX = 5_000_000;
+const PRICE_MIN = 100_000;
+const PRICE_MAX = 2_000_000;
 // Defaults shown in the steppers when the user opens the filter sheet
 // without any price filter yet active. Tuned to the modal price band
 // for used Iraqi phone sales (100K = bottom of the realistic market,
@@ -344,8 +345,9 @@ export default function BrowseScreen({ navigation }: any) {
                   // keep min ≤ max so the range stays valid
                   const max = filters.max_price ?? PRICE_DEFAULT_MAX;
                   const next = Math.min(v, max);
-                  // Stepping all the way down to 0 = "no minimum" (clear filter).
-                  patch({ min_price: next === 0 ? undefined : next });
+                  // Stepping down to the floor = "no minimum" (clear filter),
+                  // so sub-100K outliers still match.
+                  patch({ min_price: next <= PRICE_MIN ? undefined : next });
                 }}
               />
               <PriceStepper
