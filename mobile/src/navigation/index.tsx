@@ -22,6 +22,7 @@ import AuthGateScreen from '../screens/auth/AuthGateScreen';
 import CompleteProfileScreen from '../screens/auth/CompleteProfileScreen';
 import OnboardingScreen, { ONBOARDED_KEY } from '../screens/auth/OnboardingScreen';
 import BrowseScreen from '../screens/browse/BrowseScreen';
+import SearchScreen from '../screens/search/SearchScreen';
 import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
@@ -57,10 +58,10 @@ function BrowseStackNav() {
     </BrowseStack.Navigator>
   );
 }
-function SavedStackNav() {
+function SearchStackNav() {
   return (
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
-      <BrowseStack.Screen name="SavedHome" component={SavedScreen} />
+      <BrowseStack.Screen name="SearchHome" component={SearchScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
     </BrowseStack.Navigator>
   );
@@ -69,6 +70,7 @@ function ProfileStackNav() {
   return (
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="ProfileHome" component={ProfileScreen} />
+      <BrowseStack.Screen name="Saved" component={SavedScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
@@ -106,7 +108,7 @@ function MainTabs() {
   return (
     <Tabs.Navigator screenOptions={{ headerShown: false }} tabBar={(p) => <TabBar {...p} />}>
       <Tabs.Screen name="Browse" component={BrowseStackNav} />
-      <Tabs.Screen name="Saved" component={SavedStackNav} />
+      <Tabs.Screen name="Search" component={SearchStackNav} />
       <Tabs.Screen
         name="Sell"
         component={SellStackNav}

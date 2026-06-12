@@ -8,11 +8,11 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme, fonts, radius } from '../theme';
-import { IconHome, IconBookmark, IconPlus, IconPerson, IconChat } from '../components/icons';
+import { IconHome, IconSearch, IconPlus, IconPerson, IconChat } from '../components/icons';
 
 const LABELS: Record<string, string> = {
   Browse: 'تصفح',
-  Saved: 'المفضلة',
+  Search: 'بحث',
   Sell: 'بيع',
   Chats: 'المحادثات',
   Profile: 'حسابي',
@@ -20,7 +20,7 @@ const LABELS: Record<string, string> = {
 
 const ICONS: Record<string, (p: { size?: number; color?: string; sw?: number; filled?: boolean }) => React.ReactElement> = {
   Browse: IconHome,
-  Saved: IconBookmark,
+  Search: IconSearch,
   Sell: IconPlus,
   Chats: IconChat,
   Profile: IconPerson,
@@ -96,7 +96,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               gap: 3,
             }}
           >
-            <Icon size={22} color={focused ? theme.ink : theme.subtle} sw={1.7} filled={focused && route.name === 'Saved'} />
+            <Icon size={22} color={focused ? theme.ink : theme.subtle} sw={1.7} />
             <Text style={{
               fontFamily: focused ? fonts.arBold : fonts.ar,
               fontSize: 10.5,

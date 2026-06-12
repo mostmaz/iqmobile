@@ -4,8 +4,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
-import { Btn, Input, Pill } from '../../components/ui';
-import { IconSearch, IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin } from '../../components/icons';
+import { Btn, Pill } from '../../components/ui';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { Banner } from '../../components/Banner';
@@ -45,31 +45,14 @@ const PAGE_SIZE = 15;
 export default function BrowseScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useState<BrowseFilters>({});
-  // Separate "live" search text (typed in the box) from the debounced
-  // value that actually drives `filters.q`. Without this, every Arabic
-  // IME composition keystroke fires a network request keyed by the
-  // partial query — visibly janky on slow networks and burns server
-  // CPU on the LIKE join.
-  const [searchText, setSearchText] = useState('');
+  // Search lives in its own dedicated tab now (it replaced Favorites in the
+  // bottom bar). Browse is pure filtering — no inline search box here.
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
   // Rotates which banner shows when a slot has several equally-specific
   // ones — bumped on pull-to-refresh, filter change, and re-opening the tab.
   const [bannerTick, setBannerTick] = useState(0);
-
-  // 300ms debounce: long enough that holding a key doesn't fire, short
-  // enough that the result list feels responsive once the user pauses.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setFilters((s) => {
-        const next = searchText.trim();
-        if (s.q === next || (!s.q && !next)) return s;
-        return { ...s, q: next || undefined };
-      });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [searchText]);
 
   // Brand catalog — server-side now (table-backed, admin-editable).
   // staleTime 5min so we don't refetch on every focus; the dashboard
@@ -103,6 +86,12 @@ export default function BrowseScreen({ navigation }: any) {
       return d !== 0 ? d : (a.position ?? 0) - (b.position ?? 0);
     });
   }, [brands]);
+
+  // Any non-location filter active? Drives the little accent dot on the
+  // compact filter button (governorate has its own chip, so it's excluded).
+  const hasActiveFilters = !!(
+    filters.brand || filters.condition || filters.min_price != null || filters.max_price != null
+  );
 
   const {
     data, isLoading, refetch, isRefetching,
@@ -139,7 +128,7 @@ export default function BrowseScreen({ navigation }: any) {
   }, [user?.governorate]);
 
   function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); setBannerTick((t) => t + 1); }
-  function clear() { setFilters({}); setSearchText(''); }
+  function clear() { setFilters({}); }
 
   // Translate the picker's Arabic value ↔ filters.governorate's English
   // canonical name. Empty string = "all governorates" (filter cleared).
@@ -201,13 +190,6 @@ export default function BrowseScreen({ navigation }: any) {
     return out;
   }, [items, banner]);
 
-  // Brand rail uses flexDirection: 'row-reverse' (visually right-to-left),
-  // but the underlying horizontal ScrollView starts scrolled to its left
-  // edge — which means "الكل" (the first child, laid out at the right)
-  // is off-screen until the user scrolls. Snap to the end on layout so
-  // it's always the first thing the user sees.
-  const brandsRef = useRef<ScrollView>(null);
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <View style={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -246,78 +228,64 @@ export default function BrowseScreen({ navigation }: any) {
               {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
             </Text>
           </TouchableOpacity>
-          {/* Bell opens the notifications inbox. Previously the wrapper
-              looked tappable (with a red unread dot!) but had no onPress —
-              users tapped it expecting Notifications and got nothing. */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Notifications')}
-            style={{ padding: 4 }}
-            activeOpacity={0.6}
-          >
-            <IconBell size={20} color={theme.ink} sw={1.7} />
-            <View style={{
-              position: 'absolute', top: 2, right: 2,
-              width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
-            }} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-          <View style={{
-            flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
-            backgroundColor: theme.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 11,
-            borderWidth: 1, borderColor: theme.line,
-          }}>
-            <IconSearch size={18} color={theme.subtle} sw={1.7} />
-            <Input value={searchText} onChangeText={setSearchText} placeholder={ar.browse.search} bare />
+          {/* Trailing actions: filter + bell, side by side. The search box
+              and brand rail that used to sit below were removed — search has
+              its own tab, brand selection moved into the filter sheet. */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+            {/* Filter button. Compact icon button matching the bell; the
+                accent dot signals an active (non-location) filter, and the
+                ink fill shows when the sheet is open. */}
+            <TouchableOpacity
+              onPress={() => setShowFilter((v) => !v)}
+              activeOpacity={0.85}
+              style={{
+                width: 38, height: 38, borderRadius: 999,
+                backgroundColor: showFilter ? theme.ink : theme.surface,
+                borderWidth: 1, borderColor: theme.line,
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <IconFilter size={17} color={showFilter ? theme.bg : theme.ink} sw={1.7} />
+              {hasActiveFilters && !showFilter ? (
+                <View style={{
+                  position: 'absolute', top: 6, right: 6,
+                  width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
+                  borderWidth: 1.5, borderColor: theme.surface,
+                }} />
+              ) : null}
+            </TouchableOpacity>
+            {/* Bell opens the notifications inbox. Previously the wrapper
+                looked tappable (with a red unread dot!) but had no onPress —
+                users tapped it expecting Notifications and got nothing. */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Notifications')}
+              style={{ padding: 4 }}
+              activeOpacity={0.6}
+            >
+              <IconBell size={20} color={theme.ink} sw={1.7} />
+              <View style={{
+                position: 'absolute', top: 2, right: 2,
+                width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
+              }} />
+            </TouchableOpacity>
           </View>
-          {/* Pill button with both icon AND visible "فلتر" label so users
-              never have to guess what the funnel glyph means. */}
-          <TouchableOpacity onPress={() => setShowFilter(!showFilter)} activeOpacity={0.85} style={{
-            height: 44, borderRadius: 999, paddingHorizontal: 14,
-            backgroundColor: showFilter ? theme.ink : theme.surface,
-            borderWidth: 1, borderColor: theme.line,
-            flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
-          }}>
-            <IconFilter size={16} color={showFilter ? theme.bg : theme.ink} sw={1.7} />
-            <Text style={{ fontFamily: fonts.arBold, fontWeight: '600', fontSize: 13, color: showFilter ? theme.bg : theme.ink }}>
-              فلتر
-            </Text>
-          </TouchableOpacity>
         </View>
-
-        {/* The compact governorate chip that used to live here was removed
-            per user request — the governorate selector should only be
-            visible inside the filter sheet, not on the main browse
-            surface. The auto-apply useEffect above still mirrors
-            user.governorate into filters.governorate on first mount, so
-            the listings ARE filtered by gov even though no UI surface
-            advertises it on the home page; the filter sheet's
-            GovPicker shows the active governorate when opened. */}
-
-        {/* Brands rail */}
-        <ScrollView
-          ref={brandsRef}
-          horizontal showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 14, marginHorizontal: -16 }}
-          contentContainerStyle={{ paddingHorizontal: 16, flexDirection: 'row-reverse', gap: 6 }}
-          onContentSizeChange={() => brandsRef.current?.scrollToEnd({ animated: false })}
-        >
-          <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
-          {sortedBrands.map((b) => (
-            <Pill key={b.name} active={filters.brand === b.name}
-              onPress={() => patch({ brand: filters.brand === b.name ? undefined : b.name })}
-              count={b.count}>
-              {b.display_ar || b.name}
-            </Pill>
-          ))}
-        </ScrollView>
 
         {showFilter ? (
           <View style={{
-            marginTop: 12, padding: 14, backgroundColor: theme.surface,
+            marginTop: 2, padding: 14, backgroundColor: theme.surface,
             borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
           }}>
+            <Section label="الماركة">
+              <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
+              {sortedBrands.map((b) => (
+                <Pill key={b.name} active={filters.brand === b.name}
+                  onPress={() => patch({ brand: filters.brand === b.name ? undefined : b.name })}
+                  count={b.count}>
+                  {b.display_ar || b.name}
+                </Pill>
+              ))}
+            </Section>
             <Section label="الحالة">
               <Pill active={!filters.condition} onPress={() => patch({ condition: undefined })}>{ar.browse.allConditions}</Pill>
               {CONDITIONS.map((c) => <Pill key={c} active={filters.condition === c} onPress={() => patch({ condition: c })}>{(ar.listing as any)[c]}</Pill>)}
