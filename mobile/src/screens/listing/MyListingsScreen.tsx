@@ -1,10 +1,11 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, RefreshControl } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts } from '../../theme';
 import { Btn, Header, Pill } from '../../components/ui';
+import { IconSpark } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
 import { Listings, type ListingStatus } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
@@ -71,7 +72,37 @@ export default function MyListingsScreen({ navigation }: any) {
         keyExtractor={(it) => String(it.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-        renderItem={({ item }) => <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />}
+        renderItem={({ item }) => {
+          const featured = !!(item.featured_until && item.featured_until > Date.now());
+          const canFeature = item.status === 'active' || item.status === 'reserved';
+          return (
+            <View>
+              <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+              {featured ? (
+                <View style={{ marginTop: -4, marginBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
+                  <IconSpark size={12} color={theme.accent} />
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.accent }}>
+                    إعلان مميّز حتى {new Date(item.featured_until as number).toLocaleDateString()}
+                  </Text>
+                </View>
+              ) : canFeature ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('FeatureListing', { id: item.id, label: `${item.brand} ${item.model}` })}
+                  style={{
+                    marginTop: -4, marginBottom: 12, alignSelf: 'flex-end',
+                    flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+                    backgroundColor: theme.accentSoft, borderWidth: 1, borderColor: theme.accent,
+                    borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+                  }}
+                >
+                  <IconSpark size={13} color={theme.accent} />
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, fontWeight: '700', color: theme.accentDeep }}>ميّز إعلانك</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          );
+        }}
         ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إعلانات</Text>}
       />
     </View>

@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
-import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin } from '../../components/icons';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { Banner } from '../../components/Banner';
@@ -180,14 +180,12 @@ export default function BrowseScreen({ navigation }: any) {
     return pool[bannerTick % pool.length];
   }, [homeBanners, brandBanners, filters.brand, bannerTick]);
 
-  // Feed data with the banner spliced into the 2nd slot ("in place of the
-  // second listing"). Banner items carry a __banner tag so renderItem and
+  // Feed data with the banner pinned to the very top (first slot, above the
+  // first listing). Banner items carry a __banner tag so renderItem and
   // keyExtractor can tell them apart from listings.
   const feedData = useMemo(() => {
     if (!banner) return items as any[];
-    const out: any[] = [...items];
-    out.splice(1, 0, { __banner: banner });
-    return out;
+    return [{ __banner: banner }, ...items];
   }, [items, banner]);
 
   return (
@@ -232,6 +230,18 @@ export default function BrowseScreen({ navigation }: any) {
               and brand rail that used to sit below were removed — search has
               its own tab, brand selection moved into the filter sheet. */}
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+            {/* Shops directory entry. */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Shops')}
+              activeOpacity={0.85}
+              style={{
+                width: 38, height: 38, borderRadius: 999,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <IconStore size={18} color={theme.ink} sw={1.7} />
+            </TouchableOpacity>
             {/* Filter button. Compact icon button matching the bell; the
                 accent dot signals an active (non-location) filter, and the
                 ink fill shows when the sheet is open. */}

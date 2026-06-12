@@ -11,6 +11,8 @@ import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow } from '../../importParse.js';
+import { notify } from '../../notify.js';
+import { tierFor, tierTiming } from '../../featureTiers.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -1045,6 +1047,178 @@ r.delete('/banners/:id(\\d+)', requireAdmin, (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   db.prepare('DELETE FROM banners WHERE id=?').run(id);
   try { fs.unlinkSync(path.join(UPLOADS, path.basename(row.image_path))); } catch { /* ignore */ }
+  res.json({ ok: true });
+});
+
+// ─── featured-listing requests ───────────────────────────────────────
+// Sellers transfer airtime to the owner and file a request (routes/features.js).
+// The owner reconciles the transfer, then approves here — which pins the
+// listing (featured_until + the boost schedule) — or rejects it.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+r.get('/feature-requests', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
+    ? req.query.status : 'pending';
+  const rows = db.prepare(
+    `SELECT f.*, l.brand, l.model, l.asking_price, l.governorate, l.featured_until,
+            u.display_name AS user_name, u.phone AS user_phone
+     FROM feature_requests f
+     JOIN phone_listings l ON l.id = f.listing_id
+     JOIN users u ON u.id = f.user_id
+     WHERE f.status=? ORDER BY f.created_at DESC LIMIT 300`,
+  ).all(status);
+  res.json(rows);
+});
+
+r.post('/feature-requests/:id(\\d+)/approve', requireAdmin, (req, res) => {
+  const fr = db.prepare('SELECT * FROM feature_requests WHERE id=?').get(req.params.id);
+  if (!fr) return res.status(404).json({ error: 'not_found' });
+  if (fr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+
+  // Snapshot fields are stored on the request; fall back to the live tier if
+  // the catalog changed since the seller submitted.
+  const tier = tierFor(fr.tier) || { days: fr.days, boosts_per_day: fr.boosts_per_day };
+  const { durationMs, boostIntervalMs } = tierTiming(tier);
+  const t = now();
+
+  // Extend (don't truncate) any featured time the listing still has left.
+  const listing = db.prepare('SELECT featured_until FROM phone_listings WHERE id=?').get(fr.listing_id);
+  if (!listing) return res.status(404).json({ error: 'listing_gone' });
+  const base = listing.featured_until && listing.featured_until > t ? listing.featured_until : t;
+  const featured_until = base + durationMs;
+
+  db.prepare(
+    `UPDATE phone_listings
+     SET featured_until=?, feature_tier=?, boosted_at=?, next_boost_at=?, boost_interval_ms=?
+     WHERE id=?`,
+  ).run(featured_until, fr.tier, t, t + boostIntervalMs, boostIntervalMs, fr.listing_id);
+  db.prepare('UPDATE feature_requests SET status=?, reviewed_at=? WHERE id=?')
+    .run('approved', t, fr.id);
+
+  notify(fr.user_id, 'feature.approved',
+    { listing_id: fr.listing_id, tier: fr.tier, featured_until },
+    { title: 'تم تفعيل إعلانك المميّز ✨', body: 'إعلانك الآن في أعلى القائمة' });
+
+  res.json({ ok: true, listing_id: fr.listing_id, featured_until });
+});
+
+r.post('/feature-requests/:id(\\d+)/reject', requireAdmin, (req, res) => {
+  const fr = db.prepare('SELECT * FROM feature_requests WHERE id=?').get(req.params.id);
+  if (!fr) return res.status(404).json({ error: 'not_found' });
+  if (fr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  db.prepare('UPDATE feature_requests SET status=?, reviewed_at=? WHERE id=?')
+    .run('rejected', now(), fr.id);
+  notify(fr.user_id, 'feature.rejected', { listing_id: fr.listing_id },
+    { title: 'طلب التمييز', body: 'لم تتم الموافقة على طلب تمييز إعلانك — تواصل معنا للمزيد' });
+  res.json({ ok: true });
+});
+
+// ─── shops ────────────────────────────────────────────────────────────
+// Shops are users with seller_type='shop'. Admin can list them, flag an
+// account as a shop (find-or-create by phone), edit the shop profile, grant a
+// featured window (shop_featured_until), or revert to an individual account.
+r.get('/shops', requireAdmin, (req, res) => {
+  const q = req.query.q ? String(req.query.q).slice(0, 64) : '';
+  let sql = `
+    SELECT u.id, u.phone, u.display_name, u.shop_name, u.governorate, u.city,
+           u.shop_phone, u.shop_whatsapp, u.shop_bio, u.shop_address,
+           u.shop_image_path, u.shop_featured_until, u.verified, u.created_at,
+           (SELECT COUNT(*) FROM phone_listings l
+            WHERE l.seller_id = u.id AND l.status != 'removed') AS listing_count
+    FROM users u WHERE u.seller_type='shop'`;
+  const params = [];
+  if (q) {
+    sql += ' AND (u.phone LIKE ? OR u.display_name LIKE ? OR u.shop_name LIKE ?)';
+    const like = '%' + q + '%';
+    params.push(like, like, like);
+  }
+  sql += ' ORDER BY (CASE WHEN u.shop_featured_until > ? THEN 1 ELSE 0 END) DESC, u.created_at DESC LIMIT 300';
+  params.push(now());
+  res.json(db.prepare(sql).all(...params).map((u) => ({
+    ...u,
+    verified: !!u.verified,
+    is_featured: !!(u.shop_featured_until && u.shop_featured_until > now()),
+  })));
+});
+
+r.post('/shops', requireAdmin, (req, res) => {
+  const phone = normalizeIraqiPhone(req.body?.phone);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+  const shop_name = String(req.body?.shop_name || '').trim().slice(0, 60);
+  if (shop_name.length < 2) return res.status(400).json({ error: 'bad_shop_name' });
+  const governorate = normalizeGovernorate(req.body?.governorate);
+  if (!governorate) return res.status(400).json({ error: 'bad_governorate' });
+  const shop_bio = req.body?.shop_bio ? String(req.body.shop_bio).trim().slice(0, 500) : null;
+  const shop_address = req.body?.shop_address ? String(req.body.shop_address).trim().slice(0, 200) : null;
+  const shop_phone = req.body?.shop_phone ? normalizeIraqiPhone(req.body.shop_phone) : null;
+  const shop_whatsapp = req.body?.shop_whatsapp ? normalizeIraqiPhone(req.body.shop_whatsapp) : null;
+
+  let user = db.prepare('SELECT * FROM users WHERE phone=?').get(phone);
+  const t = now();
+  if (!user) {
+    const id = db.prepare(
+      `INSERT INTO users(phone, password_hash, display_name, governorate,
+                          seller_type, is_guest, created_at,
+                          shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, shop_created_at)
+       VALUES(?, '', ?, ?, 'shop', 0, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(phone, shop_name, governorate, t, shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, t).lastInsertRowid;
+    user = db.prepare('SELECT * FROM users WHERE id=?').get(id);
+  } else {
+    db.prepare(
+      `UPDATE users SET seller_type='shop', shop_name=?, shop_bio=?, shop_phone=?,
+              shop_whatsapp=?, shop_address=?, governorate=?,
+              shop_created_at=COALESCE(shop_created_at, ?)
+       WHERE id=?`,
+    ).run(shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, governorate, t, user.id);
+    user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
+  }
+  res.json({ ok: true, id: user.id });
+});
+
+r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
+  const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const fields = [];
+  const params = [];
+  const b = req.body || {};
+  if (b.shop_name !== undefined) {
+    const v = String(b.shop_name).trim().slice(0, 60);
+    if (v.length < 2) return res.status(400).json({ error: 'bad_shop_name' });
+    fields.push('shop_name=?'); params.push(v);
+  }
+  if (b.shop_bio !== undefined) { fields.push('shop_bio=?'); params.push(b.shop_bio ? String(b.shop_bio).trim().slice(0, 500) : null); }
+  if (b.shop_address !== undefined) { fields.push('shop_address=?'); params.push(b.shop_address ? String(b.shop_address).trim().slice(0, 200) : null); }
+  if (b.shop_phone !== undefined) {
+    const p = b.shop_phone ? normalizeIraqiPhone(b.shop_phone) : null;
+    if (b.shop_phone && !p) return res.status(400).json({ error: 'bad_shop_phone' });
+    fields.push('shop_phone=?'); params.push(p);
+  }
+  if (b.shop_whatsapp !== undefined) {
+    const p = b.shop_whatsapp ? normalizeIraqiPhone(b.shop_whatsapp) : null;
+    if (b.shop_whatsapp && !p) return res.status(400).json({ error: 'bad_shop_whatsapp' });
+    fields.push('shop_whatsapp=?'); params.push(p);
+  }
+  if (b.governorate !== undefined) {
+    const g = normalizeGovernorate(b.governorate);
+    if (!g) return res.status(400).json({ error: 'bad_governorate' });
+    fields.push('governorate=?'); params.push(g);
+  }
+  // featured_days: number of days to feature from now (0 / null clears it).
+  if (b.featured_days !== undefined) {
+    const d = Number(b.featured_days);
+    if (!Number.isFinite(d) || d < 0) return res.status(400).json({ error: 'bad_featured_days' });
+    fields.push('shop_featured_until=?'); params.push(d > 0 ? now() + d * DAY_MS : null);
+  }
+  if (fields.length === 0) return res.json({ ok: true });
+  params.push(u.id);
+  db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id=?`).run(...params);
+  res.json({ ok: true });
+});
+
+r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {
+  const u = db.prepare('SELECT id FROM users WHERE id=?').get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  db.prepare("UPDATE users SET seller_type='individual', shop_featured_until=NULL WHERE id=?").run(u.id);
   res.json({ ok: true });
 });
 

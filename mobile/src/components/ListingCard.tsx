@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Img } from './Img';
 import { theme, fonts, radius, shadowSoft } from '../theme';
 import { fmtIQD } from './ui';
-import { IconStar, IconPin } from './icons';
+import { IconStar, IconPin, IconSpark } from './icons';
 import { ChipTag } from './marketplace';
 import { fullImageUrl } from '../api/upload';
 import { arOf } from '../lib/governorates';
@@ -65,6 +65,18 @@ export function ListingCard({
             <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 }}>
               {(ar.listing as any)[listing.status]}
             </Text>
+          </View>
+        ) : null}
+        {/* Featured ribbon — bottom-left of the image so it never collides
+            with the save heart (top-left) or status badge (top-right). */}
+        {(listing as any).is_featured ? (
+          <View style={{
+            position: 'absolute', bottom: 8, left: 8,
+            backgroundColor: theme.accent, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 3,
+          }}>
+            <IconSpark size={11} color="#fff" />
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700' }}>مميّز</Text>
           </View>
         ) : null}
       </View>

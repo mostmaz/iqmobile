@@ -256,6 +256,33 @@ CREATE TABLE IF NOT EXISTS import_jobs (
   listing_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_import_jobs_status ON import_jobs(status, created_at DESC);
+
+-- Featured-listing payment requests. No gateway: the seller transfers airtime
+-- to the owner's number and files a request here; an admin approves it from the
+-- dashboard, which pins the listing (sets phone_listings.featured_until etc.).
+--   tier:          'bronze' | 'silver' | 'gold' (see featureTiers.js)
+--   amount/days/boosts_per_day: snapshot of the tier at request time
+--   carrier:       'asiacell' | 'korek' the seller paid from
+--   sender_phone:  the number they sent the airtime from (so the owner can
+--                  match the incoming transfer)
+--   status:        pending | approved | rejected
+CREATE TABLE IF NOT EXISTS feature_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER NOT NULL REFERENCES phone_listings(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tier TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  days INTEGER NOT NULL,
+  boosts_per_day INTEGER NOT NULL,
+  carrier TEXT NOT NULL,
+  sender_phone TEXT,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_feature_requests_status ON feature_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feature_requests_user ON feature_requests(user_id, created_at DESC);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so
@@ -417,6 +444,31 @@ addColumnIfMissing('users', 'shop_location_edit_count INTEGER NOT NULL DEFAULT 0
 // (requireAuth() rejects them with 403 'user_suspended'). null = active.
 // Toggled from the admin dashboard's Users page.
 addColumnIfMissing('users', 'suspended_at INTEGER');
+
+// ─── revenue: featured listings ──────────────────────────────────────
+// A listing is "featured" while featured_until > now. It then sorts above
+// non-featured listings in every view it matches, ordered by boosted_at
+// (re-stamped boosts_per_day times daily by the expirer). next_boost_at +
+// boost_interval_ms drive that re-stamp; feature_tier records which tier
+// paid for it. All null = a normal, non-featured listing.
+addColumnIfMissing('phone_listings', 'featured_until INTEGER');
+addColumnIfMissing('phone_listings', 'feature_tier TEXT');
+addColumnIfMissing('phone_listings', 'boosted_at INTEGER');
+addColumnIfMissing('phone_listings', 'next_boost_at INTEGER');
+addColumnIfMissing('phone_listings', 'boost_interval_ms INTEGER');
+db.exec('CREATE INDEX IF NOT EXISTS idx_listings_featured ON phone_listings(featured_until)');
+
+// ─── revenue: shops ──────────────────────────────────────────────────
+// A "shop" is a user with seller_type='shop'. These columns hold the shop
+// profile shown in the Shops directory + shop page. shop_featured_until > now
+// pins the shop to the top of its governorate (admin-granted, free for now).
+addColumnIfMissing('users', 'shop_name TEXT');
+addColumnIfMissing('users', 'shop_bio TEXT');
+addColumnIfMissing('users', 'shop_phone TEXT');
+addColumnIfMissing('users', 'shop_whatsapp TEXT');
+addColumnIfMissing('users', 'shop_address TEXT');
+addColumnIfMissing('users', 'shop_featured_until INTEGER');
+addColumnIfMissing('users', 'shop_created_at INTEGER');
 
 // Seed the brands table on first boot. Mirrors the historical hardcoded
 // list from governorates.js so existing listings stay valid. Skips if

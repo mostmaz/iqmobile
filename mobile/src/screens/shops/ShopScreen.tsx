@@ -1,0 +1,144 @@
+// Shop page — the shop's profile + contact methods + its listings. Reached
+// from the Shops directory (and from any listing's seller when that seller is
+// a shop, later). Contact is call / WhatsApp on the shop's public numbers.
+
+import React from 'react';
+import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import { theme, fonts, radius, shadowSoft } from '../../theme';
+import { Img } from '../../components/Img';
+import { Btn } from '../../components/ui';
+import { ListingCard } from '../../components/ListingCard';
+import { IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall } from '../../components/icons';
+import { Shops } from '../../api/endpoints';
+import { fullImageUrl } from '../../api/upload';
+import { arOf } from '../../lib/governorates';
+import { callPhone, openWhatsApp } from '../../lib/contact';
+
+export default function ShopScreen({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
+  const id: number = route.params?.id;
+  const { data: shop, isLoading } = useQuery({ queryKey: ['shop', id], queryFn: () => Shops.get(id) });
+
+  if (isLoading || !shop) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={theme.accent} />
+      </View>
+    );
+  }
+
+  const logo = shop.shop_image_path || shop.profile_image_path;
+  const initial = (shop.shop_name || shop.display_name || '?').trim()[0] || '?';
+  const phone = shop.shop_phone || null;
+  const whatsapp = shop.shop_whatsapp || shop.shop_phone || null;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      {/* Back bar */}
+      <View style={{ paddingTop: insets.top + 6, paddingHorizontal: 16, paddingBottom: 6, flexDirection: 'row-reverse' }}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }} activeOpacity={0.6}>
+          <View style={{ transform: [{ scaleX: -1 }] }}>
+            <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={shop.listings}
+        keyExtractor={(l) => String(l.id)}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        renderItem={({ item }) => (
+          <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+        )}
+        ListHeaderComponent={
+          <View style={{ marginBottom: 8 }}>
+            {/* Shop header card */}
+            <View style={{
+              backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
+              borderColor: shop.is_featured ? theme.accent : theme.line, ...shadowSoft,
+              padding: 16, marginBottom: 14,
+            }}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 14 }}>
+                <View style={{ width: 68, height: 68, borderRadius: 18, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {logo ? (
+                    <Img source={{ uri: fullImageUrl(logo) }} style={{ width: 68, height: 68 }} />
+                  ) : (
+                    <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 28, color: theme.subtle }}>{initial}</Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 19, color: theme.ink, textAlign: 'right', flexShrink: 1 }}>
+                      {shop.shop_name}
+                    </Text>
+                    {shop.is_featured ? (
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 2, backgroundColor: theme.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
+                        <IconSpark size={9} color="#fff" />
+                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 9, fontWeight: '700' }}>مميّز</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, marginTop: 5 }}>
+                    <IconPin size={12} color={theme.subtle} />
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle }}>
+                      {arOf(shop.governorate)}{shop.city ? ` · ${shop.city}` : ''}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 5 }}>
+                    <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>{shop.listing_count} إعلان</Text>
+                    {shop.rating_count > 0 && Number.isFinite(shop.rating_avg as any) ? (
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 3 }}>
+                        <IconStar size={12} filled color={theme.accent} />
+                        <Text style={{ fontFamily: fonts.ltr, fontSize: 12, color: theme.subtle }}>
+                          {Number(shop.rating_avg).toFixed(1)} · {shop.rating_count}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+
+              {shop.shop_bio ? (
+                <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink, textAlign: 'right', marginTop: 12, lineHeight: 22 }}>
+                  {shop.shop_bio}
+                </Text>
+              ) : null}
+              {shop.shop_address ? (
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  <IconPin size={13} color={theme.subtle} />
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', flex: 1 }}>{shop.shop_address}</Text>
+                </View>
+              ) : null}
+
+              {/* Contact buttons */}
+              {(phone || whatsapp) ? (
+                <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14 }}>
+                  {phone ? <Btn kind="primary" full onPress={() => callPhone(phone)}>اتصال</Btn> : null}
+                  {whatsapp ? (
+                    <Btn kind="success" full onPress={() => openWhatsApp(whatsapp, `مرحباً، أتواصل معك من تطبيق iQ بخصوص متجر ${shop.shop_name}`)}>
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                        <IconMsgCall size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>واتساب</Text>
+                      </View>
+                    </Btn>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
+              إعلانات المتجر
+            </Text>
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={{ padding: 32, alignItems: 'center' }}>
+            <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 13 }}>لا توجد إعلانات حالياً.</Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}

@@ -1,6 +1,10 @@
 import { Linking, Alert } from 'react-native';
 import { digitsOnly } from './format';
 
+// Owner number for ad sales / banner reservations (local 07… form; toIntl
+// converts it). Keep in sync with server/src/featureTiers.js.
+export const OWNER_CONTACT_PHONE = '07736969091';
+
 // Local 07XXXXXXXXX → +9647XXXXXXXXX. Stripping non-digits so paste-from-
 // chat-with-spaces still works, normalising Arabic-Indic numerals first
 // so ٠٧٧... pastes are accepted just like 077...

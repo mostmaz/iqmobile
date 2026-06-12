@@ -27,6 +27,11 @@ import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
 import MyListingsScreen from '../screens/listing/MyListingsScreen';
+import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
+import ShopsScreen from '../screens/shops/ShopsScreen';
+import ShopScreen from '../screens/shops/ShopScreen';
+import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
+import AdvertiseScreen from '../screens/advertise/AdvertiseScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
 import ChatsListScreen from '../screens/chat/ChatsListScreen';
 import DealsScreen from '../screens/deal/DealsScreen';
@@ -51,6 +56,10 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
+      <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="Shops" component={ShopsScreen} />
+      <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
@@ -72,6 +81,11 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="ProfileHome" component={ProfileScreen} />
       <BrowseStack.Screen name="Saved" component={SavedScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
+      <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="Shops" component={ShopsScreen} />
+      <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
+      <BrowseStack.Screen name="Advertise" component={AdvertiseScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
       <BrowseStack.Screen name="Deals" component={DealsScreen} />

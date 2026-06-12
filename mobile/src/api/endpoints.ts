@@ -70,6 +70,11 @@ export interface Listing {
   contact_whatsapp?: string | null;
   seller_phone?: string | null;
   phone_visible?: boolean;
+  // Featured-listing revenue fields. `is_featured` is the server-computed
+  // (clock-safe) flag the card badges off; the rest describe the window.
+  is_featured?: boolean;
+  featured_until?: number | null;
+  feature_tier?: string | null;
 }
 
 export type DealStatus =
@@ -313,4 +318,77 @@ export const Notifications = {
   list: () => api<NotificationRow[]>('/notifications'),
   readAll: () => api('/notifications/read-all', { method: 'POST' }),
   read: (id: number) => api(`/notifications/${id}/read`, { method: 'POST' }),
+};
+
+// ─── Featured listings ───────────────────────────────────────────────
+// No payment gateway: the seller transfers airtime to the owner's number,
+// submits a request with the carrier + sending number, and an admin approves
+// it from the dashboard (which pins the listing).
+export type FeatureCarrier = 'asiacell' | 'korek';
+export interface FeatureTier {
+  key: string;          // 'bronze' | 'silver' | 'gold'
+  amount: number;       // IQD
+  days: number;
+  boosts_per_day: number;
+  label_ar: string;
+}
+export interface FeatureTiersResponse {
+  tiers: FeatureTier[];
+  carriers: FeatureCarrier[];
+  owner_phone: string;  // where to send the airtime
+}
+export interface FeatureRequest {
+  id: number;
+  listing_id: number;
+  tier: string;
+  amount: number;
+  days: number;
+  boosts_per_day: number;
+  carrier: string;
+  sender_phone: string | null;
+  note: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: number;
+  reviewed_at: number | null;
+  brand?: string;
+  model?: string;
+  featured_until?: number | null;
+}
+export const Features = {
+  tiers: () => api<FeatureTiersResponse>('/features/tiers'),
+  request: (listingId: number, body: { tier: string; carrier: FeatureCarrier; sender_phone: string; note?: string }) =>
+    api<FeatureRequest>(`/listings/${listingId}/feature-request`, { method: 'POST', body: JSON.stringify(body) }),
+  mine: () => api<FeatureRequest[]>('/features/mine'),
+};
+
+// ─── Shops ───────────────────────────────────────────────────────────
+export interface ShopCard {
+  id: number;
+  display_name: string;
+  shop_name: string;
+  governorate: string;
+  city?: string | null;
+  profile_image_path?: string | null;
+  shop_image_path?: string | null;
+  shop_bio?: string | null;
+  shop_address?: string | null;
+  shop_phone?: string | null;
+  shop_whatsapp?: string | null;
+  rating_avg: number;
+  rating_count: number;
+  verified: boolean;
+  is_featured: boolean;
+  listing_count: number;
+}
+export interface ShopDetail extends ShopCard {
+  listings: Listing[];
+}
+export const Shops = {
+  list: (governorate?: string) =>
+    api<ShopCard[]>('/shops' + (governorate ? `?governorate=${encodeURIComponent(governorate)}` : '')),
+  get: (id: number) => api<ShopDetail>(`/shops/${id}`),
+  register: (body: {
+    shop_name: string; shop_bio?: string; shop_phone?: string;
+    shop_whatsapp?: string; shop_address?: string; governorate?: string;
+  }) => api<ShopCard>('/shops/register', { method: 'POST', body: JSON.stringify(body) }),
 };

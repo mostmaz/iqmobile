@@ -240,12 +240,26 @@ r.get('/', optionalAuth(), (req, res) => {
     const like = '%' + String(q) + '%';
     params.push(like, like, like);
   }
-  sql += ' ORDER BY l.created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, offset);
+  // Featured listings (featured_until in the future) float to the top of
+  // whatever view they match, ordered by their most recent boost; everything
+  // else sorts by recency. The expirer re-stamps boosted_at a few times a day
+  // so a paid listing keeps cycling back to the top for its duration.
+  const nowTs = Date.now();
+  sql += `
+    ORDER BY
+      (CASE WHEN l.featured_until > ? THEN 1 ELSE 0 END) DESC,
+      (CASE WHEN l.featured_until > ? THEN l.boosted_at ELSE l.created_at END) DESC
+    LIMIT ? OFFSET ?`;
+  params.push(nowTs, nowTs, limit, offset);
   const rows = db.prepare(sql).all(...params);
   const withImgs = attachImages(rows);
-  // attach a thin seller card
-  const out = withImgs.map((row) => ({ ...row, seller: sellerCard(row.seller_id) }));
+  // attach a thin seller card + a computed featured flag (so the card can
+  // show a "مميز" badge without trusting the client clock).
+  const out = withImgs.map((row) => ({
+    ...row,
+    is_featured: !!(row.featured_until && row.featured_until > nowTs),
+    seller: sellerCard(row.seller_id),
+  }));
   res.json(out);
 });
 

@@ -11,10 +11,12 @@ import { DealsPage } from './pages/DealsPage';
 import { BypassAttemptsPage } from './pages/BypassAttemptsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ImportPage } from './pages/ImportPage';
+import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
+import { ShopsPage } from './pages/ShopsPage';
 
 type Page =
-  | 'overview' | 'brands' | 'banners' | 'listings' | 'users' | 'reports'
-  | 'deals' | 'bypass' | 'settings' | 'import';
+  | 'overview' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
+  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import';
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -28,6 +30,8 @@ export function App() {
     { key: 'overview', label: 'Overview' },
     { key: 'brands', label: 'Brands' },
     { key: 'banners', label: 'Banners' },
+    { key: 'featured', label: 'Featured' },
+    { key: 'shops', label: 'Shops' },
     { key: 'listings', label: 'Listings' },
     { key: 'users', label: 'Users' },
     { key: 'deals', label: 'Deals' },
@@ -54,6 +58,8 @@ export function App() {
       {page === 'overview' && <OverviewPage />}
       {page === 'brands' && <BrandsPage />}
       {page === 'banners' && <BannersPage />}
+      {page === 'featured' && <FeatureRequestsPage />}
+      {page === 'shops' && <ShopsPage />}
       {page === 'listings' && <ListingsPage />}
       {page === 'users' && <UsersPage />}
       {page === 'reports' && <ReportsPage />}

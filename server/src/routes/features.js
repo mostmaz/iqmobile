@@ -1,0 +1,80 @@
+import { Router } from 'express';
+import { db, now } from '../db.js';
+import { requireAuth } from '../auth.js';
+import { createLimiter } from '../limits.js';
+import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, tierFor } from '../featureTiers.js';
+
+const r = Router();
+
+// Same Iraqi-phone normaliser used across the codebase. Local copy to avoid
+// cross-router coupling (mirrors routes/listings.js).
+function normalizeIraqiPhone(input) {
+  if (!input) return null;
+  let d = String(input).replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('00964')) d = d.slice(5);
+  else if (d.startsWith('964')) d = d.slice(3);
+  if (!d.startsWith('0')) d = '0' + d;
+  if (d.length < 10 || d.length > 12) return null;
+  return d;
+}
+
+// Public — the mobile "feature this listing" sheet reads the tier catalog +
+// the number to send airtime to. No secrets here.
+r.get('/features/tiers', (_req, res) => {
+  res.json({ tiers: FEATURE_TIERS, carriers: CARRIERS, owner_phone: OWNER_PHONE });
+});
+
+// Seller files a request to feature one of their own listings. We don't take
+// payment in-app: they transfer airtime to OWNER_PHONE, then submit this with
+// the carrier + the number they paid from so the owner can match the transfer.
+// The request lands as 'pending'; an admin approves it from the dashboard.
+r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req, res) => {
+  const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
+  if (listing.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+
+  const tier = tierFor(String(req.body?.tier || '').trim());
+  if (!tier) return res.status(400).json({ error: 'bad_tier' });
+
+  const carrier = String(req.body?.carrier || '').trim().toLowerCase();
+  if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
+
+  const senderPhone = normalizeIraqiPhone(req.body?.sender_phone);
+  if (!senderPhone) return res.status(400).json({ error: 'bad_sender_phone' });
+
+  const note = req.body?.note ? String(req.body.note).trim().slice(0, 280) : null;
+
+  // One open request per listing — block a second pending submission so the
+  // owner's queue doesn't fill with duplicates of the same listing.
+  const pending = db.prepare(
+    "SELECT id FROM feature_requests WHERE listing_id=? AND status='pending'",
+  ).get(listing.id);
+  if (pending) return res.status(409).json({ error: 'request_pending', request_id: pending.id });
+
+  const id = db.prepare(
+    `INSERT INTO feature_requests(
+      listing_id, user_id, tier, amount, days, boosts_per_day,
+      carrier, sender_phone, note, status, created_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,'pending',?)`,
+  ).run(
+    listing.id, req.user.id, tier.key, tier.amount, tier.days, tier.boosts_per_day,
+    carrier, senderPhone, note, now(),
+  ).lastInsertRowid;
+
+  res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(id));
+});
+
+// The seller's own feature requests, newest first, with a thin listing label
+// so the app can show "بانتظار الموافقة / مفعّل / مرفوض" per listing.
+r.get('/features/mine', requireAuth(), (req, res) => {
+  const rows = db.prepare(
+    `SELECT f.*, l.brand, l.model, l.featured_until
+     FROM feature_requests f
+     JOIN phone_listings l ON l.id = f.listing_id
+     WHERE f.user_id=? ORDER BY f.created_at DESC LIMIT 100`,
+  ).all(req.user.id);
+  res.json(rows);
+});
+
+export default r;

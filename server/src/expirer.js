@@ -59,6 +59,31 @@ function tick() {
       emitTo(d.seller_id, 'deal.expired', { id: d.id });
     }
   }
+
+  // ─── featured listings ───────────────────────────────────────────────
+  // Expire featured windows that have elapsed (clears the pin so the listing
+  // sorts by recency again).
+  db.prepare(
+    `UPDATE phone_listings
+     SET featured_until=NULL, feature_tier=NULL, next_boost_at=NULL, boost_interval_ms=NULL
+     WHERE featured_until IS NOT NULL AND featured_until <= ?`,
+  ).run(now);
+
+  // Re-bump still-active featured listings that are due for their next
+  // scheduled boost — re-stamping boosted_at floats them back to the top of
+  // the featured band. next_boost_at moves forward by the tier's interval.
+  const dueBoost = db
+    .prepare(
+      `SELECT id, boost_interval_ms FROM phone_listings
+       WHERE featured_until > ? AND next_boost_at IS NOT NULL AND next_boost_at <= ?
+       LIMIT ?`,
+    )
+    .all(now, now, TICK_LIMIT);
+  for (const l of dueBoost) {
+    const interval = l.boost_interval_ms || 12 * 60 * 60 * 1000;
+    db.prepare('UPDATE phone_listings SET boosted_at=?, next_boost_at=? WHERE id=?')
+      .run(now, now + interval, l.id);
+  }
 }
 
 export function startExpirer() {
