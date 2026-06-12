@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
-import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat } from '../../components/icons';
+import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft } from '../../components/icons';
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { Listings, Reports, Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
@@ -312,6 +312,55 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               chatStarting={chatStarting}
             />
           </View>
+        ) : null}
+
+        {/* Owner promote CTA — the highest-visibility surface for the
+            featured-listing upsell: publishing a listing lands the seller
+            right here, so this doubles as the post-publish prompt. Swaps to
+            a "featured until" notice while a window is active; hidden on
+            sold/expired listings (nothing to promote). */}
+        {isMine ? (
+          (data as any).featured_until && (data as any).featured_until > Date.now() ? (
+            <View style={{
+              marginHorizontal: 16, marginTop: 14, padding: 14,
+              backgroundColor: theme.successSoft, borderWidth: 1, borderColor: theme.success,
+              borderRadius: radius.xxl, flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+            }}>
+              <IconSpark size={18} color={theme.success} />
+              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+                إعلانك مميّز حتى {new Date((data as any).featured_until).toLocaleDateString()}
+              </Text>
+            </View>
+          ) : (data.status === 'active' || data.status === 'reserved') ? (
+            <TouchableOpacity
+              activeOpacity={0.88}
+              onPress={() => navigation.navigate('FeatureListing', { id, label: `${data.brand} ${data.model}` })}
+              style={{
+                marginHorizontal: 16, marginTop: 14, padding: 14,
+                backgroundColor: theme.accent, borderRadius: radius.xxl,
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 12,
+                ...shadowSoft,
+              }}
+            >
+              <View style={{
+                width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.2)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <IconSpark size={20} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff', textAlign: 'right' }}>
+                  ميّز إعلانك
+                </Text>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: 'rgba(255,255,255,0.9)', marginTop: 2, textAlign: 'right' }}>
+                  اظهر في أعلى النتائج وبِع أسرع — ابتداءً من 2,000 د.ع
+                </Text>
+              </View>
+              <View style={{ transform: [{ scaleX: -1 }] }}>
+                <IconChevronLeft size={14} color="#fff" sw={2} />
+              </View>
+            </TouchableOpacity>
+          ) : null
         ) : null}
 
         {/* Seller-side CTA: jump to ChatsList filtered to this listing.

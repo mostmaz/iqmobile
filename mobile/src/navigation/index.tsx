@@ -72,6 +72,7 @@ function SearchStackNav() {
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="SearchHome" component={SearchScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -101,6 +102,9 @@ function SellStackNav() {
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="SellHome" component={PostListingScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      {/* Publishing lands on ListingDetail inside THIS stack — the promote
+          CTA there needs the route locally or the post-publish upsell dies. */}
+      <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -113,6 +117,7 @@ function ChatsStackNav() {
       <BrowseStack.Screen name="ChatsHome" component={ChatsListScreen} />
       <BrowseStack.Screen name="Chat" component={ChatScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
   );
 }
