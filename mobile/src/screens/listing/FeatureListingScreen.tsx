@@ -1,20 +1,26 @@
-// "ميّز إعلانك" — feature-a-listing flow. No payment gateway: the seller
-// transfers airtime to the owner's number, then submits this request (tier +
-// carrier + the number they paid from). It lands as pending; an admin approves
-// it from the dashboard, which pins the listing to the top for the tier's
-// duration.
+// "ميّز إعلانك" — feature-a-listing flow, paid by airtime (mobile balance)
+// transfer. The seller: picks their carrier (Asiacell/Korek) → enters the
+// number they'll transfer FROM → picks a tier → taps the CTA, which files the
+// request AND opens the phone dialer prefilled with that carrier's USSD
+// transfer code (e.g. Asiacell *133*5000*0773…#, Korek *123*0750…*5000#).
+// The receiving numbers + USSD templates come from GET /features/tiers so the
+// owner can swap SIMs server-side without an app release. An admin approves
+// the request from the dashboard after the airtime lands.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
-import { Header, Btn, Input, FieldLabel, Pill, fmtIQD } from '../../components/ui';
-import { IconSpark, IconCheck } from '../../components/icons';
+import { Header, Btn, Input, FieldLabel, fmtIQD } from '../../components/ui';
+import { IconSpark, IconCheck, IconPhoneIcon } from '../../components/icons';
 import { Features, type FeatureCarrier } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 
-const CARRIER_LABEL: Record<FeatureCarrier, string> = { asiacell: 'آسياسيل', korek: 'كورك' };
+const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
+  asiacell: { label: 'آسياسيل', color: '#ED1C24' },
+  korek: { label: 'كورك', color: '#F7A800' },
+};
 
 export default function FeatureListingScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -26,25 +32,45 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   const { data, isLoading } = useQuery({ queryKey: ['feature-tiers'], queryFn: () => Features.tiers() });
   const { data: mine } = useQuery({ queryKey: ['features-mine'], queryFn: () => Features.mine() });
 
-  const [tier, setTier] = useState<string | null>(null);
-  const [carrier, setCarrier] = useState<FeatureCarrier>('asiacell');
+  const [carrier, setCarrier] = useState<FeatureCarrier | null>(null);
   const [sender, setSender] = useState(user?.phone || '');
-  const [note, setNote] = useState('');
+  const [tier, setTier] = useState<string | null>(null);
 
-  // Existing request for THIS listing (so we show status instead of a form
-  // when one is already in flight or recently decided).
+  // Existing request for THIS listing (so we show status instead of the form
+  // when one is already in flight or the listing is currently featured).
   const existing = useMemo(
     () => (mine || []).find((f) => f.listing_id === listingId),
     [mine, listingId],
   );
+  const hasPending = existing?.status === 'pending';
+
+  // The filled USSD dial code for the current carrier + tier selection.
+  const ussdCode = useMemo(() => {
+    if (!data || !carrier || !tier) return null;
+    const t = data.tiers.find((x) => x.key === tier);
+    const number = data.transfer_numbers?.[carrier];
+    const template = data.ussd_templates?.[carrier];
+    if (!t || !number || !template) return null;
+    return template.replace('{amount}', String(t.amount)).replace('{number}', number);
+  }, [data, carrier, tier]);
+
+  // Open the dialer with the USSD code prefilled. encodeURIComponent keeps
+  // '*' raw and turns '#' into %23 (a raw '#' would be parsed as a URL
+  // fragment and the dialer would drop everything after it). iOS blocks
+  // USSD codes in tel: links entirely — fall back to showing the code so
+  // the user can dial it manually.
+  function openDialer(code: string) {
+    Linking.openURL('tel:' + encodeURIComponent(code)).catch(() => {
+      Alert.alert('اطلب هذا الرمز من تطبيق الهاتف', code);
+    });
+  }
 
   const submit = useMutation({
-    mutationFn: () => Features.request(listingId, { tier: tier!, carrier, sender_phone: sender.trim(), note: note.trim() || undefined }),
+    mutationFn: () => Features.request(listingId, { tier: tier!, carrier: carrier!, sender_phone: sender.trim() }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['features-mine'] });
-      Alert.alert('تم إرسال الطلب ✅', 'سنراجع التحويل ونفعّل إعلانك المميّز قريباً.', [
-        { text: 'حسناً', onPress: () => navigation.goBack() },
-      ]);
+      // Straight to the dialer — the pending card renders when they return.
+      if (ussdCode) openDialer(ussdCode);
     },
     onError: (e: any) => {
       const code = e?.data?.error || e?.message;
@@ -52,7 +78,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         request_pending: 'لديك طلب قيد المراجعة لهذا الإعلان بالفعل.',
         bad_tier: 'اختر باقة صحيحة.',
         bad_carrier: 'اختر شركة الاتصال.',
-        bad_sender_phone: 'أدخل رقم الهاتف الذي حوّلت منه.',
+        bad_sender_phone: 'أدخل رقم الهاتف الذي ستحوّل منه.',
         forbidden: 'هذا الإعلان ليس لك.',
         not_found: 'الإعلان غير موجود.',
       };
@@ -61,12 +87,11 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   });
 
   function onSubmit() {
-    if (!tier) { Alert.alert('اختر الباقة', 'حدّد إحدى باقات التمييز أولاً.'); return; }
-    if (sender.replace(/\D/g, '').length < 10) { Alert.alert('رقم غير صحيح', 'أدخل الرقم الذي حوّلت منه الرصيد.'); return; }
+    if (!carrier) { Alert.alert('اختر شركة الاتصال', 'حدّد آسياسيل أو كورك أولاً.'); return; }
+    if (sender.replace(/\D/g, '').length < 10) { Alert.alert('رقم غير صحيح', 'أدخل الرقم الذي ستحوّل منه الرصيد.'); return; }
+    if (!tier) { Alert.alert('اختر الباقة', 'حدّد إحدى باقات التمييز.'); return; }
     submit.mutate();
   }
-
-  const ownerPhone = data?.owner_phone || '07736969091';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -76,13 +101,13 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right', marginBottom: 12 }}>{label}</Text>
         ) : null}
 
-        {existing && existing.status === 'pending' ? (
+        {hasPending ? (
           <StatusCard
             tone="pending"
             title="طلبك قيد المراجعة"
-            body="استلمنا طلبك وسنفعّل التمييز بعد تأكيد التحويل. شكراً لصبرك."
+            body="استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد. إن لم تكمل التحويل بعد، اطلب الرمز من تطبيق الهاتف."
           />
-        ) : existing && existing.status === 'approved' && existing.featured_until && existing.featured_until > Date.now() ? (
+        ) : existing?.status === 'approved' && existing.featured_until && existing.featured_until > Date.now() ? (
           <StatusCard
             tone="ok"
             title="إعلانك مميّز ✨"
@@ -92,9 +117,42 @@ export default function FeatureListingScreen({ navigation, route }: any) {
 
         {isLoading ? (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
-        ) : (
+        ) : hasPending ? null : (
           <>
-            <FieldLabel>اختر الباقة</FieldLabel>
+            {/* 1 — carrier */}
+            <FieldLabel>١ · اختر شركة الاتصال</FieldLabel>
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 6 }}>
+              {(data?.carriers || (['asiacell', 'korek'] as FeatureCarrier[])).map((c) => {
+                const meta = CARRIER_META[c as FeatureCarrier] || { label: c, color: theme.accent };
+                const active = carrier === c;
+                return (
+                  <TouchableOpacity key={c} activeOpacity={0.85} onPress={() => setCarrier(c as FeatureCarrier)} style={{
+                    flex: 1, alignItems: 'center', gap: 8, paddingVertical: 14,
+                    backgroundColor: active ? theme.accentSoft : theme.surface,
+                    borderWidth: 1.5, borderColor: active ? theme.accent : theme.line,
+                    borderRadius: radius.xxl,
+                  }}>
+                    <View style={{
+                      width: 44, height: 44, borderRadius: 999, backgroundColor: meta.color,
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <IconPhoneIcon size={20} color="#fff" sw={1.8} />
+                    </View>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink }}>{meta.label}</Text>
+                    {active ? <IconCheck size={16} color={theme.accent} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* 2 — sender number */}
+            <View style={{ height: 16 }} />
+            <FieldLabel>٢ · الرقم الذي ستحوّل منه</FieldLabel>
+            <Input value={sender} onChangeText={setSender} placeholder="07XXXXXXXXX" numeric ltr />
+
+            {/* 3 — tier */}
+            <View style={{ height: 16 }} />
+            <FieldLabel>٣ · اختر الباقة</FieldLabel>
             <View style={{ gap: 10, marginTop: 6 }}>
               {(data?.tiers || []).map((t) => {
                 const active = tier === t.key;
@@ -130,49 +188,30 @@ export default function FeatureListingScreen({ navigation, route }: any) {
               })}
             </View>
 
-            {/* Airtime instructions */}
-            <View style={{
-              marginTop: 18, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-              borderRadius: radius.xxl, padding: 16,
-            }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
-                طريقة الدفع — تحويل رصيد
-              </Text>
-              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', marginTop: 6, lineHeight: 22 }}>
-                حوّل قيمة الباقة رصيداً (آسياسيل أو كورك) إلى الرقم التالي، ثم أكمل الطلب أدناه:
-              </Text>
+            {/* Dial-code preview — appears once carrier + tier are chosen. */}
+            {ussdCode ? (
               <View style={{
-                marginTop: 10, backgroundColor: theme.chipBg, borderRadius: radius.lg,
-                paddingVertical: 12, alignItems: 'center',
+                marginTop: 18, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+                borderRadius: radius.xxl, padding: 16,
               }}>
-                <Text selectable style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 22, color: theme.ink, letterSpacing: 1 }}>
-                  {ownerPhone}
+                <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
+                  عند الضغط على الزر أدناه سيفتح الاتصال برمز التحويل التالي — أكّد المكالمة لإتمام تحويل الرصيد:
                 </Text>
+                <View style={{
+                  marginTop: 10, backgroundColor: theme.chipBg, borderRadius: radius.lg,
+                  paddingVertical: 12, alignItems: 'center',
+                }}>
+                  <Text selectable style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 18, color: theme.ink, letterSpacing: 0.5, writingDirection: 'ltr' }}>
+                    {ussdCode}
+                  </Text>
+                </View>
               </View>
-            </View>
-
-            <View style={{ height: 16 }} />
-            <FieldLabel>شركة الاتصال</FieldLabel>
-            <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 6 }}>
-              {(data?.carriers || ['asiacell', 'korek']).map((c) => (
-                <Pill key={c} active={carrier === c} onPress={() => setCarrier(c as FeatureCarrier)}>
-                  {CARRIER_LABEL[c as FeatureCarrier] || c}
-                </Pill>
-              ))}
-            </View>
-
-            <View style={{ height: 14 }} />
-            <FieldLabel>الرقم الذي حوّلت منه</FieldLabel>
-            <Input value={sender} onChangeText={setSender} placeholder="07XXXXXXXXX" numeric ltr />
-
-            <View style={{ height: 14 }} />
-            <FieldLabel>ملاحظة (اختياري)</FieldLabel>
-            <Input value={note} onChangeText={setNote} placeholder="أي تفاصيل تساعدنا في تأكيد التحويل" multiline />
+            ) : null}
 
             <View style={{ height: 22 }} />
-            <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>إرسال الطلب</Btn>
+            <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>تحويل الرصيد وإرسال الطلب</Btn>
             <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 12, textAlign: 'center', lineHeight: 20 }}>
-              بعد تأكيد التحويل يدوياً، سيظهر إعلانك في أعلى القائمة مباشرة.
+              بعد وصول الرصيد وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.
             </Text>
           </>
         )}

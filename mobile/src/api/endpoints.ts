@@ -335,7 +335,12 @@ export interface FeatureTier {
 export interface FeatureTiersResponse {
   tiers: FeatureTier[];
   carriers: FeatureCarrier[];
-  owner_phone: string;  // where to send the airtime
+  owner_phone: string;  // primary contact (Asiacell)
+  // Per-carrier receiving numbers + USSD dial templates. The app fills
+  // {amount} (tier IQD) and {number} (the matching receiving number) and
+  // opens the dialer with the result.
+  transfer_numbers: Record<FeatureCarrier, string>;
+  ussd_templates: Record<FeatureCarrier, string>;
 }
 export interface FeatureRequest {
   id: number;

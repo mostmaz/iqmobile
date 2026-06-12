@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
-import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, tierFor } from '../featureTiers.js';
+import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, tierFor } from '../featureTiers.js';
 
 const r = Router();
 
@@ -19,10 +19,17 @@ function normalizeIraqiPhone(input) {
   return d;
 }
 
-// Public — the mobile "feature this listing" sheet reads the tier catalog +
-// the number to send airtime to. No secrets here.
+// Public — the mobile "feature this listing" sheet reads the tier catalog,
+// the per-carrier receiving numbers, and the USSD templates the app fills
+// ({amount}/{number}) to open the dialer. No secrets here.
 r.get('/features/tiers', (_req, res) => {
-  res.json({ tiers: FEATURE_TIERS, carriers: CARRIERS, owner_phone: OWNER_PHONE });
+  res.json({
+    tiers: FEATURE_TIERS,
+    carriers: CARRIERS,
+    owner_phone: OWNER_PHONE,
+    transfer_numbers: TRANSFER_NUMBERS,
+    ussd_templates: USSD_TEMPLATES,
+  });
 });
 
 // Seller files a request to feature one of their own listings. We don't take

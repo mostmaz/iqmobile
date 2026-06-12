@@ -17,11 +17,27 @@ export const TIERS_BY_KEY = Object.fromEntries(FEATURE_TIERS.map((t) => [t.key, 
 // Carriers users transfer airtime from. Lowercase canonical keys.
 export const CARRIERS = ['asiacell', 'korek'];
 
-// Owner contact. OWNER_PHONE is where sellers send airtime; OWNER_WHATSAPP is
+// Owner contact. OWNER_PHONE is the primary (Asiacell) line; OWNER_WHATSAPP is
 // the wa.me number the banner "contact us" form opens. Digits only for
 // wa.me (country code + number, no +).
 export const OWNER_PHONE = '07736969091';
 export const OWNER_WHATSAPP = '9647736969091';
+
+// Per-carrier receiving numbers + the USSD dial codes that perform the
+// balance transfer. The app fills {amount} (tier price in IQD) and {number}
+// (the matching receiving number below), then opens the dialer with the
+// result. Served via GET /features/tiers so changing a SIM here doesn't
+// require an app update. NOTE the operand order differs between carriers:
+//   Asiacell: *133*<amount>*<recipient>#
+//   Korek:    *123*<recipient>*<amount>#
+export const TRANSFER_NUMBERS = {
+  asiacell: '07736969091',
+  korek: '07502062804',
+};
+export const USSD_TEMPLATES = {
+  asiacell: '*133*{amount}*{number}#',
+  korek: '*123*{number}*{amount}#',
+};
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
