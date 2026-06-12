@@ -171,10 +171,10 @@ export default function BrowseScreen({ navigation }: any) {
   // Pick which banner to show, rotating when several are eligible. Two rules:
   //   1. Brand specificity is a hard tier — on a Samsung view, a Samsung-
   //      targeted banner always beats an "every brand" one.
-  //   2. Governorate is a 3:1 weighting, not a knockout — when a governorate-
-  //      targeted banner competes with a nationwide one, the rotation schedule
-  //      gives each gov-specific banner 3 impressions for every 1 nationwide
-  //      impression (instead of hiding the nationwide banner entirely).
+  //   2. Governorate is a 3:1 weighting in the NATIONWIDE banner's favor —
+  //      when an all-Iraq banner competes with a governorate-targeted one,
+  //      the rotation schedule gives each nationwide banner 3 impressions
+  //      for every 1 gov-specific impression.
   // The home pool (always) and the brand pool (when a brand is filtered)
   // rotate together via bannerTick — advancing on refresh / filter change /
   // tab re-open.
@@ -185,14 +185,14 @@ export default function BrowseScreen({ navigation }: any) {
       // brand=null, so this is a no-op for the home pool).
       const hasBrandSpecific = list.some((b) => b.brand != null);
       const tier = hasBrandSpecific ? list.filter((b) => b.brand != null) : list;
-      // 3:1 governorate weighting: three rounds of the gov-specific banners,
-      // then one round of the nationwide ones. bannerTick walks this cycle.
+      // 3:1 weighting for nationwide: three rounds of the all-Iraq banners,
+      // then one round of the gov-specific ones. bannerTick walks this cycle.
       const specific = tier.filter((b) => b.governorate != null);
       const nationwide = tier.filter((b) => b.governorate == null);
       if (specific.length === 0 || nationwide.length === 0) return tier;
       const out: BannerRow[] = [];
-      for (let round = 0; round < 3; round++) out.push(...specific);
-      out.push(...nationwide);
+      for (let round = 0; round < 3; round++) out.push(...nationwide);
+      out.push(...specific);
       return out;
     };
     const pool = [...schedule(homeBanners), ...(filters.brand ? schedule(brandBanners) : [])];
