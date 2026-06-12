@@ -167,19 +167,34 @@ export default function BrowseScreen({ navigation }: any) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pick which banner to show, rotating when several are eligible. Within each
-  // pool we keep only the most-specific tier (a Baghdad/Samsung banner beats a
-  // nationwide one); then the home pool (always) and the brand pool (when a
-  // brand is filtered) rotate together via bannerTick — advancing on refresh /
-  // filter change / tab re-open.
+  // Pick which banner to show, rotating when several are eligible. Two rules:
+  //   1. Brand specificity is a hard tier — on a Samsung view, a Samsung-
+  //      targeted banner always beats an "every brand" one.
+  //   2. Governorate is a 3:1 weighting, not a knockout — when a governorate-
+  //      targeted banner competes with a nationwide one, the rotation schedule
+  //      gives each gov-specific banner 3 impressions for every 1 nationwide
+  //      impression (instead of hiding the nationwide banner entirely).
+  // The home pool (always) and the brand pool (when a brand is filtered)
+  // rotate together via bannerTick — advancing on refresh / filter change /
+  // tab re-open.
   const banner: BannerRow | null = useMemo(() => {
-    const topTier = (list?: BannerRow[]): BannerRow[] => {
+    const schedule = (list?: BannerRow[]): BannerRow[] => {
       if (!list || list.length === 0) return [];
-      const score = (b: BannerRow) => (b.brand != null ? 1 : 0) + (b.governorate != null ? 1 : 0);
-      const best = Math.max(...list.map(score));
-      return list.filter((b) => score(b) === best);
+      // Hard tier on the brand dimension only (home banners all have
+      // brand=null, so this is a no-op for the home pool).
+      const hasBrandSpecific = list.some((b) => b.brand != null);
+      const tier = hasBrandSpecific ? list.filter((b) => b.brand != null) : list;
+      // 3:1 governorate weighting: three rounds of the gov-specific banners,
+      // then one round of the nationwide ones. bannerTick walks this cycle.
+      const specific = tier.filter((b) => b.governorate != null);
+      const nationwide = tier.filter((b) => b.governorate == null);
+      if (specific.length === 0 || nationwide.length === 0) return tier;
+      const out: BannerRow[] = [];
+      for (let round = 0; round < 3; round++) out.push(...specific);
+      out.push(...nationwide);
+      return out;
     };
-    const pool = [...topTier(homeBanners), ...(filters.brand ? topTier(brandBanners) : [])];
+    const pool = [...schedule(homeBanners), ...(filters.brand ? schedule(brandBanners) : [])];
     if (pool.length === 0) return null;
     return pool[bannerTick % pool.length];
   }, [homeBanners, brandBanners, filters.brand, bannerTick]);
