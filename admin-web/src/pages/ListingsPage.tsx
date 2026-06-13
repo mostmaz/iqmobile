@@ -121,7 +121,9 @@ export function ListingsPage() {
   }
 
   // Manual feature — for direct (WhatsApp/cash) payments that skip the
-  // in-app airtime request. 0 days = unfeature.
+  // in-app airtime request. Two prompts: duration (days) then how many
+  // times/day the listing is re-bumped to the top of the feed. 0 days =
+  // unfeature (the second prompt is skipped).
   async function feature(l: Listing) {
     const isFeatured = !!(l.featured_until && l.featured_until > Date.now());
     const cur = isFeatured ? `(featured until ${new Date(l.featured_until!).toLocaleDateString()})` : '(not featured)';
@@ -129,8 +131,19 @@ export function ListingsPage() {
     if (days === null) return;
     const n = Number(days);
     if (!Number.isFinite(n) || n < 0) { alert('Enter a number ≥ 0.'); return; }
+
+    let boosts = 3;
+    if (n > 0) {
+      const b = prompt(`How many times per day should it be pushed to the top?\n(tier reference: bronze 2 · silver 3 · gold 4)`, '3');
+      if (b === null) return;
+      boosts = Number(b);
+      if (!Number.isInteger(boosts) || boosts < 1 || boosts > 24) { alert('Enter a whole number between 1 and 24.'); return; }
+    }
     try {
-      await api(`/admin/listings/${l.id}/feature`, { method: 'PATCH', body: JSON.stringify({ days: n }) });
+      await api(`/admin/listings/${l.id}/feature`, {
+        method: 'PATCH',
+        body: JSON.stringify({ days: n, boosts_per_day: boosts }),
+      });
       await load();
     } catch (e: any) { alert(`Feature failed: ${e?.message || 'unknown'}`); }
   }
