@@ -131,6 +131,11 @@ app.use('/admin', adminRoutes);
 // /dashboard/*. The Vite build outputs to admin-web/dist relative to
 // the repo root; resolve that path from this file's CWD (server/) so
 // gradle/pm2 cwd quirks don't break it.
+//
+// NOTE: the deploy action only triggers on server/** changes, so a
+// dashboard-only commit (new admin-web/dist) won't ship until a server
+// change rides along. To deploy a dashboard-only update, either touch a
+// server file or run the workflow manually from the Actions tab.
 const ADMIN_WEB_DIST = path.resolve('./../admin-web/dist');
 if (fs.existsSync(ADMIN_WEB_DIST)) {
   app.use('/dashboard', express.static(ADMIN_WEB_DIST, { maxAge: '1h' }));
