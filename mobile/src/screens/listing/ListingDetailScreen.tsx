@@ -17,6 +17,7 @@ import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
 import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useTrack } from '../../analytics/track';
+import { SHOW_PROMOTE } from '../../config/flags';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
@@ -318,8 +319,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             featured-listing upsell: publishing a listing lands the seller
             right here, so this doubles as the post-publish prompt. Swaps to
             a "featured until" notice while a window is active; hidden on
-            sold/expired listings (nothing to promote). */}
-        {isMine ? (
+            sold/expired listings (nothing to promote). Hidden entirely in the
+            Play Store artifact (SHOW_PROMOTE=false) — see config/flags.ts. */}
+        {isMine && SHOW_PROMOTE ? (
           (data as any).featured_until && (data as any).featured_until > Date.now() ? (
             <View style={{
               marginHorizontal: 16, marginTop: 14, padding: 14,

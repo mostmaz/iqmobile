@@ -7,6 +7,7 @@ import { theme, fonts } from '../../theme';
 import { Btn, Header, Pill } from '../../components/ui';
 import { IconSpark } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
+import { SHOW_PROMOTE } from '../../config/flags';
 import { Listings, type ListingStatus } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { useAuth } from '../../auth/AuthContext';
@@ -74,11 +75,11 @@ export default function MyListingsScreen({ navigation }: any) {
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => {
           const featured = !!(item.featured_until && item.featured_until > Date.now());
-          const canFeature = item.status === 'active' || item.status === 'reserved';
+          const canFeature = SHOW_PROMOTE && (item.status === 'active' || item.status === 'reserved');
           return (
             <View>
               <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
-              {featured ? (
+              {SHOW_PROMOTE && featured ? (
                 <View style={{ marginTop: -4, marginBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
                   <IconSpark size={12} color={theme.accent} />
                   <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.accent }}>
