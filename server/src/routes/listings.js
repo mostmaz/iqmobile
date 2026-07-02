@@ -7,7 +7,7 @@ import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
-import { searchTokenSets } from '../searchNormalize.js';
+import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();
@@ -243,28 +243,24 @@ r.get('/', optionalAuth(), (req, res) => {
     where += ' AND u.seller_type=?'; params.push(seller_type);
   }
   if (q) {
-    // Smart search. searchTokenSets returns 1–2 interpretations of the
-    // query: the raw tokens (match Arabic descriptions) and an Arabic→Latin
-    // transliteration ("سامسونج"→samsung, "اس ٢٣"→"s23") that matches the
-    // Latin brand/model catalog. A listing matches an interpretation when
-    // EVERY token appears in its combined brand+model+description text —
-    // so "سامسونج الترا" finds "Samsung S23 Ultra" even though the words
-    // aren't adjacent. The haystack is lowercased and space-stripped, which
-    // also makes "s23" ↔ "S 23" spacing-insensitive. LIKE on an expression
-    // skips indexes, but the listings table is small enough not to care.
-    const HAYSTACK =
-      "REPLACE(LOWER(l.brand || ' ' || l.model || ' ' || COALESCE(l.description,'')), ' ', '')";
-    const sets = searchTokenSets(String(q));
-    const setSql = [];
-    for (const tokens of sets) {
-      const tokenSql = [];
-      for (const t of tokens) {
-        tokenSql.push(`${HAYSTACK} LIKE ?`);
-        params.push('%' + t.replace(/\s+/g, '') + '%');
-      }
-      setSql.push('(' + tokenSql.join(' AND ') + ')');
+    // Smart search. queryTokens() turns the query into normalized tokens —
+    // Arabic is transliterated to the Latin catalog ("سامسونج"→samsung,
+    // "اس ٢٣"→"s23") and genuine Arabic description words are kept in their
+    // normalized form. A listing matches when EVERY token appears in its
+    // combined brand+model+description text, so "سامسونج الترا" finds
+    // "Samsung S23 Ultra" even though the words aren't adjacent, and
+    // "ايفون كفاله" requires both. The haystack is normalized the SAME way
+    // as the query (arabicNormalizeSql: digit-fold, orthography-collapse,
+    // space-strip) so Arabic descriptions and "s23"↔"S 23" both line up.
+    // LIKE on an expression skips indexes, but the table is small.
+    const HAYSTACK = arabicNormalizeSql(
+      "l.brand || ' ' || l.model || ' ' || COALESCE(l.description,'')",
+    );
+    const tokens = queryTokens(String(q));
+    if (tokens.length) {
+      where += ' AND (' + tokens.map(() => `${HAYSTACK} LIKE ?`).join(' AND ') + ')';
+      for (const t of tokens) params.push('%' + t + '%');
     }
-    if (setSql.length) where += ' AND (' + setSql.join(' OR ') + ')';
   }
 
   const nowTs = Date.now();
