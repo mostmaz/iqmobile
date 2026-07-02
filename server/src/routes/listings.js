@@ -7,7 +7,7 @@ import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
-import { expandQuery, compactQuery } from '../searchNormalize.js';
+import { searchTokenSets } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();
@@ -243,27 +243,28 @@ r.get('/', optionalAuth(), (req, res) => {
     where += ' AND u.seller_type=?'; params.push(seller_type);
   }
   if (q) {
-    // Smart search: try the raw query (matches Arabic descriptions) AND an
-    // Arabic→Latin transliteration ("سامسونج"→samsung, "اس ٢٣"→"s 23") so
-    // Arabic-typed queries hit the Latin brand/model catalog. The
-    // space-stripped comparison makes "s 23" ↔ "S23" spacing-insensitive,
-    // and the brand+model concat lets "سامسونج اس ٢٣" match Samsung + S23
-    // across the two columns.
-    const candidates = expandQuery(String(q));
-    const parts = [];
-    for (const c of candidates) {
-      parts.push('(l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?)');
-      const like = '%' + c + '%';
-      params.push(like, like, like);
+    // Smart search. searchTokenSets returns 1–2 interpretations of the
+    // query: the raw tokens (match Arabic descriptions) and an Arabic→Latin
+    // transliteration ("سامسونج"→samsung, "اس ٢٣"→"s23") that matches the
+    // Latin brand/model catalog. A listing matches an interpretation when
+    // EVERY token appears in its combined brand+model+description text —
+    // so "سامسونج الترا" finds "Samsung S23 Ultra" even though the words
+    // aren't adjacent. The haystack is lowercased and space-stripped, which
+    // also makes "s23" ↔ "S 23" spacing-insensitive. LIKE on an expression
+    // skips indexes, but the listings table is small enough not to care.
+    const HAYSTACK =
+      "REPLACE(LOWER(l.brand || ' ' || l.model || ' ' || COALESCE(l.description,'')), ' ', '')";
+    const sets = searchTokenSets(String(q));
+    const setSql = [];
+    for (const tokens of sets) {
+      const tokenSql = [];
+      for (const t of tokens) {
+        tokenSql.push(`${HAYSTACK} LIKE ?`);
+        params.push('%' + t.replace(/\s+/g, '') + '%');
+      }
+      setSql.push('(' + tokenSql.join(' AND ') + ')');
     }
-    const compact = compactQuery(candidates);
-    if (compact) {
-      parts.push("REPLACE(LOWER(l.model), ' ', '') LIKE ?");
-      params.push('%' + compact + '%');
-      parts.push("REPLACE(LOWER(l.brand || ' ' || l.model), ' ', '') LIKE ?");
-      params.push('%' + compact + '%');
-    }
-    if (parts.length) where += ' AND (' + parts.join(' OR ') + ')';
+    if (setSql.length) where += ' AND (' + setSql.join(' OR ') + ')';
   }
 
   const nowTs = Date.now();
