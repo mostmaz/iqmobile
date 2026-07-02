@@ -10,16 +10,23 @@ import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
 import { Btn } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall } from '../../components/icons';
+import { IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall, IconPlus } from '../../components/icons';
 import { Shops } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { arOf } from '../../lib/governorates';
 import { callPhone, openWhatsApp } from '../../lib/contact';
+import { useAuth } from '../../auth/AuthContext';
 
 export default function ShopScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const id: number = route.params?.id;
   const { data: shop, isLoading } = useQuery({ queryKey: ['shop', id], queryFn: () => Shops.get(id) });
+  // The shop IS a user account (seller_type='shop'), so ownership is a
+  // simple id match. Owners get a post-device CTA right on their shop page;
+  // the new listing shows up here automatically (shop listings are just
+  // their marketplace listings).
+  const isOwner = !!user && user.id === id;
 
   if (isLoading || !shop) {
     return (
@@ -112,8 +119,9 @@ export default function ShopScreen({ navigation, route }: any) {
                 </View>
               ) : null}
 
-              {/* Contact buttons */}
-              {(phone || whatsapp) ? (
+              {/* Contact buttons — hidden on your own shop (you don't call
+                  yourself); owners get the post-device CTA instead. */}
+              {!isOwner && (phone || whatsapp) ? (
                 <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14 }}>
                   {phone ? <Btn kind="primary" full onPress={() => callPhone(phone)}>اتصال</Btn> : null}
                   {whatsapp ? (
@@ -126,6 +134,22 @@ export default function ShopScreen({ navigation, route }: any) {
                   ) : null}
                 </View>
               ) : null}
+
+              {/* Owner CTA: post a device from inside the shop page. Routes
+                  to the Sell tab (fresh wizard via its tabPress reset); the
+                  published listing appears in this shop page automatically. */}
+              {isOwner ? (
+                <View style={{ marginTop: 14 }}>
+                  <Btn kind="accent" full onPress={() => (navigation as any).getParent()?.navigate('Sell')}>
+                    <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+                      <IconPlus size={17} color="#fff" sw={2} />
+                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>
+                        أضف جهازاً وسعره إلى متجرك
+                      </Text>
+                    </View>
+                  </Btn>
+                </View>
+              ) : null}
             </View>
 
             <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
@@ -135,7 +159,9 @@ export default function ShopScreen({ navigation, route }: any) {
         }
         ListEmptyComponent={
           <View style={{ padding: 32, alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 13 }}>لا توجد إعلانات حالياً.</Text>
+            <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 13, textAlign: 'center', lineHeight: 22 }}>
+              {isOwner ? 'لا توجد إعلانات بعد — أضف أول جهاز لمتجرك من الزر أعلاه.' : 'لا توجد إعلانات حالياً.'}
+            </Text>
           </View>
         }
       />

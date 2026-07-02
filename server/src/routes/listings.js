@@ -7,6 +7,7 @@ import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
+import { expandQuery, compactQuery } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
 const r = Router();
@@ -242,9 +243,27 @@ r.get('/', optionalAuth(), (req, res) => {
     where += ' AND u.seller_type=?'; params.push(seller_type);
   }
   if (q) {
-    where += ' AND (l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?)';
-    const like = '%' + String(q) + '%';
-    params.push(like, like, like);
+    // Smart search: try the raw query (matches Arabic descriptions) AND an
+    // Arabic→Latin transliteration ("سامسونج"→samsung, "اس ٢٣"→"s 23") so
+    // Arabic-typed queries hit the Latin brand/model catalog. The
+    // space-stripped comparison makes "s 23" ↔ "S23" spacing-insensitive,
+    // and the brand+model concat lets "سامسونج اس ٢٣" match Samsung + S23
+    // across the two columns.
+    const candidates = expandQuery(String(q));
+    const parts = [];
+    for (const c of candidates) {
+      parts.push('(l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?)');
+      const like = '%' + c + '%';
+      params.push(like, like, like);
+    }
+    const compact = compactQuery(candidates);
+    if (compact) {
+      parts.push("REPLACE(LOWER(l.model), ' ', '') LIKE ?");
+      params.push('%' + compact + '%');
+      parts.push("REPLACE(LOWER(l.brand || ' ' || l.model), ' ', '') LIKE ?");
+      params.push('%' + compact + '%');
+    }
+    if (parts.length) where += ' AND (' + parts.join(' OR ') + ')';
   }
 
   const nowTs = Date.now();
