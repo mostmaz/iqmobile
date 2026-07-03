@@ -49,7 +49,17 @@ jobs:
             pm2 restart iqmobile --update-env
             pm2 save
             echo "==> health check"
-            sleep 1
-            curl -sSf -m 5 http://127.0.0.1:4001/health
-            echo ""
-            echo "==> deploy ok"
+            # Poll /health for up to 30s — pm2 restart returns before the
+            # Node process finishes booting (Sentry init + DB open + user
+            # load takes ~5s), so a naive sleep 1 races and fails.
+            for i in $(seq 1 30); do
+              if curl -sSf -m 3 http://127.0.0.1:4001/health >/dev/null; then
+                echo "  healthy after ${i}s"
+                echo "==> deploy ok"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "==> health check failed after 30s"
+            pm2 logs iqmobile --lines 30 --nostream || true
+            exit 1
