@@ -10,7 +10,7 @@
 // to block credential-stuffing and disk-fill attacks.
 
 import rateLimit from 'express-rate-limit';
-import { db } from './db.js';
+import { db, getSetting } from './db.js';
 
 const json429 = (req, res /* opts */) => {
   res.status(429).json({ error: 'rate_limited' });
@@ -61,14 +61,17 @@ export const reportLimiter = rateLimit({
 // Listing creation. Eight per minute per IP for individuals — accommodates
 // a normal seller posting a few phones without enabling spam automation.
 //
-// Shops are exempt (unlimited): they post whole catalogues in bulk, so the
-// per-IP cap would block legitimate use. requireAuth() runs before this
-// limiter, so req.user is set; we look up the account's seller_type (cheap
-// primary-key lookup) and skip limiting for shops. Unauthenticated or
-// individual callers still get the 8/min cap.
+// Shops are exempt (unlimited) while the `shops_unlimited_listings` setting
+// is on (the default): they post whole catalogues in bulk, so the per-IP cap
+// would block legitimate use. Flip that setting off from the admin dashboard
+// (PATCH /admin/settings) to re-cap shops at the 8/min limit — no deploy
+// needed. requireAuth() runs before this limiter, so req.user is set; we look
+// up the account's seller_type (cheap primary-key lookup) and skip limiting
+// for shops. Unauthenticated or individual callers always get the 8/min cap.
 const isShopAccount = (req) => {
   const uid = req.user?.id;
   if (!uid) return false;
+  if (getSetting('shops_unlimited_listings') === '0') return false;
   try {
     const u = db.prepare('SELECT seller_type FROM users WHERE id=?').get(uid);
     return u?.seller_type === 'shop';

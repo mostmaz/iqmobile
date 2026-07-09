@@ -94,11 +94,13 @@ r.get('/settings', requireAdmin, (_req, res) => {
   res.json({
     listing_ttl_days: Number(getSetting('listing_ttl_days')) || 30,
     reserve_on_confirm: getSetting('reserve_on_confirm') === '1',
+    // Default on when unset. Toggle off to re-cap shops at the 8/min limit.
+    shops_unlimited_listings: getSetting('shops_unlimited_listings') !== '0',
   });
 });
 
 r.patch('/settings', requireAdmin, (req, res) => {
-  const { listing_ttl_days, reserve_on_confirm } = req.body || {};
+  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings } = req.body || {};
   if (listing_ttl_days != null) {
     const n = Number(listing_ttl_days);
     if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'bad_ttl' });
@@ -106,6 +108,9 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (reserve_on_confirm != null) {
     setSettingValue('reserve_on_confirm', reserve_on_confirm ? '1' : '0');
+  }
+  if (shops_unlimited_listings != null) {
+    setSettingValue('shops_unlimited_listings', shops_unlimited_listings ? '1' : '0');
   }
   res.json({ ok: true });
 });
