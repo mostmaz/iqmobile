@@ -241,6 +241,13 @@ r.get('/', optionalAuth(), (req, res) => {
   if (verified_only === '1' || verified_only === 'true') { where += ' AND u.verified=1'; }
   if (seller_type === 'individual' || seller_type === 'shop') {
     where += ' AND u.seller_type=?'; params.push(seller_type);
+  } else if (!q) {
+    // Default home/browse feed (no search, no explicit seller filter) shows
+    // individual-seller listings only. Shop inventory lives on shop pages and
+    // in the Shops directory, so a shop with a large catalog doesn't flood the
+    // home feed. A search query (q) and an explicit seller_type='shop' still
+    // return shop listings, keeping them discoverable.
+    where += " AND u.seller_type != 'shop'";
   }
   if (q) {
     // Smart search. queryTokens() turns the query into normalized tokens —
