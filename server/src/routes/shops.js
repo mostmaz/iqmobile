@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import { db, now } from '../db.js';
+import { db, now, getSetting } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { uploadLimiter } from '../limits.js';
@@ -157,14 +157,20 @@ r.get('/shops/:id(\\d+)', (req, res) => {
   const nowTs = Date.now();
   const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
   if (!u) return res.status(404).json({ error: 'not_found' });
+  // Respect the "never expire" toggle (default on) so a shop's page shows
+  // its full catalogue regardless of TTL.
+  const neverExpire = getSetting('listings_never_expire') !== '0';
+  const statusClause = neverExpire
+    ? "status IN ('active','reserved','sold','expired')"
+    : "status IN ('active','reserved','sold') AND expires_at > ?";
   const listings = db.prepare(
     `SELECT * FROM phone_listings
-     WHERE seller_id=? AND status IN ('active','reserved','sold') AND expires_at > ?
+     WHERE seller_id=? AND ${statusClause}
      ORDER BY
        (CASE WHEN featured_until > ? THEN 1 ELSE 0 END) DESC,
        created_at DESC
      LIMIT 100`,
-  ).all(u.id, nowTs, nowTs);
+  ).all(...(neverExpire ? [u.id, nowTs] : [u.id, nowTs, nowTs]));
   res.json({
     ...shopCard(u, nowTs),
     shop_images: shopImages(u.id),

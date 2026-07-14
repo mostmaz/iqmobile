@@ -514,6 +514,7 @@ const setSetting = db.prepare('INSERT OR IGNORE INTO app_settings(key, value) VA
 setSetting.run('listing_ttl_days', String(process.env.LISTING_TTL_DAYS || 30));
 setSetting.run('reserve_on_confirm', '1'); // 1 = reserved, 0 = sold
 setSetting.run('shops_unlimited_listings', '1'); // 1 = shops bypass the create rate limit, 0 = shops capped like individuals
+setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore TTL; 0 = expire after listing_ttl_days
 
 // reference: governorate list lives in code; no row needed
 void GOVERNORATES;

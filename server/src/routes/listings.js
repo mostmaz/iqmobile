@@ -228,8 +228,18 @@ r.get('/', optionalAuth(), (req, res) => {
   // sale here", not "live inventory only" — gives the marketplace a sense
   // of activity and helps buyers see what brands/prices have been moving.
   // 'removed' (soft-deleted) and 'expired' are excluded.
-  let where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
-  const params = [Date.now()];
+  // "Show all / never expire" mode (default on for now): ignore the TTL
+  // window and surface every non-removed listing. Toggle off from the admin
+  // settings to restore the expires_at filter.
+  const neverExpire = getSetting('listings_never_expire') !== '0';
+  let where;
+  const params = [];
+  if (neverExpire) {
+    where = `l.status IN ('active','reserved','sold','expired')`;
+  } else {
+    where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
+    params.push(Date.now());
+  }
   if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
   if (model) { where += ' AND l.model LIKE ?'; params.push('%' + String(model) + '%'); }
   if (governorate && isGovernorate(String(governorate))) { where += ' AND l.governorate=?'; params.push(governorate); }

@@ -97,11 +97,13 @@ r.get('/settings', requireAdmin, (_req, res) => {
     reserve_on_confirm: getSetting('reserve_on_confirm') === '1',
     // Default on when unset. Toggle off to re-cap shops at the 8/min limit.
     shops_unlimited_listings: getSetting('shops_unlimited_listings') !== '0',
+    // Default on: show every listing regardless of TTL (nothing expires).
+    listings_never_expire: getSetting('listings_never_expire') !== '0',
   });
 });
 
 r.patch('/settings', requireAdmin, (req, res) => {
-  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings } = req.body || {};
+  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings, listings_never_expire } = req.body || {};
   if (listing_ttl_days != null) {
     const n = Number(listing_ttl_days);
     if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'bad_ttl' });
@@ -112,6 +114,9 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (shops_unlimited_listings != null) {
     setSettingValue('shops_unlimited_listings', shops_unlimited_listings ? '1' : '0');
+  }
+  if (listings_never_expire != null) {
+    setSettingValue('listings_never_expire', listings_never_expire ? '1' : '0');
   }
   res.json({ ok: true });
 });

@@ -1,4 +1,4 @@
-import { db } from './db.js';
+import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
@@ -16,13 +16,18 @@ const TICK_LIMIT = 500;
 function tick() {
   const now = Date.now();
 
-  const expL = db
-    .prepare(
-      `SELECT id, seller_id FROM phone_listings
-       WHERE status='active' AND expires_at <= ?
-       LIMIT ?`,
-    )
-    .all(now, TICK_LIMIT);
+  // "Never expire" mode (default on for now): skip the listing-expiry sweep
+  // entirely so nothing lapses. Deals still time out below (unrelated to the
+  // listing TTL). Flip listings_never_expire=0 to resume expiring.
+  const expL = getSetting('listings_never_expire') === '0'
+    ? db
+      .prepare(
+        `SELECT id, seller_id FROM phone_listings
+         WHERE status='active' AND expires_at <= ?
+         LIMIT ?`,
+      )
+      .all(now, TICK_LIMIT)
+    : [];
   for (const l of expL) {
     // Guard against the SELECT-then-UPDATE race: another request (renew,
     // seller-confirm flipping to 'sold', moderation 'removed') could have
