@@ -1,15 +1,17 @@
-// Shop page — the shop's profile + contact methods + its listings. Reached
-// from the Shops directory (and from any listing's seller when that seller is
-// a shop, later). Contact is call / WhatsApp on the shop's public numbers.
+// Shop page — the shop's profile + price-list images + contact methods + its
+// listings. Reached from the Shops directory (and from any listing whose
+// seller is a shop). Contact is call (one button per public number) / WhatsApp
+// / Facebook / Instagram. Price-list images open full-screen (swipeable).
 
-import React from 'react';
-import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
 import { Btn } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall, IconPlus } from '../../components/icons';
 import { Shops } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
@@ -27,6 +29,8 @@ export default function ShopScreen({ navigation, route }: any) {
   // the new listing shows up here automatically (shop listings are just
   // their marketplace listings).
   const isOwner = !!user && user.id === id;
+  // Full-screen price-image viewer (index of the tapped image, or null).
+  const [viewerIdx, setViewerIdx] = useState<number | null>(null);
 
   if (isLoading || !shop) {
     return (
@@ -38,8 +42,14 @@ export default function ShopScreen({ navigation, route }: any) {
 
   const logo = shop.shop_image_path || shop.profile_image_path;
   const initial = (shop.shop_name || shop.display_name || '?').trim()[0] || '?';
-  const phone = shop.shop_phone || null;
+  // Prefer the explicit list; fall back to the legacy single number.
+  const phones = shop.shop_phones && shop.shop_phones.length
+    ? shop.shop_phones
+    : (shop.shop_phone ? [shop.shop_phone] : []);
   const whatsapp = shop.shop_whatsapp || shop.shop_phone || null;
+  const images = shop.shop_images || [];
+
+  const openUrl = (url?: string | null) => { if (url) Linking.openURL(url).catch(() => {}); };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -119,11 +129,18 @@ export default function ShopScreen({ navigation, route }: any) {
                 </View>
               ) : null}
 
-              {/* Contact buttons — hidden on your own shop (you don't call
-                  yourself); owners get the post-device CTA instead. */}
-              {!isOwner && (phone || whatsapp) ? (
-                <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14 }}>
-                  {phone ? <Btn kind="primary" full onPress={() => callPhone(phone)}>اتصال</Btn> : null}
+              {/* Contact — hidden on your own shop (you don't call yourself);
+                  owners get the post-device CTA instead. One call button per
+                  public number, then WhatsApp, then Facebook / Instagram. */}
+              {!isOwner ? (
+                <View style={{ marginTop: 14, gap: 8 }}>
+                  {phones.map((p) => (
+                    <Btn key={p} kind="primary" full onPress={() => callPhone(p)}>
+                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>
+                        اتصال · <Text style={{ fontFamily: fonts.ltr }}>{p}</Text>
+                      </Text>
+                    </Btn>
+                  ))}
                   {whatsapp ? (
                     <Btn kind="success" full onPress={() => openWhatsApp(whatsapp, `مرحباً، أتواصل معك من تطبيق iQ بخصوص متجر ${shop.shop_name}`)}>
                       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
@@ -131,6 +148,16 @@ export default function ShopScreen({ navigation, route }: any) {
                         <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>واتساب</Text>
                       </View>
                     </Btn>
+                  ) : null}
+                  {shop.shop_facebook || shop.shop_instagram ? (
+                    <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+                      {shop.shop_facebook ? (
+                        <SocialButton label="فيسبوك" bg="#1877F2" onPress={() => openUrl(shop.shop_facebook)} />
+                      ) : null}
+                      {shop.shop_instagram ? (
+                        <SocialButton label="انستغرام" bg="#C13584" onPress={() => openUrl(shop.shop_instagram)} />
+                      ) : null}
+                    </View>
                   ) : null}
                 </View>
               ) : null}
@@ -152,6 +179,25 @@ export default function ShopScreen({ navigation, route }: any) {
               ) : null}
             </View>
 
+            {/* Price-list images — tap to open full-screen (swipe between). */}
+            {images.length ? (
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
+                  قائمة الأسعار
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row-reverse' }}>
+                  {images.map((im, i) => (
+                    <TouchableOpacity key={im.id} activeOpacity={0.85} onPress={() => setViewerIdx(i)} style={{ marginLeft: 10 }}>
+                      <Img
+                        source={{ uri: fullImageUrl(im.image_path) }}
+                        style={{ width: 116, height: 158, borderRadius: 14, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.line }}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
             <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
               إعلانات المتجر
             </Text>
@@ -165,6 +211,26 @@ export default function ShopScreen({ navigation, route }: any) {
           </View>
         }
       />
+
+      {/* Full-screen price-image viewer */}
+      {viewerIdx != null && images.length > 0 ? (
+        <FullScreenGallery images={images} startIndex={viewerIdx} onClose={() => setViewerIdx(null)} />
+      ) : null}
     </View>
+  );
+}
+
+function SocialButton({ label, bg, onPress }: { label: string; bg: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={{
+        flex: 1, height: 44, borderRadius: radius.lg, backgroundColor: bg,
+        alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+    </TouchableOpacity>
   );
 }

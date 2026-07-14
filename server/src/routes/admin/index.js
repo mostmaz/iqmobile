@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
+import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
@@ -1231,6 +1232,13 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
     if (b.shop_whatsapp && !p) return res.status(400).json({ error: 'bad_shop_whatsapp' });
     fields.push('shop_whatsapp=?'); params.push(p);
   }
+  if (b.shop_phones !== undefined) {
+    const list = parseShopPhones(b.shop_phones);
+    fields.push('shop_phones=?'); params.push(JSON.stringify(list));
+    fields.push('shop_phone=?'); params.push(list[0] || null); // keep legacy primary in sync
+  }
+  if (b.shop_facebook !== undefined) { fields.push('shop_facebook=?'); params.push(sanitizeUrl(b.shop_facebook)); }
+  if (b.shop_instagram !== undefined) { fields.push('shop_instagram=?'); params.push(sanitizeUrl(b.shop_instagram)); }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);
     if (!g) return res.status(400).json({ error: 'bad_governorate' });
@@ -1246,6 +1254,30 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
   params.push(u.id);
   db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id=?`).run(...params);
   res.json({ ok: true });
+});
+
+// Admin-managed shop price-list images (append / remove). Mirrors the
+// self-serve /shops/me/images endpoints but keyed by shop id.
+r.post('/shops/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 12), (req, res) => {
+  const cleanup = () => { for (const f of req.files || []) { try { fs.unlinkSync(f.path); } catch {} } };
+  const u = db.prepare("SELECT id FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) { cleanup(); return res.status(404).json({ error: 'not_found' }); }
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'no_files' });
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
+  if (existing + req.files.length > 12) { cleanup(); return res.status(400).json({ error: 'too_many_images' }); }
+  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
+  const ins = db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)');
+  const t = now();
+  req.files.forEach((f, i) => ins.run(u.id, f.filename, maxPos + 1 + i, t));
+  res.json({ ok: true, images: shopImages(u.id) });
+});
+
+r.delete('/shops/:id(\\d+)/images/:imgId(\\d+)', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT id, image_path FROM shop_images WHERE id=? AND shop_id=?').get(req.params.imgId, req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  db.prepare('DELETE FROM shop_images WHERE id=?').run(row.id);
+  try { fs.unlinkSync(path.join(UPLOADS, path.basename(row.image_path))); } catch {}
+  res.json({ ok: true, images: shopImages(req.params.id) });
 });
 
 r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {

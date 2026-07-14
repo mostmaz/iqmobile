@@ -1,9 +1,73 @@
 import { Router } from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
+import { uploadLimiter } from '../limits.js';
 
 const r = Router();
+
+// Shop price-list image uploads. Same photo-only hygiene as routes/listings.js
+// (whitelist mime + rewrite extension so a forged SVG can't be served back).
+const UP = path.resolve('./uploads');
+fs.mkdirSync(UP, { recursive: true });
+const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+function pickSafeExt(originalname, mimetype) {
+  const ext = (path.extname(originalname || '') || '').toLowerCase();
+  if (ALLOWED_IMAGE_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
+  if (mimetype === 'image/png') return '.png';
+  if (mimetype === 'image/webp') return '.webp';
+  return '.jpg';
+}
+const shopImgUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UP),
+    filename: (_req, file, cb) =>
+      cb(null, 'shp_' + crypto.randomBytes(12).toString('hex') + pickSafeExt(file.originalname, file.mimetype)),
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) return cb(new Error('not_image'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    if (ext && !ALLOWED_IMAGE_EXT.has(ext)) return cb(new Error('not_image'));
+    cb(null, true);
+  },
+});
+const MAX_SHOP_IMAGES = 12;
+
+// Parse a phones payload: accept an array (preferred) or a single string;
+// normalize each Iraqi number, drop invalids, de-dup, cap the list.
+export function parseShopPhones(input) {
+  const list = Array.isArray(input) ? input : input != null ? [input] : [];
+  const out = [];
+  for (const v of list) {
+    const p = normalizeIraqiPhone(v);
+    if (p && !out.includes(p)) out.push(p);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+// Sanitize a social profile URL: trim, cap length, require an http(s) scheme
+// (prepend https:// when the user pasted a bare host/handle-looking value).
+export function sanitizeUrl(v) {
+  if (!v) return null;
+  let s = String(v).trim().slice(0, 300);
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s.replace(/^\/+/, '');
+  return s;
+}
+
+// Shop price-list images, ordered.
+export function shopImages(shopId) {
+  return db.prepare(
+    'SELECT id, image_path, position FROM shop_images WHERE shop_id=? ORDER BY position ASC, id ASC',
+  ).all(shopId);
+}
 
 function normalizeIraqiPhone(input) {
   if (!input) return null;
@@ -50,6 +114,17 @@ function shopCard(u, nowTs) {
     shop_address: u.shop_address || null,
     shop_phone: u.shop_phone || u.phone || null,
     shop_whatsapp: u.shop_whatsapp || null,
+    // Full list of public numbers (branch lines). Falls back to the single
+    // legacy shop_phone / account phone so older shops still show a number.
+    shop_phones: (() => {
+      let a = [];
+      try { const p = JSON.parse(u.shop_phones || '[]'); if (Array.isArray(p)) a = p; } catch {}
+      if (!a.length && u.shop_phone) a = [u.shop_phone];
+      if (!a.length && u.phone) a = [u.phone];
+      return a;
+    })(),
+    shop_facebook: u.shop_facebook || null,
+    shop_instagram: u.shop_instagram || null,
     rating_avg: u.rating_avg,
     rating_count: u.rating_count,
     verified: !!u.verified,
@@ -92,6 +167,7 @@ r.get('/shops/:id(\\d+)', (req, res) => {
   ).all(u.id, nowTs, nowTs);
   res.json({
     ...shopCard(u, nowTs),
+    shop_images: shopImages(u.id),
     listings: attachImages(listings).map((l) => ({
       ...l,
       is_featured: !!(l.featured_until && l.featured_until > nowTs),
@@ -110,10 +186,15 @@ r.post('/shops/register', requireAuth(), (req, res) => {
   const shop_bio = req.body?.shop_bio ? String(req.body.shop_bio).trim().slice(0, 500) : null;
   const shop_address = req.body?.shop_address ? String(req.body.shop_address).trim().slice(0, 200) : null;
 
-  const shop_phone = req.body?.shop_phone ? normalizeIraqiPhone(req.body.shop_phone) : null;
-  if (req.body?.shop_phone && !shop_phone) return res.status(400).json({ error: 'bad_shop_phone' });
+  const shop_phones = parseShopPhones(req.body?.shop_phones);
+  const explicitPhone = req.body?.shop_phone ? normalizeIraqiPhone(req.body.shop_phone) : null;
+  if (req.body?.shop_phone && !explicitPhone) return res.status(400).json({ error: 'bad_shop_phone' });
+  if (explicitPhone && !shop_phones.includes(explicitPhone)) shop_phones.unshift(explicitPhone);
+  const shop_phone = shop_phones[0] || null; // legacy primary = first in the list
   const shop_whatsapp = req.body?.shop_whatsapp ? normalizeIraqiPhone(req.body.shop_whatsapp) : null;
   if (req.body?.shop_whatsapp && !shop_whatsapp) return res.status(400).json({ error: 'bad_shop_whatsapp' });
+  const shop_facebook = sanitizeUrl(req.body?.shop_facebook);
+  const shop_instagram = sanitizeUrl(req.body?.shop_instagram);
 
   // A reachable shop needs at least one public number; fall back to the
   // account phone when the user set neither field explicitly.
@@ -130,9 +211,10 @@ r.post('/shops/register', requireAuth(), (req, res) => {
 
   const fields = [
     'seller_type=?', 'shop_name=?', 'shop_bio=?', 'shop_phone=?',
-    'shop_whatsapp=?', 'shop_address=?',
+    'shop_whatsapp=?', 'shop_address=?', 'shop_phones=?', 'shop_facebook=?', 'shop_instagram=?',
   ];
-  const params = ['shop', shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address];
+  const params = ['shop', shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address,
+    JSON.stringify(shop_phones), shop_facebook, shop_instagram];
   if (governorate) { fields.push('governorate=?'); params.push(governorate); }
   // Stamp shop_created_at once (first time they register).
   fields.push('shop_created_at=COALESCE(shop_created_at, ?)');
@@ -141,7 +223,34 @@ r.post('/shops/register', requireAuth(), (req, res) => {
 
   db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id=?`).run(...params);
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
-  res.json(shopCard(u, Date.now()));
+  res.json({ ...shopCard(u, Date.now()), shop_images: shopImages(u.id) });
+});
+
+// ─── shop price-list images (self-serve) ─────────────────────────────
+// The caller must already be a shop. Uploaded images append to their gallery
+// (capped at MAX_SHOP_IMAGES). Returns the full ordered list back.
+r.post('/shops/me/images', requireAuth(), uploadLimiter, shopImgUpload.array('images', MAX_SHOP_IMAGES), (req, res) => {
+  const cleanup = () => { for (const f of req.files || []) { try { fs.unlinkSync(f.path); } catch {} } };
+  const me = db.prepare('SELECT id, seller_type FROM users WHERE id=?').get(req.user.id);
+  if (!me || me.seller_type !== 'shop') { cleanup(); return res.status(403).json({ error: 'not_a_shop' }); }
+  if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'no_files' });
+
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(me.id).n;
+  if (existing + req.files.length > MAX_SHOP_IMAGES) { cleanup(); return res.status(400).json({ error: 'too_many_images' }); }
+
+  const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(me.id).p;
+  const ins = db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)');
+  const t = now();
+  req.files.forEach((f, i) => ins.run(me.id, f.filename, maxPos + 1 + i, t));
+  res.json({ ok: true, images: shopImages(me.id) });
+});
+
+r.delete('/shops/me/images/:id(\\d+)', requireAuth(), (req, res) => {
+  const row = db.prepare('SELECT id, image_path FROM shop_images WHERE id=? AND shop_id=?').get(req.params.id, req.user.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  db.prepare('DELETE FROM shop_images WHERE id=?').run(row.id);
+  try { fs.unlinkSync(path.join(UP, path.basename(row.image_path))); } catch {}
+  res.json({ ok: true, images: shopImages(req.user.id) });
 });
 
 export default r;

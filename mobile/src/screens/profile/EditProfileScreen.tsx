@@ -3,7 +3,7 @@
 // field can change at most twice). When a field's budget is exhausted
 // we lock the input and show the user how many edits they had.
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, ScrollView, Alert, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,9 +12,9 @@ import * as Location from 'expo-location';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Header, Input } from '../../components/ui';
 import { IconPin, IconCheck } from '../../components/icons';
-import { Auth } from '../../api/endpoints';
-import { updateShopImage, fullImageUrl } from '../../api/upload';
-import { compressForAvatar } from '../../lib/imageCompress';
+import { Auth, Shops, ShopImage } from '../../api/endpoints';
+import { updateShopImage, uploadShopImages, fullImageUrl } from '../../api/upload';
+import { compressForAvatar, compressForListing } from '../../lib/imageCompress';
 import { useAuth } from '../../auth/AuthContext';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
 import { GovPicker } from '../../components/GovPicker';
@@ -35,6 +35,27 @@ export default function EditProfileScreen({ navigation }: any) {
   const [busy, setBusy] = useState(false);
   const [shopBusy, setShopBusy] = useState(false);
   const [locBusy, setLocBusy] = useState(false);
+
+  // Shop contact channels (shop accounts only). Seeded from the user row;
+  // persisted via the idempotent /shops/register upsert on save.
+  const isShopSeed = user?.seller_type === 'shop';
+  const [phones, setPhones] = useState<string[]>(
+    user?.shop_phones?.length ? user.shop_phones : (user?.shop_phone ? [user.shop_phone] : ['']),
+  );
+  const [whatsapp, setWhatsapp] = useState(user?.shop_whatsapp || '');
+  const [facebook, setFacebook] = useState(user?.shop_facebook || '');
+  const [instagram, setInstagram] = useState(user?.shop_instagram || '');
+  // Price-list images are managed immediately (upload/delete), not on save.
+  const [shopImages, setShopImages] = useState<ShopImage[]>([]);
+  const [imgBusy, setImgBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    if (isShopSeed && user?.id) {
+      Shops.get(user.id).then((d) => { if (alive) setShopImages(d.shop_images || []); }).catch(() => {});
+    }
+    return () => { alive = false; };
+  }, [isShopSeed, user?.id]);
 
   // Edit budgets — server-issued counters. 0 means the field is locked.
   const nameLeft = user?.name_edits_remaining ?? 2;
@@ -74,13 +95,23 @@ export default function EditProfileScreen({ navigation }: any) {
         body.shop_lat = coords.lat;
         body.shop_lng = coords.lng;
       }
-      // Bail with no network call if nothing changed.
-      if (Object.keys(body).length === 0) {
-        navigation.goBack();
-        return;
+      let changed = false;
+      if (Object.keys(body).length > 0) { await Auth.patchMe(body); changed = true; }
+      // Persist shop contact channels via the idempotent /shops/register
+      // upsert (phones list, WhatsApp, Facebook, Instagram).
+      if (isShop && user?.shop_name && user.shop_name.length >= 2) {
+        await Shops.register({
+          shop_name: user.shop_name,
+          shop_bio: user.shop_bio || undefined,
+          governorate: GOV_AR_TO_EN[govAr] || undefined,
+          shop_phones: phones.map((p) => p.trim()).filter(Boolean),
+          shop_whatsapp: whatsapp.trim() || undefined,
+          shop_facebook: facebook.trim() || null,
+          shop_instagram: instagram.trim() || null,
+        });
+        changed = true;
       }
-      await Auth.patchMe(body);
-      await refresh();
+      if (changed) await refresh();
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
@@ -131,6 +162,38 @@ export default function EditProfileScreen({ navigation }: any) {
     } catch {
       Alert.alert('خطأ', 'تعذر تحديد الموقع.');
     } finally { setLocBusy(false); }
+  }
+
+  async function pickAndAddPriceImages() {
+    if (!ensureRealUser() || imgBusy) return;
+    if (shopImages.length >= 12) { Alert.alert('الحد الأقصى', 'يمكنك إضافة حتى 12 صورة.'); return; }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
+    const r = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
+      allowsMultipleSelection: true, selectionLimit: 12 - shopImages.length,
+    });
+    if (r.canceled || !r.assets?.length) return;
+    setImgBusy(true);
+    try {
+      const uris: string[] = [];
+      for (const a of r.assets) { if (a.uri) uris.push(await compressForListing(a.uri)); }
+      const res = await uploadShopImages(uris);
+      setShopImages(res.images);
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally { setImgBusy(false); }
+  }
+
+  async function removePriceImage(imageId: number) {
+    if (!ensureRealUser() || imgBusy) return;
+    setImgBusy(true);
+    try {
+      const res = await Shops.removeImage(imageId);
+      setShopImages(res.images);
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally { setImgBusy(false); }
   }
 
   function EditsLeft({ left, label }: { left: number; label: string }) {
@@ -210,6 +273,57 @@ export default function EditProfileScreen({ navigation }: any) {
               )}
             </TouchableOpacity>
             <EditsLeft left={shopLocLeft} label="موقع المتجر" />
+
+            {/* Public phone numbers (branch lines). Each becomes a call
+                button on the shop page. */}
+            <FieldLabel style={{ marginTop: 22 }}>أرقام الهاتف</FieldLabel>
+            {phones.map((p, i) => (
+              <View key={i} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: i ? 8 : 0 }}>
+                <View style={{ flex: 1 }}>
+                  <Input value={p} onChangeText={(v: string) => setPhones((arr) => arr.map((x, j) => (j === i ? v : x)))} placeholder="07XXXXXXXXX" numeric ltr />
+                </View>
+                {phones.length > 1 ? (
+                  <TouchableOpacity onPress={() => setPhones((arr) => arr.filter((_, j) => j !== i))} style={{ padding: 8 }}>
+                    <Text style={{ color: theme.danger, fontSize: 18 }}>✕</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ))}
+            {phones.length < 6 ? (
+              <TouchableOpacity onPress={() => setPhones((arr) => [...arr, ''])} style={{ marginTop: 8 }}>
+                <Text style={{ color: theme.accent, fontFamily: fonts.arBold, fontSize: 13, textAlign: 'right' }}>+ إضافة رقم آخر</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <FieldLabel style={{ marginTop: 18 }}>واتساب</FieldLabel>
+            <Input value={whatsapp} onChangeText={setWhatsapp} placeholder="07XXXXXXXXX" numeric ltr />
+
+            <FieldLabel style={{ marginTop: 18 }}>رابط فيسبوك</FieldLabel>
+            <Input value={facebook} onChangeText={setFacebook} placeholder="facebook.com/yourpage" ltr />
+
+            <FieldLabel style={{ marginTop: 14 }}>رابط انستغرام</FieldLabel>
+            <Input value={instagram} onChangeText={setInstagram} placeholder="instagram.com/yourpage" ltr />
+
+            {/* Price-list images — uploaded/removed immediately (not on save). */}
+            <FieldLabel style={{ marginTop: 22 }}>قائمة الأسعار (صور)</FieldLabel>
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
+              {shopImages.map((im) => (
+                <View key={im.id} style={{ width: 92, height: 124 }}>
+                  <Img source={{ uri: fullImageUrl(im.image_path) }} style={{ width: 92, height: 124, borderRadius: 12, backgroundColor: theme.chipBg }} />
+                  <TouchableOpacity onPress={() => removePriceImage(im.id)} style={{ position: 'absolute', top: -6, left: -6, width: 24, height: 24, borderRadius: 999, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              {shopImages.length < 12 ? (
+                <TouchableOpacity onPress={pickAndAddPriceImages} disabled={imgBusy} style={{ width: 92, height: 124, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: theme.accent, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.surface }}>
+                  {imgBusy ? <ActivityIndicator color={theme.accent} /> : <Text style={{ color: theme.accent, fontSize: 26 }}>＋</Text>}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <Text style={{ marginTop: 6, fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right' }}>
+              تظهر هذه الصور في صفحة متجرك، ويمكن للزبائن فتحها بملء الشاشة.
+            </Text>
           </>
         ) : null}
 

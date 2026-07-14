@@ -90,6 +90,17 @@ CREATE TABLE IF NOT EXISTS listing_images (
   position INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
+
+-- Shop "price list" images shown on the shop page (e.g. photographed price
+-- tables). Owned by the shop's user row; cascade-deleted with the account.
+CREATE TABLE IF NOT EXISTS shop_images (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  image_path TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_shop_images_shop ON shop_images(shop_id, position);
 CREATE INDEX IF NOT EXISTS idx_listing_images ON listing_images(listing_id, position);
 
 CREATE TABLE IF NOT EXISTS chats (
@@ -469,6 +480,12 @@ addColumnIfMissing('users', 'shop_whatsapp TEXT');
 addColumnIfMissing('users', 'shop_address TEXT');
 addColumnIfMissing('users', 'shop_featured_until INTEGER');
 addColumnIfMissing('users', 'shop_created_at INTEGER');
+// Extra contact channels for the shop page. shop_phones is a JSON array of
+// normalized numbers (shops often have several branch lines); shop_phone
+// stays the legacy primary. shop_facebook / shop_instagram hold profile URLs.
+addColumnIfMissing('users', 'shop_phones TEXT');
+addColumnIfMissing('users', 'shop_facebook TEXT');
+addColumnIfMissing('users', 'shop_instagram TEXT');
 
 // Seed the brands table on first boot. Mirrors the historical hardcoded
 // list from governorates.js so existing listings stay valid. Skips if

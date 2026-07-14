@@ -77,6 +77,16 @@ function publicUser(row) {
     shop_image_path: row.shop_image_path || null,
     shop_lat: row.shop_lat ?? null,
     shop_lng: row.shop_lng ?? null,
+    // Shop profile + contact channels, so the shop owner's Edit screen can
+    // seed its inputs (individuals leave these null).
+    shop_name: row.shop_name || null,
+    shop_bio: row.shop_bio || null,
+    shop_address: row.shop_address || null,
+    shop_phone: row.shop_phone || null,
+    shop_whatsapp: row.shop_whatsapp || null,
+    shop_phones: (() => { try { const a = JSON.parse(row.shop_phones || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } })(),
+    shop_facebook: row.shop_facebook || null,
+    shop_instagram: row.shop_instagram || null,
     is_guest: !!row.is_guest,
     // Profile-completion + edit-budget signals so the client knows to
     // gate on the first-login form and disable the "edit" button when

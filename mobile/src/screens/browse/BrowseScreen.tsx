@@ -30,14 +30,14 @@ const CONDITIONS: Condition[] = ['new', 'used', 'refurbished'];
 // flagships aren't excluded — the bounds just keep the steppers short.
 const PRICE_STEP = 100_000;
 const PRICE_MIN = 100_000;
-const PRICE_MAX = 2_000_000;
+const PRICE_MAX = 3_000_000;
 // Defaults shown in the steppers when the user opens the filter sheet
 // without any price filter yet active. Tuned to the modal price band
 // for used Iraqi phone sales (100K = bottom of the realistic market,
 // 1M = where most flagships sit). Buyers can step outside this range
 // in either direction to broaden the search.
 const PRICE_DEFAULT_MIN = 100_000;
-const PRICE_DEFAULT_MAX = 1_000_000;
+const PRICE_DEFAULT_MAX = 3_000_000;
 
 // Initial page = 15 cards (fast first paint), then load 15 more each time
 // the FlatList nears its end. Keeps the grid responsive on first tab open.

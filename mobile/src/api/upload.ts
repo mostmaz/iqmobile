@@ -49,6 +49,17 @@ export async function uploadListingImages(listingId: number, localUris: string[]
   return postForm(`${getBaseUrl()}/listings/${listingId}/images`, fd);
 }
 
+// Shop price-list images (uploaded by the shop owner). Appends to the shop's
+// gallery and returns the full ordered list back.
+export async function uploadShopImages(localUris: string[]): Promise<{ ok: boolean; images: { id: number; image_path: string; position?: number }[] }> {
+  const fd = new FormData();
+  for (const uri of localUris) {
+    const filename = uri.split('/').pop() || 'price.jpg';
+    fd.append('images', { uri, name: filename, type: mimeFromExt(filename) } as any);
+  }
+  return postForm(`${getBaseUrl()}/shops/me/images`, fd);
+}
+
 export async function uploadProfileImage(localUri: string): Promise<{ profile_image_path: string }> {
   const filename = localUri.split('/').pop() || 'profile.jpg';
   const fd = new FormData();

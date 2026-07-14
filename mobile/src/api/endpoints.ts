@@ -22,6 +22,14 @@ export interface User {
   shop_image_path?: string | null;
   shop_lat?: number | null;
   shop_lng?: number | null;
+  shop_name?: string | null;
+  shop_bio?: string | null;
+  shop_address?: string | null;
+  shop_phone?: string | null;
+  shop_whatsapp?: string | null;
+  shop_phones?: string[];
+  shop_facebook?: string | null;
+  shop_instagram?: string | null;
   is_guest?: boolean;
   // First-login completion gate. Until this is true, the app forces the
   // user into the CompleteProfile screen.
@@ -387,14 +395,19 @@ export interface ShopCard {
   shop_address?: string | null;
   shop_phone?: string | null;
   shop_whatsapp?: string | null;
+  shop_phones?: string[];
+  shop_facebook?: string | null;
+  shop_instagram?: string | null;
   rating_avg: number;
   rating_count: number;
   verified: boolean;
   is_featured: boolean;
   listing_count: number;
 }
+export interface ShopImage { id: number; image_path: string; position?: number }
 export interface ShopDetail extends ShopCard {
   listings: Listing[];
+  shop_images?: ShopImage[];
 }
 export const Shops = {
   list: (governorate?: string) =>
@@ -403,5 +416,8 @@ export const Shops = {
   register: (body: {
     shop_name: string; shop_bio?: string; shop_phone?: string;
     shop_whatsapp?: string; shop_address?: string; governorate?: string;
-  }) => api<ShopCard>('/shops/register', { method: 'POST', body: JSON.stringify(body) }),
+    shop_phones?: string[]; shop_facebook?: string | null; shop_instagram?: string | null;
+  }) => api<ShopCard & { shop_images?: ShopImage[] }>('/shops/register', { method: 'POST', body: JSON.stringify(body) }),
+  removeImage: (imageId: number) =>
+    api<{ ok: boolean; images: ShopImage[] }>(`/shops/me/images/${imageId}`, { method: 'DELETE' }),
 };
