@@ -169,11 +169,21 @@ export const Auth = {
   register: (body: any) => api<{ token: string; user: User }>('/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (phone: string, password: string) =>
     api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }),
-  // Passwordless: server upserts the user by phone and returns a token.
-  // If the caller currently has a guest token, the server promotes that
-  // guest to a real account in-place so their session/listings carry over.
-  phoneLogin: (phone: string) =>
-    api<{ token: string; user: User }>('/auth/phone-login', { method: 'POST', body: JSON.stringify({ phone }) }),
+  // Passwordless phone entry. Two possible responses:
+  //   - { token, user } → OTP disabled server-side, sign-in complete.
+  //   - { otp_required: true, channel } → server queued a Twilio Verify
+  //     code and expects the client to collect it and POST /auth/otp/verify.
+  // Optional `channel` lets the client force WhatsApp; defaults to SMS.
+  phoneLogin: (phone: string, channel?: 'sms' | 'whatsapp') =>
+    api<{ token?: string; user?: User; otp_required?: boolean; channel?: 'sms' | 'whatsapp' }>(
+      '/auth/phone-login',
+      { method: 'POST', body: JSON.stringify({ phone, channel }) },
+    ),
+  otpVerify: (phone: string, code: string) =>
+    api<{ token: string; user: User }>('/auth/otp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    }),
   // Anonymous signup — server returns a token for an auto-created user.
   // Used during the "no auth" growth phase so we can populate the app.
   guest: (governorate?: string) =>

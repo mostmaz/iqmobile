@@ -19,6 +19,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../auth/AuthContext';
 import AuthGateScreen from '../screens/auth/AuthGateScreen';
+import OtpVerifyScreen from '../screens/auth/OtpVerifyScreen';
 import CompleteProfileScreen from '../screens/auth/CompleteProfileScreen';
 import OnboardingScreen, { ONBOARDED_KEY } from '../screens/auth/OnboardingScreen';
 import BrowseScreen from '../screens/browse/BrowseScreen';
@@ -265,6 +266,11 @@ export default function RootNav() {
             <Root.Screen
               name="AuthGate"
               component={AuthGateScreen}
+              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+            />
+            <Root.Screen
+              name="OtpVerify"
+              component={OtpVerifyScreen}
               options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
             />
           </>
