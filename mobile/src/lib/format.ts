@@ -2,6 +2,16 @@ export function formatIQD(n: number) {
   return n.toLocaleString('en-US') + ' د.ع';
 }
 
+// iOS renders a bare Western digit that sits directly against an Arabic
+// letter (e.g. "قبل 7ي") using the Arabic-Indic "Hindi" glyph (٧). We want
+// Western 0-9 everywhere, so wrap the number in Left-to-Right Marks (U+200E)
+// — an invisible boundary that keeps the digit in a Latin run. Use this for
+// any number embedded inside Arabic text.
+const LRM = String.fromCharCode(0x200e); // Left-to-Right Mark
+export function ltrNum(n: number | string): string {
+  return LRM + String(n) + LRM;
+}
+
 // Convert Arabic-Indic and Eastern-Arabic-Indic numerals to Latin 0-9.
 // Iraqi keyboards default to ٠١٢٣٤٥٦٧٨٩ (Arabic-Indic). Without this,
 // any `replace(/\D/g, '')` or `Number(input)` silently drops the whole
@@ -38,6 +48,6 @@ export function formatCountdown(ms: number) {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${h}س ${m % 60}د`;
-  return `${m}د ${s % 60}ث`;
+  if (h > 0) return `${ltrNum(h)}س ${ltrNum(m % 60)}د`;
+  return `${ltrNum(m)}د ${ltrNum(s % 60)}ث`;
 }

@@ -7,6 +7,7 @@ import { IconStar, IconPin, IconSpark } from './icons';
 import { ChipTag } from './marketplace';
 import { fullImageUrl } from '../api/upload';
 import { arOf } from '../lib/governorates';
+import { ltrNum } from '../lib/format';
 import { ar } from '../i18n/ar';
 import type { Listing } from '../api/endpoints';
 
@@ -131,12 +132,15 @@ export function ListingCard({
   );
 }
 
+// Wrap a number in Left-to-Right marks so iOS doesn't substitute the bare
+// digit (glued to an Arabic letter) with an Arabic-Indic "Hindi" glyph —
+// we always want Western 0-9. See ltrNum() in lib/format.ts.
 function fmtRelativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return mins <= 1 ? 'الآن' : `قبل ${mins}د`;
+  if (mins < 60) return mins <= 1 ? 'الآن' : `قبل ${ltrNum(mins)}د`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs === 1 ? 'قبل ساعة' : `قبل ${hrs}س`;
+  if (hrs < 24) return hrs === 1 ? 'قبل ساعة' : `قبل ${ltrNum(hrs)}س`;
   const days = Math.floor(hrs / 24);
-  return days === 1 ? 'قبل يوم' : `قبل ${days}ي`;
+  return days === 1 ? 'قبل يوم' : `قبل ${ltrNum(days)}ي`;
 }

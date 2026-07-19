@@ -83,7 +83,7 @@ export default function MyListingsScreen({ navigation }: any) {
                 <View style={{ marginTop: -4, marginBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
                   <IconSpark size={12} color={theme.accent} />
                   <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.accent }}>
-                    إعلان مميّز حتى {new Date(item.featured_until as number).toLocaleDateString()}
+                    إعلان مميّز حتى {new Date(item.featured_until as number).toLocaleDateString('en-GB')}
                   </Text>
                 </View>
               ) : canFeature ? (

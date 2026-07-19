@@ -178,7 +178,7 @@ export default function ChatScreen({ route, navigation }: any) {
   }
   async function sellerConfirm() {
     if (!chat?.active_deal) return;
-    Alert.alert('تأكيد الصفقة', `وافق المشتري على ${chat.active_deal.final_price.toLocaleString()} د.ع. أؤكد الصفقة؟`, [
+    Alert.alert('تأكيد الصفقة', `وافق المشتري على ${chat.active_deal.final_price.toLocaleString('en-US')} د.ع. أؤكد الصفقة؟`, [
       { text: 'إلغاء', style: 'cancel' },
       { text: 'تأكيد', onPress: async () => { try { await Deals.sellerConfirm(chat.active_deal!.id); refresh(); } catch (e: any) { Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network); } } },
     ]);

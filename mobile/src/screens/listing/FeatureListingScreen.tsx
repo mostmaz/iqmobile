@@ -132,7 +132,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           <StatusCard
             tone="ok"
             title="إعلانك مميّز ✨"
-            body={`سيظل في أعلى القائمة حتى ${new Date(existing.featured_until).toLocaleDateString()}.`}
+            body={`سيظل في أعلى القائمة حتى ${new Date(existing.featured_until).toLocaleDateString('en-GB')}.`}
           />
         ) : null}
 

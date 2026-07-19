@@ -331,7 +331,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             }}>
               <IconSpark size={18} color={theme.success} />
               <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
-                إعلانك مميّز حتى {new Date((data as any).featured_until).toLocaleDateString()}
+                إعلانك مميّز حتى {new Date((data as any).featured_until).toLocaleDateString('en-GB')}
               </Text>
             </View>
           ) : (data.status === 'active' || data.status === 'reserved') ? (

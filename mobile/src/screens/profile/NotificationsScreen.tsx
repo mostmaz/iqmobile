@@ -6,6 +6,7 @@ import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
 import { Notifications, type NotificationRow } from '../../api/endpoints';
 import { navigationRef } from '../../navigation/ref';
+import { toLatinDigits } from '../../lib/format';
 import { ar } from '../../i18n/ar';
 
 const KIND_LABEL: Record<string, string> = {
@@ -106,7 +107,7 @@ export default function NotificationsScreen({ navigation }: any) {
                 </Text>
               ) : null}
               <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, marginTop: 4, textAlign: 'right' }}>
-                {new Date(item.created_at).toLocaleString('ar')}
+                {toLatinDigits(new Date(item.created_at).toLocaleString('ar'))}
               </Text>
             </TouchableOpacity>
           );
