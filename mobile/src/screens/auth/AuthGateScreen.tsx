@@ -38,8 +38,16 @@ export default function AuthGateScreen({ navigation }: any) {
     if (digits.length < 10) { setErr('أدخل رقم هاتف صحيح'); return; }
     setBusy(true); setErr('');
     try {
-      await phoneLogin(phone);
-      navigation.goBack();
+      const r = await phoneLogin(phone);
+      if (r.otpRequired) {
+        // Server queued a Twilio code — hand off to the verify screen.
+        // Pass the raw `phone` string so the same normalisation happens
+        // server-side on both /phone-login and /otp/verify (no client
+        // divergence to reason about).
+        navigation.replace('OtpVerify', { phone, channel: r.channel });
+      } else {
+        navigation.goBack();
+      }
     } catch (e: any) {
       setErr((ar.errors as any)[e.message] || ar.errors.network);
     } finally { setBusy(false); }

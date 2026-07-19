@@ -22,8 +22,13 @@ interface AuthState {
   refresh: () => Promise<void>;
   register: (body: any) => Promise<void>;
   login: (phone: string, password: string) => Promise<void>;
-  // Passwordless phone login — upserts the user, promotes guest sessions.
-  phoneLogin: (phone: string) => Promise<void>;
+  // Passwordless phone entry. Returns whether the server queued an OTP:
+  // if `otpRequired`, the caller must collect the code and call
+  // `otpVerify` to complete sign-in. If false, the token was persisted
+  // and the caller can navigate as if sign-in succeeded.
+  phoneLogin: (phone: string, channel?: 'sms' | 'whatsapp') =>
+    Promise<{ otpRequired: boolean; channel?: 'sms' | 'whatsapp' }>;
+  otpVerify: (phone: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -153,19 +158,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const phoneLogin = useCallback(
-    async (phone: string) => {
-      const r = await Auth.phoneLogin(phone);
-      // Server returns the same row whether this is a brand-new account
-      // or a returning user. `profile_completed=false` is a strong
-      // signal it's a fresh signup (the server's complete-profile flow
-      // is the only thing that flips it to true).
+    async (phone: string, channel?: 'sms' | 'whatsapp') => {
+      const r = await Auth.phoneLogin(phone, channel);
+      // OTP path — server sent a code and is waiting for verify. The
+      // account isn't upserted yet; nothing to persist.
+      if (r.otp_required) return { otpRequired: true as const, channel: r.channel };
+      // Legacy path — server upserted + issued a token immediately.
+      if (r.token && r.user) {
+        const isFreshSignup = !r.user.profile_completed;
+        await persist(r.token, r.user);
+        safeTrack(track, isFreshSignup ? 'user.signup' : 'user.signin', { method: 'phone' });
+        return { otpRequired: false as const };
+      }
+      throw new Error('network');
+    },
+    [persist, track],
+  );
+
+  const otpVerify = useCallback(
+    async (phone: string, code: string) => {
+      const r = await Auth.otpVerify(phone, code);
       const isFreshSignup = !r.user.profile_completed;
       await persist(r.token, r.user);
-      // `safeTrack` so a PostHog transport hiccup doesn't reject this
-      // promise — the user is already logged in, the caller will pop
-      // the modal, and anything that looks like a login failure here
-      // would be confusing.
-      safeTrack(track, isFreshSignup ? 'user.signup' : 'user.signin', { method: 'phone' });
+      safeTrack(track, isFreshSignup ? 'user.signup' : 'user.signin', { method: 'phone_otp' });
     },
     [persist, track],
   );
@@ -206,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     go('AuthGate');
   }, [track, resetIdentity, qc, persist]);
 
-  return <AuthCtx.Provider value={{ user, loading, refresh, login, register, phoneLogin, logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, loading, refresh, login, register, phoneLogin, otpVerify, logout }}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth() {

@@ -7,6 +7,7 @@ import { db, now } from '../db.js';
 import { hashPassword, verifyPassword, issueToken, requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate } from '../governorates.js';
 import { authLimiter, guestLimiter } from '../limits.js';
+import { sendCode, checkCode, otpRequired, otpConfigured } from '../otp.js';
 
 const r = Router();
 
@@ -185,58 +186,84 @@ r.post('/login', authLimiter, (req, res) => {
   res.json({ token, user: publicUser(row) });
 });
 
-// Passwordless phone-as-username flow. No SMS/OTP yet — that's Phase 2.
-// Behavior:
-//   - phone is normalized (07XXXXXXXXX form)
-//   - if a real user already exists for this phone → log in, return token
-//   - if a *guest* session is currently authenticated AND phone is free,
-//     upgrade the guest into a real user by writing the phone in-place
-//     (preserves their saved listings, chats, ratings)
-//   - otherwise create a fresh user
-// SECURITY NOTE: this is intentionally trust-on-first-use until SMS OTP
-// lands. Anyone who knows your phone number can claim it. Don't ship to
-// production without OTP — see the SIM verification discussion below.
-r.post('/phone-login', authLimiter, optionalAuth(), (req, res) => {
-  const phone = normalizePhone(req.body?.phone);
-  if (!phone) return res.status(400).json({ error: 'bad_phone' });
-
+// Look up or provision the account for a phone number:
+//   - if a real user exists → return it (log-in path)
+//   - if the caller is currently a guest AND the phone is unclaimed →
+//     promote the guest row in place (preserves saves/chats/ratings)
+//   - otherwise → INSERT a fresh user
+// Shared by /phone-login (when OTP is off) and /otp/verify (when it's on).
+function upsertPhoneAccount(req, phone) {
   const existing = db.prepare('SELECT * FROM users WHERE phone=?').get(phone);
-  if (existing) {
-    // Phone is already attached to a real account — log them straight in.
-    const token = issueToken({ id: existing.id });
-    return res.json({ token, user: publicUser(existing) });
-  }
+  if (existing) return existing;
 
-  // Phone is unclaimed. If the caller is currently a guest, promote that
-  // guest to a real account so their session continuity is preserved.
   if (req.user) {
     const me = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
     if (me?.is_guest) {
-      // Replace synthetic guest display names ("ضيف" or "ضيف 4382") with
-      // "مستخدم <last 4 of phone>" on upgrade. Keep anything the user
-      // explicitly set (e.g. via CompleteProfile before upgrading).
       const isSyntheticGuestName = !me.display_name
         || me.display_name === 'ضيف'
         || /^ضيف\s+\d+$/.test(me.display_name);
       const finalName = isSyntheticGuestName
         ? `مستخدم ${phone.slice(-4)}`
         : me.display_name;
-      db.prepare(
-        'UPDATE users SET phone=?, is_guest=0, display_name=? WHERE id=?',
-      ).run(phone, finalName, me.id);
-      const updated = db.prepare('SELECT * FROM users WHERE id=?').get(me.id);
-      const token = issueToken({ id: updated.id });
-      return res.json({ token, user: publicUser(updated) });
+      db.prepare('UPDATE users SET phone=?, is_guest=0, display_name=? WHERE id=?')
+        .run(phone, finalName, me.id);
+      return db.prepare('SELECT * FROM users WHERE id=?').get(me.id);
     }
   }
 
-  // Fresh signup — no existing account, no guest to promote.
   const finalName = `مستخدم ${phone.slice(-4)}`;
   const ins = db.prepare(
     `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, created_at)
      VALUES(?,?,?,?,?,?)`,
   ).run(phone, '', finalName, 'Baghdad', 'individual', now());
-  const user = db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
+  return db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
+}
+
+// Passwordless phone-as-username flow.
+//
+// Two modes, gated by the OTP_REQUIRED env flag:
+//   1. flag off  → legacy trust-on-first-use: immediately upsert the account
+//                  and return { token, user }.
+//   2. flag on   → send a code via Twilio Verify (SMS by default, or
+//                  WhatsApp if the client asks) and respond with
+//                  { otp_required: true, channel }. The client then
+//                  collects the code and POSTs it to /auth/otp/verify.
+//
+// Note: when OTP is on we do NOT upsert on this call, so a bad phone can't
+// squat on a row before verification.
+r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
+  const phone = normalizePhone(req.body?.phone);
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+
+  if (otpRequired()) {
+    if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
+    const channel = req.body?.channel === 'whatsapp' ? 'whatsapp' : 'sms';
+    const send = await sendCode(phone, channel);
+    if (!send.ok) return res.status(400).json({ error: send.error });
+    return res.json({ otp_required: true, channel });
+  }
+
+  const user = upsertPhoneAccount(req, phone);
+  const token = issueToken({ id: user.id });
+  res.json({ token, user: publicUser(user) });
+});
+
+// Verify a Twilio-issued OTP and complete sign-in.
+// Rate-limited via authLimiter — Twilio has its own per-service rate limits
+// but a cheap 429 at our edge stops the loudest abusers before they hit
+// the API. optionalAuth so a guest can be promoted in place on success.
+r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
+  const phone = normalizePhone(req.body?.phone);
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!phone) return res.status(400).json({ error: 'bad_phone' });
+  if (!/^\d{4,10}$/.test(code)) return res.status(400).json({ error: 'bad_code' });
+  if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
+
+  const check = await checkCode(phone, code);
+  if (!check.ok) return res.status(502).json({ error: check.error });
+  if (!check.approved) return res.status(401).json({ error: 'bad_code' });
+
+  const user = upsertPhoneAccount(req, phone);
   const token = issueToken({ id: user.id });
   res.json({ token, user: publicUser(user) });
 });
