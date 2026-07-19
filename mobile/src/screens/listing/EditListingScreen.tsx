@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { theme, fonts } from '../../theme';
@@ -97,6 +97,26 @@ export default function EditListingScreen({ route, navigation }: any) {
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40 }}>
         <FieldLabel>{ar.listing.asking} (د.ع)</FieldLabel>
         <Input value={askingPrice} onChangeText={setAskingPrice} numeric ltr />
+        {Number(askingPrice) >= 1 && Number(askingPrice) < 1000 ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setAskingPrice(String(Number(askingPrice) * 1000))}
+            style={{
+              marginTop: 8, alignSelf: 'flex-end',
+              flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+              backgroundColor: theme.accentSoft,
+              borderWidth: 1, borderColor: theme.accent,
+              borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.accentDeep }}>
+              هل تقصد {(Number(askingPrice) * 1000).toLocaleString('en-US')} د.ع؟
+            </Text>
+            <View style={{ backgroundColor: theme.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 12, fontWeight: '700', color: '#fff' }}>نعم</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
         <FieldLabel style={{ marginTop: 14 }}>{ar.listing.description}</FieldLabel>
         <Input value={description} onChangeText={setDescription} multiline />
         <View style={{ marginTop: 20 }}>

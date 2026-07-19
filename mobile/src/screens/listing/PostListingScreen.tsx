@@ -380,6 +380,31 @@ export default function PostListingScreen({ navigation }: any) {
             <Text style={{ marginTop: 6, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
               السعر بالدينار العراقي — اكتب الأرقام فقط، التنسيق تلقائي.
             </Text>
+            {/* Thousands-nudge: IQD listings are almost always in the 100k–
+                millions range, so a raw "500" is almost certainly meant as
+                500,000. We show a one-tap fix rather than silently ×1000
+                (someone genuinely selling a 500 IQD cable would be wrecked
+                by a hidden multiplier). */}
+            {Number(askingPrice) >= 1 && Number(askingPrice) < 1000 ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setAskingPrice(String(Number(askingPrice) * 1000))}
+                style={{
+                  marginTop: 8, alignSelf: 'flex-end',
+                  flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+                  backgroundColor: theme.accentSoft,
+                  borderWidth: 1, borderColor: theme.accent,
+                  borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8,
+                }}
+              >
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.accentDeep }}>
+                  هل تقصد {(Number(askingPrice) * 1000).toLocaleString('en-US')} د.ع؟
+                </Text>
+                <View style={{ backgroundColor: theme.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12, fontWeight: '700', color: '#fff' }}>نعم</Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
             <View style={{ marginTop: 12, marginBottom: 12 }}>
               <GovPicker label="موقع الإعلان · المحافظة" valueAr={govAr} onChangeAr={setGovAr} />
             </View>
