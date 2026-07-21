@@ -247,7 +247,7 @@ r.post('/shops/me/images', requireAuth(), uploadLimiter, shopImgUpload.array('im
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(me.id).p;
   const ins = db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)');
   const t = now();
-  req.files.forEach((f, i) => ins.run(me.id, f.filename, maxPos + 1 + i, t));
+  req.files.forEach((f, i) => ins.run(me.id, '/uploads/' + f.filename, maxPos + 1 + i, t));
   res.json({ ok: true, images: shopImages(me.id) });
 });
 

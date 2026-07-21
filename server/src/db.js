@@ -451,6 +451,20 @@ addColumnIfMissing('users', 'shop_lat REAL');
 addColumnIfMissing('users', 'shop_lng REAL');
 addColumnIfMissing('users', 'shop_location_edit_count INTEGER NOT NULL DEFAULT 0');
 
+// One-time repair: early shop-gallery and logo writes stored a bare filename
+// ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via
+// fullImageUrl(getBaseUrl()+path) — so those images 404'd to a placeholder.
+// Prefix any bare path. Idempotent: guards skip already-correct and remote
+// (http) values, so re-running on every boot is a no-op.
+db.exec(
+  `UPDATE shop_images SET image_path='/uploads/'||image_path
+   WHERE image_path IS NOT NULL AND image_path NOT LIKE '/uploads/%' AND image_path NOT LIKE 'http%'`,
+);
+db.exec(
+  `UPDATE users SET shop_image_path='/uploads/'||shop_image_path
+   WHERE shop_image_path IS NOT NULL AND shop_image_path NOT LIKE '/uploads/%' AND shop_image_path NOT LIKE 'http%'`,
+);
+
 // Soft-suspension marker. Non-null = user is banned from the API
 // (requireAuth() rejects them with 403 'user_suspended'). null = active.
 // Toggled from the admin dashboard's Users page.

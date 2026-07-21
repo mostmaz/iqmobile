@@ -1273,7 +1273,7 @@ r.post('/shops/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 12),
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
   const ins = db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)');
   const t = now();
-  req.files.forEach((f, i) => ins.run(u.id, f.filename, maxPos + 1 + i, t));
+  req.files.forEach((f, i) => ins.run(u.id, '/uploads/' + f.filename, maxPos + 1 + i, t));
   res.json({ ok: true, images: shopImages(u.id) });
 });
 
@@ -1307,15 +1307,18 @@ r.post('/shops/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
     if (buf.length < 100 || buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'bad_size', bytes: buf.length });
     const filename = 'lst_' + crypto.randomBytes(12).toString('hex') + MIME_EXT[ctype];
     fs.writeFileSync(path.join(UPLOADS, filename), buf);
+    // Store the public URL prefix the app resolves via fullImageUrl
+    // (getBaseUrl()+path), same shape as listing images: /uploads/<file>.
+    const storedPath = '/uploads/' + filename;
     if (as === 'logo') {
-      db.prepare('UPDATE users SET shop_image_path=? WHERE id=?').run(filename, u.id);
-      return res.json({ ok: true, as, filename });
+      db.prepare('UPDATE users SET shop_image_path=? WHERE id=?').run(storedPath, u.id);
+      return res.json({ ok: true, as, image_path: storedPath });
     }
     const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
     if (existing >= 12) { try { fs.unlinkSync(path.join(UPLOADS, filename)); } catch {} return res.status(400).json({ error: 'too_many_images' }); }
     const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
-    db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)').run(u.id, filename, maxPos + 1, now());
-    return res.json({ ok: true, as, filename, images: shopImages(u.id) });
+    db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)').run(u.id, storedPath, maxPos + 1, now());
+    return res.json({ ok: true, as, image_path: storedPath, images: shopImages(u.id) });
   } catch (e) {
     return res.status(500).json({ error: 'ingest_failed', message: String((e && e.message) || e).slice(0, 200) });
   }
