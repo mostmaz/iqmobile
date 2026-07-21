@@ -373,18 +373,20 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // Listing-level contact info is public (no deal-confirmation gate). The
   // legacy `seller_phone` / `phone_visible` fields are preserved for old
   // mobile builds — they now point to the listing's own contact_phone.
-  // Hide the seller's phone on SOLD listings from everyone but the owner —
-  // buyers shouldn't call about an item that's already gone (in-app chat
-  // stays available). The DB value is untouched; we only omit it from the
-  // response, so restoring the listing to active brings the number back,
-  // and the owner still sees it for their own management/edit.
-  const hidePhone = row.status === 'sold' && (!req.user || req.user.id !== row.seller_id);
+  // Hide the seller's direct contact (phone + WhatsApp) on SOLD listings
+  // from everyone but the owner — buyers shouldn't call/message about an
+  // item that's already gone (in-app chat stays available). The DB values
+  // are untouched; we only omit them from the response, so restoring the
+  // listing to active brings them back, and the owner still sees them for
+  // their own management/edit.
+  const hideContact = row.status === 'sold' && (!req.user || req.user.id !== row.seller_id);
   res.json({
     ...withImgs,
-    contact_phone: hidePhone ? null : withImgs.contact_phone,
+    contact_phone: hideContact ? null : withImgs.contact_phone,
+    contact_whatsapp: hideContact ? null : withImgs.contact_whatsapp,
     seller,
-    seller_phone: hidePhone ? null : (row.contact_phone || null),
-    phone_visible: hidePhone ? false : !!row.contact_phone,
+    seller_phone: hideContact ? null : (row.contact_phone || null),
+    phone_visible: hideContact ? false : !!row.contact_phone,
     is_saved,
   });
 });
