@@ -8,7 +8,7 @@ import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { Banner } from '../../components/Banner';
+import { BannerCarousel } from '../../components/BannerCarousel';
 import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
@@ -168,25 +168,22 @@ export default function BrowseScreen({ navigation }: any) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Pick which banner to show, rotating when several are eligible. Two rules:
+  // Build the ordered pool of DISTINCT banners for the top carousel. The
+  // carousel auto-flips through every eligible banner; this memo only decides
+  // their order — specifically which one LEADS (shows first on load and after
+  // each refresh). Two rules, unchanged from the old single-banner rotation:
   //   1. Brand specificity is a hard tier — on a Samsung view, a Samsung-
-  //      targeted banner always beats an "every brand" one.
-  //   2. Governorate is a 3:1 weighting in the NATIONWIDE banner's favor —
-  //      when an all-Iraq banner competes with a governorate-targeted one,
-  //      the rotation schedule gives each nationwide banner 3 impressions
-  //      for every 1 gov-specific impression.
-  // The home pool (always) and the brand pool (when a brand is filtered)
-  // rotate together via bannerTick — advancing on refresh / filter change /
-  // tab re-open.
-  const banner: BannerRow | null = useMemo(() => {
+  //      targeted banner beats an "every brand" one.
+  //   2. Governorate is a 3:1 weighting in the NATIONWIDE banner's favor when
+  //      picking the lead slide — an all-Iraq banner leads 3 refreshes for
+  //      every 1 a governorate-targeted one does.
+  // bannerTick advances on refresh / filter change / tab re-open, so the lead
+  // slide rotates through that weighted schedule each time.
+  const bannerPool: BannerRow[] = useMemo(() => {
     const schedule = (list?: BannerRow[]): BannerRow[] => {
       if (!list || list.length === 0) return [];
-      // Hard tier on the brand dimension only (home banners all have
-      // brand=null, so this is a no-op for the home pool).
       const hasBrandSpecific = list.some((b) => b.brand != null);
       const tier = hasBrandSpecific ? list.filter((b) => b.brand != null) : list;
-      // 3:1 weighting for nationwide: three rounds of the all-Iraq banners,
-      // then one round of the gov-specific ones. bannerTick walks this cycle.
       const specific = tier.filter((b) => b.governorate != null);
       const nationwide = tier.filter((b) => b.governorate == null);
       if (specific.length === 0 || nationwide.length === 0) return tier;
@@ -195,18 +192,29 @@ export default function BrowseScreen({ navigation }: any) {
       out.push(...specific);
       return out;
     };
-    const pool = [...schedule(homeBanners), ...(filters.brand ? schedule(brandBanners) : [])];
-    if (pool.length === 0) return null;
-    return pool[bannerTick % pool.length];
+    // Distinct banners in server priority order (gov-specific first, then
+    // nationwide, by position) — each shows once per carousel cycle.
+    const seen = new Set<number>();
+    const distinct: BannerRow[] = [];
+    for (const b of [...(homeBanners ?? []), ...(filters.brand ? (brandBanners ?? []) : [])]) {
+      if (!seen.has(b.id)) { seen.add(b.id); distinct.push(b); }
+    }
+    if (distinct.length <= 1) return distinct;
+    // Choose the lead via the weighted schedule (rotating on bannerTick), then
+    // rotate the distinct list so that banner is first.
+    const sched = [...schedule(homeBanners), ...(filters.brand ? schedule(brandBanners) : [])];
+    const lead = sched.length ? sched[bannerTick % sched.length] : distinct[0];
+    const leadIdx = Math.max(0, distinct.findIndex((b) => b.id === lead.id));
+    return [...distinct.slice(leadIdx), ...distinct.slice(0, leadIdx)];
   }, [homeBanners, brandBanners, filters.brand, bannerTick]);
 
-  // Feed data with the banner pinned to the very top (first slot, above the
-  // first listing). Banner items carry a __banner tag so renderItem and
-  // keyExtractor can tell them apart from listings.
+  // Feed data with the banner carousel pinned to the very top (first slot,
+  // above the first listing). The carousel item carries a __bannerPool tag so
+  // renderItem and keyExtractor can tell it apart from listings.
   const feedData = useMemo(() => {
-    if (!banner) return items as any[];
-    return [{ __banner: banner }, ...items];
-  }, [items, banner]);
+    if (bannerPool.length === 0) return items as any[];
+    return [{ __bannerPool: bannerPool }, ...items];
+  }, [items, bannerPool]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -372,12 +380,12 @@ export default function BrowseScreen({ navigation }: any) {
 
       <FlatList
         data={feedData}
-        keyExtractor={(item) => (item.__banner ? `banner-${item.__banner.id}` : String(item.id))}
+        keyExtractor={(item) => (item.__bannerPool ? 'banner-carousel' : String(item.id))}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
-          item.__banner ? (
-            <Banner banner={item.__banner} onOpenListing={(id) => navigation.navigate('ListingDetail', { id })} />
+          item.__bannerPool ? (
+            <BannerCarousel banners={item.__bannerPool} onOpenListing={(id) => navigation.navigate('ListingDetail', { id })} />
           ) : (
             <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
           )
