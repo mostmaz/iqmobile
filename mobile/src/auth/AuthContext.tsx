@@ -6,6 +6,7 @@ import { setToken } from '../api/client';
 import * as SecureStore from '../lib/secureStore';
 import { go } from '../navigation/ref';
 import { useIdentify, useResetIdentity, useTrack } from '../analytics/track';
+import { logMetaEvent } from '../analytics/meta';
 import { ar } from '../i18n/ar';
 
 // `track()` calls the PostHog SDK which can throw if the transport
@@ -168,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isFreshSignup = !r.user.profile_completed;
         await persist(r.token, r.user);
         safeTrack(track, isFreshSignup ? 'user.signup' : 'user.signin', { method: 'phone' });
+        if (isFreshSignup) logMetaEvent('CompleteRegistration', { method: 'phone' });
         return { otpRequired: false as const };
       }
       throw new Error('network');
@@ -181,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const isFreshSignup = !r.user.profile_completed;
       await persist(r.token, r.user);
       safeTrack(track, isFreshSignup ? 'user.signup' : 'user.signin', { method: 'phone_otp' });
+      if (isFreshSignup) logMetaEvent('CompleteRegistration', { method: 'phone_otp' });
     },
     [persist, track],
   );

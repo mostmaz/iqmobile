@@ -18,6 +18,7 @@ import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
 import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useTrack } from '../../analytics/track';
+import { logMetaEvent } from '../../analytics/meta';
 import { SHOW_PROMOTE } from '../../config/flags';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -601,10 +602,12 @@ function ContactRow({
   const trackedCall = () => {
     if (!phone) return;
     track('listing.contact_call', { listing_id: listingId, brand, seller_type: sellerType });
+    logMetaEvent('Contact', { method: 'call', brand });
     callPhone(phone);
   };
   const trackedWhatsApp = () => {
     track('listing.contact_whatsapp', { listing_id: listingId, brand, seller_type: sellerType });
+    logMetaEvent('Contact', { method: 'whatsapp', brand });
     if (whatsapp) openWhatsApp(whatsapp);
   };
   const trackedChat = () => {

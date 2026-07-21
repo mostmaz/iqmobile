@@ -40,6 +40,7 @@
       "sentryDsn": "https://f1a835e5f015a4d0f6dc0948a1239a69@o4511382795059200.ingest.de.sentry.io/4511382804955216",
       "posthogKey": "",
       "posthogHost": "https://eu.i.posthog.com",
+      "metaAppId": "REPLACE_WITH_META_APP_ID",
       "eas": {
         "projectId": "ed963d5c-2d36-4ed9-a907-4cad444d4d59"
       }
@@ -64,6 +65,25 @@
           "locationWhenInUsePermission": "IQ Mobile uses your location only while you are using the app to detect your governorate — for example, to automatically set 'Baghdad' so you see nearby listings and buyers can find your ad. You can also choose your governorate manually.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "REPLACE_WITH_META_APP_ID",
+          "clientToken": "REPLACE_WITH_META_CLIENT_TOKEN",
+          "displayName": "IQ Mobile",
+          "scheme": "fbREPLACE_WITH_META_APP_ID",
+          "advertiserIDCollectionEnabled": true,
+          "autoLogAppEventsEnabled": true,
+          "isAutoInitEnabled": true,
+          "iosUserTrackingPermission": "‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق."
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق."
         }
       ]
     ]

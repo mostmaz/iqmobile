@@ -4,6 +4,7 @@ import { I18nManager, View, ActivityIndicator, Text } from 'react-native';
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { setupPushTapHandler } from './src/push/register';
+import { initMeta } from './src/analytics/meta';
 import { go } from './src/navigation/ref';
 
 // Sentry — runs as early as possible so even crashes during module
@@ -66,6 +67,12 @@ function AppInner() {
     Inter_700Bold,
     JetBrainsMono_500Medium,
   });
+
+  // Meta (Facebook) App Events — initialise once on launch. Handles the
+  // iOS App Tracking Transparency prompt and logs the app-activate event
+  // Meta uses for install attribution. No-ops until a real Meta App ID is
+  // set in app.json (see src/analytics/meta.ts).
+  useEffect(() => { initMeta(); }, []);
 
   // Notification-tap routing. Server attaches a `kind` (and any extras
   // it needs) to the data payload of every push. We translate that into
