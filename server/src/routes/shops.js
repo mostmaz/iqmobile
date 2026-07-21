@@ -37,7 +37,7 @@ const shopImgUpload = multer({
     cb(null, true);
   },
 });
-const MAX_SHOP_IMAGES = 12;
+const MAX_SHOP_IMAGES = 20;
 
 // Parse a phones payload: accept an array (preferred) or a single string;
 // normalize each Iraqi number, drop invalids, de-dup, cap the list.

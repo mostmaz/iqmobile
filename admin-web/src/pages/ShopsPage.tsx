@@ -353,7 +353,7 @@ function ShopEditor({ id, onClose, onChanged }: { id: number; onClose: () => voi
               </div>
             </div>
 
-            <div className="chart-title" style={{ fontSize: 14, marginTop: 16 }}>Price-list gallery ({gallery.length}/12)</div>
+            <div className="chart-title" style={{ fontSize: 14, marginTop: 16 }}>Price-list gallery ({gallery.length}/20)</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {gallery.map((im) => (
                 <div key={im.id} style={{ position: 'relative' }}>
@@ -370,10 +370,10 @@ function ShopEditor({ id, onClose, onChanged }: { id: number; onClose: () => voi
               {gallery.length === 0 ? <div className="muted" style={{ fontSize: 12 }}>No gallery images yet.</div> : null}
             </div>
             <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
-              <input ref={galFileRef} type="file" accept="image/*" multiple disabled={busy || gallery.length >= 12} onChange={(e) => addGalleryFiles(e.target.files)} />
+              <input ref={galFileRef} type="file" accept="image/*" multiple disabled={busy || gallery.length >= 20} onChange={(e) => addGalleryFiles(e.target.files)} />
               <div style={{ display: 'flex', gap: 6 }}>
-                <input value={galUrl} onChange={(e) => setGalUrl(e.target.value)} placeholder="…or paste image URL" style={{ flex: 1 }} disabled={gallery.length >= 12} />
-                <button className="secondary" disabled={busy || !galUrl.trim() || gallery.length >= 12} onClick={addGalleryUrl}>Add</button>
+                <input value={galUrl} onChange={(e) => setGalUrl(e.target.value)} placeholder="…or paste image URL" style={{ flex: 1 }} disabled={gallery.length >= 20} />
+                <button className="secondary" disabled={busy || !galUrl.trim() || gallery.length >= 20} onClick={addGalleryUrl}>Add</button>
               </div>
             </div>
           </div>

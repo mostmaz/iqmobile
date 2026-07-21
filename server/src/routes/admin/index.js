@@ -1269,7 +1269,7 @@ r.post('/shops/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 12),
   if (!u) { cleanup(); return res.status(404).json({ error: 'not_found' }); }
   if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'no_files' });
   const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
-  if (existing + req.files.length > 12) { cleanup(); return res.status(400).json({ error: 'too_many_images' }); }
+  if (existing + req.files.length > 20) { cleanup(); return res.status(400).json({ error: 'too_many_images' }); }
   const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
   const ins = db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)');
   const t = now();
@@ -1315,7 +1315,7 @@ r.post('/shops/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
       return res.json({ ok: true, as, image_path: storedPath });
     }
     const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
-    if (existing >= 12) { try { fs.unlinkSync(path.join(UPLOADS, filename)); } catch {} return res.status(400).json({ error: 'too_many_images' }); }
+    if (existing >= 20) { try { fs.unlinkSync(path.join(UPLOADS, filename)); } catch {} return res.status(400).json({ error: 'too_many_images' }); }
     const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
     db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)').run(u.id, storedPath, maxPos + 1, now());
     return res.json({ ok: true, as, image_path: storedPath, images: shopImages(u.id) });
