@@ -1,10 +1,11 @@
 // Shops directory management. A shop is a user with seller_type='shop'. Admin
 // can flag an account as a shop (find-or-create by phone), edit the shop
-// profile, grant a featured window, or revert to an individual account.
-// Self-serve registration also exists in the app — those shops show up here too.
+// profile (details, logo, price-list gallery), grant a featured window, or
+// revert to an individual account. Self-serve registration also exists in the
+// app — those shops show up here too.
 
-import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import React, { useEffect, useRef, useState } from 'react';
+import { api, apiForm, API_BASE } from '../api';
 
 type Shop = {
   id: number;
@@ -17,10 +18,18 @@ type Shop = {
   shop_whatsapp: string | null;
   shop_bio: string | null;
   shop_address: string | null;
+  shop_image_path: string | null;
   shop_featured_until: number | null;
   listing_count: number;
   is_featured: boolean;
   verified: boolean;
+};
+
+type ShopDetail = Shop & {
+  shop_phones: string[];
+  shop_facebook: string | null;
+  shop_instagram: string | null;
+  shop_images: { id: number; image_path: string; position: number }[];
 };
 
 const GOVERNORATES = [
@@ -30,6 +39,7 @@ const GOVERNORATES = [
 ];
 
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString();
+const imgUrl = (p?: string | null) => (p ? (p.startsWith('http') ? p : API_BASE + p) : '');
 
 export function ShopsPage() {
   const [shops, setShops] = useState<Shop[]>([]);
@@ -46,6 +56,9 @@ export function ShopsPage() {
   const [shopWhatsapp, setShopWhatsapp] = useState('');
   const [shopBio, setShopBio] = useState('');
   const [shopAddress, setShopAddress] = useState('');
+
+  // Editor
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -115,11 +128,17 @@ export function ShopsPage() {
               {shops.map((s) => (
                 <tr key={s.id}>
                   <td>
-                    <strong>{s.shop_name || s.display_name}</strong>
-                    <div className="muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>#{s.id} · {s.phone || '—'}</div>
-                    {s.shop_bio ? <div className="muted" style={{ fontSize: 12 }}>{s.shop_bio}</div> : null}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {s.shop_image_path
+                        ? <img src={imgUrl(s.shop_image_path)} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover' }} />
+                        : <div style={{ width: 32, height: 32, borderRadius: 8, background: '#333' }} />}
+                      <div>
+                        <strong>{s.shop_name || s.display_name}</strong>
+                        <div className="muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>#{s.id} · {s.phone || '—'}</div>
+                      </div>
+                    </div>
                   </td>
-                  <td>{s.governorate}{s.city ? ` · ${s.city}` : ''}{s.shop_address ? <div className="muted" style={{ fontSize: 12 }}>{s.shop_address}</div> : null}</td>
+                  <td>{s.governorate}{s.city ? ` · ${s.city}` : ''}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 12 }}>
                     {s.shop_phone || '—'}{s.shop_whatsapp ? <div>wa: {s.shop_whatsapp}</div> : null}
                   </td>
@@ -130,8 +149,11 @@ export function ShopsPage() {
                       : <span className="muted">no</span>}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <button className={s.is_featured ? 'secondary' : 'primary'} disabled={busy} onClick={() => feature(s)}>
-                      {s.is_featured ? 'Edit feature' : 'Feature'}
+                    <button className="primary" disabled={busy} onClick={() => setEditingId(editingId === s.id ? null : s.id)}>
+                      {editingId === s.id ? 'Close' : 'Edit'}
+                    </button>{' '}
+                    <button className={s.is_featured ? 'secondary' : 'secondary'} disabled={busy} onClick={() => feature(s)}>
+                      {s.is_featured ? 'Feature…' : 'Feature'}
                     </button>{' '}
                     <button className="danger" disabled={busy} onClick={() => unshop(s)}>Unshop</button>
                   </td>
@@ -142,6 +164,15 @@ export function ShopsPage() {
           </table>
         )}
       </div>
+
+      {editingId != null ? (
+        <ShopEditor
+          key={editingId}
+          id={editingId}
+          onClose={() => setEditingId(null)}
+          onChanged={load}
+        />
+      ) : null}
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="chart-title">Add / flag a shop</div>
@@ -168,9 +199,186 @@ export function ShopsPage() {
         </div>
         <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
           If the phone already has an account it's converted to a shop; otherwise a new shop account is created.
-          Feature is free to grant for now — set a day count to pin the shop to the top of its governorate.
+          Use <strong>Edit</strong> on a row to change details, set the logo, and manage the price-list gallery.
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Editor ────────────────────────────────────────────────────────────
+function ShopEditor({ id, onClose, onChanged }: { id: number; onClose: () => void; onChanged: () => void }) {
+  const [detail, setDetail] = useState<ShopDetail | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [logoUrl, setLogoUrl] = useState('');
+  const [galUrl, setGalUrl] = useState('');
+  const logoFileRef = useRef<HTMLInputElement>(null);
+  const galFileRef = useRef<HTMLInputElement>(null);
+
+  // Editable text fields
+  const [f, setF] = useState({
+    shop_name: '', governorate: 'Baghdad', shop_address: '', shop_whatsapp: '',
+    shop_facebook: '', shop_instagram: '', shop_bio: '', shop_phones: '',
+  });
+
+  async function loadDetail() {
+    try {
+      const d = await api<ShopDetail>(`/shops/${id}`);
+      setDetail(d);
+      setF({
+        shop_name: d.shop_name || '',
+        governorate: d.governorate || 'Baghdad',
+        shop_address: d.shop_address || '',
+        shop_whatsapp: d.shop_whatsapp || '',
+        shop_facebook: d.shop_facebook || '',
+        shop_instagram: d.shop_instagram || '',
+        shop_bio: d.shop_bio || '',
+        shop_phones: (d.shop_phones || []).join(', '),
+      });
+      setErr('');
+    } catch (e: any) { setErr(e.data?.error || e.message); }
+  }
+  useEffect(() => { loadDetail(); }, [id]);
+
+  async function saveDetails() {
+    setBusy(true); setErr(''); setSaved(false);
+    try {
+      await api(`/admin/shops/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          shop_name: f.shop_name.trim(),
+          governorate: f.governorate,
+          shop_address: f.shop_address.trim() || null,
+          shop_whatsapp: f.shop_whatsapp.trim() || null,
+          shop_facebook: f.shop_facebook.trim() || null,
+          shop_instagram: f.shop_instagram.trim() || null,
+          shop_bio: f.shop_bio.trim() || null,
+          shop_phones: f.shop_phones.split(',').map((x) => x.trim()).filter(Boolean),
+        }),
+      });
+      setSaved(true);
+      await loadDetail();
+      onChanged();
+    } catch (e: any) { setErr(e.data?.error || e.message); } finally { setBusy(false); }
+  }
+
+  async function run(fn: () => Promise<any>) {
+    setBusy(true); setErr('');
+    try { await fn(); await loadDetail(); onChanged(); }
+    catch (e: any) { setErr(e.data?.error || e.message); } finally { setBusy(false); }
+  }
+
+  function uploadLogo(file?: File | null) {
+    if (!file) return;
+    const fd = new FormData(); fd.append('image', file);
+    run(() => apiForm(`/admin/shops/${id}/logo`, fd)).then(() => { if (logoFileRef.current) logoFileRef.current.value = ''; });
+  }
+  function logoFromUrl() {
+    if (!logoUrl.trim()) return;
+    run(() => api(`/admin/shops/${id}/ingest-image`, { method: 'POST', body: JSON.stringify({ url: logoUrl.trim(), as: 'logo' }) }))
+      .then(() => setLogoUrl(''));
+  }
+  function addGalleryFiles(files?: FileList | null) {
+    if (!files || !files.length) return;
+    const fd = new FormData();
+    Array.from(files).forEach((file) => fd.append('images', file));
+    run(() => apiForm(`/admin/shops/${id}/images`, fd)).then(() => { if (galFileRef.current) galFileRef.current.value = ''; });
+  }
+  function addGalleryUrl() {
+    if (!galUrl.trim()) return;
+    run(() => api(`/admin/shops/${id}/ingest-image`, { method: 'POST', body: JSON.stringify({ url: galUrl.trim(), as: 'gallery' }) }))
+      .then(() => setGalUrl(''));
+  }
+  function deleteImage(imgId: number) {
+    if (!confirm('Remove this image?')) return;
+    run(() => api(`/admin/shops/${id}/images/${imgId}`, { method: 'DELETE' }));
+  }
+
+  const lbl: React.CSSProperties = { alignSelf: 'center' };
+  const gallery = detail?.shop_images || [];
+
+  return (
+    <div className="card" style={{ marginTop: 16, borderColor: '#4a7' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="chart-title">Editing: {detail?.shop_name || `#${id}`} <span className="muted" style={{ fontFamily: 'monospace' }}>#{id}</span></div>
+        <button className="secondary" onClick={onClose}>Close</button>
+      </div>
+      {err ? <div style={{ color: 'salmon', margin: '8px 0' }}>Error: {err}</div> : null}
+      {saved ? <div style={{ color: '#7bd88f', margin: '8px 0' }}>Saved ✓</div> : null}
+      {!detail ? <div className="muted">Loading…</div> : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginTop: 10 }}>
+          {/* Details */}
+          <div>
+            <div className="chart-title" style={{ fontSize: 14 }}>Details</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', gap: 8, alignItems: 'center' }}>
+              <label style={lbl}>Shop name</label>
+              <input value={f.shop_name} onChange={(e) => setF({ ...f, shop_name: e.target.value })} />
+              <label style={lbl}>Governorate</label>
+              <select value={f.governorate} onChange={(e) => setF({ ...f, governorate: e.target.value })}>
+                {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+              <label style={lbl}>Phones</label>
+              <input value={f.shop_phones} onChange={(e) => setF({ ...f, shop_phones: e.target.value })} placeholder="comma-separated branch numbers" />
+              <label style={lbl}>WhatsApp</label>
+              <input value={f.shop_whatsapp} onChange={(e) => setF({ ...f, shop_whatsapp: e.target.value })} />
+              <label style={lbl}>Address</label>
+              <input value={f.shop_address} onChange={(e) => setF({ ...f, shop_address: e.target.value })} />
+              <label style={lbl}>Facebook</label>
+              <input value={f.shop_facebook} onChange={(e) => setF({ ...f, shop_facebook: e.target.value })} placeholder="https://facebook.com/…" />
+              <label style={lbl}>Instagram</label>
+              <input value={f.shop_instagram} onChange={(e) => setF({ ...f, shop_instagram: e.target.value })} placeholder="https://instagram.com/…" />
+              <label style={lbl}>Bio</label>
+              <textarea value={f.shop_bio} onChange={(e) => setF({ ...f, shop_bio: e.target.value })} rows={3} />
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <button className="primary" onClick={saveDetails} disabled={busy}>Save details</button>
+            </div>
+          </div>
+
+          {/* Media */}
+          <div>
+            <div className="chart-title" style={{ fontSize: 14 }}>Logo</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {detail.shop_image_path
+                ? <img src={imgUrl(detail.shop_image_path)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover' }} />
+                : <div style={{ width: 64, height: 64, borderRadius: 10, background: '#333', display: 'grid', placeItems: 'center', fontSize: 11 }} className="muted">no logo</div>}
+              <div style={{ display: 'grid', gap: 6 }}>
+                <input ref={logoFileRef} type="file" accept="image/*" disabled={busy} onChange={(e) => uploadLogo(e.target.files?.[0])} />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="…or paste image URL" style={{ flex: 1 }} />
+                  <button className="secondary" disabled={busy || !logoUrl.trim()} onClick={logoFromUrl}>Set</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="chart-title" style={{ fontSize: 14, marginTop: 16 }}>Price-list gallery ({gallery.length}/12)</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {gallery.map((im) => (
+                <div key={im.id} style={{ position: 'relative' }}>
+                  <img src={imgUrl(im.image_path)} alt="" style={{ width: 76, height: 76, borderRadius: 8, objectFit: 'cover' }} />
+                  <button
+                    className="danger"
+                    title="Remove"
+                    disabled={busy}
+                    onClick={() => deleteImage(im.id)}
+                    style={{ position: 'absolute', top: -6, right: -6, borderRadius: 999, width: 22, height: 22, padding: 0, lineHeight: '1' }}
+                  >×</button>
+                </div>
+              ))}
+              {gallery.length === 0 ? <div className="muted" style={{ fontSize: 12 }}>No gallery images yet.</div> : null}
+            </div>
+            <div style={{ display: 'grid', gap: 6, marginTop: 8 }}>
+              <input ref={galFileRef} type="file" accept="image/*" multiple disabled={busy || gallery.length >= 12} onChange={(e) => addGalleryFiles(e.target.files)} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={galUrl} onChange={(e) => setGalUrl(e.target.value)} placeholder="…or paste image URL" style={{ flex: 1 }} disabled={gallery.length >= 12} />
+                <button className="secondary" disabled={busy || !galUrl.trim() || gallery.length >= 12} onClick={addGalleryUrl}>Add</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

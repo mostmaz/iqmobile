@@ -1324,6 +1324,21 @@ r.post('/shops/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
   }
 });
 
+// Set/replace a shop's logo (shop_image_path) from an uploaded file. Stored
+// with the /uploads/ prefix the app resolves via fullImageUrl.
+r.post('/shops/:id(\\d+)/logo', requireAdmin, imageUpload.single('image'), (req, res) => {
+  const u = db.prepare("SELECT id, shop_image_path FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) { if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} } return res.status(404).json({ error: 'not_found' }); }
+  if (!req.file) return res.status(400).json({ error: 'no_file' });
+  // Drop the previous logo file (only if it lived in our uploads dir).
+  if (u.shop_image_path && u.shop_image_path.startsWith('/uploads/')) {
+    try { fs.unlinkSync(path.join(UPLOADS, path.basename(u.shop_image_path))); } catch {}
+  }
+  const p = '/uploads/' + req.file.filename;
+  db.prepare('UPDATE users SET shop_image_path=? WHERE id=?').run(p, u.id);
+  res.json({ ok: true, image_path: p });
+});
+
 r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {
   const u = db.prepare('SELECT id FROM users WHERE id=?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'not_found' });

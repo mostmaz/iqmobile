@@ -16,6 +16,24 @@ export function setStoredToken(t: string | null) {
 // (which can't go through api() — that helper sets a JSON content-type).
 export const API_BASE = import.meta.env.PROD ? 'https://api.iqmobile.org' : '';
 
+// Multipart helper for file uploads. Unlike api() it must NOT set a JSON
+// content-type — the browser sets the multipart boundary itself.
+export async function apiForm<T = any>(path: string, form: FormData, method = 'POST'): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(API_BASE + path, { method, headers, body: form });
+  const text = await res.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+  if (!res.ok) {
+    const err: any = new Error(data?.error || `http_${res.status}`);
+    err.status = res.status; err.data = data;
+    throw err;
+  }
+  return data;
+}
+
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
