@@ -1285,6 +1285,42 @@ r.delete('/shops/:id(\\d+)/images/:imgId(\\d+)', requireAdmin, (req, res) => {
   res.json({ ok: true, images: shopImages(req.params.id) });
 });
 
+// Ingest a shop image (logo or gallery) from a remote URL. The server
+// fetches the bytes itself, so it isn't subject to the browser's CORS wall
+// on Facebook's CDN — used to seed a shop's page from its public FB photos.
+// `as:'logo'` sets shop_image_path; anything else appends to the shop_images
+// gallery (price-list boards). Validates content-type is a real image and
+// writes it under the shared lst_<hex> filename shape.
+r.post('/shops/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
+  const u = db.prepare("SELECT id FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  const url = String(req.body?.url || '').trim();
+  const as = req.body?.as === 'logo' ? 'logo' : 'gallery';
+  if (!/^https:\/\/\S+$/i.test(url)) return res.status(400).json({ error: 'bad_url' });
+  const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IQMobileBot/1.0)' }, redirect: 'follow' });
+    if (!resp.ok) return res.status(400).json({ error: 'fetch_failed', status: resp.status });
+    const ctype = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!MIME_EXT[ctype]) return res.status(400).json({ error: 'not_image', ctype });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.length < 100 || buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'bad_size', bytes: buf.length });
+    const filename = 'lst_' + crypto.randomBytes(12).toString('hex') + MIME_EXT[ctype];
+    fs.writeFileSync(path.join(UPLOADS, filename), buf);
+    if (as === 'logo') {
+      db.prepare('UPDATE users SET shop_image_path=? WHERE id=?').run(filename, u.id);
+      return res.json({ ok: true, as, filename });
+    }
+    const existing = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
+    if (existing >= 12) { try { fs.unlinkSync(path.join(UPLOADS, filename)); } catch {} return res.status(400).json({ error: 'too_many_images' }); }
+    const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
+    db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)').run(u.id, filename, maxPos + 1, now());
+    return res.json({ ok: true, as, filename, images: shopImages(u.id) });
+  } catch (e) {
+    return res.status(500).json({ error: 'ingest_failed', message: String((e && e.message) || e).slice(0, 200) });
+  }
+});
+
 r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {
   const u = db.prepare('SELECT id FROM users WHERE id=?').get(req.params.id);
   if (!u) return res.status(404).json({ error: 'not_found' });
