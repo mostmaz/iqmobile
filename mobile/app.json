@@ -40,7 +40,8 @@
       "sentryDsn": "https://f1a835e5f015a4d0f6dc0948a1239a69@o4511382795059200.ingest.de.sentry.io/4511382804955216",
       "posthogKey": "",
       "posthogHost": "https://eu.i.posthog.com",
-      "metaAppId": "REPLACE_WITH_META_APP_ID",
+      "metaAppId": "1385790423425707",
+      "metaClientToken": "REPLACE_WITH_META_CLIENT_TOKEN",
       "eas": {
         "projectId": "ed963d5c-2d36-4ed9-a907-4cad444d4d59"
       }
@@ -70,10 +71,10 @@
       [
         "react-native-fbsdk-next",
         {
-          "appID": "REPLACE_WITH_META_APP_ID",
+          "appID": "1385790423425707",
           "clientToken": "REPLACE_WITH_META_CLIENT_TOKEN",
           "displayName": "IQ Mobile",
-          "scheme": "fbREPLACE_WITH_META_APP_ID",
+          "scheme": "fb1385790423425707",
           "advertiserIDCollectionEnabled": true,
           "autoLogAppEventsEnabled": true,
           "isAutoInitEnabled": true,

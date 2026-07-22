@@ -15,10 +15,14 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const metaAppId = (Constants.expoConfig?.extra as any)?.metaAppId as string | undefined;
+const metaClientToken = (Constants.expoConfig?.extra as any)?.metaClientToken as string | undefined;
 
-// Real credentials present? Placeholder string ships in source until the
-// Meta app is created — treat it (and empty) as "not configured".
-export const META_ENABLED = !!metaAppId && !metaAppId.startsWith('REPLACE_WITH_');
+// Real credentials present? Placeholder strings ship in source until the Meta
+// app is created — treat those (and empty) as "not configured". BOTH the app
+// id and the client token must be real, so a half-filled config stays off
+// rather than initialising the SDK with a bad token.
+const isReal = (v?: string) => !!v && !v.startsWith('REPLACE_WITH_');
+export const META_ENABLED = isReal(metaAppId) && isReal(metaClientToken);
 
 let initialized = false;
 
