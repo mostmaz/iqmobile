@@ -22,7 +22,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 33
+      "versionCode": 34
     },
     "ios": {
       "bundleIdentifier": "org.iqmobile.app",
@@ -31,7 +31,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "9"
+      "buildNumber": "10"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
