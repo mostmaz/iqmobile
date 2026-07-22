@@ -41,7 +41,7 @@
       "posthogKey": "",
       "posthogHost": "https://eu.i.posthog.com",
       "metaAppId": "1385790423425707",
-      "metaClientToken": "REPLACE_WITH_META_CLIENT_TOKEN",
+      "metaClientToken": "14185d5045ab04e8c6078ca811ab3dc7",
       "eas": {
         "projectId": "ed963d5c-2d36-4ed9-a907-4cad444d4d59"
       }
@@ -72,7 +72,7 @@
         "react-native-fbsdk-next",
         {
           "appID": "1385790423425707",
-          "clientToken": "REPLACE_WITH_META_CLIENT_TOKEN",
+          "clientToken": "14185d5045ab04e8c6078ca811ab3dc7",
           "displayName": "IQ Mobile",
           "scheme": "fb1385790423425707",
           "advertiserIDCollectionEnabled": true,
