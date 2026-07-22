@@ -1,0 +1,31 @@
+# EAS Build upload ignore. Without this file, EAS falls back to .gitignore,
+# which does NOT list the native folders — so the large regenerated native
+# artifacts below get swept into the upload archive (~1.2 GB, ~18 min upload).
+# Everything here is recreated on the EAS build server (npm install, pod
+# install, gradle), so it never needs uploading.
+#
+# NOTE: a present .easignore fully REPLACES .gitignore for EAS, so the
+# .gitignore excludes are repeated here.
+
+# --- from .gitignore ---
+node_modules/
+.expo/
+dist/
+web-build/
+*.tgz
+.env
+
+# --- native build artifacts (regenerated on the build server) ---
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/.xcode.env.local
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/.cxx/
+
+# --- misc local cruft ---
+*.log
+.DS_Store
