@@ -67,6 +67,12 @@ interface Listing {
   contact_whatsapp: string | null;
 }
 
+interface ListingImage {
+  id: number;
+  image_path: string;
+  position: number;
+}
+
 interface PhoneDupeResp {
   count: number;
   listings: Array<{
@@ -330,6 +336,17 @@ function EditListingModal({
   const [brands, setBrands] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  // Photos are managed independently of the field form: each add/remove
+  // hits the server immediately (they're separate endpoints), so there's
+  // no "unsaved photo" state to reconcile with the Save button.
+  const [images, setImages] = useState<ListingImage[]>([]);
+  const [maxImages, setMaxImages] = useState(10);
+  const [imgBusy, setImgBusy] = useState('');
+  const [imgErr, setImgErr] = useState('');
+  const addInputRef = useRef<HTMLInputElement | null>(null);
+  // Set when a photo op changed something — tells the parent to reload
+  // the row on close even if no field edits were saved.
+  const imagesTouched = useRef(false);
   const [form, setForm] = useState({
     brand: listing.brand || '',
     model: listing.model || '',
@@ -350,13 +367,82 @@ function EditListingModal({
       .catch(() => setBrands([]));
   }, []);
 
+  // Load the listing's current photos when the modal opens.
+  useEffect(() => {
+    api<{ images: ListingImage[]; max: number }>(`/admin/listings/${listing.id}/images`)
+      .then((r) => { setImages(r.images); setMaxImages(r.max ?? 10); })
+      .catch(() => setImages([]));
+  }, [listing.id]);
+
   // Close on Escape — a modal that traps the operator is worse than one
   // that closes too easily, since nothing is saved until they hit Save.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  });
+
+  // Photo edits are already persisted, so closing after one still needs to
+  // refresh the parent list (the row's updated_at / thumbnail changed).
+  function handleClose() {
+    if (imagesTouched.current) onSaved(); else onClose();
+  }
+
+  async function deleteImage(img: ListingImage) {
+    if (!confirm('Remove this photo? This deletes the file and cannot be undone.')) return;
+    setImgErr(''); setImgBusy(`del-${img.id}`);
+    try {
+      await api(`/admin/listings/${listing.id}/images/${img.id}`, { method: 'DELETE' });
+      setImages((cur) => cur.filter((i) => i.id !== img.id));
+      imagesTouched.current = true;
+    } catch (e: any) {
+      setImgErr(e?.message || 'Delete failed');
+    } finally { setImgBusy(''); }
+  }
+
+  // Compress client-side (same canvas path Quick Add uses) then upload.
+  // Multipart can't go through api(), which forces a JSON content-type.
+  async function addImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setImgErr('');
+    const room = maxImages - images.length;
+    if (room <= 0) { setImgErr(`Already at the ${maxImages}-photo limit.`); return; }
+
+    setImgBusy('add');
+    try {
+      const fd = new FormData();
+      let n = 0;
+      for (const f of files.slice(0, room)) {
+        try {
+          const blob = await compressImage(f);
+          fd.append('images', blob, `edit_${Date.now()}_${n}.jpg`);
+          n++;
+        } catch { /* skip undecodable files, upload the rest */ }
+      }
+      if (n === 0) { setImgErr('None of those files could be read as images.'); return; }
+
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/admin/listings/${listing.id}/images`, {
+        method: 'POST',
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(`upload_failed (${res.status}) ${t.slice(0, 80)}`);
+      }
+      const r = await res.json();
+      setImages((cur) => [...cur, ...(r.added || [])]);
+      imagesTouched.current = true;
+      if (files.length > room) setImgErr(`Only ${room} added — ${maxImages}-photo limit reached.`);
+    } catch (e: any) {
+      setImgErr(e?.message || 'Upload failed');
+    } finally {
+      setImgBusy('');
+      if (addInputRef.current) addInputRef.current.value = '';
+    }
+  }
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -404,7 +490,7 @@ function EditListingModal({
 
   return (
     <div
-      onClick={onClose}
+      onClick={handleClose}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
@@ -415,7 +501,7 @@ function EditListingModal({
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(760px, 100%)', marginTop: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>Edit listing #{listing.id}</h2>
-          <button type="button" className="secondary" onClick={onClose}>Close</button>
+          <button type="button" className="secondary" onClick={handleClose}>Close</button>
         </div>
         <div style={{ fontSize: 12, color: '#9ca3af', margin: '6px 0 14px' }}>
           {listing.seller_name} · {listing.seller_phone}
@@ -508,11 +594,72 @@ function EditListingModal({
             />
           </div>
 
+          {/* Photos. Unlike the fields above, these save immediately —
+              each add/remove is its own request, so the Save button's
+              change count intentionally ignores them. */}
+          <div style={{ gridColumn: '1 / -1', borderTop: '1px solid #374151', paddingTop: 12 }}>
+            <label style={labelStyle}>
+              Photos ({images.length}/{maxImages}) — changes apply immediately
+            </label>
+            {images.length > 0 ? (
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {images.map((img, i) => (
+                  <div key={img.id} style={{
+                    position: 'relative', width: 84, height: 84, borderRadius: 6,
+                    overflow: 'hidden', border: '1px solid #374151',
+                  }}>
+                    <img
+                      src={`${API_BASE}${img.image_path}`}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => deleteImage(img)}
+                      disabled={!!imgBusy}
+                      title="Remove this photo"
+                      style={{
+                        position: 'absolute', top: 2, insetInlineEnd: 2,
+                        width: 20, height: 20, padding: 0,
+                        background: 'rgba(0,0,0,0.72)', color: '#fff',
+                        border: 'none', borderRadius: 4, cursor: 'pointer',
+                        fontSize: 13, lineHeight: '20px', textAlign: 'center',
+                      }}
+                    >{imgBusy === `del-${img.id}` ? '…' : '×'}</button>
+                    {/* Position 0 is the cover photo in the mobile gallery —
+                        worth flagging so removing it isn't a surprise. */}
+                    {i === 0 ? (
+                      <div style={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                        background: 'rgba(0,0,0,0.65)', color: '#fbbf24',
+                        fontSize: 9, padding: '1px 3px', textAlign: 'center',
+                      }}>cover</div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 12, color: '#9ca3af' }}>No photos on this listing.</div>
+            )}
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <input
+                ref={addInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={addImages}
+                disabled={!!imgBusy || images.length >= maxImages}
+              />
+              {imgBusy === 'add' ? <span style={{ fontSize: 12, color: '#9ca3af' }}>Uploading…</span> : null}
+              {imgErr ? <span style={{ fontSize: 12, color: '#dc2626' }}>{imgErr}</span> : null}
+            </div>
+          </div>
+
           <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
             <button type="submit" disabled={saving || changedKeys.length === 0}>
               {saving ? 'Saving…' : changedKeys.length === 0 ? 'No changes' : `Save ${changedKeys.length} change${changedKeys.length === 1 ? '' : 's'}`}
             </button>
-            <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            <button type="button" className="secondary" onClick={handleClose}>Cancel</button>
             {err ? <span style={{ color: '#dc2626', fontSize: 13 }}>{err}</span> : null}
           </div>
         </form>

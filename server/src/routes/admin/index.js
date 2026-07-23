@@ -46,6 +46,10 @@ const csvUpload = multer({
 // vulnerability if the mobile <Image> ever falls back to a webview).
 const UPLOADS = path.resolve('./uploads');
 fs.mkdirSync(UPLOADS, { recursive: true });
+// Total photos a listing may hold. Must stay in sync with MAX_IMAGES in
+// routes/listings.js — the mobile gallery and the seller-facing upload
+// endpoint both assume the same ceiling.
+const MAX_LISTING_IMAGES = 10;
 const ALLOWED_IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 function pickSafeExt(originalname, mimetype) {
@@ -323,6 +327,16 @@ r.post('/listings/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 1
   if (!listing) { cleanup(); return res.status(404).json({ error: 'not_found' }); }
   if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'no_files' });
 
+  // Multer's array('images', 10) only caps a SINGLE request. Adding photos
+  // from the edit modal is repeatable, so without a total check a listing
+  // could drift past the 10 the mobile client (and its gallery) expects.
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM listing_images WHERE listing_id=?')
+    .get(listing.id).n;
+  if (existing + req.files.length > MAX_LISTING_IMAGES) {
+    cleanup();
+    return res.status(400).json({ error: 'too_many_images', existing, max: MAX_LISTING_IMAGES });
+  }
+
   const t = now();
   const startPos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM listing_images WHERE listing_id=?')
     .get(listing.id).next;
@@ -332,10 +346,50 @@ r.post('/listings/:id(\\d+)/images', requireAdmin, imageUpload.array('images', 1
   const added = [];
   req.files.forEach((f, idx) => {
     const imagePath = `/uploads/${f.filename}`;
-    ins.run(listing.id, imagePath, startPos + idx, t);
-    added.push(imagePath);
+    const id = ins.run(listing.id, imagePath, startPos + idx, t).lastInsertRowid;
+    // Return the row id too — the edit modal needs it to delete a photo
+    // it just added without having to refetch the whole list.
+    added.push({ id, image_path: imagePath, position: startPos + idx });
   });
+  db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(t, listing.id);
   res.json({ ok: true, added });
+});
+
+// Images currently attached to a listing. The edit modal fetches this on
+// open so the operator can see what's there before adding/removing.
+r.get('/listings/:id(\\d+)/images', requireAdmin, (req, res) => {
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  const images = db.prepare(
+    `SELECT id, image_path, position FROM listing_images
+     WHERE listing_id=? ORDER BY position ASC, id ASC`,
+  ).all(listing.id);
+  res.json({ images, max: MAX_LISTING_IMAGES });
+});
+
+// Remove a single photo. Mirrors the seller-facing
+// DELETE /listings/:id/images/:imageId — unlink from disk first (best
+// effort; a missing file shouldn't block the row delete) then drop the
+// row. Remaining positions are re-packed so the gallery doesn't end up
+// with gaps that shift the cover photo unexpectedly.
+r.delete('/listings/:id(\\d+)/images/:imageId(\\d+)', requireAdmin, (req, res) => {
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  const img = db.prepare('SELECT * FROM listing_images WHERE id=? AND listing_id=?')
+    .get(req.params.imageId, listing.id);
+  if (!img) return res.status(404).json({ error: 'not_found' });
+
+  try { fs.unlinkSync(path.join(UPLOADS, path.basename(img.image_path))); } catch {}
+  db.transaction(() => {
+    db.prepare('DELETE FROM listing_images WHERE id=?').run(img.id);
+    const rest = db.prepare(
+      'SELECT id FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC',
+    ).all(listing.id);
+    const setPos = db.prepare('UPDATE listing_images SET position=? WHERE id=?');
+    rest.forEach((row, i) => setPos.run(i, row.id));
+  })();
+  db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(now(), listing.id);
+  res.json({ ok: true });
 });
 
 // Lookup endpoint for the quick-add form's duplicate-phone indicator —
