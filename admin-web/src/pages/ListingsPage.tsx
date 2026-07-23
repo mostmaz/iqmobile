@@ -58,6 +58,13 @@ interface Listing {
   created_at: number;
   featured_until: number | null;
   feature_tier: string | null;
+  // Extra columns the list endpoint already returns (SELECT l.*) — needed
+  // to seed the edit form without a second fetch per row.
+  condition: string | null;
+  storage: string | null;
+  color: string | null;
+  description: string | null;
+  contact_whatsapp: string | null;
 }
 
 interface PhoneDupeResp {
@@ -107,6 +114,8 @@ export function ListingsPage() {
   // when the user then clicks Remove and rows they can't see also go).
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [removingBatch, setRemovingBatch] = useState(false);
+  // Listing currently open in the edit modal (null = modal closed).
+  const [editing, setEditing] = useState<Listing | null>(null);
 
   async function load() {
     const r = await api<Listing[]>(`/admin/listings${status ? `?status=${status}` : ''}`);
@@ -284,6 +293,11 @@ export function ListingsPage() {
                         onClick={() => feature(r)}
                         title="Feature this listing (manual / direct payment)"
                       >★</button>{' '}
+                      <button
+                        className="secondary"
+                        onClick={() => setEditing(r)}
+                        title="Edit this listing"
+                      >Edit</button>{' '}
                       <button className="danger" onClick={() => remove(r.id)}>Remove</button>
                     </>
                   ) : null}
@@ -293,9 +307,221 @@ export function ListingsPage() {
           </tbody>
         </table>
       </div>
+      {editing ? (
+        <EditListingModal
+          listing={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); }}
+        />
+      ) : null}
     </div>
   );
 }
+
+const STATUSES = ['active', 'reserved', 'sold', 'removed'];
+
+// Edit modal. Sends a PATCH containing ONLY the fields the operator
+// actually changed — the server treats the body as a partial update, so
+// an untouched field is never rewritten (and we can't clobber a column
+// that changed server-side between load and save).
+function EditListingModal({
+  listing, onClose, onSaved,
+}: { listing: Listing; onClose: () => void; onSaved: () => void }) {
+  const [brands, setBrands] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [form, setForm] = useState({
+    brand: listing.brand || '',
+    model: listing.model || '',
+    asking_price: String(listing.asking_price ?? ''),
+    governorate: listing.governorate || 'Baghdad',
+    city: listing.city || '',
+    condition: listing.condition || 'used',
+    storage: listing.storage || '',
+    color: listing.color || '',
+    contact_whatsapp: listing.contact_whatsapp || '',
+    description: listing.description || '',
+    status: listing.status || 'active',
+  });
+
+  useEffect(() => {
+    api<Array<{ name: string }>>('/admin/brands')
+      .then((rows) => setBrands(rows.map((b) => b.name).sort()))
+      .catch(() => setBrands([]));
+  }, []);
+
+  // Close on Escape — a modal that traps the operator is worse than one
+  // that closes too easily, since nothing is saved until they hit Save.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function set<K extends keyof typeof form>(k: K, v: string) {
+    setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  // Original values in the same shape as `form`, so a plain !== comparison
+  // tells us which keys to send.
+  const original: typeof form = {
+    brand: listing.brand || '',
+    model: listing.model || '',
+    asking_price: String(listing.asking_price ?? ''),
+    governorate: listing.governorate || 'Baghdad',
+    city: listing.city || '',
+    condition: listing.condition || 'used',
+    storage: listing.storage || '',
+    color: listing.color || '',
+    contact_whatsapp: listing.contact_whatsapp || '',
+    description: listing.description || '',
+    status: listing.status || 'active',
+  };
+  const changedKeys = (Object.keys(form) as Array<keyof typeof form>)
+    .filter((k) => form[k] !== original[k]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (saving || changedKeys.length === 0) return;
+    setErr('');
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {};
+      for (const k of changedKeys) {
+        payload[k] = k === 'asking_price' ? Number(form.asking_price) : form[k];
+      }
+      await api(`/admin/listings/${listing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: 24, overflowY: 'auto', zIndex: 50,
+      }}
+    >
+      {/* Stop propagation so clicking inside the card doesn't dismiss it. */}
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(760px, 100%)', marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>Edit listing #{listing.id}</h2>
+          <button type="button" className="secondary" onClick={onClose}>Close</button>
+        </div>
+        <div style={{ fontSize: 12, color: '#9ca3af', margin: '6px 0 14px' }}>
+          {listing.seller_name} · {listing.seller_phone}
+        </div>
+
+        <form onSubmit={save} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div>
+            <label style={labelStyle}>Brand</label>
+            <select value={form.brand} onChange={(e) => set('brand', e.target.value)} required>
+              {/* Keep the current value selectable even if it's no longer
+                  in the brand whitelist, so opening the modal on a legacy
+                  row doesn't silently switch its brand on save. */}
+              {brands.includes(form.brand) ? null : <option value={form.brand}>{form.brand}</option>}
+              {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Model</label>
+            <input type="text" value={form.model} onChange={(e) => set('model', e.target.value)} required />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Asking price (IQD)</label>
+            <input
+              type="number" min="1"
+              value={form.asking_price}
+              onChange={(e) => set('asking_price', e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Status</label>
+            <select value={form.status} onChange={(e) => set('status', e.target.value)}>
+              {/* 'expired' is owned by the expirer job, so it isn't offered
+                  here; show it as a read-only current value if that's the
+                  row's state. */}
+              {STATUSES.includes(form.status) ? null : <option value={form.status}>{form.status}</option>}
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Governorate</label>
+            <select value={form.governorate} onChange={(e) => set('governorate', e.target.value)}>
+              {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>City</label>
+            <input type="text" value={form.city} onChange={(e) => set('city', e.target.value)} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Condition</label>
+            <select value={form.condition} onChange={(e) => set('condition', e.target.value)}>
+              {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={labelStyle}>Storage</label>
+            <input type="text" value={form.storage} onChange={(e) => set('storage', e.target.value)} placeholder="128GB" />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Color</label>
+            <input type="text" value={form.color} onChange={(e) => set('color', e.target.value)} />
+          </div>
+
+          <div>
+            <label style={labelStyle}>WhatsApp</label>
+            <input
+              type="tel"
+              value={form.contact_whatsapp}
+              onChange={(e) => set('contact_whatsapp', e.target.value)}
+              placeholder="07XXXXXXXXX — blank to clear"
+            />
+          </div>
+
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Description</label>
+            <textarea
+              value={form.description}
+              onChange={(e) => set('description', e.target.value)}
+              rows={3}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <button type="submit" disabled={saving || changedKeys.length === 0}>
+              {saving ? 'Saving…' : changedKeys.length === 0 ? 'No changes' : `Save ${changedKeys.length} change${changedKeys.length === 1 ? '' : 's'}`}
+            </button>
+            <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            {err ? <span style={{ color: '#dc2626', fontSize: 13 }}>{err}</span> : null}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = { fontSize: 12, color: '#6b7280' };
 
 // Quick-add form. Phone is intentionally the FIRST field — the operator
 // usually has the phone number in hand from a WhatsApp / call and needs

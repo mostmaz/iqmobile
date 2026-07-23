@@ -220,6 +220,94 @@ r.post('/listings', requireAdmin, (req, res) => {
   res.json({ ok: true, listing_id: listingId, seller_id: seller.id });
 });
 
+// Edit an existing listing from the dashboard. Partial update — only the
+// keys actually present in the body are touched, so the UI can send just
+// the fields the operator changed without having to round-trip the whole
+// row. Every field reuses the same validators as POST /listings above so
+// an edit can't write a value the create path would have rejected.
+//
+// Deliberately NOT editable here: seller_id (moving a listing between
+// accounts would orphan chats/deals that reference the original seller)
+// and the featured_* columns (those have their own endpoint below, which
+// also maintains the boost schedule).
+r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
+  const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+
+  const b = req.body || {};
+  const fields = [];
+  const params = [];
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+
+  if (has('brand')) {
+    const brand = String(b.brand || '').trim();
+    if (!brand) return res.status(400).json({ error: 'missing_fields' });
+    if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
+    fields.push('brand=?'); params.push(brand);
+  }
+  if (has('model')) {
+    const model = String(b.model || '').trim().slice(0, 80);
+    if (!model) return res.status(400).json({ error: 'missing_fields' });
+    fields.push('model=?'); params.push(model);
+  }
+  if (has('asking_price')) {
+    const price = Number(b.asking_price);
+    if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
+    fields.push('asking_price=?'); params.push(price);
+  }
+  if (has('governorate')) {
+    const gov = normalizeGovernorate(b.governorate);
+    if (!gov) return res.status(400).json({ error: 'bad_governorate' });
+    fields.push('governorate=?'); params.push(gov);
+  }
+  if (has('condition')) {
+    const condition = String(b.condition || '').trim();
+    if (!['new', 'used', 'repaired', 'refurbished'].includes(condition)) {
+      return res.status(400).json({ error: 'bad_condition' });
+    }
+    fields.push('condition=?'); params.push(condition);
+  }
+  if (has('status')) {
+    // Same set the mobile PATCH /listings/:id accepts. 'expired' is
+    // excluded on purpose — that transition is owned by the expirer job,
+    // so letting an operator set it by hand would be immediately undone.
+    if (!['active', 'reserved', 'sold', 'removed'].includes(b.status)) {
+      return res.status(400).json({ error: 'bad_status' });
+    }
+    fields.push('status=?'); params.push(b.status);
+  }
+  if (has('contact_whatsapp')) {
+    // Empty string clears the number; anything non-empty must normalise.
+    const raw = String(b.contact_whatsapp || '').trim();
+    if (!raw) { fields.push('contact_whatsapp=?'); params.push(null); }
+    else {
+      const wa = normalizeIraqiPhone(raw);
+      if (!wa) return res.status(400).json({ error: 'bad_contact_whatsapp' });
+      fields.push('contact_whatsapp=?'); params.push(wa);
+    }
+  }
+  // Free-text columns: trimmed, length-capped, empty → NULL so the
+  // mobile client's `field || fallback` checks behave consistently.
+  for (const [key, max] of [['city', 60], ['storage', 16], ['color', 30], ['description', 2000]]) {
+    if (!has(key)) continue;
+    const v = String(b[key] ?? '').trim().slice(0, max);
+    fields.push(`${key}=?`); params.push(v || null);
+  }
+
+  if (fields.length === 0) return res.status(400).json({ error: 'no_fields' });
+
+  fields.push('updated_at=?'); params.push(now());
+  params.push(listing.id);
+  db.prepare(`UPDATE phone_listings SET ${fields.join(', ')} WHERE id=?`).run(...params);
+
+  const updated = db.prepare(`
+    SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone
+    FROM phone_listings l JOIN users u ON u.id = l.seller_id
+    WHERE l.id=?
+  `).get(listing.id);
+  res.json({ ok: true, listing: updated });
+});
+
 // Attach images to a listing created via Quick Add. The admin web
 // compresses each photo client-side (canvas → JPEG q=0.8 @ max 1600px)
 // before uploading, so the server only needs to validate MIME + write
