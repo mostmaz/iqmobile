@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API_BASE, getToken } from '../api';
-import { facebookPost, instagramPost } from '../lib/marketing';
+import { facebookPost, instagramPost, composeListingImage } from '../lib/marketing';
 
 // Client-side image compressor. Downscales to max 1600px on the long
 // edge and re-encodes as JPEG at quality 0.8 — same shape as what the
@@ -346,6 +346,12 @@ export function ListingsPage() {
 function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () => void }) {
   const [images, setImages] = useState<ListingImage[]>([]);
   const [copied, setCopied] = useState<'fb' | 'ig' | null>(null);
+  // Branded share-image state: which source photo is selected, the composed
+  // data URL, and whether a compose is in flight.
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [composed, setComposed] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const [composeErr, setComposeErr] = useState('');
 
   const fb = facebookPost(listing);
   const ig = instagramPost(listing);
@@ -355,6 +361,19 @@ function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () =>
       .then((r) => setImages(r.images))
       .catch(() => setImages([]));
   }, [listing.id]);
+
+  // (Re)compose the branded image whenever the selected source photo changes.
+  useEffect(() => {
+    const src = images[selectedIdx];
+    if (!src) { setComposed(null); return; }
+    let alive = true;
+    setComposing(true); setComposeErr('');
+    composeListingImage(listing, `${API_BASE}${src.image_path}`)
+      .then((r) => { if (alive) setComposed(r.dataUrl); })
+      .catch(() => { if (alive) setComposeErr('تعذّر تجهيز الصورة'); })
+      .finally(() => { if (alive) setComposing(false); });
+    return () => { alive = false; };
+  }, [images, selectedIdx, listing]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -389,32 +408,72 @@ function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () =>
           <button type="button" className="secondary" onClick={onClose}>Close</button>
         </div>
 
-        {/* Photos to attach */}
+        {/* Branded share image — framed, iQ-logo'd, price-stamped, ready to
+            post to Facebook / Instagram. */}
         {images.length > 0 ? (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
-              الصور — حمّلها وأرفقها بالمنشور:
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {images.map((img) => (
+          <div style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 0 300px', maxWidth: '100%' }}>
+              <div style={{
+                width: 300, height: 300, borderRadius: 8, overflow: 'hidden',
+                border: '1px solid #374151', background: '#0a1628',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {composing ? (
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>جارٍ التجهيز…</span>
+                ) : composeErr ? (
+                  <span style={{ color: '#ef4444', fontSize: 13 }}>{composeErr}</span>
+                ) : composed ? (
+                  <img src={composed} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : null}
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <a
-                  key={img.id}
-                  href={`${API_BASE}${img.image_path}`}
-                  download
-                  target="_blank"
-                  rel="noreferrer"
-                  title="افتح / حمّل الصورة"
+                  href={composed || '#'}
+                  download={`iqmobile_${listing.id}_${listing.brand}_${listing.model}.jpg`.replace(/\s+/g, '_')}
+                  className=""
                   style={{
-                    width: 80, height: 80, borderRadius: 6, overflow: 'hidden',
-                    border: '1px solid #374151', display: 'block',
+                    flex: 1, textAlign: 'center', textDecoration: 'none',
+                    background: composed ? '#10b981' : '#374151', color: '#fff',
+                    padding: '9px 0', borderRadius: 6, fontSize: 14,
+                    pointerEvents: composed ? 'auto' : 'none',
                   }}
-                >
-                  <img src={`${API_BASE}${img.image_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </a>
-              ))}
+                >⬇︎ تحميل الصورة</a>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 11.5, color: '#9ca3af', lineHeight: 1.6 }}>
+                حمّل الصورة وانشرها على <strong style={{ color: '#60a5fa' }}>Facebook</strong> /{' '}
+                <strong style={{ color: '#f472b6' }}>Instagram</strong> مع النص أدناه.
+              </div>
+            </div>
+
+            {/* source-photo picker */}
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+                اختر صورة المنتج للإطار:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {images.map((img, i) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setSelectedIdx(i)}
+                    title="استخدم هذه الصورة"
+                    style={{
+                      width: 68, height: 68, borderRadius: 6, overflow: 'hidden', padding: 0,
+                      border: i === selectedIdx ? '2px solid #10b981' : '1px solid #374151',
+                      cursor: 'pointer', background: 'transparent',
+                    }}
+                  >
+                    <img src={`${API_BASE}${img.image_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div style={{ marginTop: 14, fontSize: 12.5, color: '#9ca3af' }}>
+            لا توجد صور لهذا الإعلان — أضِف صوراً من زر «Edit» لتوليد صورة تسويقية.
+          </div>
+        )}
 
         {/* Facebook */}
         <PostBlock
