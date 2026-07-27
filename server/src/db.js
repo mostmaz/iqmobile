@@ -3,6 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import 'dotenv/config';
 import { GOVERNORATES } from './governorates.js';
+import { detectBrand } from './importParse.js';
 
 const dbPath = process.env.DB_PATH || './data/iqmobile.db';
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -514,12 +515,45 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
     const t = Date.now();
     const SEED = [
       'Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei',
-      'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Motorola', 'Other',
+      'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Motorola',
+      'Honor', 'Infinix', 'POCO', 'Nubia', 'Oukitel', 'Other',
     ];
     db.transaction(() => {
       SEED.forEach((name, i) => ins.run(name, null, i + 1, t));
     })();
     console.log(`[db] seeded ${SEED.length} brands`);
+  }
+}
+
+// Migration v4: add POCO/Nubia/Oukitel to the brand catalog + re-file any
+// existing "Other" listing whose model text clearly names a real brand.
+// Runs AFTER the seed block so a fresh DB seeds its full list first (and
+// this then no-ops). On an existing DB the seed is skipped, so this is the
+// path that adds the newer brands + backfills. Guarded by a settings flag
+// so it runs exactly once. detectBrand is the same keyword matcher the CSV
+// importer uses; we only reassign to a brand that actually exists in the
+// catalog, so an unknown detection (or a brand we haven't added) stays
+// "Other" rather than creating a dangling brand value.
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v4_brand_backfill'").get();
+  if (!done) {
+    const t = Date.now();
+    const maxPos = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM brands').get().m;
+    const insBrand = db.prepare('INSERT OR IGNORE INTO brands(name, display_ar, position, created_at) VALUES(?,?,?,?)');
+    ['Honor', 'Infinix', 'POCO', 'Nubia', 'Oukitel'].forEach((n, i) => insBrand.run(n, null, maxPos + i + 1, t));
+
+    const valid = new Set(db.prepare('SELECT name FROM brands').all().map((r) => r.name));
+    const others = db.prepare("SELECT id, model, description FROM phone_listings WHERE brand='Other'").all();
+    const upd = db.prepare('UPDATE phone_listings SET brand=?, updated_at=? WHERE id=?');
+    let n = 0;
+    db.transaction(() => {
+      for (const r of others) {
+        const guess = detectBrand(`${r.model} ${r.description || ''}`, null);
+        if (guess && guess !== 'Other' && valid.has(guess)) { upd.run(guess, t, r.id); n++; }
+      }
+    })();
+    db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v4_brand_backfill','done')").run();
+    console.log(`[iqmobile] migration v4: brand catalog topped up, backfilled ${n} 'Other' listings`);
   }
 }
 

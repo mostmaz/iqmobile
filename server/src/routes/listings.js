@@ -7,6 +7,8 @@ import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
+import { detectBrand } from '../importParse.js';
+import { checkListingQuality } from '../listingQuality.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -153,6 +155,26 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
   if (!CONDITIONS.includes(condition)) return res.status(400).json({ error: 'bad_condition' });
+
+  // Brand auto-correct. The mobile posting screen ships a hardcoded brand
+  // list that lags the server catalog (no Infinix/Honor/Motorola option),
+  // so sellers with those phones are forced to pick "Other". Re-run the
+  // same keyword detector the CSV importer uses over the model text and
+  // upgrade "Other" to the real brand when we can identify it — this fixes
+  // categorisation server-side without waiting on an app update. Only
+  // "Other" is touched; an explicit brand choice is always respected.
+  let finalBrand = brand;
+  if (brand === 'Other') {
+    const guess = detectBrand(`${model} ${description || ''}`, null);
+    if (guess && guess !== 'Other' && isBrand(guess)) finalBrand = guess;
+  }
+
+  // Quality gate — reject listings advertising a broken / non-working /
+  // locked / stolen device so the catalogue stays clean. Negation-aware,
+  // so "بدون مشكلة" / "مو مقفول" still pass. Admin quick-add is exempt.
+  if (checkListingQuality(model, description)) {
+    return res.status(400).json({ error: 'listing_quality' });
+  }
   const price = Number(asking_price);
   if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
 
@@ -180,7 +202,7 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
-      req.user.id, brand, model, storage || null, color || null, condition,
+      req.user.id, finalBrand, model, storage || null, color || null, condition,
       // Battery: nullable. Stays null for non-Apple brands AND for Apple
       // listings where the seller left the field blank. The previous
       // `Number.isFinite(Number(battery_health))` form silently coerced

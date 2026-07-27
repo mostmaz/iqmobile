@@ -278,7 +278,7 @@ export function ListingsPage() {
                   ) : null}
                 </td>
                 <td>{r.id}</td>
-                <td>{r.brand} {r.model}</td>
+                <td>{r.model}</td>
                 <td>{r.seller_name}<br/><small style={{ color: '#9ca3af' }}>{r.seller_phone}</small></td>
                 <td>{r.asking_price.toLocaleString()}</td>
                 <td>{r.governorate}{r.city ? ` · ${r.city}` : ''}</td>

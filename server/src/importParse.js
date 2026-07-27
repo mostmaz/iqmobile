@@ -121,6 +121,7 @@ const BRAND_KEYWORDS = [
   ['Nokia',    ['nokia', 'نوكيا']],
   ['Google',   ['google pixel', 'pixel', 'بكسل']],
   ['Nubia',    ['nubia', 'نوبيا', 'red magic', 'رد ماجك']],
+  ['Oukitel',  ['oukitel', 'اوكيتل', 'أوكيتل', 'اوكتل']],
 ];
 export function detectBrand(deviceName, brandHint) {
   const hay = `${deviceName || ''} ${brandHint || ''}`.toLowerCase();

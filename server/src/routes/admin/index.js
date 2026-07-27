@@ -11,7 +11,7 @@ import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
-import { parseCsvRow } from '../../importParse.js';
+import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { notify } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 
@@ -187,6 +187,14 @@ r.post('/listings', requireAdmin, (req, res) => {
 
   if (!brand || !model || !governorate) return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
+  // Same "Other" → real-brand upgrade as the mobile create path, so a
+  // quick-add typed as Other but with a recognisable model still lands
+  // under the right brand.
+  let finalBrand = brand;
+  if (brand === 'Other') {
+    const guess = detectBrand(`${model} ${description}`, null);
+    if (guess && guess !== 'Other' && isBrand(guess)) finalBrand = guess;
+  }
   if (!Number.isFinite(askingPrice) || askingPrice <= 0) return res.status(400).json({ error: 'bad_price' });
   if (!['new', 'used', 'repaired', 'refurbished'].includes(condition)) return res.status(400).json({ error: 'bad_condition' });
   if (req.body?.contact_whatsapp && !wa) return res.status(400).json({ error: 'bad_contact_whatsapp' });
@@ -214,7 +222,7 @@ r.post('/listings', requireAdmin, (req, res) => {
       created_at, expires_at, updated_at
     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
-    seller.id, brand, model, storage || null, color || null, condition,
+    seller.id, finalBrand, model, storage || null, color || null, condition,
     null, null, '[]', askingPrice,
     governorate, city || null, description || null, 'active',
     phone, wa,
