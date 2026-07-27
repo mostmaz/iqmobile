@@ -224,10 +224,17 @@ function upsertPhoneAccount(req, phone) {
 // Two modes, gated by the OTP_REQUIRED env flag:
 //   1. flag off  → legacy trust-on-first-use: immediately upsert the account
 //                  and return { token, user }.
-//   2. flag on   → send a code via Twilio Verify (SMS by default, or
-//                  WhatsApp if the client asks) and respond with
-//                  { otp_required: true, channel }. The client then
-//                  collects the code and POSTs it to /auth/otp/verify.
+//   2. flag on   → send a code via Twilio Verify and respond with
+//                  { otp_required: true, channel }, echoing back the channel
+//                  actually used. The client collects the code and POSTs it
+//                  to /auth/otp/verify.
+//
+// Channel: WhatsApp is the default. An Iraqi SMS costs ~10× a WhatsApp
+// auth message on Twilio and WhatsApp lands more reliably on this audience,
+// so we only send SMS when the client explicitly asks (the OTP screen's
+// "send via SMS instead" fallback) OR when a WhatsApp dispatch hard-fails,
+// in which case we transparently retry over SMS so nobody is left without a
+// code. The returned `channel` tells the client which one actually went out.
 //
 // Note: when OTP is on we do NOT upsert on this call, so a bad phone can't
 // squat on a row before verification.
@@ -237,8 +244,18 @@ r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
 
   if (otpRequired()) {
     if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
-    const channel = req.body?.channel === 'whatsapp' ? 'whatsapp' : 'sms';
-    const send = await sendCode(phone, channel);
+    const requested = req.body?.channel === 'sms' ? 'sms' : 'whatsapp';
+    let channel = requested;
+    let send = await sendCode(phone, channel);
+    // WhatsApp couldn't be dispatched (channel misconfig / provider error) —
+    // fall back to SMS rather than blocking sign-in. A *silent* WhatsApp
+    // non-delivery (recipient has no WhatsApp) can't be detected here since
+    // Twilio returns 'pending'; that case is covered by the client's manual
+    // "send via SMS instead" button.
+    if (!send.ok && requested === 'whatsapp') {
+      channel = 'sms';
+      send = await sendCode(phone, channel);
+    }
     if (!send.ok) return res.status(400).json({ error: send.error });
     return res.json({ otp_required: true, channel });
   }
