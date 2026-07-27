@@ -319,6 +319,20 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_listing ON events(listing_id, type);
 CREATE INDEX IF NOT EXISTS idx_events_search ON events(type, query);
+
+-- Social publish log. One row per "Publish to FB + IG" action from the
+-- dashboard, used both as an audit trail and to enforce the per-day cap
+-- (count today's rows). channels holds the per-platform Buffer result JSON.
+-- FK-free like events — a publish is a historical fact.
+CREATE TABLE IF NOT EXISTS social_posts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER,
+  image_path TEXT,
+  caption TEXT,
+  channels TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_social_posts_time ON social_posts(created_at DESC);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so

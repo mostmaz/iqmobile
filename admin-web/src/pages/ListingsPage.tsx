@@ -77,6 +77,14 @@ interface ListingImage {
   position: number;
 }
 
+interface SocialStatus {
+  configured: boolean;
+  channels: { facebook: boolean; instagram: boolean };
+  cap: number;
+  used_today: number;
+  remaining: number;
+}
+
 interface PhoneDupeResp {
   count: number;
   listings: Array<{
@@ -352,9 +360,56 @@ function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () =>
   const [composed, setComposed] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [composeErr, setComposeErr] = useState('');
+  // Buffer publish state.
+  const [social, setSocial] = useState<SocialStatus | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishMsg, setPublishMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const fb = facebookPost(listing);
   const ig = instagramPost(listing);
+
+  // Load Buffer status (configured? remaining today?) so the button knows
+  // whether it can fire.
+  useEffect(() => {
+    api<SocialStatus>('/admin/social/status')
+      .then(setSocial)
+      .catch(() => setSocial(null));
+  }, []);
+
+  async function publish() {
+    if (!composed || publishing) return;
+    setPublishing(true); setPublishMsg(null);
+    try {
+      const blob = await (await fetch(composed)).blob();
+      const fd = new FormData();
+      fd.append('image', blob, `post_${listing.id}.jpg`);
+      fd.append('caption', fb);
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/admin/listings/${listing.id}/publish`, {
+        method: 'POST',
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const map: Record<string, string> = {
+          buffer_not_configured: 'النشر التلقائي غير مُفعّل — يجب ربط Buffer أولاً.',
+          daily_cap_reached: `بلغت الحد اليومي (${data.cap ?? social?.cap ?? 3} منشورات).`,
+          publish_failed: 'فشل النشر عبر Buffer — تحقّق من ربط الحسابات.',
+          no_caption: 'النص فارغ.',
+        };
+        setPublishMsg({ ok: false, text: map[data.error] || 'تعذّر النشر.' });
+      } else {
+        const okCh = (data.results || []).filter((r: any) => r.ok).map((r: any) => r.channel).join(' + ');
+        setPublishMsg({ ok: true, text: `تم النشر عبر ${okCh || 'Buffer'} · متبقٍ اليوم: ${data.remaining}` });
+        setSocial((s) => (s ? { ...s, remaining: data.remaining, used_today: s.cap - data.remaining } : s));
+      }
+    } catch {
+      setPublishMsg({ ok: false, text: 'خطأ في الاتصال بالخادم.' });
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   useEffect(() => {
     api<{ images: ListingImage[] }>(`/admin/listings/${listing.id}/images`)
@@ -439,8 +494,49 @@ function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () =>
                   }}
                 >⬇︎ تحميل الصورة</a>
               </div>
+
+              {/* One-click publish via Buffer → FB + IG. Only enabled when
+                  Buffer is wired up server-side and today's quota isn't spent. */}
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={publish}
+                  disabled={
+                    publishing || !composed ||
+                    !social?.configured || (social ? social.remaining <= 0 : false)
+                  }
+                  title={
+                    !social?.configured ? 'اربط Buffer أولاً لتفعيل النشر التلقائي'
+                      : social && social.remaining <= 0 ? 'بلغت الحد اليومي'
+                        : 'انشر إلى Facebook + Instagram'
+                  }
+                  style={{
+                    width: '100%',
+                    background: (!social?.configured || (social ? social.remaining <= 0 : false)) ? '#374151' : '#3b82f6',
+                    color: '#fff', padding: '9px 0', borderRadius: 6, fontSize: 14,
+                    cursor: (!social?.configured || publishing) ? 'default' : 'pointer',
+                  }}
+                >
+                  {publishing ? 'جارٍ النشر…' : '🚀 نشر إلى Facebook + Instagram'}
+                </button>
+                {social?.configured ? (
+                  <div style={{ marginTop: 5, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                    متبقٍ اليوم: {social.remaining} / {social.cap}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 5, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                    النشر التلقائي غير مُفعّل — يتطلب ربط Buffer
+                  </div>
+                )}
+                {publishMsg ? (
+                  <div style={{ marginTop: 6, fontSize: 12, textAlign: 'center', color: publishMsg.ok ? '#10b981' : '#ef4444' }}>
+                    {publishMsg.text}
+                  </div>
+                ) : null}
+              </div>
+
               <div style={{ marginTop: 8, fontSize: 11.5, color: '#9ca3af', lineHeight: 1.6 }}>
-                حمّل الصورة وانشرها على <strong style={{ color: '#60a5fa' }}>Facebook</strong> /{' '}
+                أو حمّل الصورة وانشرها يدوياً على <strong style={{ color: '#60a5fa' }}>Facebook</strong> /{' '}
                 <strong style={{ color: '#f472b6' }}>Instagram</strong> مع النص أدناه.
               </div>
             </div>

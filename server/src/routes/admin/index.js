@@ -12,6 +12,7 @@ import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
+import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { notify } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 
@@ -1619,6 +1620,78 @@ r.get('/analytics', requireAdmin, (req, res) => {
     sellers_without_listings: sellersWithout,
     sellers_without_listings_total: sellersWithoutTotal,
   });
+});
+
+// ─── Social publishing (Buffer → Facebook + Instagram) ───────────────
+// Daily cap: number of publish actions allowed per calendar day. One action
+// = one listing pushed to all connected channels. Tunable via the
+// SOCIAL_DAILY_CAP env (default 3) so it can change without a deploy.
+function socialDailyCap() {
+  const n = Number(process.env.SOCIAL_DAILY_CAP);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+}
+function socialStartOfDay() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+function socialUsedToday() {
+  return db.prepare('SELECT COUNT(*) AS n FROM social_posts WHERE created_at >= ?')
+    .get(socialStartOfDay()).n;
+}
+
+// Status for the dashboard: whether Buffer is wired up, which channels are
+// connected, and how much of today's quota is left. Drives the button state.
+r.get('/social/status', requireAdmin, (_req, res) => {
+  const cap = socialDailyCap();
+  const used = socialUsedToday();
+  res.json({
+    configured: bufferConfigured(),
+    channels: (() => { const c = bufferChannels(); return { facebook: !!c.fb, instagram: !!c.ig }; })(),
+    cap,
+    used_today: used,
+    remaining: Math.max(0, cap - used),
+  });
+});
+
+// One-click publish: the dashboard sends the composed branded image + the
+// caption; we host the image (Buffer fetches it by URL), post to every
+// connected channel, and log the action for the cap + audit.
+r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'), async (req, res) => {
+  const cleanup = () => { if (req.file) try { fs.unlinkSync(req.file.path); } catch {} };
+
+  if (!bufferConfigured()) { cleanup(); return res.status(400).json({ error: 'buffer_not_configured' }); }
+
+  const cap = socialDailyCap();
+  if (socialUsedToday() >= cap) { cleanup(); return res.status(429).json({ error: 'daily_cap_reached', cap }); }
+
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) { cleanup(); return res.status(404).json({ error: 'not_found' }); }
+  if (!req.file) return res.status(400).json({ error: 'no_image' });
+
+  const caption = String(req.body?.caption || '').slice(0, 5000);
+  if (!caption.trim()) { cleanup(); return res.status(400).json({ error: 'no_caption' }); }
+
+  // Public URL Buffer will fetch. The dashboard is served from the same
+  // host, so the default matches; override with PUBLIC_BASE_URL if the API
+  // ever moves behind a different public origin.
+  const base = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+  const imagePath = `/uploads/${req.file.filename}`;
+  const imageUrl = `${base}${imagePath}`;
+
+  const { any, results } = await publishToChannels(caption, imageUrl);
+  if (!any) {
+    // Every channel failed — surface the first error and drop the image so
+    // we don't leave an orphan for a post that never went out.
+    cleanup();
+    return res.status(502).json({ error: 'publish_failed', results });
+  }
+
+  db.prepare(
+    'INSERT INTO social_posts(listing_id, image_path, caption, channels, created_at) VALUES(?,?,?,?,?)',
+  ).run(listing.id, imagePath, caption, JSON.stringify(results), now());
+
+  res.json({ ok: true, results, remaining: Math.max(0, cap - socialUsedToday()) });
 });
 
 export default r;
