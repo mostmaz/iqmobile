@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API_BASE, getToken } from '../api';
+import { facebookPost, instagramPost } from '../lib/marketing';
 
 // Client-side image compressor. Downscales to max 1600px on the long
 // edge and re-encodes as JPEG at quality 0.8 — same shape as what the
@@ -65,6 +66,9 @@ interface Listing {
   color: string | null;
   description: string | null;
   contact_whatsapp: string | null;
+  contact_phone: string | null;
+  battery_health: number | null;
+  warranty_status: string | null;
 }
 
 interface ListingImage {
@@ -122,6 +126,8 @@ export function ListingsPage() {
   const [removingBatch, setRemovingBatch] = useState(false);
   // Listing currently open in the edit modal (null = modal closed).
   const [editing, setEditing] = useState<Listing | null>(null);
+  // Listing open in the marketing-post modal (null = closed).
+  const [promoting, setPromoting] = useState<Listing | null>(null);
 
   async function load() {
     const r = await api<Listing[]>(`/admin/listings${status ? `?status=${status}` : ''}`);
@@ -304,6 +310,11 @@ export function ListingsPage() {
                         onClick={() => setEditing(r)}
                         title="Edit this listing"
                       >Edit</button>{' '}
+                      <button
+                        className="secondary"
+                        onClick={() => setPromoting(r)}
+                        title="Generate a Facebook / Instagram post"
+                      >📣 Post</button>{' '}
                       <button className="danger" onClick={() => remove(r.id)}>Remove</button>
                     </>
                   ) : null}
@@ -320,6 +331,132 @@ export function ListingsPage() {
           onSaved={() => { setEditing(null); load(); }}
         />
       ) : null}
+      {promoting ? (
+        <MarketingModal listing={promoting} onClose={() => setPromoting(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+// Marketing-post modal. Renders ready-to-paste Facebook + Instagram copy
+// (generated client-side from the row's own fields) with copy buttons, and
+// the listing's photos with download links so the operator can attach them
+// to the post. No server call for the text; images come from the same
+// admin images endpoint the edit modal uses.
+function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () => void }) {
+  const [images, setImages] = useState<ListingImage[]>([]);
+  const [copied, setCopied] = useState<'fb' | 'ig' | null>(null);
+
+  const fb = facebookPost(listing);
+  const ig = instagramPost(listing);
+
+  useEffect(() => {
+    api<{ images: ListingImage[] }>(`/admin/listings/${listing.id}/images`)
+      .then((r) => setImages(r.images))
+      .catch(() => setImages([]));
+  }, [listing.id]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function copy(which: 'fb' | 'ig', text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      setTimeout(() => setCopied((c) => (c === which ? null : c)), 1600);
+    } catch {
+      // Clipboard API needs a secure context / permission — fall back to a
+      // select-all hint rather than silently doing nothing.
+      alert('تعذّر النسخ تلقائياً — حدّد النص وانسخه يدوياً.');
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: 24, overflowY: 'auto', zIndex: 50,
+      }}
+    >
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 'min(820px, 100%)', marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>📣 منشور تسويقي — {listing.brand} {listing.model}</h2>
+          <button type="button" className="secondary" onClick={onClose}>Close</button>
+        </div>
+
+        {/* Photos to attach */}
+        {images.length > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+              الصور — حمّلها وأرفقها بالمنشور:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {images.map((img) => (
+                <a
+                  key={img.id}
+                  href={`${API_BASE}${img.image_path}`}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  title="افتح / حمّل الصورة"
+                  style={{
+                    width: 80, height: 80, borderRadius: 6, overflow: 'hidden',
+                    border: '1px solid #374151', display: 'block',
+                  }}
+                >
+                  <img src={`${API_BASE}${img.image_path}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Facebook */}
+        <PostBlock
+          label="Facebook"
+          text={fb}
+          copied={copied === 'fb'}
+          onCopy={() => copy('fb', fb)}
+        />
+
+        {/* Instagram */}
+        <PostBlock
+          label="Instagram"
+          text={ig}
+          copied={copied === 'ig'}
+          onCopy={() => copy('ig', ig)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PostBlock({ label, text, copied, onCopy }: { label: string; text: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <strong style={{ color: '#fff' }}>{label}</strong>
+        <button type="button" className={copied ? 'primary' : ''} onClick={onCopy}>
+          {copied ? '✓ تم النسخ' : 'نسخ النص'}
+        </button>
+      </div>
+      <textarea
+        readOnly
+        value={text}
+        onFocus={(e) => e.currentTarget.select()}
+        dir="rtl"
+        rows={label === 'Facebook' ? 12 : 9}
+        style={{
+          width: '100%', background: '#1f2e47', color: '#e5e7eb',
+          border: '1px solid #374151', borderRadius: 6, padding: 10,
+          fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, resize: 'vertical',
+        }}
+      />
     </div>
   );
 }

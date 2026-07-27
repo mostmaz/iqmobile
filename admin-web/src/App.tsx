@@ -13,9 +13,10 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ImportPage } from './pages/ImportPage';
 import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
 import { ShopsPage } from './pages/ShopsPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 
 type Page =
-  | 'overview' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
+  | 'overview' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
   | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import';
 
 export function App() {
@@ -28,6 +29,7 @@ export function App() {
 
   const NAV: Array<{ key: Page; label: string }> = [
     { key: 'overview', label: 'Overview' },
+    { key: 'analytics', label: 'التحليلات' },
     { key: 'brands', label: 'Brands' },
     { key: 'banners', label: 'Banners' },
     { key: 'featured', label: 'Featured' },
@@ -56,6 +58,7 @@ export function App() {
         ))}
       </div>
       {page === 'overview' && <OverviewPage />}
+      {page === 'analytics' && <AnalyticsPage />}
       {page === 'brands' && <BrandsPage />}
       {page === 'banners' && <BannersPage />}
       {page === 'featured' && <FeatureRequestsPage />}

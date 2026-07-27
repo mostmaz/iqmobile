@@ -9,6 +9,7 @@ import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
+import { logEvent } from '../eventLog.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -358,6 +359,29 @@ r.get('/', optionalAuth(), (req, res) => {
     is_featured: !!(row.featured_until && row.featured_until > nowTs),
     seller: sellerCard(row.seller_id),
   }));
+
+  // Log the search for the demand dashboard. Only on the FIRST page of an
+  // actual text search (q present, offset 0) — that's one row per query the
+  // user submits, not per pagination scroll. We record the total match count
+  // (separate COUNT over the same filter, not the paginated page size) so the
+  // dashboard can surface zero-result searches — real demand with no supply.
+  if (q && String(q).trim() && offset === 0) {
+    let resultCount = 0;
+    try {
+      resultCount = db.prepare(
+        `SELECT COUNT(*) AS n FROM phone_listings l JOIN users u ON u.id = l.seller_id WHERE ${where}`,
+      ).get(...params).n;
+    } catch { /* count is best-effort; fall back to 0 */ }
+    logEvent({
+      type: 'search',
+      query: String(q).trim().slice(0, 100),
+      result_count: resultCount,
+      brand: brand && isBrand(String(brand)) ? String(brand) : null,
+      governorate: governorate && isGovernorate(String(governorate)) ? String(governorate) : null,
+      user_id: req.user?.id ?? null,
+    });
+  }
+
   res.json(out);
 });
 
@@ -379,6 +403,17 @@ r.get('/mine', requireAuth(), (req, res) => {
 r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   const row = loadListing(req.params.id);
   if (!row || row.status === 'removed') return res.status(404).json({ error: 'not_found' });
+
+  // Log the view for the demand dashboard — but not when the seller opens
+  // their own listing (they check it constantly; counting that would drown
+  // out real buyer interest). Best-effort; never blocks the response.
+  if (!req.user || req.user.id !== row.seller_id) {
+    logEvent({
+      type: 'view', listing_id: row.id, user_id: req.user?.id ?? null,
+      brand: row.brand, governorate: row.governorate,
+    });
+  }
+
   const [withImgs] = attachImages([row]);
   const seller = sellerCard(row.seller_id);
 
@@ -411,6 +446,31 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     phone_visible: hideContact ? false : !!row.contact_phone,
     is_saved,
   });
+});
+
+// ─── contact tap (call / WhatsApp) ───────────────────────────────────
+// The Call and WhatsApp buttons open an external app (tel: / wa.me), so
+// the tap is the only signal the server can ever get — the mobile client
+// POSTs here right before deep-linking out. Chat contact is NOT recorded
+// here: starting a chat inserts a row into `chats`, which the dashboard
+// reads directly (and retroactively). optionalAuth so a guest tapping
+// "call" is still counted. Best-effort logging; a bad body just 400s.
+r.post('/:id(\\d+)/contact', optionalAuth(), (req, res) => {
+  const raw = req.body?.channel;
+  const channel = raw === 'whatsapp' ? 'whatsapp' : raw === 'call' ? 'call' : null;
+  if (!channel) return res.status(400).json({ error: 'bad_channel' });
+  const row = db.prepare('SELECT id, seller_id, brand, governorate FROM phone_listings WHERE id=?')
+    .get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  // Don't count a seller tapping the buttons on their own listing.
+  if (!req.user || req.user.id !== row.seller_id) {
+    logEvent({
+      type: channel === 'whatsapp' ? 'contact_whatsapp' : 'contact_call',
+      listing_id: row.id, user_id: req.user?.id ?? null,
+      brand: row.brand, governorate: row.governorate,
+    });
+  }
+  res.json({ ok: true });
 });
 
 // ─── update listing ──────────────────────────────────────────────────

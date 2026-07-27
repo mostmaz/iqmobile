@@ -1496,4 +1496,129 @@ r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Contact & Demand analytics ──────────────────────────────────────
+// One endpoint feeds the whole "تحليل التواصل والطلب" page so it re-fetches
+// once per filter change. Query params:
+//   period      = today | 7d | 30d   (rolling window over ACTIVITY)
+//   governorate = optional English gov name
+//   brand       = optional brand name
+//
+// Model:
+//   • Base listing set = all non-removed listings (gov/brand filtered). Not
+//     period-bound — a listing from weeks ago can still be contacted today.
+//   • Contact = chat (from `chats`, retroactive) + call + WhatsApp (from
+//     `events`; those two stay 0 until the app ships tap-reporting).
+//   • Demand (searches) is global (period only) — tying a free-text search
+//     to a governorate/brand isn't meaningful, and the spec asked for that
+//     linkage only "لو أمكن".
+r.get('/analytics', requireAdmin, (req, res) => {
+  const DAYS = { today: 1, '7d': 7, '30d': 30 };
+  const period = DAYS[req.query.period] ? req.query.period : '7d';
+  const since = Date.now() - DAYS[period] * 86400000;
+
+  const gov = normalizeGovernorate(req.query.governorate) || null;
+  const brand = req.query.brand && isBrand(String(req.query.brand)) ? String(req.query.brand) : null;
+
+  // Base listing filter (shared shape for the listing-anchored sections).
+  const lConds = ["l.status != 'removed'"];
+  const lp = {};
+  if (gov) { lConds.push('l.governorate = @gov'); lp.gov = gov; }
+  if (brand) { lConds.push('l.brand = @brand'); lp.brand = brand; }
+  const lWhere = lConds.join(' AND ');
+
+  const listings = db.prepare(
+    `SELECT l.id, l.brand, l.model, l.governorate, l.status, l.created_at,
+            u.display_name AS seller_name, u.phone AS seller_phone
+     FROM phone_listings l JOIN users u ON u.id = l.seller_id
+     WHERE ${lWhere}`,
+  ).all(lp);
+  const byId = new Map(listings.map((l) => [l.id, { ...l, calls: 0, whatsapps: 0, chats: 0 }]));
+
+  // Chat contact — retroactive, straight from the chats table.
+  for (const c of db.prepare('SELECT listing_id, COUNT(*) AS n FROM chats WHERE created_at >= ? GROUP BY listing_id').all(since)) {
+    const row = byId.get(c.listing_id); if (row) row.chats = c.n;
+  }
+  // Call / WhatsApp contact — from the event log.
+  for (const e of db.prepare(
+    "SELECT listing_id, type, COUNT(*) AS n FROM events WHERE type IN ('contact_call','contact_whatsapp') AND created_at >= ? GROUP BY listing_id, type",
+  ).all(since)) {
+    const row = byId.get(e.listing_id); if (!row) continue;
+    if (e.type === 'contact_call') row.calls = e.n; else row.whatsapps = e.n;
+  }
+
+  const rows = [...byId.values()].map((l) => ({ ...l, total: l.calls + l.whatsapps + l.chats }));
+  const withContact = rows.filter((l) => l.total > 0);
+  const totalContacts = rows.reduce((a, l) => a + l.total, 0);
+  const soldCount = rows.filter((l) => l.status === 'sold').length;
+
+  const kpis = {
+    total_listings: rows.length,
+    listings_with_contact: withContact.length,
+    listings_with_contact_pct: rows.length ? Math.round((withContact.length / rows.length) * 1000) / 10 : 0,
+    listings_without_contact: rows.length - withContact.length,
+    avg_contact_attempts: rows.length ? Math.round((totalContacts / rows.length) * 100) / 100 : 0,
+    sold_count: soldCount,
+  };
+
+  // Most-contacted listings (the engaged ones), and the at-risk list of
+  // ACTIVE listings with zero contact — oldest first, since a listing that's
+  // sat longest without a single tap is the seller most likely to give up.
+  const contact_per_listing = withContact
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 50)
+    .map((l) => ({ id: l.id, brand: l.brand, model: l.model, governorate: l.governorate, calls: l.calls, whatsapps: l.whatsapps, chats: l.chats, total: l.total }));
+
+  const noContactAll = rows.filter((l) => l.status === 'active' && l.total === 0)
+    .sort((a, b) => a.created_at - b.created_at);
+  const listings_without_contact = noContactAll.slice(0, 100)
+    .map((l) => ({ id: l.id, brand: l.brand, model: l.model, governorate: l.governorate, seller_name: l.seller_name, seller_phone: l.seller_phone, created_at: l.created_at }));
+
+  // ── Demand (global, period only) ──
+  const top_searches = db.prepare(
+    "SELECT query, COUNT(*) AS n FROM events WHERE type='search' AND created_at >= ? AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
+  ).all(since);
+  const zero_result_searches = db.prepare(
+    "SELECT query, COUNT(*) AS n FROM events WHERE type='search' AND created_at >= ? AND result_count = 0 AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
+  ).all(since);
+
+  // Most-viewed — join view events back to current listings, honouring the
+  // gov/brand filter through the listing set.
+  const viewRows = db.prepare(
+    "SELECT listing_id, COUNT(*) AS n FROM events WHERE type='view' AND created_at >= ? GROUP BY listing_id ORDER BY n DESC",
+  ).all(since);
+  const most_viewed = [];
+  for (const v of viewRows) {
+    const l = byId.get(v.listing_id);
+    if (!l) continue; // filtered out by gov/brand, or a since-removed listing
+    most_viewed.push({ id: l.id, brand: l.brand, model: l.model, governorate: l.governorate, views: v.n });
+    if (most_viewed.length >= 20) break;
+  }
+
+  // Sellers who registered (real accounts) but never posted a live listing —
+  // the nudge list. Not gov/brand or period bound (they have no listings).
+  const sellersWithout = db.prepare(
+    `SELECT u.id, u.display_name, u.phone, u.created_at
+     FROM users u
+     WHERE u.is_guest = 0
+       AND NOT EXISTS (SELECT 1 FROM phone_listings l WHERE l.seller_id = u.id AND l.status != 'removed')
+     ORDER BY u.created_at DESC LIMIT 100`,
+  ).all();
+  const sellersWithoutTotal = db.prepare(
+    `SELECT COUNT(*) AS n FROM users u
+     WHERE u.is_guest = 0
+       AND NOT EXISTS (SELECT 1 FROM phone_listings l WHERE l.seller_id = u.id AND l.status != 'removed')`,
+  ).get().n;
+
+  res.json({
+    filters: { period, governorate: gov, brand },
+    kpis,
+    contact_per_listing,
+    listings_without_contact,
+    listings_without_contact_total: noContactAll.length,
+    demand: { top_searches, zero_result_searches, most_viewed },
+    sellers_without_listings: sellersWithout,
+    sellers_without_listings_total: sellersWithoutTotal,
+  });
+});
+
 export default r;

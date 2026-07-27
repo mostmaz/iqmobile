@@ -295,6 +295,30 @@ CREATE TABLE IF NOT EXISTS feature_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_feature_requests_status ON feature_requests(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feature_requests_user ON feature_requests(user_id, created_at DESC);
+
+-- Analytics event log for the "Contact & Demand" dashboard. Deliberately
+-- schema-light and FK-free: an event is an immutable historical fact, so it
+-- must survive deletion of the listing/user it references (a contact attempt
+-- on a since-removed listing is still a real data point). brand + governorate
+-- are denormalized at write time so the dashboard can filter/group without a
+-- join back to a row that may no longer exist.
+--   type: 'view' | 'search' | 'contact_call' | 'contact_whatsapp'
+--   (chat contact + sold conversions come from the chats / phone_listings
+--    tables directly, so they're retroactive and need no event rows.)
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  listing_id INTEGER,
+  user_id INTEGER,
+  brand TEXT,
+  governorate TEXT,
+  query TEXT,
+  result_count INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_listing ON events(listing_id, type);
+CREATE INDEX IF NOT EXISTS idx_events_search ON events(type, query);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so
