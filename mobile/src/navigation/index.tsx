@@ -44,6 +44,7 @@ import ProfileScreen from '../screens/common/ProfileScreen';
 import { TabBar } from './TabBar';
 import { NotificationBanner } from '../components/NotificationBanner';
 import { navigationRef } from './ref';
+import { handleInstallReferrer } from '../lib/installReferrer';
 import { connectSSE, disconnectSSE } from '../sse/client';
 import { registerPushToken } from '../push/register';
 import { theme } from '../theme';
@@ -234,6 +235,14 @@ export default function RootNav() {
     }
     return () => disconnectSSE();
   }, [user]);
+
+  // Deferred deep link: once the main app is active (past onboarding and any
+  // required profile completion), route a brand-new Android user who arrived
+  // via a listing's Play link straight to that listing. Runs at most once per
+  // install (guarded internally), no-op on iOS.
+  useEffect(() => {
+    if (onboarded && !needsProfileCompletion) handleInstallReferrer();
+  }, [onboarded, needsProfileCompletion]);
 
   if (loading || onboarded === null) {
     return (
