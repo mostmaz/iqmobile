@@ -1681,11 +1681,15 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
 
   const { any, results } = await publishToChannels(caption, imageUrl);
   if (!any) {
-    // Every channel failed — surface the first error and drop the image so
-    // we don't leave an orphan for a post that never went out.
+    // Every channel failed — log the exact per-channel reasons + the image
+    // URL Buffer was asked to fetch (diagnostic; Buffer errors are opaque
+    // from the client side), then drop the image so we don't leave an orphan
+    // for a post that never went out.
+    console.warn(`[social] publish failed listing=${listing.id} img=${imageUrl} :: ${JSON.stringify(results)}`);
     cleanup();
     return res.status(502).json({ error: 'publish_failed', results });
   }
+  console.log(`[social] published listing=${listing.id} :: ${results.map((r) => `${r.channel}:${r.ok ? 'ok' : r.error}`).join(', ')}`);
 
   db.prepare(
     'INSERT INTO social_posts(listing_id, image_path, caption, channels, created_at) VALUES(?,?,?,?,?)',
