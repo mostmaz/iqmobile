@@ -252,8 +252,28 @@ export default function RootNav() {
   // (`needsProfileCompletion` is computed once at the top of this
   //  component and reused here for the navigator's conditional render.)
 
+  // Deep linking: an https://api.iqmobile.org/l/:id link (App Link on
+  // Android / Universal Link on iOS, verified via the server's
+  // .well-known association files) — or the iqmobile://l/:id scheme —
+  // opens ListingDetail inside the Browse tab. The path mirrors the nested
+  // navigator hierarchy: Root → Main → Browse tab → ListingDetail(id).
+  const linking = {
+    prefixes: ['https://api.iqmobile.org', 'iqmobile://'],
+    config: {
+      screens: {
+        Main: {
+          screens: {
+            Browse: {
+              screens: { ListingDetail: 'l/:id' },
+            },
+          },
+        },
+      },
+    },
+  };
+
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <Root.Navigator screenOptions={{ headerShown: false }}>
         {needsProfileCompletion ? (
           <Root.Screen name="CompleteProfile" component={CompleteProfileScreen} />

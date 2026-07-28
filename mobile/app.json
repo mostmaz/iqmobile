@@ -3,6 +3,7 @@
     "name": "IQ Mobile",
     "slug": "iqmobile",
     "version": "0.1.4",
+    "scheme": "iqmobile",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -22,12 +23,23 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 34
+      "versionCode": 34,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            { "scheme": "https", "host": "api.iqmobile.org", "pathPrefix": "/l" }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "ios": {
       "bundleIdentifier": "org.iqmobile.app",
       "supportsTablet": false,
       "icon": "./assets/icon.png",
+      "associatedDomains": ["applinks:api.iqmobile.org"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
