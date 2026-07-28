@@ -32,6 +32,7 @@ import notificationsRoutes from './routes/notifications.js';
 import eventsRoutes from './routes/events.js';
 import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
+import webListingRoutes from './routes/webListing.js';
 import bannersRoutes from './routes/banners.js';
 import featuresRoutes from './routes/features.js';
 import shopsRoutes from './routes/shops.js';
@@ -115,6 +116,7 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
 app.use('/brands', brandsRoutes);
+app.use('/l', webListingRoutes);  // public shareable listing pages: /l/:id
 app.use('/banners', bannersRoutes);
 app.use('/', shopsRoutes);     // mounts /shops, /shops/:id, /shops/register
 app.use('/', featuresRoutes);  // mounts /features/tiers, /listings/:id/feature-request, /features/mine

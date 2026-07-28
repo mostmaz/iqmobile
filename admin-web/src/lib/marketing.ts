@@ -51,6 +51,11 @@ function fmtPrice(n: number) { return Number(n || 0).toLocaleString('en-US'); }
 // dashboard — api.iqmobile.org in prod, proxied under localhost in dev), so
 // the canvas isn't tainted and toDataURL/toBlob works.
 
+// Public site that serves the shareable /l/:id listing pages (same host as
+// the API). Captions link here so buyers land on a real page, not a bare
+// "download the app" prompt.
+const PUBLIC_SITE = 'https://api.iqmobile.org';
+
 const BRAND_ACCENT = '#D9583A';
 const BRAND_CREAM = '#ECE6DA';
 const BRAND_INK = '#1B1A18';
@@ -228,7 +233,8 @@ export function facebookPost(l: MarketingListing): string {
   lines.push(`💰 السعر: ${fmtPrice(l.asking_price)} د.ع`);
   lines.push(`📍 ${govAr(l.governorate)}${l.city ? ` - ${l.city}` : ''}`);
   lines.push('');
-  lines.push('📱 للتفاصيل والتواصل مع البائع، حمّل تطبيق iQ Mobile — سوق الموبايلات في العراق');
+  lines.push(`🔗 التفاصيل والصور: ${PUBLIC_SITE}/l/${l.id}`);
+  lines.push('📱 للتواصل مع البائع، حمّل تطبيق iQ Mobile — سوق الموبايلات في العراق');
   lines.push('');
   lines.push(hashtags(l));
   return lines.join('\n');
@@ -241,7 +247,8 @@ export function instagramPost(l: MarketingListing): string {
   lines.push(`${conditionPhrase(l)}${l.storage ? ` · ${l.storage}` : ''}`);
   lines.push(`💰 ${fmtPrice(l.asking_price)} د.ع · 📍 ${govAr(l.governorate)}`);
   lines.push('');
-  lines.push('📱 للتواصل مع البائع، حمّل تطبيق iQ Mobile');
+  lines.push(`🔗 ${PUBLIC_SITE}/l/${l.id}`);
+  lines.push('📱 للتواصل، حمّل تطبيق iQ Mobile');
   lines.push('');
   lines.push(hashtags(l, ['#phones', '#iraq', '#mobile', '#للبيع_موبايلات']));
   return lines.join('\n');
