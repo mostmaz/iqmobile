@@ -15,23 +15,35 @@
 
 const ENDPOINT = 'https://api.buffer.com';
 
-// GraphQL scalars are passed as variables so Arabic captions, newlines, and
-// quotes can't break the query string, and so we don't have to hard-code the
-// input type name. schedulingType/mode are enums written inline (per Buffer's
-// create-image-post example): addToQueue drops the post into the account's
-// queue to publish at its next scheduled slot.
-const CREATE_POST = `mutation($text:String!,$channelId:String!,$imageUrl:String!){
-  createPost(input:{
-    text:$text
-    channelId:$channelId
-    schedulingType:automatic
-    mode:addToQueue
-    assets:[{ image:{ url:$imageUrl } }]
-  }){
-    ... on PostActionSuccess { post { id } }
-    ... on MutationError { message }
-  }
-}`;
+// Text / channelId / imageUrl are passed as variables so Arabic captions,
+// newlines, and quotes can't break the query string. channelId is Buffer's
+// custom ChannelId scalar (NOT String — the API rejects String). The
+// per-platform post `type` is required and lives under metadata, and it
+// differs by service, so we build the metadata block inline per channel:
+//   facebook  → metadata:{ facebook:{ type:post } }
+//   instagram → metadata:{ instagram:{ type:post shouldShareToFeed:true } }
+// (shouldShareToFeed is a required boolean on Instagram.) schedulingType
+// automatic + mode addToQueue drops the post into the account's Buffer queue
+// to publish at its next scheduled slot.
+function metadataFor(service) {
+  if (service === 'instagram') return 'metadata:{ instagram:{ type:post shouldShareToFeed:true } }';
+  return 'metadata:{ facebook:{ type:post } }';
+}
+function createPostMutation(service) {
+  return `mutation($text:String!,$channelId:ChannelId!,$imageUrl:String!){
+    createPost(input:{
+      text:$text
+      channelId:$channelId
+      schedulingType:automatic
+      mode:addToQueue
+      assets:[{ image:{ url:$imageUrl } }]
+      ${metadataFor(service)}
+    }){
+      ... on PostActionSuccess { post { id } }
+      ... on MutationError { message }
+    }
+  }`;
+}
 
 const API_KEY = () => process.env.BUFFER_API_KEY || '';
 export function bufferChannels() {
@@ -46,7 +58,7 @@ export function bufferConfigured() {
 }
 
 // Post to a single Buffer channel. Returns { ok, postId } or { ok:false, error }.
-async function createPost(channelId, text, imageUrl) {
+async function createPost(channelId, service, text, imageUrl) {
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
@@ -54,7 +66,7 @@ async function createPost(channelId, text, imageUrl) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${API_KEY()}`,
       },
-      body: JSON.stringify({ query: CREATE_POST, variables: { text, channelId, imageUrl } }),
+      body: JSON.stringify({ query: createPostMutation(service), variables: { text, channelId, imageUrl } }),
     });
     const json = await res.json().catch(() => null);
     // Transport / auth errors surface as HTTP != 200 or a top-level errors[].
@@ -81,7 +93,7 @@ export async function publishToChannels(text, imageUrl) {
 
   const results = [];
   for (const t of targets) {
-    const r = await createPost(t.channelId, text, imageUrl);
+    const r = await createPost(t.channelId, t.channel, text, imageUrl);
     results.push({ channel: t.channel, channelId: t.channelId, ...r });
   }
   return { any: results.some((r) => r.ok), results };
