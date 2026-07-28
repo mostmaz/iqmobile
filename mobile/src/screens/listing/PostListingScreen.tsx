@@ -3,13 +3,13 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { StepDots, ChipTag } from '../../components/marketplace';
 import { IconPin, IconPhoneIcon, IconCheck } from '../../components/icons';
-import { Listings, type Condition } from '../../api/endpoints';
+import { Listings, Brands, type Condition } from '../../api/endpoints';
 import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
@@ -18,7 +18,11 @@ import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorat
 import { digitsOnly, parsePrice } from '../../lib/format';
 import { useAuth } from '../../auth/AuthContext';
 
-const BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei', 'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Other'];
+// Fallback brand list used only if the /brands fetch fails (offline first
+// launch). The live list comes from the server so new brands (Infinix,
+// POCO, Honor, Oukitel…) show up without an app update — the old hardcoded
+// list is exactly what pushed those phones into "Other".
+const FALLBACK_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei', 'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Other'];
 const CONDITIONS: Condition[] = ['new', 'used', 'refurbished', 'repaired'];
 const ACCESSORIES_CHOICES = ['الشاحن', 'السماعات', 'العلبة الأصلية', 'كفر', 'لاصق شاشة', 'فاتورة'];
 // Warranty options surfaced on step 0. Stored as the raw Arabic value on
@@ -56,6 +60,20 @@ export default function PostListingScreen({ navigation }: any) {
   // upgrade to a real account via AuthGate before they can post.)
 
   const [brand, setBrand] = useState('Apple');
+  // Brand options come from the server so the catalog stays in sync without
+  // an app update. "Other" is forced last. Falls back to the hardcoded list
+  // only if the fetch fails (e.g. offline first launch).
+  const { data: brandRows } = useQuery({
+    queryKey: ['brands'],
+    queryFn: () => Brands.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const brandOptions = (() => {
+    const names = (brandRows || []).map((b) => b.name);
+    const list = names.length ? names : FALLBACK_BRANDS;
+    const withoutOther = list.filter((b) => b !== 'Other');
+    return [...withoutOther, 'Other'];
+  })();
   const [model, setModel] = useState('');
   const [condition, setCondition] = useState<Condition>('used');
   const [storage, setStorage] = useState('128GB');
@@ -278,7 +296,7 @@ export default function PostListingScreen({ navigation }: any) {
           <>
             <FieldLabel>العلامة التجارية</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {BRANDS.map((b) => <Pill key={b} active={brand === b} onPress={() => setBrand(b)}>{b}</Pill>)}
+              {brandOptions.map((b) => <Pill key={b} active={brand === b} onPress={() => setBrand(b)}>{b}</Pill>)}
             </View>
             <FieldLabel>الموديل</FieldLabel>
             <Input value={model} onChangeText={setModel} placeholder="مثلاً iPhone 13 Pro" ltr />
