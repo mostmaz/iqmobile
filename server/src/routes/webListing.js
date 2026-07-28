@@ -146,7 +146,7 @@ r.get('/:id(\\d+)', (req, res) => {
   <div class="cta">
     <p>للتواصل مع البائع، حمّل تطبيق iQ Mobile</p>
     <div class="stores">
-      <a class="btn primary" href="${PLAY_URL}">Google Play</a>
+      <a class="btn primary" href="${PLAY_URL}&referrer=listing_${l.id}">Google Play</a>
       <a class="btn dark" href="${APPSTORE_URL}">App Store</a>
     </div>
   </div>

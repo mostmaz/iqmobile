@@ -111,6 +111,32 @@ app.use('/uploads', express.static('./uploads', { maxAge: '7d' }));
 app.use(express.static('./static', { maxAge: '1h' }));
 app.get('/privacy', (_req, res) => res.sendFile('privacy.html', { root: './static' }));
 
+// ── Deep-link domain association (free Universal Links / App Links) ──
+// These tell iOS/Android that this domain is owned by the app, so tapping
+// https://api.iqmobile.org/l/:id opens the app straight to the listing when
+// it's installed (and falls back to the /l/:id web page otherwise). Android
+// verifies against the Play app-signing key; iOS needs the Apple Team ID
+// (set APPLE_TEAM_ID in .env to enable the iOS side — Android works without).
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  res.json([{
+    relation: ['delegate_permission/common.handle_all_urls'],
+    target: {
+      namespace: 'android_app',
+      package_name: 'org.iqmobile.app',
+      sha256_cert_fingerprints: [
+        '9B:1F:3F:7A:FE:66:48:32:6E:D9:FF:12:84:AE:B8:C6:60:74:B5:7A:BE:A6:EA:33:52:22:36:3C:55:43:4E:4E',
+      ],
+    },
+  }]);
+});
+app.get('/.well-known/apple-app-site-association', (_req, res) => {
+  const team = process.env.APPLE_TEAM_ID;
+  if (!team) return res.status(404).end();
+  res.type('application/json').send(JSON.stringify({
+    applinks: { apps: [], details: [{ appID: `${team}.org.iqmobile.app`, paths: ['/l/*'] }] },
+  }));
+});
+
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 app.use('/auth', authRoutes);
