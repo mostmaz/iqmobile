@@ -81,98 +81,110 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export interface ComposeResult { dataUrl: string; }
 
 export async function composeListingImage(l: MarketingListing, imageUrl: string): Promise<ComposeResult> {
-  const S = 1080;
-  const BANNER = 268;           // bottom price banner height
-  const photoH = S - BANNER;    // photo occupies the top
+  const img = await loadImage(imageUrl);
+
+  // Match the uploaded photo's aspect ratio instead of forcing a square, so
+  // portraits stay portrait and landscapes stay landscape. Clamp to the
+  // range Facebook/Instagram feeds display without their own cropping
+  // (~3:4 portrait … 16:9 landscape); a photo inside that range fills the
+  // canvas exactly (no crop), and only genuinely extreme ratios get a slight
+  // cover-crop. The branding + price sit as an overlay on the photo so the
+  // final image keeps the photo's shape.
+  const rawAr = img.width / img.height;
+  const ar = Math.min(1.78, Math.max(0.75, rawAr));
+  let W: number, H: number;
+  if (ar >= 1) { W = 1080; H = Math.round(1080 / ar); }
+  else { H = 1080; W = Math.round(1080 * ar); }
+  const s = W / 1080; // element scale keyed to canvas width
 
   const canvas = document.createElement('canvas');
-  canvas.width = S; canvas.height = S;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  // background
-  ctx.fillStyle = BRAND_CREAM;
-  ctx.fillRect(0, 0, S, S);
-
-  // ── photo (object-fit: cover into the top region) ──
-  const img = await loadImage(imageUrl);
-  const scale = Math.max(S / img.width, photoH / img.height);
+  // photo — cover-fit (fills exactly when ar == rawAr, gently crops when clamped)
+  ctx.fillStyle = BRAND_INK;
+  ctx.fillRect(0, 0, W, H);
+  const scale = Math.max(W / img.width, H / img.height);
   const dw = img.width * scale, dh = img.height * scale;
-  const dx = (S - dw) / 2, dy = (photoH - dh) / 2;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(0, 0, S, photoH); ctx.clip();
-  ctx.drawImage(img, dx, dy, dw, dh);
-  ctx.restore();
+  ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
 
-  // subtle gradient at the photo's bottom so the banner seam reads clean
-  const grad = ctx.createLinearGradient(0, photoH - 120, 0, photoH);
+  // bottom scrim (transparent → accent) so the price text stays legible on
+  // any photo without hiding the product
+  const scrimTop = H * 0.52;
+  const grad = ctx.createLinearGradient(0, scrimTop, 0, H);
   grad.addColorStop(0, 'rgba(27,26,24,0)');
-  grad.addColorStop(1, 'rgba(27,26,24,0.28)');
+  grad.addColorStop(0.55, 'rgba(178,63,37,0.55)');
+  grad.addColorStop(1, 'rgba(178,63,37,0.92)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, photoH - 120, S, 120);
+  ctx.fillRect(0, scrimTop, W, H - scrimTop);
+
+  const m = 34 * s;
 
   // ── iQ logo badge (top-left) ──
+  const badge = 116 * s;
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowBlur = 18 * s; ctx.shadowOffsetY = 4 * s;
   ctx.fillStyle = BRAND_ACCENT;
-  roundRect(ctx, 34, 34, 116, 116, 26); ctx.fill();
+  roundRect(ctx, m, m, badge, badge, 26 * s); ctx.fill();
   ctx.restore();
   ctx.fillStyle = '#fff';
-  ctx.font = '700 62px system-ui, -apple-system, sans-serif';
+  ctx.font = `700 ${62 * s}px system-ui, -apple-system, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('iQ', 34 + 58, 34 + 60);
+  ctx.fillText('iQ', m + badge / 2, m + badge / 2 + 2 * s);
 
   // ── "للبيع" ribbon (top-right) ──
+  const rW = 180 * s, rH = 74 * s;
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 3;
+  ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowBlur = 14 * s; ctx.shadowOffsetY = 3 * s;
   ctx.fillStyle = BRAND_ACCENT;
-  const ribbonW = 180, ribbonH = 74;
-  roundRect(ctx, S - 34 - ribbonW, 40, ribbonW, ribbonH, 37); ctx.fill();
+  roundRect(ctx, W - m - rW, m + 6 * s, rW, rH, rH / 2); ctx.fill();
   ctx.restore();
   ctx.fillStyle = '#fff';
-  ctx.font = '700 40px system-ui, sans-serif';
+  ctx.font = `700 ${40 * s}px system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('للبيع', S - 34 - ribbonW / 2, 40 + ribbonH / 2 + 2);
+  ctx.fillText('للبيع', W - m - rW / 2, m + 6 * s + rH / 2 + 2 * s);
 
-  // ── bottom banner ──
-  ctx.fillStyle = BRAND_ACCENT;
-  ctx.fillRect(0, photoH, S, BANNER);
-
-  const RM = 54; // right margin (RTL text anchors here)
+  // ── overlaid price/detail block (bottom, RTL right-aligned) ──
+  const RM = 44 * s;
   ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
   (ctx as any).direction = 'rtl';
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 8 * s; ctx.shadowOffsetY = 2 * s;
 
-  // brand + model
-  ctx.fillStyle = '#fff';
-  ctx.font = '700 52px system-ui, sans-serif';
-  ctx.fillText(`${l.brand} ${l.model}`.slice(0, 34), S - RM, photoH + 74);
+  // price (bottom-most, biggest)
+  ctx.fillStyle = BRAND_CREAM;
+  ctx.font = `800 ${74 * s}px system-ui, sans-serif`;
+  ctx.fillText(`${fmtPrice(l.asking_price)} د.ع`, W - RM, H - 40 * s);
 
   // condition · storage
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.font = '400 34px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.font = `400 ${33 * s}px system-ui, sans-serif`;
   const sub = [conditionPhrase(l).replace(/^[^ ]+ /, ''), l.storage].filter(Boolean).join(' · ');
-  ctx.fillText(sub.slice(0, 46), S - RM, photoH + 124);
+  ctx.fillText(sub.slice(0, 46), W - RM, H - 122 * s);
 
-  // price (big, cream) + governorate chip (left)
-  ctx.fillStyle = BRAND_CREAM;
-  ctx.font = '800 76px system-ui, sans-serif';
-  ctx.fillText(`${fmtPrice(l.asking_price)} د.ع`, S - RM, photoH + 214);
+  // brand · model
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${50 * s}px system-ui, sans-serif`;
+  ctx.fillText(`${l.brand} ${l.model}`.slice(0, 34), W - RM, H - 168 * s);
+  ctx.restore();
 
-  // governorate pill bottom-left
+  // governorate pill (bottom-left)
   ctx.save();
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   const govText = `📍 ${govAr(l.governorate)}`;
-  ctx.font = '600 32px system-ui, sans-serif';
-  const pillW = ctx.measureText(govText).width + 44;
-  ctx.fillStyle = 'rgba(0,0,0,0.22)';
-  roundRect(ctx, 40, photoH + 168, pillW, 56, 28); ctx.fill();
+  ctx.font = `600 ${31 * s}px system-ui, sans-serif`;
+  const pillH = 54 * s;
+  const pillW = ctx.measureText(govText).width + 42 * s;
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  roundRect(ctx, m, H - 40 * s - pillH, pillW, pillH, pillH / 2); ctx.fill();
   ctx.fillStyle = '#fff';
-  ctx.fillText(govText, 62, photoH + 168 + 30);
+  ctx.fillText(govText, m + 21 * s, H - 40 * s - pillH / 2 + 2 * s);
   ctx.restore();
 
   // ── outer frame ──
   ctx.strokeStyle = BRAND_ACCENT;
-  ctx.lineWidth = 20;
-  ctx.strokeRect(10, 10, S - 20, S - 20);
+  ctx.lineWidth = 20 * s;
+  ctx.strokeRect(10 * s, 10 * s, W - 20 * s, H - 20 * s);
 
   return { dataUrl: canvas.toDataURL('image/jpeg', 0.92) };
 }
@@ -189,15 +201,6 @@ function conditionPhrase(l: MarketingListing): string {
   if (Number.isFinite(bat) && bat >= 90) return `✨ كالجديد — بطارية ${bat}٪`;
   if (Number.isFinite(bat) && bat >= 80) return `👍 بحالة ممتازة — بطارية ${bat}٪`;
   return '👍 مستعمل بحالة جيدة';
-}
-
-function contactLine(l: MarketingListing): string | null {
-  const wa = l.contact_whatsapp;
-  const ph = l.contact_phone;
-  if (wa && ph && wa !== ph) return `📞 ${ph}  ·  💬 واتساب ${wa}`;
-  if (wa) return `💬 واتساب: ${wa}`;
-  if (ph) return `📞 للتواصل: ${ph}`;
-  return null;
 }
 
 function hashtags(l: MarketingListing, extra: string[] = []): string {
@@ -224,10 +227,8 @@ export function facebookPost(l: MarketingListing): string {
   if (l.warranty_status) lines.push(`🛡️ ${l.warranty_status}`);
   lines.push(`💰 السعر: ${fmtPrice(l.asking_price)} د.ع`);
   lines.push(`📍 ${govAr(l.governorate)}${l.city ? ` - ${l.city}` : ''}`);
-  const contact = contactLine(l);
-  if (contact) lines.push(contact);
   lines.push('');
-  lines.push('📱 متوفّر على تطبيق iQ Mobile — سوق الموبايلات في العراق');
+  lines.push('📱 للتفاصيل والتواصل مع البائع، حمّل تطبيق iQ Mobile — سوق الموبايلات في العراق');
   lines.push('');
   lines.push(hashtags(l));
   return lines.join('\n');
@@ -239,10 +240,8 @@ export function instagramPost(l: MarketingListing): string {
   lines.push(`🔥 ${l.brand} ${l.model}`);
   lines.push(`${conditionPhrase(l)}${l.storage ? ` · ${l.storage}` : ''}`);
   lines.push(`💰 ${fmtPrice(l.asking_price)} د.ع · 📍 ${govAr(l.governorate)}`);
-  const contact = contactLine(l);
-  if (contact) lines.push(contact);
   lines.push('');
-  lines.push('📱 iQ Mobile');
+  lines.push('📱 للتواصل مع البائع، حمّل تطبيق iQ Mobile');
   lines.push('');
   lines.push(hashtags(l, ['#phones', '#iraq', '#mobile', '#للبيع_موبايلات']));
   return lines.join('\n');
