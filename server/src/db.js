@@ -320,6 +320,23 @@ CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at DESC)
 CREATE INDEX IF NOT EXISTS idx_events_listing ON events(listing_id, type);
 CREATE INDEX IF NOT EXISTS idx_events_search ON events(type, query);
 
+-- Saved searches + alerts. A user stores browse criteria (brand, price
+-- range, governorate, condition, free-text); when alerts_enabled they get a
+-- push the moment a new listing matches. criteria_json holds the same filter
+-- shape the browse endpoint accepts. last_notified_at throttles the push so
+-- a broad search can't spam on a burst of new listings.
+CREATE TABLE IF NOT EXISTS saved_searches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label TEXT,
+  criteria_json TEXT NOT NULL,
+  alerts_enabled INTEGER NOT NULL DEFAULT 1,
+  last_notified_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_saved_searches_alerts ON saved_searches(alerts_enabled);
+
 -- Social publish log. One row per "Publish to FB + IG" action from the
 -- dashboard, used both as an audit trail and to enforce the per-day cap
 -- (count today's rows). channels holds the per-platform Buffer result JSON.

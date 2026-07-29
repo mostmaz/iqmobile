@@ -30,6 +30,7 @@ import ratingsRoutes from './routes/ratings.js';
 import reportsRoutes from './routes/reports.js';
 import notificationsRoutes from './routes/notifications.js';
 import eventsRoutes from './routes/events.js';
+import savedSearchRoutes from './routes/savedSearches.js';
 import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
 import webListingRoutes from './routes/webListing.js';
@@ -153,6 +154,7 @@ app.use('/', ratingsRoutes); // mounts /deals/:id/rating, /users/:id/ratings
 app.use('/reports', reportsRoutes);
 app.use('/notifications', notificationsRoutes);
 app.use('/events', eventsRoutes);
+app.use('/', savedSearchRoutes); // mounts /saved-searches
 app.use('/admin', adminRoutes);
 
 // Admin dashboard SPA — served from the same Express process at

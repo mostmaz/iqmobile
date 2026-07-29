@@ -10,6 +10,7 @@ import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
 import { logEvent } from '../eventLog.js';
+import { alertOnNewListing } from './savedSearches.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -220,6 +221,9 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       created, expires, created,
     );
   const row = loadListing(ins.lastInsertRowid);
+  // Fire saved-search alerts after the response is sent, so notification
+  // fan-out never adds latency to (or can fail) listing creation.
+  setImmediate(() => alertOnNewListing(row));
   res.json(attachImages([row])[0]);
 });
 
