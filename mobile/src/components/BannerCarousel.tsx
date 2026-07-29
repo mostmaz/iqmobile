@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, TouchableOpacity, Linking, FlatList } from 'react-native';
+import { View, TouchableOpacity, Linking, FlatList, Animated } from 'react-native';
 import { Img } from './Img';
 import { theme, radius, shadowSoft } from '../theme';
 import { fullImageUrl } from '../api/upload';
@@ -62,6 +62,20 @@ export function BannerCarousel({
   const listRef = useRef<FlatList<BannerRow>>(null);
 
   const height = width > 0 ? width / RATIO : undefined;
+
+  // Drives the "time until flip" fill on the active dot: animates 0 → 1 over
+  // one ROTATE_MS window, restarting whenever the shown slide changes (auto-
+  // advance or manual swipe), so the fill always tracks the real countdown.
+  const progress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (banners.length <= 1 || width <= 0) return;
+    progress.setValue(0);
+    const anim = Animated.timing(progress, {
+      toValue: 1, duration: ROTATE_MS, useNativeDriver: false,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [index, banners, width, progress]);
 
   // Snap back to the lead slide whenever the banner set changes — a refresh
   // rotates which banner leads, and the first slide should reflect that.
@@ -129,16 +143,28 @@ export function BannerCarousel({
         <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing)} />
       )}
 
-      {/* Pagination dots — the active one widens into a pill. */}
+      {/* Pagination dots — the active one widens into a pill that fills up
+          over the countdown, showing how long until the banner flips. */}
       <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 8 }}>
         {banners.map((b, i) => (
-          <View
-            key={b.id}
-            style={{
-              width: i === index ? 18 : 6, height: 6, borderRadius: 3,
-              backgroundColor: i === index ? theme.accent : theme.line,
-            }}
-          />
+          i === index ? (
+            <View
+              key={b.id}
+              style={{ width: 18, height: 6, borderRadius: 3, backgroundColor: theme.line, overflow: 'hidden' }}
+            >
+              <Animated.View
+                style={{
+                  height: '100%', borderRadius: 3, backgroundColor: theme.accent,
+                  width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+                }}
+              />
+            </View>
+          ) : (
+            <View
+              key={b.id}
+              style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: theme.line }}
+            />
+          )
         ))}
       </View>
     </View>
