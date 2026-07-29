@@ -1497,6 +1497,21 @@ r.post('/shops/:id(\\d+)/unshop', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Shops registered since a timestamp — drives the dashboard's "new shop"
+// notification. The client passes the last-seen shop_created_at it has, and
+// gets back anything newer. shop_created_at is stamped once, on first
+// registration, so this is exactly the "a new shop just joined" signal.
+r.get('/shops/recent', requireAdmin, (req, res) => {
+  const since = Number(req.query.since) || 0;
+  const shops = db.prepare(
+    `SELECT id, shop_name, display_name, governorate, phone, shop_created_at
+     FROM users
+     WHERE seller_type='shop' AND shop_created_at IS NOT NULL AND shop_created_at > ?
+     ORDER BY shop_created_at DESC LIMIT 50`,
+  ).all(since);
+  res.json({ shops, count: shops.length });
+});
+
 // ─── Contact & Demand analytics ──────────────────────────────────────
 // One endpoint feeds the whole "تحليل التواصل والطلب" page so it re-fetches
 // once per filter change. Query params:

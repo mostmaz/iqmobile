@@ -554,7 +554,7 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
     const SEED = [
       'Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei',
       'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Motorola',
-      'Honor', 'Infinix', 'POCO', 'Nubia', 'Oukitel', 'Other',
+      'Honor', 'Infinix', 'POCO', 'Nubia', 'Oukitel', 'Blackview', 'Other',
     ];
     db.transaction(() => {
       SEED.forEach((name, i) => ins.run(name, null, i + 1, t));
@@ -592,6 +592,31 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
     })();
     db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v4_brand_backfill','done')").run();
     console.log(`[iqmobile] migration v4: brand catalog topped up, backfilled ${n} 'Other' listings`);
+  }
+}
+
+// Migration v5: add Blackview + re-file any "Other" listing that names it.
+// Same idempotent shape as v4 — a separate flag so it runs once on existing
+// DBs (fresh DBs already seed Blackview above and this no-ops).
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v5_blackview'").get();
+  if (!done) {
+    const t = Date.now();
+    const maxPos = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM brands').get().m;
+    db.prepare('INSERT OR IGNORE INTO brands(name, display_ar, position, created_at) VALUES(?,?,?,?)')
+      .run('Blackview', null, maxPos + 1, t);
+    const valid = new Set(db.prepare('SELECT name FROM brands').all().map((r) => r.name));
+    const others = db.prepare("SELECT id, model, description FROM phone_listings WHERE brand='Other'").all();
+    const upd = db.prepare('UPDATE phone_listings SET brand=?, updated_at=? WHERE id=?');
+    let n = 0;
+    db.transaction(() => {
+      for (const r of others) {
+        const guess = detectBrand(`${r.model} ${r.description || ''}`, null);
+        if (guess && guess !== 'Other' && valid.has(guess)) { upd.run(guess, t, r.id); n++; }
+      }
+    })();
+    db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v5_blackview','done')").run();
+    console.log(`[iqmobile] migration v5: Blackview added, backfilled ${n} 'Other' listings`);
   }
 }
 

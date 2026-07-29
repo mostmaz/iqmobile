@@ -14,6 +14,7 @@ import { ImportPage } from './pages/ImportPage';
 import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
 import { ShopsPage } from './pages/ShopsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { ShopNotifier } from './ShopNotifier';
 
 type Page =
   | 'overview' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
@@ -49,6 +50,7 @@ export function App() {
         <h1>IQ Mobile · Marketplace Admin</h1>
         <button className="secondary" onClick={() => { setStoredToken(null); setAuthed(false); }}>Logout</button>
       </div>
+      <ShopNotifier onGoShops={() => setPage('shops')} />
       <div className="nav">
         {NAV.map((n) => (
           <a key={n.key} href="#" className={page === n.key ? 'active' : ''}

@@ -56,5 +56,16 @@ export function checkListingQuality(...parts) {
     }
   }
 
+  // "مطلوب" (wanted) flags a buyer's request post, which doesn't belong in a
+  // for-SALE catalogue. But "المطلوب" (with the ال article) is how sellers
+  // commonly write "the asking price", so allow that form — only the bare
+  // "wanted" usage is rejected.
+  let mi = text.indexOf('مطلوب');
+  while (mi !== -1) {
+    const two = text.slice(Math.max(0, mi - 2), mi);
+    if (!two.endsWith('ال')) return 'مطلوب';
+    mi = text.indexOf('مطلوب', mi + 'مطلوب'.length);
+  }
+
   return null;
 }
