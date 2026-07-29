@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
 import { Header, FieldLabel, Btn } from '../../components/ui';
-import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag, IconBookmark, IconStore, IconSpark } from '../../components/icons';
+import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag, IconBookmark, IconStore, IconSpark, IconSearch } from '../../components/icons';
 import { Auth, Listings } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
@@ -67,6 +67,7 @@ export default function ProfileScreen({ navigation }: any) {
   const items: { Icon: any; label: string; onPress: () => void }[] = [
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
     { Icon: IconBookmark, label: 'المفضلة', onPress: () => navigation.navigate('Saved') },
+    { Icon: IconSearch, label: 'عمليات البحث المحفوظة', onPress: () => navigation.navigate('SavedSearches') },
     { Icon: IconStore, label: 'المتاجر', onPress: () => navigation.navigate('Shops') },
     { Icon: IconStore, label: user.seller_type === 'shop' ? 'إدارة متجري' : 'سجّل متجرك', onPress: () => navigation.navigate('ShopRegister') },
     { Icon: IconSpark, label: 'أعلن معنا', onPress: () => navigation.navigate('Advertise') },

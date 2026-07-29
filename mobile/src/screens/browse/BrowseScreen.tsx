@@ -14,6 +14,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
 import { GovPicker } from '../../components/GovPicker';
+import { useSaveSearch } from '../../lib/useSaveSearch';
 
 // Brand list comes from the server now (table-backed, admin-editable).
 // We used to hardcode it here with illustrative counts; that meant adding
@@ -51,6 +52,7 @@ export default function BrowseScreen({ navigation }: any) {
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
+  const { save: saveSearch, isPending: savingSearch } = useSaveSearch();
   // Rotates which banner shows when a slot has several equally-specific
   // ones — bumped on pull-to-refresh, filter change, and re-opening the tab.
   const [bannerTick, setBannerTick] = useState(0);
@@ -374,6 +376,30 @@ export default function BrowseScreen({ navigation }: any) {
               <Btn kind="ghost" full onPress={clear}>{ar.browse.clear}</Btn>
               <Btn kind="primary" full onPress={() => setShowFilter(false)}>{ar.browse.apply}</Btn>
             </View>
+            {/* Save the current filters as a search that pings the user when a
+                matching listing is posted. */}
+            <TouchableOpacity
+              onPress={() => saveSearch({
+                brand: filters.brand,
+                condition: filters.condition,
+                governorate: filters.governorate,
+                min_price: filters.min_price,
+                max_price: filters.max_price,
+              })}
+              disabled={savingSearch}
+              activeOpacity={0.85}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+                marginTop: 10, paddingVertical: 11, borderRadius: radius.lg,
+                borderWidth: 1, borderColor: theme.accent, backgroundColor: theme.accentSoft,
+                opacity: savingSearch ? 0.6 : 1,
+              }}
+            >
+              <IconBell size={15} color={theme.accent} sw={1.8} />
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent, fontWeight: '600' }}>
+                احفظ هذا البحث ونبّهني
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </View>

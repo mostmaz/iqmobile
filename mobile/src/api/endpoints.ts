@@ -251,6 +251,35 @@ export const Listings = {
   saved: () => api<Listing[]>('/listings/saved/mine'),
 };
 
+// ─── Saved searches ───────────────────────────────────────────────────
+// A user stores browse/search criteria and (when alerts_enabled) gets a
+// push the moment a new listing matches. The server validates + normalizes
+// the criteria, so we can send whatever subset of these the user narrowed to.
+export interface SavedSearchCriteria {
+  q?: string;
+  brand?: string;
+  model?: string;
+  governorate?: string;
+  condition?: Condition;
+  min_price?: number;
+  max_price?: number;
+}
+export interface SavedSearch {
+  id: number;
+  label: string | null;
+  criteria: SavedSearchCriteria;
+  alerts_enabled: boolean;
+  created_at: number;
+}
+export const SavedSearches = {
+  list: () => api<SavedSearch[]>('/saved-searches'),
+  create: (criteria: SavedSearchCriteria, label?: string) =>
+    api<SavedSearch>('/saved-searches', { method: 'POST', body: JSON.stringify({ criteria, label }) }),
+  setAlerts: (id: number, alerts_enabled: boolean) =>
+    api<SavedSearch>(`/saved-searches/${id}`, { method: 'PATCH', body: JSON.stringify({ alerts_enabled }) }),
+  remove: (id: number) => api(`/saved-searches/${id}`, { method: 'DELETE' }),
+};
+
 // ─── Chats ────────────────────────────────────────────────────────────
 export const Chats = {
   startForListing: (listingId: number) => api<Chat>(`/listings/${listingId}/chat`, { method: 'POST' }),

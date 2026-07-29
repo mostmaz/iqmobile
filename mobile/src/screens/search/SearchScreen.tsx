@@ -7,11 +7,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { theme, fonts } from '../../theme';
-import { IconSearch, IconClose } from '../../components/icons';
+import { theme, fonts, radius } from '../../theme';
+import { IconSearch, IconClose, IconBell } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
 import { Listings } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
+import { useSaveSearch } from '../../lib/useSaveSearch';
 
 const PAGE_SIZE = 15;
 
@@ -19,6 +20,7 @@ export default function SearchScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [text, setText] = useState('');
   const [q, setQ] = useState('');
+  const { save: saveSearch, isPending: savingSearch } = useSaveSearch();
 
   // Debounce so we don't fire a request on every Arabic IME keystroke.
   useEffect(() => {
@@ -60,6 +62,26 @@ export default function SearchScreen({ navigation }: any) {
             </TouchableOpacity>
           ) : null}
         </View>
+        {/* Once there's a query, let the user save it as an alert: they'll get
+            a push when a new listing matches this search. */}
+        {enabled ? (
+          <TouchableOpacity
+            onPress={() => saveSearch({ q })}
+            disabled={savingSearch}
+            activeOpacity={0.85}
+            style={{
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+              marginTop: 10, paddingVertical: 10, borderRadius: radius.lg,
+              borderWidth: 1, borderColor: theme.accent, backgroundColor: theme.accentSoft,
+              opacity: savingSearch ? 0.6 : 1,
+            }}
+          >
+            <IconBell size={15} color={theme.accent} sw={1.8} />
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent, fontWeight: '600' }}>
+              نبّهني عند إضافة إعلان مطابق
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <FlatList

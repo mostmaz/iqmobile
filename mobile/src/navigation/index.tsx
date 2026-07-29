@@ -24,6 +24,7 @@ import CompleteProfileScreen from '../screens/auth/CompleteProfileScreen';
 import OnboardingScreen, { ONBOARDED_KEY } from '../screens/auth/OnboardingScreen';
 import BrowseScreen from '../screens/browse/BrowseScreen';
 import SearchScreen from '../screens/search/SearchScreen';
+import SavedSearchesScreen from '../screens/search/SavedSearchesScreen';
 import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
@@ -65,6 +66,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
+      <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
     </BrowseStack.Navigator>
   );
@@ -74,6 +76,7 @@ function SearchStackNav() {
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="SearchHome" component={SearchScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
   );
@@ -94,6 +97,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
+      <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
       <BrowseStack.Screen name="HowItWorks" component={OnboardingScreen} />
     </BrowseStack.Navigator>
