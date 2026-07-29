@@ -4,7 +4,7 @@ import { requireAuth } from '../auth.js';
 import { isBrand } from '../brands.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { queryTokens } from '../searchNormalize.js';
-import { notify } from '../notify.js';
+import { notify, hasNotified } from '../notify.js';
 
 const r = Router();
 
@@ -18,7 +18,7 @@ const PUSH_COOLDOWN_MS = 15 * 60 * 1000;
 // digit-fold, collapse Arabic orthography, strip spaces. Applied to both the
 // listing haystack and (via queryTokens) the query so matching behaves the
 // same as the real /listings search.
-function norm(s) {
+export function norm(s) {
   return String(s || '').toLowerCase()
     .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
     .replace(/ة/g, 'ه').replace(/ـ/g, '')
@@ -98,6 +98,48 @@ export function alertOnNewListing(listing) {
     }
   } catch (e) {
     console.error('[saved-search] alert failed:', e?.message);
+  }
+}
+
+// A listing's price dropped: alert saved searches that the listing NEWLY
+// matches — it satisfies the criteria at the new price but did NOT at the
+// old one (those users were already alerted when the listing was created).
+// In practice this fires for searches with a max_price the listing just
+// crossed downward.
+export function alertOnPriceDrop(listing, oldPrice) {
+  try {
+    if (!listing || listing.status !== 'active') return;
+    const searches = db.prepare('SELECT * FROM saved_searches WHERE alerts_enabled=1').all();
+    if (searches.length === 0) return;
+    const t = now();
+    const doneUsers = new Set();
+    for (const s of searches) {
+      if (s.user_id === listing.seller_id || doneUsers.has(s.user_id)) continue;
+      let c;
+      try { c = JSON.parse(s.criteria_json); } catch { continue; }
+      if (!matchesCriteria(listing, c)) continue;
+      if (matchesCriteria({ ...listing, asking_price: oldPrice }, c)) continue;
+      // Once per listing per user: a price bouncing across the threshold
+      // must not re-alert on every downward crossing.
+      if (hasNotified(s.user_id, 'saved_search.match', listing.id)) { doneUsers.add(s.user_id); continue; }
+
+      const cooled = !s.last_notified_at || (t - s.last_notified_at) > PUSH_COOLDOWN_MS;
+      notify(
+        s.user_id,
+        'saved_search.match',
+        { search_id: s.id, listing_id: listing.id, brand: listing.brand, model: listing.model, price: listing.asking_price, price_drop: true },
+        cooled
+          ? {
+            title: 'جهاز يطابق بحثك أصبح أرخص 🔻',
+            body: `${listing.brand} ${listing.model} — الآن ${Number(listing.asking_price).toLocaleString('en-US')} د.ع`,
+          }
+          : null,
+      );
+      if (cooled) db.prepare('UPDATE saved_searches SET last_notified_at=? WHERE id=?').run(t, s.id);
+      doneUsers.add(s.user_id);
+    }
+  } catch (e) {
+    console.error('[saved-search] price-drop alert failed:', e?.message);
   }
 }
 

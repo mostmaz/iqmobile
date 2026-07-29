@@ -11,6 +11,8 @@ import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
 import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
+import { alertWishlistOnListing } from './wishlist.js';
+import { alertOnPriceChange } from './priceWatches.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -221,9 +223,9 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       created, expires, created,
     );
   const row = loadListing(ins.lastInsertRowid);
-  // Fire saved-search alerts after the response is sent, so notification
-  // fan-out never adds latency to (or can fail) listing creation.
-  setImmediate(() => alertOnNewListing(row));
+  // Fire saved-search + wish-list alerts after the response is sent, so
+  // notification fan-out never adds latency to (or can fail) listing creation.
+  setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); });
   res.json(attachImages([row])[0]);
 });
 
@@ -425,9 +427,15 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // icon's filled/empty state and the "احفظ"/"محفوظ" button label on
   // the detail screen. Always false for guests (they have no saves).
   let is_saved = false;
+  // Whether THIS caller has a price-drop watch on THIS listing — drives the
+  // "نبّهني إذا انخفض السعر" toggle on the detail screen.
+  let is_price_watched = false;
   if (req.user) {
     is_saved = !!db
       .prepare('SELECT 1 FROM saved_listings WHERE user_id=? AND listing_id=?')
+      .get(req.user.id, row.id);
+    is_price_watched = !!db
+      .prepare('SELECT 1 FROM price_watches WHERE user_id=? AND listing_id=?')
       .get(req.user.id, row.id);
   }
 
@@ -449,6 +457,7 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     seller_phone: hideContact ? null : (row.contact_phone || null),
     phone_visible: hideContact ? false : !!row.contact_phone,
     is_saved,
+    is_price_watched,
   });
 });
 
@@ -524,7 +533,13 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   fields.push('updated_at=?');
   params.push(now(), req.params.id);
   db.prepare(`UPDATE phone_listings SET ${fields.join(', ')} WHERE id=?`).run(...params);
-  res.json(attachImages([loadListing(req.params.id)])[0]);
+  const updatedRow = loadListing(req.params.id);
+  // Price went down? Tell listing watchers + saved searches + wish lists.
+  // Post-response so alert fan-out can't slow or fail the edit itself.
+  if (updatedRow.asking_price < row.asking_price) {
+    setImmediate(() => alertOnPriceChange(updatedRow, row.asking_price));
+  }
+  res.json(attachImages([updatedRow])[0]);
 });
 
 // ─── renew expired listing ───────────────────────────────────────────

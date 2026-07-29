@@ -15,6 +15,7 @@ import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { notify } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
+import { alertOnPriceChange } from '../priceWatches.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -318,6 +319,11 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
     FROM phone_listings l JOIN users u ON u.id = l.seller_id
     WHERE l.id=?
   `).get(listing.id);
+  // Dashboard price cut? Same alert fan-out as the seller edit path
+  // (listing watchers + saved searches + wish lists), post-response.
+  if (updated.asking_price < listing.asking_price) {
+    setImmediate(() => alertOnPriceChange(updated, listing.asking_price));
+  }
   res.json({ ok: true, listing: updated });
 });
 

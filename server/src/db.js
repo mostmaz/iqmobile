@@ -338,6 +338,39 @@ CREATE TABLE IF NOT EXISTS saved_searches (
 CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_saved_searches_alerts ON saved_searches(alerts_enabled);
 
+-- Price-drop watches on a specific listing. price_at_watch is the LOWEST
+-- price this watcher has been told about (starts at the price when they
+-- tapped watch): an alert fires only when the listing's price falls below
+-- it, and the column is then updated to the new price. That makes repeat
+-- drops alert once per new low, and a seller bouncing the price up and
+-- down can't re-trigger the same alert.
+CREATE TABLE IF NOT EXISTS price_watches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  listing_id INTEGER NOT NULL REFERENCES phone_listings(id) ON DELETE CASCADE,
+  price_at_watch INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(user_id, listing_id)
+);
+CREATE INDEX IF NOT EXISTS idx_price_watches_listing ON price_watches(listing_id);
+
+-- Wish list: "I want THIS device at THIS price or less". One row per wanted
+-- device (exact catalog model) with the buyer's price ceiling. Fires when a
+-- matching listing appears — either newly posted, or an existing listing
+-- whose price drops through the ceiling. Distinct from saved_searches:
+-- a wish is a specific device + budget, not stored browse filters.
+CREATE TABLE IF NOT EXISTS wishlist_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
+  max_price INTEGER NOT NULL,
+  last_notified_at INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE(user_id, brand, model)
+);
+CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist_items(user_id, created_at DESC);
+
 -- Social publish log. One row per "Publish to FB + IG" action from the
 -- dashboard, used both as an audit trail and to enforce the per-day cap
 -- (count today's rows). channels holds the per-platform Buffer result JSON.
