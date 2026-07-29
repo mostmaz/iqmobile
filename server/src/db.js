@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 import { GOVERNORATES } from './governorates.js';
 import { detectBrand } from './importParse.js';
@@ -351,6 +352,47 @@ CREATE TABLE IF NOT EXISTS social_posts (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_social_posts_time ON social_posts(created_at DESC);
+
+-- Structured device catalog (brand → device name), seeded from the bundled
+-- GSMArena snapshot in src/data/deviceCatalog.json (2017+ devices). Powers
+-- the post-listing "which device?" dropdown: the seller picks a brand, then
+-- their exact device, instead of free-typing a model string that then has to
+-- be parsed/normalized. Storage and RAM are deliberately NOT catalog rows —
+-- they're variants of one device and stay separate form fields.
+--   device_type: 'phone' | 'tablet' | 'watch', drives the app's type toggle
+--   source:      'gsmarena' (seeded) | 'suggestion' (approved user request)
+--   is_active:   lets an admin retire an entry without deleting history
+CREATE TABLE IF NOT EXISTS device_catalog (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  brand TEXT NOT NULL,
+  device_type TEXT NOT NULL DEFAULT 'phone' CHECK(device_type IN ('phone','tablet','watch')),
+  model TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'gsmarena',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  UNIQUE(brand, device_type, model)
+);
+CREATE INDEX IF NOT EXISTS idx_device_catalog_lookup ON device_catalog(brand, device_type, is_active);
+
+-- "My device isn't in the list" queue. When a seller can't find their device
+-- they type it manually — the listing still posts with that free-text model,
+-- and a row lands here for an admin to review on the dashboard. Approving
+-- copies it into device_catalog so the next seller finds it in the dropdown.
+-- FK-free like the events table: a suggestion is a historical fact that
+-- should outlive deletion of the user or listing that triggered it.
+CREATE TABLE IF NOT EXISTS device_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  brand TEXT NOT NULL,
+  device_type TEXT NOT NULL DEFAULT 'phone' CHECK(device_type IN ('phone','tablet','watch')),
+  model TEXT NOT NULL,
+  listing_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+  note TEXT,
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_device_suggestions_status ON device_suggestions(status, created_at DESC);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so
@@ -636,6 +678,60 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
     })();
     db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v5_blackview','done')").run();
     console.log(`[iqmobile] migration v5: Blackview added, backfilled ${n} 'Other' listings`);
+  }
+}
+
+// Migration v6: add Redmi + Itel to the brand catalog. Both ship in the
+// device-catalog snapshot below (Redmi alone is ~210 devices — GSMArena
+// files it under Xiaomi, but Iraqi buyers shop it as its own brand), so
+// without this a seller could pick a Redmi device whose brand doesn't
+// exist in `brands` and the listing POST would reject it.
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v6_redmi_itel'").get();
+  if (!done) {
+    const t = Date.now();
+    const maxPos = db.prepare('SELECT COALESCE(MAX(position), 0) AS m FROM brands').get().m;
+    const ins = db.prepare('INSERT OR IGNORE INTO brands(name, display_ar, position, created_at) VALUES(?,?,?,?)');
+    ['Redmi', 'Itel'].forEach((n, i) => ins.run(n, null, maxPos + i + 1, t));
+    db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v6_redmi_itel','done')").run();
+    console.log('[iqmobile] migration v6: Redmi + Itel brands added');
+  }
+}
+
+// Seed the device catalog from the bundled GSMArena snapshot (~4k rows for
+// 20 brands, 2017→present). One transaction, flag-guarded so it runs exactly
+// once. INSERT OR IGNORE means a later re-seed (bump the flag key to
+// device_catalog_seed_v2 when shipping a refreshed snapshot) tops up new
+// devices without clobbering admin edits, deactivations, or entries that
+// came from approved user suggestions.
+//
+// Path is resolved from import.meta.url rather than cwd — pm2/systemd can
+// start us from anywhere, and the repo path contains spaces so the URL must
+// go through fileURLToPath (a raw .pathname would keep the %20).
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='device_catalog_seed_v1'").get();
+  if (!done) {
+    const file = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'deviceCatalog.json');
+    if (!fs.existsSync(file)) {
+      console.warn(`[iqmobile] device catalog snapshot missing at ${file} — dropdown will be empty until it ships`);
+    } else {
+      const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const ins = db.prepare(
+        `INSERT OR IGNORE INTO device_catalog(brand, device_type, model, source, created_at)
+         VALUES(?,?,?,'gsmarena',?)`,
+      );
+      const t = Date.now();
+      let n = 0;
+      db.transaction(() => {
+        for (const [brand, byType] of Object.entries(snapshot)) {
+          for (const [type, models] of Object.entries(byType)) {
+            for (const model of models) { ins.run(brand, type, model, t); n++; }
+          }
+        }
+      })();
+      db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('device_catalog_seed_v1','done')").run();
+      console.log(`[iqmobile] device catalog seeded: ${n} devices across ${Object.keys(snapshot).length} brands`);
+    }
   }
 }
 

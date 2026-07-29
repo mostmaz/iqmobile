@@ -1742,4 +1742,82 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
   res.json({ ok: true, results, scheduled_for: dueAt, remaining: Math.max(0, cap - socialUsedToday()) });
 });
 
+// ─── device catalog ───────────────────────────────────────────────────
+// The post-listing dropdown is driven by `device_catalog` (seeded from a
+// GSMArena snapshot). When a seller can't find their device they type it
+// manually and a row lands in `device_suggestions` for review here.
+// Approving copies the device into the catalog so the next seller finds it.
+
+r.get('/device-suggestions', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
+    ? req.query.status : 'pending';
+  // LEFT JOIN on users: suggestions are FK-free and outlive the account that
+  // filed them, so a deleted user must not drop the row from the queue.
+  const rows = db.prepare(
+    `SELECT s.*, u.display_name AS user_name, u.phone AS user_phone
+     FROM device_suggestions s
+     LEFT JOIN users u ON u.id = s.user_id
+     WHERE s.status=? ORDER BY s.created_at DESC LIMIT 300`,
+  ).all(status);
+  res.json(rows);
+});
+
+// Badge count for the dashboard nav.
+r.get('/device-suggestions/count', requireAdmin, (_req, res) => {
+  const n = db.prepare("SELECT COUNT(*) AS n FROM device_suggestions WHERE status='pending'").get().n;
+  res.json({ pending: n });
+});
+
+r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
+  const s = db.prepare('SELECT * FROM device_suggestions WHERE id=?').get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'not_found' });
+  if (s.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+
+  // The admin can correct the seller's spelling/brand before it enters the
+  // catalog — that's the whole point of the review step. Fall back to what
+  // the seller submitted when a field isn't overridden.
+  const brand = String(req.body?.brand || s.brand).trim();
+  const model = String(req.body?.model || s.model).trim();
+  const type = ['phone', 'tablet', 'watch'].includes(req.body?.device_type)
+    ? req.body.device_type : s.device_type;
+  if (!brand || !model) return res.status(400).json({ error: 'brand_and_model_required' });
+  // Guard the FK-in-spirit link to `brands`: a catalog entry under a brand
+  // the listing form doesn't offer would be unreachable in the dropdown.
+  if (!isBrand(brand)) return res.status(400).json({ error: 'unknown_brand' });
+
+  const t = now();
+  db.prepare(
+    `INSERT OR IGNORE INTO device_catalog(brand, device_type, model, source, created_at)
+     VALUES(?,?,?,'suggestion',?)`,
+  ).run(brand, type, model, t);
+  db.prepare('UPDATE device_suggestions SET status=?, reviewed_at=?, brand=?, model=?, device_type=? WHERE id=?')
+    .run('approved', t, brand, model, type, s.id);
+
+  // Only notify if the requester still exists. device_suggestions is
+  // deliberately FK-free so a row survives its author's deletion — but
+  // `notifications` does have an FK to users, so notifying a deleted user
+  // throws and would 500 the request *after* the catalog write above has
+  // already committed, leaving the admin staring at an error for an
+  // approval that actually succeeded.
+  const stillThere = s.user_id
+    && db.prepare('SELECT 1 FROM users WHERE id=?').get(s.user_id);
+  if (stillThere) {
+    notify(s.user_id, 'device.approved', { brand, model, device_type: type },
+      { title: 'تمت إضافة جهازك ✅', body: `${brand} ${model} صار متوفر في القائمة` });
+  }
+  res.json({ ok: true, brand, model, device_type: type });
+});
+
+r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
+  const s = db.prepare('SELECT * FROM device_suggestions WHERE id=?').get(req.params.id);
+  if (!s) return res.status(404).json({ error: 'not_found' });
+  if (s.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  db.prepare('UPDATE device_suggestions SET status=?, reviewed_at=?, note=? WHERE id=?')
+    .run('rejected', now(), String(req.body?.note || '').slice(0, 200) || null, s.id);
+  // No push on reject: the seller's listing already went through with their
+  // typed model, so nothing broke for them — a rejection notice would just
+  // be noise about an internal catalog decision.
+  res.json({ ok: true });
+});
+
 export default r;
