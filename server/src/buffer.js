@@ -29,13 +29,18 @@ function metadataFor(service) {
   if (service === 'instagram') return 'metadata:{ instagram:{ type:post shouldShareToFeed:true } }';
   return 'metadata:{ facebook:{ type:post } }';
 }
+// mode customScheduled + dueAt publishes at an exact time we pick (the next
+// 10am/3pm/6pm slot, computed by the caller) rather than relying on a Buffer
+// posting schedule — Buffer's API has no mutation to set that schedule, and
+// this keeps the timing entirely in our control.
 function createPostMutation(service) {
-  return `mutation($text:String!,$channelId:ChannelId!,$imageUrl:String!){
+  return `mutation($text:String!,$channelId:ChannelId!,$imageUrl:String!,$dueAt:DateTime!){
     createPost(input:{
       text:$text
       channelId:$channelId
       schedulingType:automatic
-      mode:addToQueue
+      mode:customScheduled
+      dueAt:$dueAt
       assets:[{ image:{ url:$imageUrl } }]
       ${metadataFor(service)}
     }){
@@ -57,8 +62,9 @@ export function bufferConfigured() {
   return !!API_KEY() && (!!fb || !!ig);
 }
 
-// Post to a single Buffer channel. Returns { ok, postId } or { ok:false, error }.
-async function createPost(channelId, service, text, imageUrl) {
+// Post to a single Buffer channel, scheduled at dueAt (ISO 8601 string).
+// Returns { ok, postId } or { ok:false, error }.
+async function createPost(channelId, service, text, imageUrl, dueAt) {
   try {
     const res = await fetch(ENDPOINT, {
       method: 'POST',
@@ -66,7 +72,7 @@ async function createPost(channelId, service, text, imageUrl) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${API_KEY()}`,
       },
-      body: JSON.stringify({ query: createPostMutation(service), variables: { text, channelId, imageUrl } }),
+      body: JSON.stringify({ query: createPostMutation(service), variables: { text, channelId, imageUrl, dueAt } }),
     });
     const json = await res.json().catch(() => null);
     // Transport / auth errors surface as HTTP != 200 or a top-level errors[].
@@ -82,10 +88,11 @@ async function createPost(channelId, service, text, imageUrl) {
   }
 }
 
-// Publish the same caption + image to every configured channel. `imageUrl`
-// MUST be a publicly reachable https URL — Buffer fetches the image itself.
+// Publish the same caption + image to every configured channel, scheduled at
+// `dueAt` (ISO 8601). `imageUrl` MUST be a publicly reachable https URL —
+// Buffer fetches the image itself.
 // Returns { any, results: [{ channel, channelId, ok, postId?, error? }] }.
-export async function publishToChannels(text, imageUrl) {
+export async function publishToChannels(text, imageUrl, dueAt) {
   const { fb, ig } = bufferChannels();
   const targets = [];
   if (fb) targets.push({ channel: 'facebook', channelId: fb });
@@ -93,7 +100,7 @@ export async function publishToChannels(text, imageUrl) {
 
   const results = [];
   for (const t of targets) {
-    const r = await createPost(t.channelId, t.channel, text, imageUrl);
+    const r = await createPost(t.channelId, t.channel, text, imageUrl, dueAt);
     results.push({ channel: t.channel, channelId: t.channelId, ...r });
   }
   return { any: results.some((r) => r.ok), results };

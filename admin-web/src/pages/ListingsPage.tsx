@@ -401,7 +401,16 @@ function MarketingModal({ listing, onClose }: { listing: Listing; onClose: () =>
         setPublishMsg({ ok: false, text: map[data.error] || 'تعذّر النشر.' });
       } else {
         const okCh = (data.results || []).filter((r: any) => r.ok).map((r: any) => r.channel).join(' + ');
-        setPublishMsg({ ok: true, text: `تم النشر عبر ${okCh || 'Buffer'} · متبقٍ اليوم: ${data.remaining}` });
+        // The post is scheduled (next 10ص / 3م / 6م Baghdad slot), not sent now.
+        let when = '';
+        if (data.scheduled_for) {
+          try {
+            when = ` · موعد النشر: ${new Intl.DateTimeFormat('ar-IQ', {
+              timeZone: 'Asia/Baghdad', weekday: 'short', hour: 'numeric', minute: '2-digit',
+            }).format(new Date(data.scheduled_for))}`;
+          } catch { /* ignore formatting issues */ }
+        }
+        setPublishMsg({ ok: true, text: `تمت الجدولة عبر ${okCh || 'Buffer'}${when} · متبقٍ اليوم: ${data.remaining}` });
         setSocial((s) => (s ? { ...s, remaining: data.remaining, used_today: s.cap - data.remaining } : s));
       }
     } catch {

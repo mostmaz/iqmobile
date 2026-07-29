@@ -1655,6 +1655,28 @@ function socialUsedToday() {
     .get(socialStartOfDay()).n;
 }
 
+// Daily posting slots, in Baghdad local time. Iraq is UTC+3 year-round (no
+// DST), so a Baghdad hour H maps to UTC hour H-3. Each publish is scheduled
+// at the earliest upcoming slot not already claimed by a pending post, so
+// three publishes a day land at 10:00, 15:00, 18:00 exactly.
+const SOCIAL_SLOTS_BAGHDAD = [10, 15, 18];
+const BAGHDAD_OFFSET_MS = 3 * 60 * 60 * 1000;
+function nextSocialSlot() {
+  const now = Date.now();
+  const taken = new Set(
+    db.prepare('SELECT scheduled_for FROM social_posts WHERE scheduled_for IS NOT NULL AND scheduled_for > ?')
+      .all(now).map((r) => r.scheduled_for),
+  );
+  const bagh = new Date(now + BAGHDAD_OFFSET_MS); // read Y/M/D as they are in Baghdad
+  for (let d = 0; d < 21; d++) {
+    for (const h of SOCIAL_SLOTS_BAGHDAD) {
+      const slot = Date.UTC(bagh.getUTCFullYear(), bagh.getUTCMonth(), bagh.getUTCDate() + d, h - 3, 0, 0);
+      if (slot > now + 2 * 60 * 1000 && !taken.has(slot)) return slot;
+    }
+  }
+  return now + 60 * 60 * 1000; // safety fallback: 1h out
+}
+
 // Status for the dashboard: whether Buffer is wired up, which channels are
 // connected, and how much of today's quota is left. Drives the button state.
 r.get('/social/status', requireAdmin, (_req, res) => {
@@ -1694,7 +1716,14 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
   const imagePath = `/uploads/${req.file.filename}`;
   const imageUrl = `${base}${imagePath}`;
 
-  const { any, results } = await publishToChannels(caption, imageUrl);
+  // Schedule at the next free 10am / 3pm / 6pm Baghdad slot so posts land at
+  // good engagement times and spread out instead of all firing at once. We
+  // reserve the slot in social_posts.scheduled_for so back-to-back publishes
+  // step to the following slot.
+  const slot = nextSocialSlot();
+  const dueAt = new Date(slot).toISOString();
+
+  const { any, results } = await publishToChannels(caption, imageUrl, dueAt);
   if (!any) {
     // Every channel failed — log the exact per-channel reasons + the image
     // URL Buffer was asked to fetch (diagnostic; Buffer errors are opaque
@@ -1704,13 +1733,13 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
     cleanup();
     return res.status(502).json({ error: 'publish_failed', results });
   }
-  console.log(`[social] published listing=${listing.id} :: ${results.map((r) => `${r.channel}:${r.ok ? 'ok' : r.error}`).join(', ')}`);
+  console.log(`[social] published listing=${listing.id} due=${dueAt} :: ${results.map((r) => `${r.channel}:${r.ok ? 'ok' : r.error}`).join(', ')}`);
 
   db.prepare(
-    'INSERT INTO social_posts(listing_id, image_path, caption, channels, created_at) VALUES(?,?,?,?,?)',
-  ).run(listing.id, imagePath, caption, JSON.stringify(results), now());
+    'INSERT INTO social_posts(listing_id, image_path, caption, channels, scheduled_for, created_at) VALUES(?,?,?,?,?,?)',
+  ).run(listing.id, imagePath, caption, JSON.stringify(results), slot, now());
 
-  res.json({ ok: true, results, remaining: Math.max(0, cap - socialUsedToday()) });
+  res.json({ ok: true, results, scheduled_for: dueAt, remaining: Math.max(0, cap - socialUsedToday()) });
 });
 
 export default r;

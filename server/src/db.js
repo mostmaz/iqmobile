@@ -330,6 +330,7 @@ CREATE TABLE IF NOT EXISTS social_posts (
   image_path TEXT,
   caption TEXT,
   channels TEXT,
+  scheduled_for INTEGER,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_social_posts_time ON social_posts(created_at DESC);
@@ -341,6 +342,7 @@ CREATE INDEX IF NOT EXISTS idx_social_posts_time ON social_posts(created_at DESC
 // hardcoded literals, never user input.
 for (const [table, column, type] of [
   ['banners', 'governorate', 'TEXT'],
+  ['social_posts', 'scheduled_for', 'INTEGER'],
 ]) {
   const has = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
   if (!has) {
