@@ -1,72 +1,112 @@
-// Dedicated search tab. The browse feed no longer carries a search bar —
-// search lives here, reached from the bottom tab (which replaced Favorites).
-// A focused text field over a paginated results list (same Listings.browse
-// query + ListingCard the feed uses, keyed only on the query string).
+// Filter-based search: the buyer picks a brand, then an exact device from the
+// same catalog the selling form uses — no free-typing. This keeps buyer
+// queries and seller listings on identical device names, so the results
+// actually match. Falls through to Listings.browse({ brand, model }): brand is
+// an exact filter, model a LIKE on the listing's model field.
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
-import { IconSearch, IconClose, IconBell } from '../../components/icons';
+import { IconClose, IconBell, IconChevronDown } from '../../components/icons';
+import { Pill } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
-import { Listings } from '../../api/endpoints';
-import { ar } from '../../i18n/ar';
+import { Listings, Brands, type BrandRow } from '../../api/endpoints';
+import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { useSaveSearch } from '../../lib/useSaveSearch';
+import { ar } from '../../i18n/ar';
 
 const PAGE_SIZE = 15;
 
 export default function SearchScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const [text, setText] = useState('');
-  const [q, setQ] = useState('');
+  const [brand, setBrand] = useState<string | null>(null);
+  const [model, setModel] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const { save: saveSearch, isPending: savingSearch } = useSaveSearch();
 
-  // Debounce so we don't fire a request on every Arabic IME keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setQ(text.trim()), 300);
-    return () => clearTimeout(t);
-  }, [text]);
+  // Brand rail — same source as the selling form + browse filter, minus the
+  // "Other" catch-all (the catalog has no devices under it).
+  const { data: brandRows } = useQuery({
+    queryKey: ['brands'],
+    queryFn: () => Brands.list(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const brands = useMemo(
+    () => (brandRows || []).filter((b: BrandRow) => b.name.trim().toLowerCase() !== 'other'),
+    [brandRows],
+  );
 
-  const enabled = q.length >= 1;
+  // Results load once a brand is chosen; model (if set) narrows further.
+  const enabled = !!brand;
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['search', q],
-    queryFn: ({ pageParam = 0 }) => Listings.browse({ q, limit: PAGE_SIZE, offset: pageParam as number }),
+    queryKey: ['search', brand, model],
+    queryFn: ({ pageParam = 0 }) =>
+      Listings.browse({ brand: brand!, ...(model ? { model } : {}), limit: PAGE_SIZE, offset: pageParam as number }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
     enabled,
   });
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
 
+  function pickBrand(b: string) {
+    // Switching brand invalidates the chosen model (models are brand-specific).
+    if (b === brand) { setBrand(null); setModel(''); return; }
+    setBrand(b);
+    setModel('');
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 14 }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
-        <View style={{
-          flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
-          backgroundColor: theme.surface, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 11,
-          borderWidth: 1, borderColor: theme.line,
-        }}>
-          <IconSearch size={18} color={theme.subtle} sw={1.7} />
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            placeholder={ar.browse.search}
-            placeholderTextColor={theme.subtle}
-            autoFocus
-            returnKeyType="search"
-            style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right', padding: 0 }}
-          />
-          {text ? (
-            <TouchableOpacity onPress={() => setText('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <IconClose size={16} color={theme.subtle} sw={1.7} />
+        {/* Brand rail */}
+        <ScrollView
+          horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+        >
+          {brands.map((b) => (
+            <Pill key={b.name} active={brand === b.name} onPress={() => pickBrand(b.name)}>
+              {b.display_ar || b.name}
+            </Pill>
+          ))}
+        </ScrollView>
+
+        {/* Device selector — enabled once a brand is chosen */}
+        <TouchableOpacity
+          onPress={() => brand && setPickerOpen(true)}
+          disabled={!brand}
+          activeOpacity={0.8}
+          style={{
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 10,
+            paddingHorizontal: 14, paddingVertical: 13, borderRadius: radius.lg,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            opacity: brand ? 1 : 0.5,
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              flex: 1, textAlign: 'right', writingDirection: model ? 'ltr' : 'rtl',
+              fontFamily: model ? fonts.arBold : fonts.ar, fontSize: 14,
+              color: model ? theme.ink : theme.subtle,
+            }}
+          >
+            {model || (brand ? 'اختر الجهاز (اختياري)' : 'اختر الماركة أولاً')}
+          </Text>
+          {model ? (
+            <TouchableOpacity onPress={() => setModel('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <IconClose size={15} color={theme.subtle} sw={1.7} />
             </TouchableOpacity>
-          ) : null}
-        </View>
-        {/* Once there's a query, let the user save it as an alert: they'll get
-            a push when a new listing matches this search. */}
+          ) : (
+            <IconChevronDown size={16} color={theme.subtle} sw={2} />
+          )}
+        </TouchableOpacity>
+
+        {/* Save this search → alert on new matching listing */}
         {enabled ? (
           <TouchableOpacity
-            onPress={() => saveSearch({ q })}
+            onPress={() => saveSearch({ brand: brand!, ...(model ? { model } : {}) })}
             disabled={savingSearch}
             activeOpacity={0.85}
             style={{
@@ -100,11 +140,21 @@ export default function SearchScreen({ navigation }: any) {
         ListEmptyComponent={
           <View style={{ padding: 48, alignItems: 'center' }}>
             <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
-              {!enabled ? 'ابحث عن موديل، ماركة، أو مواصفات' : (isLoading ? '' : ar.browse.none)}
+              {!enabled ? 'اختر الماركة ثم الجهاز للبحث' : (isLoading ? '' : ar.browse.none)}
             </Text>
           </View>
         }
       />
+
+      {brand ? (
+        <DevicePickerModal
+          visible={pickerOpen}
+          brand={brand}
+          value={model}
+          onClose={() => setPickerOpen(false)}
+          onSelect={(m) => { setModel(m); setPickerOpen(false); }}
+        />
+      ) : null}
     </View>
   );
 }

@@ -8,8 +8,9 @@ import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { StepDots, ChipTag } from '../../components/marketplace';
-import { IconPin, IconPhoneIcon, IconCheck } from '../../components/icons';
-import { Listings, Brands, type Condition } from '../../api/endpoints';
+import { IconPin, IconPhoneIcon, IconCheck, IconChevronDown } from '../../components/icons';
+import { Listings, Brands, DeviceCatalog, type Condition } from '../../api/endpoints';
+import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
@@ -75,6 +76,10 @@ export default function PostListingScreen({ navigation }: any) {
     return [...withoutOther, 'Other'];
   })();
   const [model, setModel] = useState('');
+  // Device model is picked from the catalog (brand → model). We remember when
+  // the seller typed a model that wasn't in the list so we can queue it for
+  // admin review — the listing still posts with their free-text model.
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false);
   const [condition, setCondition] = useState<Condition>('used');
   const [storage, setStorage] = useState('128GB');
   const [color, setColor] = useState('');
@@ -296,10 +301,50 @@ export default function PostListingScreen({ navigation }: any) {
           <>
             <FieldLabel>العلامة التجارية</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {brandOptions.map((b) => <Pill key={b} active={brand === b} onPress={() => setBrand(b)}>{b}</Pill>)}
+              {brandOptions.map((b) => (
+                <Pill key={b} active={brand === b} onPress={() => { setBrand(b); setModel(''); }}>{b}</Pill>
+              ))}
             </View>
             <FieldLabel>الموديل</FieldLabel>
-            <Input value={model} onChangeText={setModel} placeholder="مثلاً iPhone 13 Pro" ltr />
+            {/* Model is picked from the device catalog for this brand, so it
+                matches what buyers search for. If it's not in the list the
+                seller can still type it (and we queue it for review). */}
+            <TouchableOpacity
+              onPress={() => setDevicePickerOpen(true)}
+              activeOpacity={0.8}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+                paddingHorizontal: 14, paddingVertical: 13,
+                backgroundColor: theme.surface, borderRadius: radius.lg,
+                borderWidth: 1, borderColor: theme.line,
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{
+                  flex: 1, textAlign: 'right', writingDirection: model ? 'ltr' : 'rtl',
+                  fontFamily: model ? fonts.arBold : fonts.ar, fontSize: 14,
+                  color: model ? theme.ink : theme.subtle,
+                }}
+              >
+                {model || 'اختر الجهاز…'}
+              </Text>
+              <IconChevronDown size={16} color={theme.subtle} sw={2} />
+            </TouchableOpacity>
+            <DevicePickerModal
+              visible={devicePickerOpen}
+              brand={brand}
+              value={model}
+              allowManual
+              onClose={() => setDevicePickerOpen(false)}
+              onSelect={(m, meta) => {
+                setModel(m);
+                setDevicePickerOpen(false);
+                // Device the seller typed isn't in the catalog → queue it for
+                // an admin to add, so the next seller finds it. Best-effort.
+                if (!meta.fromCatalog) DeviceCatalog.suggest(brand, m).catch(() => {});
+              }}
+            />
 
             {/* Warranty — single-select. Defaulted to "بدون ضمان" since
                 most resale listings have no warranty. */}

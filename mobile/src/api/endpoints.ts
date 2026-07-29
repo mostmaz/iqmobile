@@ -280,6 +280,27 @@ export const SavedSearches = {
   remove: (id: number) => api(`/saved-searches/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Device catalog (brand → model) ─────────────────────────────────────
+// Powers the post-listing model dropdown and the filter-based search, so a
+// seller and a buyer pick the SAME device name. Devices come per brand and
+// are searchable server-side (a brand can have 500+ models).
+export type DeviceType = 'phone' | 'tablet' | 'watch';
+export interface CatalogBrand { brand: string; count: number }
+export interface CatalogDevice { id: number; model: string }
+export const DeviceCatalog = {
+  brands: (type: DeviceType = 'phone') =>
+    api<CatalogBrand[]>(`/device-catalog/brands?type=${type}`),
+  devices: (brand: string, q = '', type: DeviceType = 'phone') =>
+    api<CatalogDevice[]>(`/device-catalog/devices?brand=${encodeURIComponent(brand)}&type=${type}${q ? `&q=${encodeURIComponent(q)}` : ''}`),
+  // "My device isn't listed" — queue it for admin review. Never blocks the
+  // listing; the free-typed model is already saved on the listing itself.
+  suggest: (brand: string, model: string, opts?: { device_type?: DeviceType; listing_id?: number }) =>
+    api<{ ok: boolean; already_in_catalog?: boolean; duplicate?: boolean; id?: number }>(
+      '/device-suggestions',
+      { method: 'POST', body: JSON.stringify({ brand, model, device_type: opts?.device_type || 'phone', listing_id: opts?.listing_id }) },
+    ),
+};
+
 // ─── Chats ────────────────────────────────────────────────────────────
 export const Chats = {
   startForListing: (listingId: number) => api<Chat>(`/listings/${listingId}/chat`, { method: 'POST' }),
