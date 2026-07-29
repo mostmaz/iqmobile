@@ -39,6 +39,7 @@ import ChatsListScreen from '../screens/chat/ChatsListScreen';
 import DealsScreen from '../screens/deal/DealsScreen';
 import RateUserScreen from '../screens/deal/RateUserScreen';
 import SavedScreen from '../screens/profile/SavedScreen';
+import WishlistScreen from '../screens/profile/WishlistScreen';
 import NotificationsScreen from '../screens/profile/NotificationsScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import ProfileScreen from '../screens/common/ProfileScreen';
@@ -67,6 +68,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
     </BrowseStack.Navigator>
   );
@@ -77,6 +79,7 @@ function SearchStackNav() {
       <BrowseStack.Screen name="SearchHome" component={SearchScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
   );
@@ -98,6 +101,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
       <BrowseStack.Screen name="HowItWorks" component={OnboardingScreen} />
     </BrowseStack.Navigator>
@@ -111,6 +115,8 @@ function SellStackNav() {
       {/* Publishing lands on ListingDetail inside THIS stack — the promote
           CTA there needs the route locally or the post-publish upsell dies. */}
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      {/* ListingDetail's price-alert buttons need these locally too. */}
+      <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -124,6 +130,8 @@ function ChatsStackNav() {
       <BrowseStack.Screen name="Chat" component={ChatScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      {/* ListingDetail's price-alert buttons need this locally too. */}
+      <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
     </BrowseStack.Navigator>
   );
 }

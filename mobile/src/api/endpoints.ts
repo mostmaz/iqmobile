@@ -280,6 +280,34 @@ export const SavedSearches = {
   remove: (id: number) => api(`/saved-searches/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Price watches ──────────────────────────────────────────────────────
+// "Tell me if THIS listing gets cheaper." Watch state for the current user
+// arrives as is_price_watched on the listing detail response.
+export const PriceWatches = {
+  watch: (listingId: number) => api(`/listings/${listingId}/price-watch`, { method: 'POST' }),
+  unwatch: (listingId: number) => api(`/listings/${listingId}/price-watch`, { method: 'DELETE' }),
+};
+
+// ─── Wish list ──────────────────────────────────────────────────────────
+// "I want THIS device at THIS price or less." One entry per wanted device
+// (exact catalog model) + price ceiling; the server alerts when a matching
+// listing appears — newly posted or price-dropped through the ceiling.
+export interface WishItem {
+  id: number;
+  brand: string;
+  model: string;
+  max_price: number;
+  created_at: number;
+}
+export const Wishlist = {
+  list: () => api<WishItem[]>('/wishlist'),
+  add: (brand: string, model: string, max_price: number) =>
+    api<WishItem>('/wishlist', { method: 'POST', body: JSON.stringify({ brand, model, max_price }) }),
+  setMaxPrice: (id: number, max_price: number) =>
+    api<WishItem>(`/wishlist/${id}`, { method: 'PATCH', body: JSON.stringify({ max_price }) }),
+  remove: (id: number) => api(`/wishlist/${id}`, { method: 'DELETE' }),
+};
+
 // ─── Device catalog (brand → model) ─────────────────────────────────────
 // Powers the post-listing model dropdown and the filter-based search, so a
 // seller and a buyer pick the SAME device name. Devices come per brand and

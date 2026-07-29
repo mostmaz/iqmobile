@@ -8,9 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
-import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft } from '../../components/icons';
+import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell } from '../../components/icons';
 import { ChipTag, SpecRow } from '../../components/marketplace';
-import { Listings, Reports, Chats } from '../../api/endpoints';
+import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { ar } from '../../i18n/ar';
@@ -92,6 +92,42 @@ export default function ListingDetailScreen({ route, navigation }: any) {
       return;
     }
     toggleSave.mutate();
+  }
+
+  // Price-drop watch: "نبّهني إذا انخفض السعر". Same optimistic-mirror +
+  // guest-bounce pattern as save above; server state arrives as
+  // data.is_price_watched.
+  const [isWatched, setIsWatched] = useState(false);
+  useEffect(() => {
+    if (data) setIsWatched(!!(data as any).is_price_watched);
+  }, [data?.id, (data as any)?.is_price_watched]);
+  const toggleWatch = useMutation({
+    mutationFn: () => (isWatched ? PriceWatches.unwatch(id) : PriceWatches.watch(id)),
+    onMutate: () => { setIsWatched((v) => !v); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['listing', id] }),
+    onError: (e: any) => {
+      setIsWatched((v) => !v);
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
+    },
+  });
+  function onWatchTap() {
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
+    toggleWatch.mutate();
+  }
+
+  // "I want this device cheaper" → prefilled wish-list add. Guests bounce
+  // to AuthGate (the wish list needs an account to notify).
+  function onWishTap() {
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
+    navigation.navigate('Wishlist', { brand: data?.brand, model: data?.model, price: data?.asking_price });
   }
 
   // Mark-as-sold / restore mutation. Refetches the listing after the toggle,
@@ -504,12 +540,45 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {/* Secondary actions (chat lives in ContactRow above). */}
         <View style={{ padding: 16, gap: 10 }}>
           {!isMine ? (
-            <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-              <Btn kind={isSaved ? 'accent' : 'ghost'} full onPress={onSaveTap} busy={toggleSave.isPending}>
-                {isSaved ? ar.listing.saved : ar.listing.save}
-              </Btn>
-              <Btn kind="danger" full onPress={reportListing}>{ar.listing.report}</Btn>
-            </View>
+            <>
+              <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+                <Btn kind={isSaved ? 'accent' : 'ghost'} full onPress={onSaveTap} busy={toggleSave.isPending}>
+                  {isSaved ? ar.listing.saved : ar.listing.save}
+                </Btn>
+                <Btn kind="danger" full onPress={reportListing}>{ar.listing.report}</Btn>
+              </View>
+              {/* Price alerts: watch THIS listing for a drop, or wish for the
+                  same device cheaper anywhere on the market. */}
+              <TouchableOpacity
+                onPress={onWatchTap}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 11, borderRadius: radius.lg,
+                  borderWidth: 1, borderColor: isWatched ? theme.accent : theme.line,
+                  backgroundColor: isWatched ? theme.accentSoft : theme.surface,
+                }}
+              >
+                <IconBell size={15} color={isWatched ? theme.accent : theme.ink} sw={1.8} />
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: isWatched ? theme.accent : theme.ink }}>
+                  {isWatched ? 'سنُنبّهك إذا انخفض السعر ✓' : 'نبّهني إذا انخفض السعر'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onWishTap}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  paddingVertical: 11, borderRadius: radius.lg,
+                  borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface,
+                }}
+              >
+                <IconSpark size={15} color={theme.ink} sw={1.8} />
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: theme.ink }}>
+                  أريد هذا الجهاز بسعر أقل — أضفه لقائمة الرغبات
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <Btn kind="primary" full onPress={() => navigation.navigate('EditListing', { id })}>{ar.listing.edit}</Btn>

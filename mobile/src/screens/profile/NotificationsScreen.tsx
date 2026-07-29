@@ -20,6 +20,9 @@ const KIND_LABEL: Record<string, string> = {
   'phone.unlocked': 'تم فتح رقم البائع',
   'rating.received': 'وصلك تقييم جديد',
   'listing.expired': 'انتهى إعلانك',
+  'saved_search.match': 'إعلان جديد يطابق بحثك المحفوظ',
+  'wishlist.match': 'جهاز من قائمة رغباتك متوفر 🎯',
+  'price.drop': 'انخفض سعر إعلان تراقبه 🔻',
 };
 
 // Compose the secondary line under the kind label: "<sender> · <listing>".

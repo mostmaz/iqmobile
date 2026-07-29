@@ -68,6 +68,7 @@ export default function ProfileScreen({ navigation }: any) {
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
     { Icon: IconBookmark, label: 'المفضلة', onPress: () => navigation.navigate('Saved') },
     { Icon: IconSearch, label: 'عمليات البحث المحفوظة', onPress: () => navigation.navigate('SavedSearches') },
+    { Icon: IconSpark, label: 'قائمة الرغبات', onPress: () => navigation.navigate('Wishlist') },
     { Icon: IconStore, label: 'المتاجر', onPress: () => navigation.navigate('Shops') },
     { Icon: IconStore, label: user.seller_type === 'shop' ? 'إدارة متجري' : 'سجّل متجرك', onPress: () => navigation.navigate('ShopRegister') },
     { Icon: IconSpark, label: 'أعلن معنا', onPress: () => navigation.navigate('Advertise') },
