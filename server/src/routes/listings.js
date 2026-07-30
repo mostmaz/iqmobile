@@ -252,6 +252,20 @@ r.get('/', optionalAuth(), (req, res) => {
   // while staying stable across the pages of one pagination session.
   const seed = Math.max(0, Math.floor(Number(req.query.seed) || 0));
 
+  // Sort order. Default 'new' keeps the featured slots pinned on top (the
+  // marketplace's front page). Explicit sorts (price / most-viewed) return a
+  // pure ordered list with NO featured pinning — someone sorting by price
+  // wants price order, not ads first. 'viewed' ranks by the view events the
+  // analytics pipeline records (correlated subquery; the table is small).
+  const SORTS = {
+    new: 'l.created_at DESC',
+    price_asc: 'l.asking_price ASC, l.created_at DESC',
+    price_desc: 'l.asking_price DESC, l.created_at DESC',
+    viewed: "(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, l.created_at DESC",
+  };
+  const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
+  const orderBy = SORTS[sort];
+
   // Browse shows active + reserved + sold listings. Sold ones stay visible
   // (with a "مباع" badge on the card) so the catalog reads as "what was for
   // sale here", not "live inventory only" — gives the marketplace a sense
@@ -323,7 +337,9 @@ r.get('/', optionalAuth(), (req, res) => {
      ORDER BY l.boosted_at DESC, l.id DESC`,
   ).all(...params, nowTs);
   const chosen = [];
-  if (pool.length > 0) {
+  // Featured slots only apply to the default 'new' sort — an explicit
+  // price/most-viewed sort is a pure ordered list.
+  if (sort === 'new' && pool.length > 0) {
     const start = seed % pool.length;
     for (let i = 0; i < Math.min(FEATURED_CAP, pool.length); i++) {
       chosen.push(pool[(start + i) % pool.length].id);
@@ -340,7 +356,7 @@ r.get('/', optionalAuth(), (req, res) => {
     SELECT l.* FROM phone_listings l
     JOIN users u ON u.id = l.seller_id
     WHERE ${where}${exclude}
-    ORDER BY l.created_at DESC LIMIT ? OFFSET ?`;
+    ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
 
   let rows;
   if (offset === 0) {
@@ -484,6 +500,28 @@ r.post('/:id(\\d+)/contact', optionalAuth(), (req, res) => {
     });
   }
   res.json({ ok: true });
+});
+
+// ─── similar listings ────────────────────────────────────────────────
+// Shown on the detail page: other AVAILABLE listings of the SAME brand
+// priced within ±10% of this one, nearest price first. Cross-seller on
+// purpose — the buyer sees the real market for that phone, not just this
+// seller's stock. Excludes the listing itself and anything not 'active'
+// (a sold/reserved alternative isn't a useful suggestion).
+r.get('/:id(\\d+)/similar', optionalAuth(), (req, res) => {
+  const row = db.prepare('SELECT id, brand, asking_price FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  const lo = Math.floor(row.asking_price * 0.9);
+  const hi = Math.ceil(row.asking_price * 1.1);
+  const rows = db.prepare(
+    `SELECT l.* FROM phone_listings l
+     WHERE l.brand = ? AND l.id != ? AND l.status = 'active'
+       AND l.asking_price BETWEEN ? AND ?
+     ORDER BY ABS(l.asking_price - ?) ASC, l.created_at DESC
+     LIMIT 12`,
+  ).all(row.brand, row.id, lo, hi, row.asking_price);
+  const out = attachImages(rows).map((r2) => ({ ...r2, seller: sellerCard(r2.seller_id) }));
+  res.json(out);
 });
 
 // ─── update listing ──────────────────────────────────────────────────
