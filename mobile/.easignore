@@ -18,6 +18,7 @@ web-build/
 # --- native build artifacts (regenerated on the build server) ---
 ios/Pods/
 ios/build/
+ios/build-release/
 ios/DerivedData/
 ios/.xcode.env.local
 android/.gradle/

@@ -94,8 +94,8 @@ android {
         applicationId 'org.iqmobile.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 34
-        versionName "0.1.4"
+        versionCode 35
+        versionName "0.1.5"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -108,9 +108,9 @@ android {
         }
         // Production signing — credentials live in mobile/android/keystore.properties
         // (gitignored). When the props file is missing we fall back to the debug
-        // keystore so the build still works on fresh clones — but any APK/AAB
-        // we'd actually ship to Play Store must be signed with the real release
-        // key, so verify the storeFile exists before publishing.
+        // keystore so a fresh clone can still configure and build debug variants.
+        // Producing an actual RELEASE artifact off that fallback is blocked by
+        // the task-graph guard below — see the note there for why.
         release {
             def kpFile = rootProject.file("keystore.properties")
             if (kpFile.exists()) {
@@ -124,8 +124,11 @@ android {
                 keyAlias kp['keyAlias']
                 keyPassword kp['keyPassword']
             } else {
-                // Dev fallback so contributors without the keystore can still
-                // build release variants locally for testing.
+                // Configuration has to succeed even without the keystore
+                // (`assembleDebug` on a fresh clone), so we still point at the
+                // debug key here — but flag it so the guard can refuse to
+                // actually emit a release artifact with it.
+                project.ext.usingDebugKeyForRelease = true
                 storeFile file('debug.keystore')
                 storePassword 'android'
                 keyAlias 'androiddebugkey'
@@ -155,6 +158,39 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// Refuse to emit a release artifact signed with the DEBUG key.
+//
+// This has already bitten us once: versionCode 35 was built and signed with
+// debug.keystore (CN=Android Debug, SHA-256 fac61745…) because keystore.properties
+// had been deleted, and nothing said a word. A debug-signed AAB is rejected by
+// Play on upload, and a debug-signed APK fails App Links verification because the
+// fingerprint won't match assetlinks.json — both failures surface far away from
+// the cause.
+//
+// The check runs at task-graph time, not configuration time, so `assembleDebug`
+// on a machine without the keystore still works. Pass
+// -PallowDebugSigningForRelease=true to opt in deliberately (e.g. a throwaway
+// local release build for perf testing) — it must never be used for anything
+// that leaves the machine.
+gradle.taskGraph.whenReady { graph ->
+    if (!project.hasProperty('usingDebugKeyForRelease')) return
+    if (project.findProperty('allowDebugSigningForRelease') == 'true') {
+        logger.warn("[iqmobile] WARNING: release variant is signed with the DEBUG key " +
+                    "(-PallowDebugSigningForRelease=true). Do NOT distribute this build.")
+        return
+    }
+    def releaseTask = graph.allTasks.find { t ->
+        t.project == project && t.name ==~ /(assemble|bundle|package)Release/
+    }
+    if (releaseTask) {
+        throw new GradleException(
+            "\n\n  Refusing to build ${releaseTask.name}: mobile/android/keystore.properties is missing,\n" +
+            "  so this release would be signed with the DEBUG key and rejected by Play Store.\n\n" +
+            "  Restore keystore.properties (and the keystore it points at) from your backup,\n" +
+            "  or pass -PallowDebugSigningForRelease=true for a local throwaway build.\n")
     }
 }
 

@@ -19,7 +19,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.2</string>
+    <string>0.1.5</string>
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>CFBundleURLTypes</key>
@@ -27,14 +27,40 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
+          <string>iqmobile</string>
           <string>org.iqmobile.app</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>fb1385790423425707</string>
         </array>
       </dict>
     </array>
     <key>CFBundleVersion</key>
-    <string>5</string>
+    <string>11</string>
+    <key>FacebookAdvertiserIDCollectionEnabled</key>
+    <true/>
+    <key>FacebookAppID</key>
+    <string>1385790423425707</string>
+    <key>FacebookAutoInitEnabled</key>
+    <true/>
+    <key>FacebookAutoLogAppEventsEnabled</key>
+    <true/>
+    <key>FacebookClientToken</key>
+    <string>14185d5045ab04e8c6078ca811ab3dc7</string>
+    <key>FacebookDisplayName</key>
+    <string>IQ Mobile</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>fbapi</string>
+      <string>fb-messenger-api</string>
+      <string>fbauth2</string>
+      <string>fbshareextension</string>
+    </array>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>
@@ -46,12 +72,31 @@
       <key>NSAllowsLocalNetworking</key>
       <true/>
     </dict>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>IQ Mobile uses your location only while you are using the app to detect your governorate — for example, to automatically set Baghdad so you see nearby listings and buyers can find your ad. You can also choose your governorate manually.</string>
+    <string>IQ Mobile uses your location only while you are using the app to detect your governorate — for example, to automatically set 'Baghdad' so you see nearby listings and buyers can find your ad. You can also choose your governorate manually.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>IQ Mobile uses your photo library so you can choose pictures from your device — for example, to add photos of the phone you are selling to your listing, set your profile picture, or send a photo in a chat with a buyer or seller.</string>
+    <key>NSUserTrackingUsageDescription</key>
+    <string>‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
+    <key>SKAdNetworkItems</key>
+    <array>
+      <dict>
+        <key>SKAdNetworkIdentifier</key>
+        <string>v9wttpbfk9.skadnetwork</string>
+      </dict>
+      <dict>
+        <key>SKAdNetworkIdentifier</key>
+        <string>n38lu8286q.skadnetwork</string>
+      </dict>
+    </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>
     <key>UIRequiredDeviceCapabilities</key>

@@ -2,7 +2,7 @@
   "expo": {
     "name": "IQ Mobile",
     "slug": "iqmobile",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "scheme": "iqmobile",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -16,14 +16,11 @@
     "android": {
       "package": "org.iqmobile.app",
       "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "NOTIFICATIONS"
-      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 34,
+      "versionCode": 35,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -43,7 +40,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "10"
+      "buildNumber": "11"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
