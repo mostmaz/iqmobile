@@ -37,6 +37,7 @@ import deviceCatalogRoutes from './routes/deviceCatalog.js';
 import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
 import webListingRoutes from './routes/webListing.js';
+import getAppRoutes from './routes/getApp.js';
 import bannersRoutes from './routes/banners.js';
 import featuresRoutes from './routes/features.js';
 import shopsRoutes from './routes/shops.js';
@@ -147,6 +148,7 @@ app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
 app.use('/brands', brandsRoutes);
 app.use('/l', webListingRoutes);  // public shareable listing pages: /l/:id
+app.use('/', getAppRoutes);       // mounts /get — the store smart link for bios
 app.use('/banners', bannersRoutes);
 app.use('/', shopsRoutes);     // mounts /shops, /shops/:id, /shops/register
 app.use('/', featuresRoutes);  // mounts /features/tiers, /listings/:id/feature-request, /features/mine
