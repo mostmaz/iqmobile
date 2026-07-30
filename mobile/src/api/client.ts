@@ -14,7 +14,18 @@ import { Platform } from 'react-native';
 //   - Production builds use apiBaseUrl unconditionally.
 const extra = (Constants.expoConfig?.extra as any) || {};
 const prodUrl: string = extra.apiBaseUrl ?? 'http://10.0.2.2:4000';
-const devUrl: string | undefined = extra.apiBaseUrlDev;
+const rawDevUrl: string | undefined = extra.apiBaseUrlDev;
+
+// 10.0.2.2 is the Android emulator's alias for the host machine. It means
+// nothing anywhere else — an iOS simulator shares the Mac's own network
+// stack, so that address just times out and the app comes up with empty
+// feeds. Rather than making every dev config platform-specific, translate
+// the alias to localhost off Android; a dev URL that names a real host
+// (a LAN IP, a tunnel) is passed through untouched.
+const devUrl: string | undefined =
+  rawDevUrl && Platform.OS !== 'android'
+    ? rawDevUrl.replace('10.0.2.2', 'localhost')
+    : rawDevUrl;
 
 const baseUrl: string =
   Platform.OS === 'web'
