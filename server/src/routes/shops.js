@@ -99,8 +99,10 @@ function attachImages(rows) {
 // shop_phone was set. Featured shops are flagged so the directory can badge +
 // float them.
 function shopCard(u, nowTs) {
+  // Live inventory only — sold/expired are hidden from public surfaces, so
+  // the card's count must match what the shop page will actually show.
   const listing_count = db.prepare(
-    "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status IN ('active','reserved','sold')",
+    "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status IN ('active','reserved')",
   ).get(u.id).n;
   return {
     id: u.id,
@@ -157,12 +159,12 @@ r.get('/shops/:id(\\d+)', (req, res) => {
   const nowTs = Date.now();
   const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
   if (!u) return res.status(404).json({ error: 'not_found' });
-  // Respect the "never expire" toggle (default on) so a shop's page shows
-  // its full catalogue regardless of TTL.
+  // Live inventory only (sold/expired hidden, matching the browse feed).
+  // The "never expire" toggle (default on) only controls the TTL window.
   const neverExpire = getSetting('listings_never_expire') !== '0';
   const statusClause = neverExpire
-    ? "status IN ('active','reserved','sold','expired')"
-    : "status IN ('active','reserved','sold') AND expires_at > ?";
+    ? "status IN ('active','reserved')"
+    : "status IN ('active','reserved') AND expires_at > ?";
   const listings = db.prepare(
     `SELECT * FROM phone_listings
      WHERE seller_id=? AND ${statusClause}

@@ -266,21 +266,21 @@ r.get('/', optionalAuth(), (req, res) => {
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
   const orderBy = SORTS[sort];
 
-  // Browse shows active + reserved + sold listings. Sold ones stay visible
-  // (with a "مباع" badge on the card) so the catalog reads as "what was for
-  // sale here", not "live inventory only" — gives the marketplace a sense
-  // of activity and helps buyers see what brands/prices have been moving.
-  // 'removed' (soft-deleted) and 'expired' are excluded.
+  // Browse shows LIVE inventory only: active + reserved. Sold and expired
+  // listings are hidden from the public feed (they used to show with a
+  // "مباع" badge for a sense of activity, but buyers kept opening items
+  // they could no longer buy). Sellers still see every status in
+  // /listings/mine, and a direct link to a sold listing still renders.
   // "Show all / never expire" mode (default on for now): ignore the TTL
-  // window and surface every non-removed listing. Toggle off from the admin
-  // settings to restore the expires_at filter.
+  // window. Toggle off from the admin settings to restore the expires_at
+  // filter.
   const neverExpire = getSetting('listings_never_expire') !== '0';
   let where;
   const params = [];
   if (neverExpire) {
-    where = `l.status IN ('active','reserved','sold','expired')`;
+    where = `l.status IN ('active','reserved')`;
   } else {
-    where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
+    where = `l.status IN ('active','reserved') AND l.expires_at > ?`;
     params.push(Date.now());
   }
   if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
