@@ -266,11 +266,11 @@ r.get('/', optionalAuth(), (req, res) => {
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
   const orderBy = SORTS[sort];
 
-  // Browse shows LIVE inventory only: active + reserved. Sold and expired
-  // listings are hidden from the public feed (they used to show with a
-  // "مباع" badge for a sense of activity, but buyers kept opening items
-  // they could no longer buy). Sellers still see every status in
-  // /listings/mine, and a direct link to a sold listing still renders.
+  // Browse shows active + reserved + sold. Sold listings stay visible (with
+  // a "مباع" badge on the card) so the catalog reads as "what was for sale
+  // here" and buyers see what brands/prices have been moving. Expired and
+  // 'removed' (soft-deleted) are hidden — an expired ad is dead weight, not
+  // market signal. Sellers still see every status in /listings/mine.
   // "Show all / never expire" mode (default on for now): ignore the TTL
   // window. Toggle off from the admin settings to restore the expires_at
   // filter.
@@ -278,9 +278,9 @@ r.get('/', optionalAuth(), (req, res) => {
   let where;
   const params = [];
   if (neverExpire) {
-    where = `l.status IN ('active','reserved')`;
+    where = `l.status IN ('active','reserved','sold')`;
   } else {
-    where = `l.status IN ('active','reserved') AND l.expires_at > ?`;
+    where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
     params.push(Date.now());
   }
   if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
