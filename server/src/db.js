@@ -731,6 +731,33 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
   }
 }
 
+// Migration v7: repair ×1000 price typos. Before the client-side price
+// nudge shipped, sellers often typed prices in "thousands" (250 meaning
+// 250,000 IQD), and those listings poison the price_asc sort. Multiply
+// every sub-1000 price ≥ 40 by 1000 — 999 IQD is below any real device
+// price, and ×1000 lands every such row in the realistic market band.
+// (The one row below 40 — a placeholder price of 1 — stays untouched:
+// ×1000 would still be junk and the real price is unknowable.) Two active
+// flagship listings priced 1350/1365 (iPhone 16 Pro Max; market comps
+// 1.3–1.45M) are repaired by explicit id, each with a < 2000 guard so
+// even a re-run could never multiply them twice.
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v7_price_backfill'").get();
+  if (!done) {
+    let general, explicit;
+    db.transaction(() => {
+      general = db.prepare(
+        'UPDATE phone_listings SET asking_price = asking_price*1000 WHERE asking_price >= 40 AND asking_price < 1000',
+      ).run();
+      explicit = db.prepare(
+        'UPDATE phone_listings SET asking_price = asking_price*1000 WHERE id IN (738, 727) AND asking_price < 2000',
+      ).run();
+    })();
+    db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v7_price_backfill','done')").run();
+    console.log(`[iqmobile] migration v7: price ×1000 backfill — ${general.changes} sub-1000 rows + ${explicit.changes} explicit rows repaired`);
+  }
+}
+
 // Seed the device catalog from the bundled GSMArena snapshot (~4k rows for
 // 20 brands, 2017→present). One transaction, flag-guarded so it runs exactly
 // once. INSERT OR IGNORE means a later re-seed (bump the flag key to
