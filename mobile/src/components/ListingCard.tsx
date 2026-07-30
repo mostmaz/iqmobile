@@ -15,8 +15,12 @@ export function ListingCard({
   listing, onPress, onToggleSave, saved, compact,
 }: { listing: Listing; onPress: () => void; onToggleSave?: () => void; saved?: boolean; compact?: boolean }) {
   const cover = listing.images?.[0]?.image_path;
-  // Status badge: ink for "reserved" (neutral), accent for "sold" (final).
-  const statusBg = listing.status === 'sold' ? theme.accent : theme.ink;
+  // Status badge: accent for "sold" (final), muted gray for "expired"
+  // (dormant — the ad ran out, the phone may still exist), ink for
+  // "reserved" (neutral).
+  const statusBg = listing.status === 'sold' ? theme.accent
+    : listing.status === 'expired' ? theme.subtle
+      : theme.ink;
   const showStatus = listing.status !== 'active';
   // Horizontal card: image on the leading (physical-left) side, details on
   // the right. Yoga runs LTR app-wide (see App.tsx), so plain `row` puts the

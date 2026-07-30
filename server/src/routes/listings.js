@@ -266,21 +266,23 @@ r.get('/', optionalAuth(), (req, res) => {
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
   const orderBy = SORTS[sort];
 
-  // Browse shows active + reserved + sold. Sold listings stay visible (with
-  // a "مباع" badge on the card) so the catalog reads as "what was for sale
-  // here" and buyers see what brands/prices have been moving. Expired and
-  // 'removed' (soft-deleted) are hidden — an expired ad is dead weight, not
-  // market signal. Sellers still see every status in /listings/mine.
-  // "Show all / never expire" mode (default on for now): ignore the TTL
-  // window. Toggle off from the admin settings to restore the expires_at
-  // filter.
+  // Status visibility depends on the view:
+  //   - default 'new' feed: active + reserved + sold + expired. Sold shows a
+  //     "مباع" badge, expired a "منتهي" badge — the catalog reads as "what
+  //     was for sale here" and keeps its sense of market activity.
+  //   - explicit sorts (price / most-viewed): buyable inventory only. A
+  //     buyer sorting by price wants phones they can actually buy, not
+  //     sold/expired rows wedged between live ones.
+  // 'removed' (soft-deleted) is never shown. Sellers see every status in
+  // /listings/mine. "Never expire" mode (default on) ignores the TTL
+  // window; toggle off from admin settings to restore the expires_at filter.
   const neverExpire = getSetting('listings_never_expire') !== '0';
-  let where;
+  let where = sort === 'new'
+    ? `l.status IN ('active','reserved','sold','expired')`
+    : `l.status IN ('active','reserved')`;
   const params = [];
-  if (neverExpire) {
-    where = `l.status IN ('active','reserved','sold')`;
-  } else {
-    where = `l.status IN ('active','reserved','sold') AND l.expires_at > ?`;
+  if (!neverExpire) {
+    where += ' AND l.expires_at > ?';
     params.push(Date.now());
   }
   if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
