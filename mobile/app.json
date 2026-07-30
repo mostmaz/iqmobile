@@ -26,9 +26,16 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "api.iqmobile.org", "pathPrefix": "/l" }
+            {
+              "scheme": "https",
+              "host": "api.iqmobile.org",
+              "pathPrefix": "/l"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -36,11 +43,13 @@
       "bundleIdentifier": "org.iqmobile.app",
       "supportsTablet": false,
       "icon": "./assets/icon.png",
-      "associatedDomains": ["applinks:api.iqmobile.org"],
+      "associatedDomains": [
+        "applinks:api.iqmobile.org"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "11"
+      "buildNumber": "16"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
