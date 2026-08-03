@@ -31,6 +31,23 @@ export default function ShopScreen({ navigation, route }: any) {
   const isOwner = !!user && user.id === id;
   // Full-screen price-image viewer (index of the tapped image, or null).
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
+  // Brand filter. null = الكل. Declared before the early return below so the
+  // hook order stays stable across the loading render.
+  const [brandFilter, setBrandFilter] = useState<string | null>(null);
+
+  // Brands present in THIS shop's inventory, most-stocked first. Derived from
+  // the listings we already have rather than the global brand catalogue, so a
+  // shop never shows a chip that filters to nothing.
+  const allListings: any[] = (shop as any)?.listings || [];
+  const brandCounts = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of allListings) if (l?.brand) m.set(l.brand, (m.get(l.brand) || 0) + 1);
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  }, [allListings]);
+  const visibleListings = React.useMemo(
+    () => (brandFilter ? allListings.filter((l) => l.brand === brandFilter) : allListings),
+    [allListings, brandFilter],
+  );
 
   if (isLoading || !shop) {
     return (
@@ -63,7 +80,7 @@ export default function ShopScreen({ navigation, route }: any) {
       </View>
 
       <FlatList
-        data={shop.listings}
+        data={visibleListings}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         renderItem={({ item }) => (
@@ -201,6 +218,48 @@ export default function ShopScreen({ navigation, route }: any) {
             <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
               إعلانات المتجر
             </Text>
+
+            {/* Brand filter — only worth showing once the shop actually
+                stocks more than one brand. */}
+            {brandCounts.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8, paddingBottom: 12 }}
+              >
+                {([[null, allListings.length]] as [string | null, number][])
+                  .concat(brandCounts as [string | null, number][])
+                  .map(([b, n]) => {
+                    const active = brandFilter === b;
+                    return (
+                      <TouchableOpacity
+                        key={b ?? '__all__'}
+                        onPress={() => setBrandFilter(b)}
+                        activeOpacity={0.7}
+                        style={{
+                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
+                          backgroundColor: active ? theme.ink : theme.surface,
+                          borderWidth: 1, borderColor: active ? theme.ink : theme.line,
+                          flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+                        }}
+                      >
+                        <Text style={{
+                          fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600',
+                          color: active ? '#fff' : theme.ink,
+                        }}>
+                          {b ?? 'الكل'}
+                        </Text>
+                        <Text style={{
+                          fontFamily: fonts.ltr, fontSize: 11,
+                          color: active ? 'rgba(255,255,255,0.7)' : theme.subtle,
+                        }}>
+                          {n}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
