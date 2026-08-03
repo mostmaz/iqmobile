@@ -1319,6 +1319,8 @@ r.get('/shops', requireAdmin, (req, res) => {
     SELECT u.id, u.phone, u.display_name, u.shop_name, u.governorate, u.city,
            u.shop_phone, u.shop_whatsapp, u.shop_bio, u.shop_address,
            u.shop_image_path, u.shop_featured_until, u.verified, u.created_at,
+           COALESCE(u.shop_hidden,0) AS shop_hidden,
+           COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            (SELECT COUNT(*) FROM phone_listings l
             WHERE l.seller_id = u.id AND l.status != 'removed') AS listing_count
     FROM users u WHERE u.seller_type='shop'`;
@@ -1402,6 +1404,7 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
   if (b.shop_facebook !== undefined) { fields.push('shop_facebook=?'); params.push(sanitizeUrl(b.shop_facebook)); }
   if (b.shop_instagram !== undefined) { fields.push('shop_instagram=?'); params.push(sanitizeUrl(b.shop_instagram)); }
   if (b.shop_hidden !== undefined) { fields.push('shop_hidden=?'); params.push(b.shop_hidden ? 1 : 0); }
+  if (b.shop_no_contact !== undefined) { fields.push('shop_no_contact=?'); params.push(b.shop_no_contact ? 1 : 0); }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);
     if (!g) return res.status(400).json({ error: 'bad_governorate' });
@@ -1477,6 +1480,54 @@ r.post('/shops/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
     const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM shop_images WHERE shop_id=?').get(u.id).p;
     db.prepare('INSERT INTO shop_images(shop_id, image_path, position, created_at) VALUES(?,?,?,?)').run(u.id, storedPath, maxPos + 1, now());
     return res.json({ ok: true, as, image_path: storedPath, images: shopImages(u.id) });
+  } catch (e) {
+    return res.status(500).json({ error: 'ingest_failed', message: String((e && e.message) || e).slice(0, 200) });
+  }
+});
+
+// Pull a device photo into a listing from a URL. Same hygiene as the shop
+// ingest above (https only, real image content-type, size bounds) — used to
+// give catalogue-style listings a product shot when the source had none.
+// `replace` swaps the existing photos rather than appending, so re-running a
+// backfill doesn't stack duplicates.
+r.post('/listings/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
+  const l = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!l) return res.status(404).json({ error: 'not_found' });
+  const url = String(req.body?.url || '').trim();
+  if (!/^https:\/\/\S+$/i.test(url)) return res.status(400).json({ error: 'bad_url' });
+  const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IQMobileBot/1.0)' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!resp.ok) return res.status(400).json({ error: 'fetch_failed', status: resp.status });
+    const ctype = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!MIME_EXT[ctype]) return res.status(400).json({ error: 'not_image', ctype });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    // Lower bound is deliberately well above the shop ingest's: search results
+    // sometimes hand back a tracking pixel or a spinner, and those pass the
+    // content-type check while being useless as a product photo.
+    if (buf.length < 4000 || buf.length > 8 * 1024 * 1024) {
+      return res.status(400).json({ error: 'bad_size', bytes: buf.length });
+    }
+    const filename = 'lst_' + crypto.randomBytes(12).toString('hex') + MIME_EXT[ctype];
+    fs.writeFileSync(path.join(UPLOADS, filename), buf);
+    const storedPath = '/uploads/' + filename;
+    if (req.body?.replace) {
+      for (const old of db.prepare('SELECT image_path FROM listing_images WHERE listing_id=?').all(l.id)) {
+        if (old.image_path?.startsWith('/uploads/')) {
+          try { fs.unlinkSync(path.join(UPLOADS, path.basename(old.image_path))); } catch {}
+        }
+      }
+      db.prepare('DELETE FROM listing_images WHERE listing_id=?').run(l.id);
+    }
+    const maxPos = db.prepare('SELECT COALESCE(MAX(position), -1) AS p FROM listing_images WHERE listing_id=?').get(l.id).p;
+    db.prepare('INSERT INTO listing_images(listing_id, image_path, position, created_at) VALUES(?,?,?,?)')
+      .run(l.id, storedPath, maxPos + 1, now());
+    db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(now(), l.id);
+    return res.json({ ok: true, listing_id: l.id, image_path: storedPath, bytes: buf.length });
   } catch (e) {
     return res.status(500).json({ error: 'ingest_failed', message: String((e && e.message) || e).slice(0, 200) });
   }

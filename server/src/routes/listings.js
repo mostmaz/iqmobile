@@ -104,6 +104,32 @@ function attachImages(rows) {
   return Array.from(byId.values());
 }
 
+// Sellers with users.shop_no_contact — their phone/WhatsApp is omitted from
+// every listing response. Read once per request-ish rather than per row: this
+// is consulted on every card in a 50-item feed and changes only when an admin
+// toggles the switch, so a short TTL cache beats 50 lookups a page.
+let _noContactIds = null;
+let _noContactAt = 0;
+function noContactSellers() {
+  const t = Date.now();
+  if (!_noContactIds || t - _noContactAt > 30_000) {
+    _noContactIds = new Set(
+      db.prepare('SELECT id FROM users WHERE COALESCE(shop_no_contact,0)=1').all().map((r) => r.id),
+    );
+    _noContactAt = t;
+  }
+  return _noContactIds;
+}
+
+// Blank the contact fields on a listing row whose seller is contact-suppressed.
+// The mobile app already hides the call/WhatsApp buttons when these are null
+// (it skips the whole action row), so no client change is needed — including
+// on builds already installed from the stores.
+function stripContact(row) {
+  if (!row || !noContactSellers().has(row.seller_id)) return row;
+  return { ...row, contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false };
+}
+
 // Public seller card — drops phone & sensitive bits.
 function sellerCard(uid) {
   const u = db.prepare(
@@ -379,7 +405,7 @@ r.get('/', optionalAuth(), (req, res) => {
   // attach a thin seller card + a computed featured flag (so the card can
   // show a "مميز" badge without trusting the client clock).
   const out = withImgs.map((row) => ({
-    ...row,
+    ...stripContact(row),
     is_featured: !!(row.featured_until && row.featured_until > nowTs),
     seller: sellerCard(row.seller_id),
   }));
@@ -466,7 +492,12 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // are untouched; we only omit them from the response, so restoring the
   // listing to active brings them back, and the owner still sees them for
   // their own management/edit.
-  const hideContact = row.status === 'sold' && (!req.user || req.user.id !== row.seller_id);
+  // Two independent reasons to withhold contact: the listing is sold, or the
+  // seller is contact-suppressed outright (shop_no_contact). The owner still
+  // sees their own number on a sold listing, but suppression is absolute —
+  // it exists to protect numbers that aren't the seller's to publish.
+  const hideContact = (row.status === 'sold' && (!req.user || req.user.id !== row.seller_id))
+    || noContactSellers().has(row.seller_id);
   res.json({
     ...withImgs,
     contact_phone: hideContact ? null : withImgs.contact_phone,
@@ -665,7 +696,7 @@ r.get('/saved/mine', requireAuth(), (req, res) => {
      ORDER BY s.created_at DESC LIMIT 100`,
   ).all(req.user.id);
   const withImgs = attachImages(rows);
-  res.json(withImgs.map((r) => ({ ...r, seller: sellerCard(r.seller_id) })));
+  res.json(withImgs.map((r) => ({ ...stripContact(r), seller: sellerCard(r.seller_id) })));
 });
 
 export default r;

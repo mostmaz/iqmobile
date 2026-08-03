@@ -586,6 +586,14 @@ addColumnIfMissing('users', 'shop_location_edit_count INTEGER NOT NULL DEFAULT 0
 // Hidden shops don't appear in the public Shops directory but stay reachable
 // by direct id (e.g. a promo banner deep-linking to an aggregator shop).
 addColumnIfMissing('users', 'shop_hidden INTEGER NOT NULL DEFAULT 0');
+// Suppresses every contact channel for a seller — the shop page's call/WhatsApp
+// buttons and the phone on each of its listings. Built for the aggregator price
+// shop, which republishes OTHER shops' numbers: those belong to the source
+// shops, so the aggregator must not become a contact channel for them. The
+// numbers stay in the DB and are only omitted from responses, so clearing the
+// flag restores them. Suppressing server-side also means apps already on the
+// stores stop showing the buttons without needing an update.
+addColumnIfMissing('users', 'shop_no_contact INTEGER NOT NULL DEFAULT 0');
 
 // One-time repair: early shop-gallery and logo writes stored a bare filename
 // ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via

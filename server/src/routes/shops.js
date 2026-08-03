@@ -99,6 +99,8 @@ function attachImages(rows) {
 // shop_phone was set. Featured shops are flagged so the directory can badge +
 // float them.
 function shopCard(u, nowTs) {
+  // Contact suppression (users.shop_no_contact) blanks every number below.
+  const noContact = !!u.shop_no_contact;
   // Matches the shop page's listing set: everything but 'removed' (sold and
   // expired show with badges), so the directory count equals the page.
   const listing_count = db.prepare(
@@ -114,11 +116,14 @@ function shopCard(u, nowTs) {
     shop_image_path: u.shop_image_path || null,
     shop_bio: u.shop_bio || null,
     shop_address: u.shop_address || null,
-    shop_phone: u.shop_phone || u.phone || null,
-    shop_whatsapp: u.shop_whatsapp || null,
+    shop_phone: noContact ? null : (u.shop_phone || u.phone || null),
+    shop_whatsapp: noContact ? null : (u.shop_whatsapp || null),
     // Full list of public numbers (branch lines). Falls back to the single
     // legacy shop_phone / account phone so older shops still show a number.
+    // Note the account-phone fallback: a contact-suppressed shop must return
+    // an empty list, or it would leak the login phone it was registered with.
     shop_phones: (() => {
+      if (noContact) return [];
       let a = [];
       try { const p = JSON.parse(u.shop_phones || '[]'); if (Array.isArray(p)) a = p; } catch {}
       if (!a.length && u.shop_phone) a = [u.shop_phone];
@@ -177,8 +182,14 @@ r.get('/shops/:id(\\d+)', (req, res) => {
   res.json({
     ...shopCard(u, nowTs),
     shop_images: shopImages(u.id),
+    // This is the list the shop page actually renders, so contact suppression
+    // has to happen here too — not just on /listings/:id. Without it the cards
+    // would still carry the number the shop page itself is hiding.
     listings: attachImages(listings).map((l) => ({
       ...l,
+      ...(u.shop_no_contact
+        ? { contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false }
+        : {}),
       is_featured: !!(l.featured_until && l.featured_until > nowTs),
     })),
   });
