@@ -153,6 +153,10 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   .empty{padding:28px 16px;text-align:center;color:#6b7280;font-size:14px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px}
   .card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+  /* Must beat .card's display:block — a class selector outranks the UA
+     stylesheet's [hidden]{display:none}, so without this the brand filter
+     sets .hidden on the cards and nothing visually changes. */
+  .card[hidden],[hidden]{display:none!important}
   .thumb{aspect-ratio:1/1;background:var(--cream);display:flex;align-items:center;justify-content:center;overflow:hidden}
   .thumb img{width:100%;height:100%;object-fit:contain}
   .ph{font-size:13px;color:#9ca3af;letter-spacing:.12em;text-transform:uppercase}
