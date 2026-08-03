@@ -327,6 +327,33 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
   res.json({ ok: true, listing: updated });
 });
 
+// Ingest a listing image from a remote URL (server-side fetch, bypasses the
+// browser CORS wall). Used to attach product photos to the price-aggregator
+// listings. Mirrors POST /shops/:id/ingest-image.
+r.post('/listings/:id(\\d+)/ingest-image', requireAdmin, async (req, res) => {
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  const url = String(req.body?.url || '').trim();
+  if (!/^https?:\/\/\S+$/i.test(url)) return res.status(400).json({ error: 'bad_url' });
+  const MIME_EXT = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+  try {
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; IQMobileBot/1.0)' }, redirect: 'follow' });
+    if (!resp.ok) return res.status(400).json({ error: 'fetch_failed', status: resp.status });
+    const ctype = (resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!MIME_EXT[ctype]) return res.status(400).json({ error: 'not_image', ctype });
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.length < 100 || buf.length > 8 * 1024 * 1024) return res.status(400).json({ error: 'bad_size', bytes: buf.length });
+    const filename = 'lst_' + crypto.randomBytes(12).toString('hex') + MIME_EXT[ctype];
+    fs.writeFileSync(path.join(UPLOADS, filename), buf);
+    const pos = db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM listing_images WHERE listing_id=?').get(listing.id).p;
+    const imgId = db.prepare('INSERT INTO listing_images(listing_id, image_path, position, created_at) VALUES(?,?,?,?)')
+      .run(listing.id, '/uploads/' + filename, pos, now()).lastInsertRowid;
+    res.json({ ok: true, id: imgId, image_path: '/uploads/' + filename });
+  } catch (e) {
+    res.status(500).json({ error: 'ingest_failed', message: String((e && e.message) || e).slice(0, 200) });
+  }
+});
+
 // Attach images to a listing created via Quick Add. The admin web
 // compresses each photo client-side (canvas → JPEG q=0.8 @ max 1600px)
 // before uploading, so the server only needs to validate MIME + write
