@@ -1907,7 +1907,13 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     // what the operator chose even while the key is missing.
     enabled_setting: getSetting('listing_inspection_enabled') === '1',
     autoreject: getSetting('listing_inspection_autoreject') === '1',
-    pending: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending'").get().n,
+    // Must match the queue's filter below. Counting every pending row meant a
+    // listing the model judged CLEAN was counted as "awaiting review" while
+    // the queue deliberately hid it — the dashboard said 2 waiting and showed
+    // an empty list. A clean verdict is recorded for audit, never for review.
+    pending: db.prepare(
+      "SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending' AND verdict != 'clean'",
+    ).get().n,
     errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
   });
 });
