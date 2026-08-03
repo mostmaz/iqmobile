@@ -25,6 +25,16 @@ type Banner = {
   created_at: number;
 };
 type Brand = { id: number; name: string; display_ar: string | null; position: number; count: number };
+type Shop = { id: number; shop_name: string | null; display_name: string; shop_hidden: number; listing_count: number };
+
+// A shop banner is stored as an ordinary `external` link whose URL the app
+// recognises and opens in-app (BannerCarousel matches /shop/:id). We do NOT
+// add a `link_type: 'shop'` — the banners.link_type CHECK only allows
+// listing|external, and more importantly every app already on the stores
+// understands the URL form. A new link_type would need a table rebuild AND an
+// app update, and would silently open the browser on older installs.
+const SHOP_LINK_RE = /\/shop\/(\d+)(?:[/?#]|$)/i;
+const shopUrl = (id: number | string) => `https://iqmobile.org/shop/${id}`;
 
 const EVERY_BRAND = '__every__';
 const ALL_GOV = '__all_gov__';
@@ -55,6 +65,7 @@ async function sendForm(path: string, method: string, fd: FormData) {
 export function BannersPage() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -64,7 +75,9 @@ export function BannersPage() {
   const [placement, setPlacement] = useState<'home' | 'brand'>('home');
   const [brand, setBrand] = useState<string>(EVERY_BRAND);
   const [gov, setGov] = useState<string>(ALL_GOV);
-  const [linkType, setLinkType] = useState<'listing' | 'external'>('listing');
+  // UI-level mode. 'shop' is a presentation of external+shopUrl, not a
+  // distinct stored type — see SHOP_LINK_RE above.
+  const [linkMode, setLinkMode] = useState<'listing' | 'shop' | 'external'>('listing');
   const [linkValue, setLinkValue] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [position, setPosition] = useState<number | ''>('');
@@ -74,12 +87,14 @@ export function BannersPage() {
   async function load() {
     setLoading(true);
     try {
-      const [b, br] = await Promise.all([
+      const [b, br, sh] = await Promise.all([
         api<Banner[]>('/admin/banners'),
         api<Brand[]>('/admin/brands'),
+        api<Shop[]>('/admin/shops'),
       ]);
       setBanners(b);
       setBrands(br);
+      setShops(sh);
       setErr('');
     } catch (e: any) {
       setErr(e.message);
@@ -94,7 +109,7 @@ export function BannersPage() {
     setPlacement('home');
     setBrand(EVERY_BRAND);
     setGov(ALL_GOV);
-    setLinkType('listing');
+    setLinkMode('listing');
     setLinkValue('');
     setEnabled(true);
     setPosition('');
@@ -107,8 +122,11 @@ export function BannersPage() {
     setPlacement(b.placement);
     setBrand(b.placement === 'brand' ? (b.brand ?? EVERY_BRAND) : EVERY_BRAND);
     setGov(b.governorate ?? ALL_GOV);
-    setLinkType(b.link_type);
-    setLinkValue(b.link_value);
+    // Re-detect a shop link so editing shows the shop picker rather than a
+    // raw URL the operator would have to hand-edit.
+    const m = b.link_type === 'external' ? SHOP_LINK_RE.exec(b.link_value) : null;
+    setLinkMode(m ? 'shop' : b.link_type);
+    setLinkValue(m ? m[1] : b.link_value);
     setEnabled(!!b.enabled);
     setPosition(b.position);
     setFile(null);
@@ -129,8 +147,9 @@ export function BannersPage() {
       if (placement === 'brand' && brand !== EVERY_BRAND) fd.append('brand', brand);
       else fd.append('brand', '');
       fd.append('governorate', gov === ALL_GOV ? '' : gov);
-      fd.append('link_type', linkType);
-      fd.append('link_value', linkValue.trim());
+      // 'shop' is stored as external + the /shop/:id URL the app intercepts.
+      fd.append('link_type', linkMode === 'shop' ? 'external' : linkMode);
+      fd.append('link_value', linkMode === 'shop' ? shopUrl(linkValue.trim()) : linkValue.trim());
       fd.append('enabled', enabled ? '1' : '0');
       if (position !== '') fd.append('position', String(position));
       if (file) fd.append('image', file);
@@ -207,9 +226,22 @@ export function BannersPage() {
                   </td>
                   <td>{placementLabel(b)}</td>
                   <td>
-                    {b.link_type === 'listing'
-                      ? <span className="muted">Listing #{b.link_value}</span>
-                      : <a href={b.link_value} target="_blank" rel="noreferrer">{b.link_value}</a>}
+                    {(() => {
+                      if (b.link_type === 'listing') return <span className="muted">Listing #{b.link_value}</span>;
+                      // Surface a shop deep-link as the shop it points at, so
+                      // the table doesn't just read as an opaque URL.
+                      const m = SHOP_LINK_RE.exec(b.link_value);
+                      if (m) {
+                        const s = shops.find((x) => String(x.id) === m[1]);
+                        return (
+                          <span>
+                            🏪 {s ? (s.shop_name || s.display_name) : `Shop #${m[1]}`}
+                            <span className="muted"> · #{m[1]} · in-app</span>
+                          </span>
+                        );
+                      }
+                      return <a href={b.link_value} target="_blank" rel="noreferrer">{b.link_value}</a>;
+                    })()}
                   </td>
                   <td>{b.position}</td>
                   <td>
@@ -258,17 +290,46 @@ export function BannersPage() {
           </select>
 
           <label>Links to</label>
-          <select value={linkType} onChange={(e) => setLinkType(e.target.value as any)}>
+          <select
+            value={linkMode}
+            onChange={(e) => { setLinkMode(e.target.value as any); setLinkValue(''); }}
+          >
             <option value="listing">A listing (by id)</option>
+            <option value="shop">A shop (opens in-app)</option>
             <option value="external">External website (URL)</option>
           </select>
 
-          <label>{linkType === 'listing' ? 'Listing id' : 'URL'}</label>
-          <input
-            value={linkValue}
-            onChange={(e) => setLinkValue(e.target.value)}
-            placeholder={linkType === 'listing' ? 'e.g. 42' : 'https://example.com/promo'}
-          />
+          {linkMode === 'shop' ? (
+            <>
+              <label>Shop</label>
+              <div>
+                <select value={linkValue} onChange={(e) => setLinkValue(e.target.value)} style={{ width: '100%' }}>
+                  <option value="">— pick a shop —</option>
+                  {shops.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.shop_name || s.display_name} · #{s.id} · {s.listing_count} listings
+                      {s.shop_hidden ? ' · hidden' : ''}
+                    </option>
+                  ))}
+                </select>
+                {linkValue ? (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Stored as <code>{shopUrl(linkValue)}</code> — the app opens this shop
+                    in-app; anywhere else it falls back to the website.
+                  </div>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <label>{linkMode === 'listing' ? 'Listing id' : 'URL'}</label>
+              <input
+                value={linkValue}
+                onChange={(e) => setLinkValue(e.target.value)}
+                placeholder={linkMode === 'listing' ? 'e.g. 42' : 'https://example.com/promo'}
+              />
+            </>
+          )}
 
           <label>Image {editingId ? '(leave empty to keep)' : ''}</label>
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />

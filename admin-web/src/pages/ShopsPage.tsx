@@ -23,6 +23,11 @@ type Shop = {
   listing_count: number;
   is_featured: boolean;
   verified: boolean;
+  // Hidden: kept out of the public Shops directory but still reachable by id
+  // (a promo banner deep-link). No-contact: every phone/WhatsApp is stripped
+  // from this shop's responses — page and listings alike.
+  shop_hidden: number;
+  shop_no_contact: number;
 };
 
 type ShopDetail = Shop & {
@@ -98,6 +103,17 @@ export function ShopsPage() {
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
+  // Both flags are plain PATCH toggles. Contact suppression is server-side, so
+  // flipping it takes effect on apps already installed from the stores — no
+  // release needed.
+  async function toggleFlag(s: Shop, flag: 'shop_hidden' | 'shop_no_contact') {
+    setBusy(true);
+    try {
+      await api(`/admin/shops/${s.id}`, { method: 'PATCH', body: JSON.stringify({ [flag]: !s[flag] }) });
+      await load();
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
   async function unshop(s: Shop) {
     if (!confirm(`Revert "${s.shop_name || s.display_name}" to a normal (individual) account? It leaves the Shops directory.`)) return;
     setBusy(true);
@@ -121,7 +137,7 @@ export function ShopsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Shop</th><th>Governorate</th><th>Contact</th><th>Listings</th><th>Featured</th><th>Actions</th>
+                <th>Shop</th><th>Governorate</th><th>Contact</th><th>Listings</th><th>Featured</th><th>Visibility</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -140,13 +156,35 @@ export function ShopsPage() {
                   </td>
                   <td>{s.governorate}{s.city ? ` · ${s.city}` : ''}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 12 }}>
-                    {s.shop_phone || '—'}{s.shop_whatsapp ? <div>wa: {s.shop_whatsapp}</div> : null}
+                    {s.shop_no_contact ? (
+                      // The numbers are still in the DB — say so, so nobody
+                      // thinks they were deleted and re-enters them.
+                      <span className="muted" title="Numbers kept in the DB, hidden from the app">
+                        <s>{s.shop_phone || '—'}</s> · hidden
+                      </span>
+                    ) : (
+                      <>{s.shop_phone || '—'}{s.shop_whatsapp ? <div>wa: {s.shop_whatsapp}</div> : null}</>
+                    )}
                   </td>
                   <td>{s.listing_count}</td>
                   <td>
                     {s.is_featured
                       ? <span style={{ color: '#7bd88f' }}>until {s.shop_featured_until ? fmtDate(s.shop_featured_until) : ''}</span>
                       : <span className="muted">no</span>}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}
+                           title="Keep out of the public Shops directory (still reachable by a banner deep-link)">
+                      <input type="checkbox" disabled={busy} checked={!!s.shop_hidden}
+                             onChange={() => toggleFlag(s, 'shop_hidden')} />
+                      Hidden
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                           title="Strip phone + WhatsApp from the shop page AND all its listings. Applies to apps already installed.">
+                      <input type="checkbox" disabled={busy} checked={!!s.shop_no_contact}
+                             onChange={() => toggleFlag(s, 'shop_no_contact')} />
+                      No contact
+                    </label>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="primary" disabled={busy} onClick={() => setEditingId(editingId === s.id ? null : s.id)}>
@@ -159,7 +197,7 @@ export function ShopsPage() {
                   </td>
                 </tr>
               ))}
-              {shops.length === 0 ? <tr><td colSpan={6} className="muted">No shops yet.</td></tr> : null}
+              {shops.length === 0 ? <tr><td colSpan={7} className="muted">No shops yet.</td></tr> : null}
             </tbody>
           </table>
         )}
