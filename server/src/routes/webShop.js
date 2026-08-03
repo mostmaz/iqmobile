@@ -62,9 +62,12 @@ r.get('/shop/:id(\\d+)', (req, res) => {
     ? "status IN ('active','reserved','sold','expired')"
     : "status IN ('active','reserved','sold','expired') AND expires_at > ?";
   const nowTs = Date.now();
+  // Render the whole catalogue (capped for sanity) rather than a short page:
+  // the brand filter below is client-side, and filtering a truncated list
+  // would show "Xiaomi 31" then reveal only the handful that made the cut.
   const listings = db.prepare(
     `SELECT * FROM phone_listings WHERE seller_id=? AND ${statusClause}
-      ORDER BY created_at DESC LIMIT 60`,
+      ORDER BY created_at DESC LIMIT 300`,
   ).all(...(neverExpire ? [u.id] : [u.id, nowTs]));
 
   const imgFor = db.prepare(
@@ -88,7 +91,7 @@ r.get('/shop/:id(\\d+)', (req, res) => {
     const badge = l.status === 'sold' ? '<span class="badge sold">مباع</span>'
       : l.status === 'reserved' ? '<span class="badge res">محجوز</span>'
       : l.status === 'expired' ? '<span class="badge exp">منتهي</span>' : '';
-    return `<a class="card" href="${PUBLIC_BASE}/l/${l.id}">
+    return `<a class="card" data-brand="${esc(l.brand || '')}" href="${PUBLIC_BASE}/l/${l.id}">
       <div class="thumb">${src ? `<img src="${esc(src)}" alt="${esc(l.brand)} ${esc(l.model)}" loading="lazy">` : `<span class="ph">${esc(l.brand)}</span>`}</div>
       <div class="meta">
         <div class="t">${esc(l.brand)} ${esc(l.model)}${badge}</div>
@@ -97,6 +100,19 @@ r.get('/shop/:id(\\d+)', (req, res) => {
       </div>
     </a>`;
   }).join('');
+
+  // Brand chips, mirroring the app's shop page: derived from this shop's own
+  // inventory so a chip can never filter to nothing, counted, most-stocked
+  // first, and omitted entirely for a single-brand shop.
+  const brandCounts = (() => {
+    const m = new Map();
+    for (const l of listings) if (l.brand) m.set(l.brand, (m.get(l.brand) || 0) + 1);
+    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
+  })();
+  const filterBar = brandCounts.length > 1 ? `<div class="filters" id="filters">
+    <button class="chip on" data-b="">الكل <i>${listings.length}</i></button>
+    ${brandCounts.map(([b, n]) => `<button class="chip" data-b="${esc(b)}">${esc(b)} <i>${n}</i></button>`).join('')}
+  </div>` : '';
 
   const html = `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -126,6 +142,15 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   .shop h1{font-size:19px;margin:0 0 3px}
   .loc{color:#6b7280;font-size:13px}
   .bio{padding:0 16px 14px;font-size:14px;line-height:1.7;color:#333}
+  .filters{display:flex;gap:8px;overflow-x:auto;padding:0 16px 12px;scrollbar-width:none}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto;font:inherit;font-size:13px;font-weight:700;cursor:pointer;
+        padding:8px 14px;border-radius:999px;border:1px solid var(--line);
+        background:#fff;color:var(--ink);display:flex;align-items:center;gap:6px}
+  .chip i{font-style:normal;font-size:11px;font-weight:600;color:#9ca3af}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .chip.on i{color:rgba(255,255,255,.65)}
+  .empty{padding:28px 16px;text-align:center;color:#6b7280;font-size:14px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px}
   .card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
   .thumb{aspect-ratio:1/1;background:var(--cream);display:flex;align-items:center;justify-content:center;overflow:hidden}
@@ -158,7 +183,9 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
     </div>
   </div>
   ${u.shop_bio ? `<div class="bio">${esc(u.shop_bio)}</div>` : ''}
-  <div class="grid">${cards}</div>
+  ${filterBar}
+  <div class="grid" id="grid">${cards}</div>
+  <div class="empty" id="empty" hidden>لا توجد أجهزة من هذه الماركة.</div>
   <div class="cta">
     <p>لتصفّح المتجر كاملاً والتواصل، حمّل تطبيق iQ Mobile</p>
     <div class="stores">
@@ -167,6 +194,35 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
     </div>
   </div>
 </div>
+${brandCounts.length > 1 ? `<script>
+// Client-side so a chip tap is instant and costs no round trip. Every card is
+// already in the DOM, and the filter only toggles display — nothing here
+// fetches or rewrites content.
+(function () {
+  var bar = document.getElementById('filters');
+  var grid = document.getElementById('grid');
+  var empty = document.getElementById('empty');
+  if (!bar || !grid) return;
+  bar.addEventListener('click', function (e) {
+    var chip = e.target.closest('.chip');
+    if (!chip) return;
+    var want = chip.getAttribute('data-b');
+    Array.prototype.forEach.call(bar.querySelectorAll('.chip'), function (c) {
+      c.classList.toggle('on', c === chip);
+    });
+    var shown = 0;
+    Array.prototype.forEach.call(grid.children, function (card) {
+      var hit = !want || card.getAttribute('data-brand') === want;
+      card.hidden = !hit;
+      if (hit) shown++;
+    });
+    empty.hidden = shown > 0;
+    // Keep the newly filtered grid in view rather than stranding the reader
+    // halfway down the previous, longer list.
+    window.scrollTo({ top: bar.offsetTop - 8, behavior: 'smooth' });
+  });
+})();
+</script>` : ''}
 </body></html>`;
 
   res.set('Content-Type', 'text/html; charset=utf-8')
