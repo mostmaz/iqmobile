@@ -142,8 +142,11 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   .shop h1{font-size:19px;margin:0 0 3px}
   .loc{color:#6b7280;font-size:13px}
   .bio{padding:0 16px 14px;font-size:14px;line-height:1.7;color:#333}
-  .filters{display:flex;gap:8px;overflow-x:auto;padding:0 16px 12px;scrollbar-width:none}
-  .filters::-webkit-scrollbar{display:none}
+  /* Wrap rather than scroll. This was a one-line horizontal scroller with the
+     scrollbar hidden, which meant only the first 3-4 brands fit on a phone and
+     nothing on screen suggested the rest existed — Honor sat 5th and looked
+     missing. Nine-ish chips wrap to two or three rows, all visible at once. */
+  .filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px}
   .chip{flex:0 0 auto;font:inherit;font-size:13px;font-weight:700;cursor:pointer;
         padding:8px 14px;border-radius:999px;border:1px solid var(--line);
         background:#fff;color:var(--ink);display:flex;align-items:center;gap:6px}

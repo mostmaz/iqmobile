@@ -222,10 +222,15 @@ export default function ShopScreen({ navigation, route }: any) {
             {/* Brand filter — only worth showing once the shop actually
                 stocks more than one brand. */}
             {brandCounts.length > 1 ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8, paddingBottom: 12 }}
+              // Wraps rather than scrolling sideways. As a hidden-indicator
+              // horizontal strip only the first few brands were on screen and
+              // the rest read as missing — a shop with 9 brands looked like it
+              // stocked 4.
+              <View
+                style={{
+                  flexDirection: 'row-reverse', flexWrap: 'wrap',
+                  gap: 8, paddingBottom: 12,
+                }}
               >
                 {([[null, allListings.length]] as [string | null, number][])
                   .concat(brandCounts as [string | null, number][])
@@ -258,7 +263,7 @@ export default function ShopScreen({ navigation, route }: any) {
                       </TouchableOpacity>
                     );
                   })}
-              </ScrollView>
+              </View>
             ) : null}
           </View>
         }
