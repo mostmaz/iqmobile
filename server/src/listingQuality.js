@@ -28,6 +28,10 @@ const WORDS = [
   'مكسور', 'مكسورة', 'مكسوره', 'عاطل', 'عاطلة', 'عاطله', 'معطل', 'معطّل',
   'خربان', 'خربانة', 'خربانه', 'تشليح', 'شليح', 'مسروق', 'مسروقة', 'مسروقه',
   'مقفول', 'مقفل', 'مغلق', 'مشكلة', 'مشكله',
+  // Swapped/replaced parts — a "مبدل" screen or board is a repaired device,
+  // not the clean stock the catalogue advertises. The negation guard still
+  // clears the honest "غير مبدل" / "مو مبدل".
+  'مبدل', 'مبدلة', 'مبدله',
   'broken', 'cracked', 'stolen', 'faulty', 'damaged',
 ];
 
