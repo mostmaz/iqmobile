@@ -91,7 +91,10 @@ r.get('/shop/:id(\\d+)', (req, res) => {
     const badge = l.status === 'sold' ? '<span class="badge sold">مباع</span>'
       : l.status === 'reserved' ? '<span class="badge res">محجوز</span>'
       : l.status === 'expired' ? '<span class="badge exp">منتهي</span>' : '';
-    return `<a class="card" data-brand="${esc(l.brand || '')}" href="${PUBLIC_BASE}/l/${l.id}">
+    // data-q is the pre-lowercased haystack the search box matches against, so
+    // the filter never has to read text out of the DOM on every keystroke.
+    const hay = `${l.brand || ''} ${l.model || ''} ${l.storage || ''}`.toLowerCase();
+    return `<a class="card" data-brand="${esc(l.brand || '')}" data-q="${esc(hay)}" href="${PUBLIC_BASE}/l/${l.id}">
       <div class="thumb">${src ? `<img src="${esc(src)}" alt="${esc(l.brand)} ${esc(l.model)}" loading="lazy">` : `<span class="ph">${esc(l.brand)}</span>`}</div>
       <div class="meta">
         <div class="t">${esc(l.brand)} ${esc(l.model)}${badge}</div>
@@ -109,10 +112,19 @@ r.get('/shop/:id(\\d+)', (req, res) => {
     for (const l of listings) if (l.brand) m.set(l.brand, (m.get(l.brand) || 0) + 1);
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
   })();
-  const filterBar = brandCounts.length > 1 ? `<div class="filters" id="filters">
-    <button class="chip on" data-b="">الكل <i>${listings.length}</i></button>
-    ${brandCounts.map(([b, n]) => `<button class="chip" data-b="${esc(b)}">${esc(b)} <i>${n}</i></button>`).join('')}
-  </div>` : '';
+  // A text box plus a brand dropdown, rather than a row of chips. Chips wrapped
+  // onto three lines with nine brands, and as a single scrolling row the later
+  // ones were off-screen with nothing to suggest they existed.
+  const filterBar = `<div class="filters">
+    <div class="sbox">
+      <input id="q" type="search" placeholder="ابحث في إعلانات المتجر…" autocomplete="off">
+    </div>
+    ${brandCounts.length > 1 ? `<select id="brand">
+      <option value="">كل الماركات (${listings.length})</option>
+      ${brandCounts.map(([b, n]) => `<option value="${esc(b)}">${esc(b)} (${n})</option>`).join('')}
+    </select>` : ''}
+    <div class="count" id="count" hidden></div>
+  </div>`;
 
   const html = `<!doctype html>
 <html lang="ar" dir="rtl">
@@ -142,17 +154,13 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   .shop h1{font-size:19px;margin:0 0 3px}
   .loc{color:#6b7280;font-size:13px}
   .bio{padding:0 16px 14px;font-size:14px;line-height:1.7;color:#333}
-  /* Wrap rather than scroll. This was a one-line horizontal scroller with the
-     scrollbar hidden, which meant only the first 3-4 brands fit on a phone and
-     nothing on screen suggested the rest existed — Honor sat 5th and looked
-     missing. Nine-ish chips wrap to two or three rows, all visible at once. */
-  .filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px}
-  .chip{flex:0 0 auto;font:inherit;font-size:13px;font-weight:700;cursor:pointer;
-        padding:8px 14px;border-radius:999px;border:1px solid var(--line);
-        background:#fff;color:var(--ink);display:flex;align-items:center;gap:6px}
-  .chip i{font-style:normal;font-size:11px;font-weight:600;color:#9ca3af}
-  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .chip.on i{color:rgba(255,255,255,.65)}
+  .filters{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px;align-items:center}
+  .sbox{flex:1 1 180px;display:flex}
+  #q{flex:1;font:inherit;font-size:14px;padding:10px 12px;border-radius:12px;
+     border:1px solid var(--line);background:#fff;color:var(--ink);min-width:0}
+  #brand{font:inherit;font-size:14px;font-weight:700;padding:10px 12px;border-radius:12px;
+         border:1px solid var(--line);background:#fff;color:var(--ink)}
+  .count{flex-basis:100%;font-size:12.5px;color:#6b7280}
   .empty{padding:28px 16px;text-align:center;color:#6b7280;font-size:14px}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px 16px}
   .card{display:block;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
@@ -192,7 +200,7 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   ${u.shop_bio ? `<div class="bio">${esc(u.shop_bio)}</div>` : ''}
   ${filterBar}
   <div class="grid" id="grid">${cards}</div>
-  <div class="empty" id="empty" hidden>لا توجد أجهزة من هذه الماركة.</div>
+  <div class="empty" id="empty" hidden>لا توجد نتائج مطابقة.</div>
   <div class="cta">
     <p>لتصفّح المتجر كاملاً والتواصل، حمّل تطبيق iQ Mobile</p>
     <div class="stores">
@@ -201,35 +209,39 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
     </div>
   </div>
 </div>
-${brandCounts.length > 1 ? `<script>
-// Client-side so a chip tap is instant and costs no round trip. Every card is
-// already in the DOM, and the filter only toggles display — nothing here
-// fetches or rewrites content.
+<script>
+// Client-side so typing is instant and costs no round trip. Every card is
+// already in the DOM; this only toggles display and never refetches.
 (function () {
-  var bar = document.getElementById('filters');
-  var grid = document.getElementById('grid');
+  var grid  = document.getElementById('grid');
   var empty = document.getElementById('empty');
-  if (!bar || !grid) return;
-  bar.addEventListener('click', function (e) {
-    var chip = e.target.closest('.chip');
-    if (!chip) return;
-    var want = chip.getAttribute('data-b');
-    Array.prototype.forEach.call(bar.querySelectorAll('.chip'), function (c) {
-      c.classList.toggle('on', c === chip);
-    });
+  var q     = document.getElementById('q');
+  var brand = document.getElementById('brand');
+  var count = document.getElementById('count');
+  if (!grid) return;
+  var cards = Array.prototype.slice.call(grid.children);
+
+  function apply() {
+    var term = (q && q.value || '').trim().toLowerCase();
+    var want = (brand && brand.value) || '';
     var shown = 0;
-    Array.prototype.forEach.call(grid.children, function (card) {
-      var hit = !want || card.getAttribute('data-brand') === want;
+    cards.forEach(function (card) {
+      var hit = (!want || card.getAttribute('data-brand') === want)
+             && (!term || (card.getAttribute('data-q') || '').indexOf(term) !== -1);
       card.hidden = !hit;
       if (hit) shown++;
     });
     empty.hidden = shown > 0;
-    // Keep the newly filtered grid in view rather than stranding the reader
-    // halfway down the previous, longer list.
-    window.scrollTo({ top: bar.offsetTop - 8, behavior: 'smooth' });
-  });
+    if (count) {
+      var filtering = !!term || !!want;
+      count.hidden = !filtering;
+      count.textContent = filtering ? (shown + ' من ' + cards.length) : '';
+    }
+  }
+  if (q) q.addEventListener('input', apply);
+  if (brand) brand.addEventListener('change', apply);
 })();
-</script>` : ''}
+</script>
 </body></html>`;
 
   res.set('Content-Type', 'text/html; charset=utf-8')
