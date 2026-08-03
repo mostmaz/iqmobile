@@ -14,11 +14,12 @@ import { ImportPage } from './pages/ImportPage';
 import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
 import { ShopsPage } from './pages/ShopsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { InspectionPage } from './pages/InspectionPage';
 import { ShopNotifier } from './ShopNotifier';
 
 type Page =
   | 'overview' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
-  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import';
+  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import' | 'inspection';
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -40,6 +41,7 @@ export function App() {
     { key: 'deals', label: 'Deals' },
     { key: 'reports', label: 'Reports' },
     { key: 'import', label: 'Import' },
+    { key: 'inspection', label: 'الفحص' },
     { key: 'bypass', label: 'Bypass attempts' },
     { key: 'settings', label: 'Settings' },
   ];
@@ -70,6 +72,7 @@ export function App() {
       {page === 'reports' && <ReportsPage />}
       {page === 'deals' && <DealsPage />}
       {page === 'import' && <ImportPage />}
+      {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}
     </div>

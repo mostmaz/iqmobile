@@ -371,6 +371,27 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
 );
 CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist_items(user_id, created_at DESC);
 
+-- AI listing inspection results (see src/listingInspect.js). One row per
+-- listing — a re-inspection after new photos replaces the previous verdict,
+-- hence the UNIQUE. status tracks the human decision on top of the model's:
+--   pending  = flagged, waiting for an operator to look
+--   approved = operator judged it fine; listing stays up
+--   removed  = listing was taken down (by the operator, or auto-reject)
+--   error    = the inspection call itself failed; error holds why
+CREATE TABLE IF NOT EXISTS listing_inspections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER NOT NULL REFERENCES phone_listings(id) ON DELETE CASCADE,
+  verdict TEXT NOT NULL,
+  confidence TEXT NOT NULL,
+  defects_json TEXT NOT NULL DEFAULT '[]',
+  status TEXT NOT NULL DEFAULT 'pending',
+  error TEXT,
+  reviewed_at INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE(listing_id)
+);
+CREATE INDEX IF NOT EXISTS idx_listing_inspections_queue ON listing_inspections(status, created_at DESC);
+
 -- Social publish log. One row per "Publish to FB + IG" action from the
 -- dashboard, used both as an audit trail and to enforce the per-day cap
 -- (count today's rows). channels holds the per-platform Buffer result JSON.
@@ -801,6 +822,12 @@ setSetting.run('listing_ttl_days', String(process.env.LISTING_TTL_DAYS || 30));
 setSetting.run('reserve_on_confirm', '1'); // 1 = reserved, 0 = sold
 setSetting.run('shops_unlimited_listings', '1'); // 1 = shops bypass the create rate limit, 0 = shops capped like individuals
 setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore TTL; 0 = expire after listing_ttl_days
+// AI listing inspection. Both default OFF: the feature does nothing until an
+// operator turns it on in the dashboard (and it needs ANTHROPIC_API_KEY too).
+// Enabling the first switch only flags listings for review; removing a listing
+// automatically is a separate, deliberate second opt-in.
+setSetting.run('listing_inspection_enabled', '0');
+setSetting.run('listing_inspection_autoreject', '0');
 
 // reference: governorate list lives in code; no row needed
 void GOVERNORATES;
