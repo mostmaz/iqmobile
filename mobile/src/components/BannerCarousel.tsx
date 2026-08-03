@@ -18,11 +18,19 @@ import type { BannerRow } from '../api/endpoints';
 const ROTATE_MS = 4000;
 const RATIO = 5 / 2; // width : height — matches the single-banner layout.
 
-function openBanner(banner: BannerRow, onOpenListing: (id: number) => void) {
+function openBanner(
+  banner: BannerRow,
+  onOpenListing: (id: number) => void,
+  onOpenShop?: (id: number) => void,
+) {
   if (banner.link_type === 'listing') {
     const id = Number(banner.link_value);
     if (Number.isFinite(id) && id > 0) onOpenListing(id);
   } else {
+    // An external link can be a shop deep-link (…/shop/:id) we open in-app;
+    // anything else is handed to the browser.
+    const m = /\/shop\/(\d+)(?:[/?#]|$)/i.exec(banner.link_value);
+    if (m && onOpenShop) { onOpenShop(Number(m[1])); return; }
     Linking.openURL(banner.link_value).catch(() => { /* dead link — ignore */ });
   }
 }
@@ -51,10 +59,11 @@ function BannerImage({ banner, width, height, onPress }: {
 }
 
 export function BannerCarousel({
-  banners, onOpenListing,
+  banners, onOpenListing, onOpenShop,
 }: {
   banners: BannerRow[];
   onOpenListing: (id: number) => void;
+  onOpenShop?: (id: number) => void;
 }) {
   const [width, setWidth] = useState(0);
   const [index, setIndex] = useState(0);
@@ -111,7 +120,7 @@ export function BannerCarousel({
   if (banners.length === 1) {
     return (
       <View style={{ marginBottom: 12 }}>
-        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing)} />
+        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
       </View>
     );
   }
@@ -133,14 +142,14 @@ export function BannerCarousel({
               banner={item}
               width={width}
               height={height}
-              onPress={() => openBanner(item, onOpenListing)}
+              onPress={() => openBanner(item, onOpenListing, onOpenShop)}
             />
           )}
         />
       ) : (
         // First render (width not yet measured) — show the lead banner so
         // there's no empty gap; the carousel takes over once measured.
-        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing)} />
+        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
       )}
 
       {/* Pagination dots — the active one widens into a pill that fills up

@@ -140,7 +140,7 @@ function shopCard(u, nowTs) {
 // shops first, then by rating, then by inventory size.
 r.get('/shops', (req, res) => {
   const nowTs = Date.now();
-  let sql = "SELECT * FROM users WHERE seller_type='shop'";
+  let sql = "SELECT * FROM users WHERE seller_type='shop' AND COALESCE(shop_hidden,0)=0";
   const params = [];
   const gov = req.query.governorate ? normalizeGovernorate(String(req.query.governorate)) : null;
   if (req.query.governorate && gov && isGovernorate(gov)) { sql += ' AND governorate=?'; params.push(gov); }

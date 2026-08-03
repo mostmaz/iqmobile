@@ -1401,6 +1401,7 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
   }
   if (b.shop_facebook !== undefined) { fields.push('shop_facebook=?'); params.push(sanitizeUrl(b.shop_facebook)); }
   if (b.shop_instagram !== undefined) { fields.push('shop_instagram=?'); params.push(sanitizeUrl(b.shop_instagram)); }
+  if (b.shop_hidden !== undefined) { fields.push('shop_hidden=?'); params.push(b.shop_hidden ? 1 : 0); }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);
     if (!g) return res.status(400).json({ error: 'bad_governorate' });

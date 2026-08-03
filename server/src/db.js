@@ -583,6 +583,9 @@ addColumnIfMissing('users', 'shop_image_edit_count INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('users', 'shop_lat REAL');
 addColumnIfMissing('users', 'shop_lng REAL');
 addColumnIfMissing('users', 'shop_location_edit_count INTEGER NOT NULL DEFAULT 0');
+// Hidden shops don't appear in the public Shops directory but stay reachable
+// by direct id (e.g. a promo banner deep-linking to an aggregator shop).
+addColumnIfMissing('users', 'shop_hidden INTEGER NOT NULL DEFAULT 0');
 
 // One-time repair: early shop-gallery and logo writes stored a bare filename
 // ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via

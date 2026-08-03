@@ -411,7 +411,11 @@ export default function BrowseScreen({ navigation }: any) {
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
           item.__bannerPool ? (
-            <BannerCarousel banners={item.__bannerPool} onOpenListing={(id) => navigation.navigate('ListingDetail', { id })} />
+            <BannerCarousel
+              banners={item.__bannerPool}
+              onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
+              onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
+            />
           ) : (
             <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
           )
