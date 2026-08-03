@@ -16,6 +16,7 @@ import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffe
 import { notify } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 import { alertOnPriceChange } from '../priceWatches.js';
+import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -123,6 +124,14 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (listings_never_expire != null) {
     setSettingValue('listings_never_expire', listings_never_expire ? '1' : '0');
+  }
+  // AI listing inspection. Auto-reject is deliberately independent: turning
+  // inspection on only starts flagging, never removing.
+  if (req.body?.listing_inspection_enabled != null) {
+    setSettingValue('listing_inspection_enabled', req.body.listing_inspection_enabled ? '1' : '0');
+  }
+  if (req.body?.listing_inspection_autoreject != null) {
+    setSettingValue('listing_inspection_autoreject', req.body.listing_inspection_autoreject ? '1' : '0');
   }
   res.json({ ok: true });
 });
@@ -1880,6 +1889,79 @@ r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
   // typed model, so nothing broke for them — a rejection notice would just
   // be noise about an internal catalog decision.
   res.json({ ok: true });
+});
+
+// ─── AI listing inspection ────────────────────────────────────────────
+// Drives the dashboard's switches + review queue. `configured` reports
+// whether ANTHROPIC_API_KEY exists at all, so the UI can explain *why* the
+// switch is unavailable instead of silently doing nothing when flipped.
+r.get('/inspection/status', requireAdmin, (_req, res) => {
+  res.json({
+    configured: inspectionConfigured(),
+    // Report the EFFECTIVE state, not the raw setting. The switch can be on
+    // while ANTHROPIC_API_KEY is absent, and inspectListingAsync gates on
+    // both — so returning the bare setting would have the dashboard announce
+    // "الفحص يعمل" for a feature that cannot run.
+    enabled: inspectionEnabled(),
+    // The stored switch position, so the Settings checkbox still reflects
+    // what the operator chose even while the key is missing.
+    enabled_setting: getSetting('listing_inspection_enabled') === '1',
+    autoreject: getSetting('listing_inspection_autoreject') === '1',
+    pending: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending'").get().n,
+    errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
+  });
+});
+
+// The queue. Defaults to flagged-and-unreviewed only — a 'clean' verdict is
+// recorded for auditing but is not something anyone needs to look at.
+r.get('/inspection/queue', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'removed', 'error', 'all'].includes(req.query.status)
+    ? req.query.status : 'pending';
+  const where = status === 'all' ? '1=1' : 'i.status=?';
+  const params = status === 'all' ? [] : [status];
+  const rows = db.prepare(
+    `SELECT i.*, l.brand, l.model, l.asking_price, l.governorate, l.description,
+            l.status AS listing_status, l.seller_id, u.display_name AS seller_name
+       FROM listing_inspections i
+       JOIN phone_listings l ON l.id = i.listing_id
+       JOIN users u ON u.id = l.seller_id
+      WHERE ${where} AND (i.verdict != 'clean' OR i.status='error')
+      ORDER BY i.created_at DESC LIMIT 200`,
+  ).all(...params);
+  res.json(rows.map((r2) => ({
+    ...r2,
+    defects: (() => { try { return JSON.parse(r2.defects_json); } catch { return []; } })(),
+    images: db.prepare('SELECT image_path FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC')
+      .all(r2.listing_id).map((im) => im.image_path),
+  })));
+});
+
+// Operator decision on a flagged listing. 'approve' clears the flag and
+// leaves the listing up; 'remove' takes it down.
+r.post('/inspection/:id(\\d+)/:action(approve|remove)', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT * FROM listing_inspections WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  const t = now();
+  if (req.params.action === 'remove') {
+    db.prepare("UPDATE phone_listings SET status='removed', updated_at=? WHERE id=?").run(t, row.listing_id);
+    db.prepare("UPDATE listing_inspections SET status='removed', reviewed_at=? WHERE id=?").run(t, row.id);
+  } else {
+    db.prepare("UPDATE listing_inspections SET status='approved', reviewed_at=? WHERE id=?").run(t, row.id);
+  }
+  res.json({ ok: true });
+});
+
+// Re-run the check on one listing — useful after the seller swaps photos, or
+// to sanity-check the model on a listing you already know the answer for.
+r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
+  // Report the real reason rather than answering "queued" for a call that the
+  // gate in inspectListingAsync would silently drop.
+  if (!inspectionConfigured()) return res.status(400).json({ error: 'not_configured' });
+  if (!inspectionEnabled()) return res.status(400).json({ error: 'not_enabled' });
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  setImmediate(() => inspectListingAsync(listing.id));
+  res.json({ ok: true, queued: true });
 });
 
 export default r;

@@ -13,6 +13,7 @@ import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
 import { alertWishlistOnListing } from './wishlist.js';
 import { alertOnPriceChange } from './priceWatches.js';
+import { inspectListingAsync } from '../listingInspect.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -658,6 +659,9 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
     out.push({ id, listing_id: row.id, image_path: p, position: pos - 1 });
   }
   db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(t, row.id);
+  // AI defect check, after the response so the seller's upload is never
+  // slowed or broken by it. No-op unless enabled + an API key is configured.
+  setImmediate(() => inspectListingAsync(row.id));
   res.json(out);
 });
 

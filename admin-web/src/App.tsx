@@ -15,11 +15,12 @@ import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
 import { ShopsPage } from './pages/ShopsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
+import { InspectionPage } from './pages/InspectionPage';
 import { ShopNotifier } from './ShopNotifier';
 
 type Page =
   | 'overview' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
-  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import' | 'devices';
+  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import' | 'devices' | 'inspection';
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
@@ -60,6 +61,7 @@ export function App() {
     { key: 'reports', label: 'Reports' },
     { key: 'import', label: 'Import' },
     { key: 'devices', label: 'الأجهزة المقترحة', badge: pendingDevices },
+    { key: 'inspection', label: 'الفحص' },
     { key: 'bypass', label: 'Bypass attempts' },
     { key: 'settings', label: 'Settings' },
   ];
@@ -116,6 +118,7 @@ export function App() {
       {/* onChanged drops the badge the moment a suggestion is actioned,
           instead of leaving a stale count until the next 30s poll. */}
       {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshDeviceCount} />}
+      {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}
     </div>
