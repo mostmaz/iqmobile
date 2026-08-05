@@ -38,6 +38,7 @@ import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
 import webListingRoutes from './routes/webListing.js';
 import webShopRoutes from './routes/webShop.js';
+import webHomeRoutes from './routes/webHome.js';
 import { activityTracker } from './activity.js';
 import getAppRoutes from './routes/getApp.js';
 import bannersRoutes from './routes/banners.js';
@@ -158,6 +159,7 @@ app.use('/l', webListingRoutes);  // public shareable listing pages: /l/:id
 // Public shop page at /shop/:id — the browser fallback for the shop banner
 // deep-link on app builds older than 0.1.6, which have no in-app intercept.
 // Singular /shop, so it does not collide with the /shops JSON API below.
+app.use('/', webHomeRoutes);   // iqmobile.org root: store redirect on phones, marketplace on desktop
 app.use('/', webShopRoutes);
 app.use('/', getAppRoutes);       // mounts /get — the store smart link for bios
 app.use('/banners', bannersRoutes);

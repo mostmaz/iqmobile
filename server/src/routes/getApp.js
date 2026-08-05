@@ -30,7 +30,7 @@ function playUrlWithRef(ref) {
   return clean ? `${PLAY_URL}&referrer=${encodeURIComponent(clean)}` : PLAY_URL;
 }
 
-function detect(ua = '') {
+export function detect(ua = '') {
   const s = ua.toLowerCase();
   // iPadOS 13+ reports as Macintosh, so check for touch support markers too.
   if (/iphone|ipad|ipod/.test(s)) return 'ios';
