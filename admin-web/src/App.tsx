@@ -17,13 +17,14 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DailyUsersPage } from './pages/DailyUsersPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { InspectionPage } from './pages/InspectionPage';
+import { AppControlPage } from './pages/AppControlPage';
 import { ShopNotifier } from './ShopNotifier';
 import { WorkQueue, type Queue } from './WorkQueue';
 
 export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
-  | 'devices' | 'inspection';
+  | 'devices' | 'inspection' | 'appcontrol';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -65,7 +66,13 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
       { key: 'deals', label: 'الصفقات' },
     ],
   },
-  { label: 'الإعداد', items: [{ key: 'settings', label: 'الإعدادات' }] },
+  {
+    label: 'الإعداد',
+    items: [
+      { key: 'settings', label: 'الإعدادات' },
+      { key: 'appcontrol', label: 'تحكّم التطبيق' },
+    ],
+  },
 ];
 
 const EMPTY_QUEUE: Queue = {
@@ -157,6 +164,7 @@ export function App() {
       {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}
+      {page === 'appcontrol' && <AppControlPage />}
     </div>
   );
 }

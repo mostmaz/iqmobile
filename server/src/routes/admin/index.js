@@ -106,6 +106,20 @@ r.get('/settings', requireAdmin, (_req, res) => {
     shops_unlimited_listings: getSetting('shops_unlimited_listings') !== '0',
     // Default on: show every listing regardless of TTL (nothing expires).
     listings_never_expire: getSetting('listings_never_expire') !== '0',
+
+    // Update floor. '0' = nothing enforced.
+    min_supported_version: getSetting('min_supported_version') || '0',
+    nag_below_version: getSetting('nag_below_version') || '0',
+
+    // Home overlay.
+    overlay_enabled: getSetting('overlay_enabled') === '1',
+    overlay_title: getSetting('overlay_title') || '',
+    overlay_body: getSetting('overlay_body') || '',
+    overlay_image: getSetting('overlay_image') || '',
+    overlay_cta_label: getSetting('overlay_cta_label') || '',
+    overlay_cta_url: getSetting('overlay_cta_url') || '',
+    overlay_version: getSetting('overlay_version') || '1',
+    overlay_frequency: getSetting('overlay_frequency') || 'once',
   });
 });
 
@@ -132,6 +146,18 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.listing_inspection_autoreject != null) {
     setSettingValue('listing_inspection_autoreject', req.body.listing_inspection_autoreject ? '1' : '0');
+  }
+  // Update floor + home overlay. Free-text so the operator controls copy,
+  // link and image without a deploy; stored verbatim and escaped at render.
+  for (const k of [
+    'min_supported_version', 'nag_below_version',
+    'overlay_title', 'overlay_body', 'overlay_image',
+    'overlay_cta_label', 'overlay_cta_url', 'overlay_version', 'overlay_frequency',
+  ]) {
+    if (req.body?.[k] != null) setSettingValue(k, String(req.body[k]).slice(0, 500));
+  }
+  if (req.body?.overlay_enabled != null) {
+    setSettingValue('overlay_enabled', req.body.overlay_enabled ? '1' : '0');
   }
   res.json({ ok: true });
 });

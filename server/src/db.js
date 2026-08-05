@@ -860,6 +860,32 @@ setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore T
 setSetting.run('listing_inspection_enabled', '0');
 setSetting.run('listing_inspection_autoreject', '0');
 
+// Minimum supported app version. Both default to '0' = nothing enforced, so
+// shipping this changes nothing until an operator sets a floor.
+//   min_supported_version — below this the app blocks with an update wall.
+//     Set it only for a genuinely breaking change: it locks people out.
+//   nag_below_version     — below this the app shows a dismissible prompt.
+// Server-controlled so the threshold can move without another release.
+setSetting.run('min_supported_version', '0');
+setSetting.run('nag_below_version', '0');
+
+// Home overlay — a dashboard-controlled interstitial shown over the listing
+// feed (sponsor, promo, service notice). Off by default; everything about it
+// is a setting so the copy, link and image change without a deploy.
+setSetting.run('overlay_enabled', '0');
+setSetting.run('overlay_title', '');
+setSetting.run('overlay_body', '');
+setSetting.run('overlay_image', '');
+setSetting.run('overlay_cta_label', '');
+setSetting.run('overlay_cta_url', '');
+// Bumping this makes the overlay reappear for everyone who dismissed the
+// previous one — without it, editing the copy would show a new message only
+// to people who had never seen the old one.
+setSetting.run('overlay_version', '1');
+// 'once' = until dismissed, 'always' = every cold start. 'always' is for an
+// urgent notice only; it is hostile as a permanent setting.
+setSetting.run('overlay_frequency', 'once');
+
 // reference: governorate list lives in code; no row needed
 void GOVERNORATES;
 

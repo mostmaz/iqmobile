@@ -15,6 +15,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import * as SecureStore from '../lib/secureStore';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
+import { AppGate } from '../components/AppGate';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../auth/AuthContext';
@@ -318,6 +319,9 @@ export default function RootNav() {
         )}
       </Root.Navigator>
       <NotificationBanner />
+      {/* Sits above the navigator so the update wall covers every screen,
+          not just the one the user happens to be on. */}
+      <AppGate />
     </NavigationContainer>
   );
 }
