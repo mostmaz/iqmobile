@@ -171,13 +171,19 @@ r.get('/shops/:id(\\d+)', (req, res) => {
   const statusClause = neverExpire
     ? "status IN ('active','reserved','sold','expired')"
     : "status IN ('active','reserved','sold','expired') AND expires_at > ?";
+  // 300, not 100. The app derives the shop page's brand filter from THIS array,
+  // so a cap below the shop's real inventory silently drops whole brands from
+  // the filter: at 100 the 143-listing price shop showed five brands and hid
+  // Honor, Infinix and Apple entirely, because all of their rows fell in the
+  // truncated tail. It also contradicted the "143 إعلان" header. Matches the
+  // web shop page's limit.
   const listings = db.prepare(
     `SELECT * FROM phone_listings
      WHERE seller_id=? AND ${statusClause}
      ORDER BY
        (CASE WHEN featured_until > ? THEN 1 ELSE 0 END) DESC,
        created_at DESC
-     LIMIT 100`,
+     LIMIT 300`,
   ).all(...(neverExpire ? [u.id, nowTs] : [u.id, nowTs, nowTs]));
   res.json({
     ...shopCard(u, nowTs),

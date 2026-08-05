@@ -324,12 +324,16 @@ r.get('/', optionalAuth(), (req, res) => {
   if (seller_type === 'individual' || seller_type === 'shop') {
     where += ' AND u.seller_type=?'; params.push(seller_type);
   } else if (!q) {
-    // Default home/browse feed (no search, no explicit seller filter) shows
-    // individual-seller listings only. Shop inventory lives on shop pages and
-    // in the Shops directory, so a shop with a large catalog doesn't flood the
-    // home feed. A search query (q) and an explicit seller_type='shop' still
-    // return shop listings, keeping them discoverable.
-    where += " AND u.seller_type != 'shop'";
+    // Default home/browse feed. Shops DO belong here — their stock is real
+    // inventory a buyer wants to see. What must stay out is a hidden shop:
+    // the aggregator price shop is a catalogue of other shops' lowest prices,
+    // reachable on purpose only through its banner, and its 143 rows would
+    // bury every individual seller in the feed.
+    //
+    // Keyed off shop_hidden rather than a hardcoded id, so the existing
+    // dashboard checkbox controls feed presence too, and the rule reads the
+    // same as the Shops directory's.
+    where += ' AND COALESCE(u.shop_hidden,0) = 0';
   }
   if (q) {
     // Smart search. queryTokens() turns the query into normalized tokens —
