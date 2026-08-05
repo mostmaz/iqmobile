@@ -317,6 +317,26 @@ CREATE TABLE IF NOT EXISTS events (
   result_count INTEGER,
   created_at INTEGER NOT NULL
 );
+-- Daily-active users, one row per user per Baghdad day (see src/activity.js).
+-- Deliberately NOT an events row per request: this table grows with
+-- users×days, so a year of a few thousand users stays small, while a
+-- request-level log would be millions of rows nobody queries individually.
+CREATE TABLE IF NOT EXISTS user_active_days (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day TEXT NOT NULL,
+  -- Activity pings, NOT request count: the tracker writes at most once per
+  -- user per 10 minutes, so this is roughly "10-minute windows in which the
+  -- user was doing something", a rough session-length proxy. Reading it as
+  -- requests would undercount by orders of magnitude.
+  requests INTEGER NOT NULL DEFAULT 1,
+  first_seen INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  platform TEXT,
+  app_version TEXT,
+  PRIMARY KEY(user_id, day)
+);
+CREATE INDEX IF NOT EXISTS idx_active_days_day ON user_active_days(day);
+
 CREATE INDEX IF NOT EXISTS idx_events_type_time ON events(type, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_listing ON events(listing_id, type);
 CREATE INDEX IF NOT EXISTS idx_events_search ON events(type, query);

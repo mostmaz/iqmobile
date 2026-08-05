@@ -38,6 +38,7 @@ import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
 import webListingRoutes from './routes/webListing.js';
 import webShopRoutes from './routes/webShop.js';
+import { activityTracker } from './activity.js';
 import getAppRoutes from './routes/getApp.js';
 import bannersRoutes from './routes/banners.js';
 import featuresRoutes from './routes/features.js';
@@ -144,6 +145,11 @@ app.get('/.well-known/apple-app-site-association', (_req, res) => {
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// Daily-active tracking. Mounted before the routes so it sees every API call,
+// and decodes the token itself since auth here is per-route. No-op for
+// anonymous and admin traffic.
+app.use(activityTracker());
 
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);

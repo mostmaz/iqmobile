@@ -1708,6 +1708,99 @@ r.get('/analytics', requireAdmin, (req, res) => {
   });
 });
 
+// ─── Daily users ─────────────────────────────────────────────────────
+// Two series, because "active users" means two different things and the gap
+// between them IS the signal:
+//   opened  — made any API call that day (user_active_days, one row per
+//             user per Baghdad day)
+//   engaged — searched, viewed a listing, or tapped call/WhatsApp (events)
+// A wide opened/engaged gap means people are launching the app and bouncing.
+//
+// Days are Baghdad days so the dashboard's "today" matches the operator's.
+r.get('/analytics/daily', requireAdmin, (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 180);
+  const OFFSET = 3 * 60 * 60 * 1000; // Baghdad, UTC+3, no DST
+  const dayOf = (ts) => new Date(ts + OFFSET).toISOString().slice(0, 10);
+
+  // Build the full date axis first so days with zero activity are real zeros
+  // rather than gaps the chart would silently interpolate over.
+  const today = dayOf(Date.now());
+  const axis = [];
+  for (let i = days - 1; i >= 0; i--) axis.push(dayOf(Date.now() - i * 86400000));
+  const blank = () => Object.fromEntries(axis.map((d) => [d, 0]));
+  // Epoch ms for 00:00 Baghdad on the first day of the window.
+  const windowStart = new Date(axis[0] + 'T00:00:00Z').getTime() - OFFSET;
+
+  const opened = blank();
+  for (const r2 of db.prepare(
+    'SELECT day, COUNT(DISTINCT user_id) AS n FROM user_active_days WHERE day >= ? GROUP BY day',
+  ).all(axis[0])) if (r2.day in opened) opened[r2.day] = r2.n;
+
+  // 'engaged' is derived from events with a user_id. Anonymous events exist
+  // (guests browse before signing in) and are counted separately rather than
+  // silently dropped or double-counted as a user.
+  // Distinct users per day, so a set per day rather than a running count —
+  // one person searching twenty times is one engaged user.
+  const engaged = blank();
+  const ENGAGED_TYPES = "('search','view','contact_call','contact_whatsapp')";
+  const engagedSets = new Map(axis.map((d) => [d, new Set()]));
+  for (const r2 of db.prepare(
+    `SELECT created_at, user_id FROM events
+      WHERE type IN ${ENGAGED_TYPES} AND user_id IS NOT NULL AND created_at >= ?`,
+  ).all(windowStart)) {
+    engagedSets.get(dayOf(r2.created_at))?.add(r2.user_id);
+  }
+  for (const d of axis) engaged[d] = engagedSets.get(d).size;
+
+  const signups = blank();
+  for (const r2 of db.prepare('SELECT created_at FROM users WHERE created_at >= ?').all(windowStart)) {
+    const d = dayOf(r2.created_at);
+    if (d in signups) signups[d] += 1;
+  }
+
+  const listings = blank();
+  for (const r2 of db.prepare('SELECT created_at FROM phone_listings WHERE created_at >= ?').all(windowStart)) {
+    const d = dayOf(r2.created_at);
+    if (d in listings) listings[d] += 1;
+  }
+
+  const series = axis.map((d) => ({
+    day: d, opened: opened[d], engaged: engaged[d],
+    signups: signups[d], listings: listings[d],
+  }));
+
+  // Rolling reach. WAU/MAU come from the same table, counted over windows
+  // rather than summed from the daily series (a user active on 5 days is one
+  // weekly user, not five).
+  const windowUsers = (n) => db.prepare(
+    'SELECT COUNT(DISTINCT user_id) AS n FROM user_active_days WHERE day >= ?',
+  ).get(dayOf(Date.now() - (n - 1) * 86400000)).n;
+
+  const dau = opened[today] || 0;
+  const mau = windowUsers(30);
+  res.json({
+    series,
+    totals: {
+      dau,
+      engaged_today: engaged[today] || 0,
+      wau: windowUsers(7),
+      mau,
+      // Stickiness: what share of the monthly base shows up on a given day.
+      // 20%+ is strong for a marketplace; low single digits means people come
+      // back only when they happen to need a phone.
+      dau_mau_pct: mau ? Math.round((dau / mau) * 1000) / 10 : 0,
+    },
+    platforms: db.prepare(
+      `SELECT COALESCE(platform,'unknown') AS platform, COUNT(DISTINCT user_id) AS users
+         FROM user_active_days WHERE day >= ? GROUP BY 1 ORDER BY users DESC`,
+    ).all(dayOf(Date.now() - 29 * 86400000)),
+    app_versions: db.prepare(
+      `SELECT COALESCE(app_version,'unknown') AS version, COUNT(DISTINCT user_id) AS users
+         FROM user_active_days WHERE day >= ? GROUP BY 1 ORDER BY users DESC LIMIT 12`,
+    ).all(dayOf(Date.now() - 29 * 86400000)),
+  });
+});
+
 // ─── Social publishing (Buffer → Facebook + Instagram) ───────────────
 // Daily cap: number of publish actions allowed per calendar day. One action
 // = one listing pushed to all connected channels. Tunable via the
