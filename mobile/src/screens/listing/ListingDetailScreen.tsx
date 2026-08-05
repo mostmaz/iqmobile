@@ -672,11 +672,16 @@ function ContactRow({
     if (!phone) return;
     track('listing.contact_call', { listing_id: listingId, brand, seller_type: sellerType });
     logMetaEvent('Contact', { method: 'call', brand });
+    // Our own server too. track()/logMetaEvent() go to PostHog and Meta; the
+    // dashboard's contact columns read the events table, which only this
+    // fills — without it they sit at zero forever.
+    Listings.contact(listingId, 'call');
     callPhone(phone);
   };
   const trackedWhatsApp = () => {
     track('listing.contact_whatsapp', { listing_id: listingId, brand, seller_type: sellerType });
     logMetaEvent('Contact', { method: 'whatsapp', brand });
+    Listings.contact(listingId, 'whatsapp');
     if (whatsapp) openWhatsApp(whatsapp);
   };
   const trackedChat = () => {
@@ -716,7 +721,7 @@ function ContactRow({
       {phone || whatsapp ? (
         <View style={{ marginTop: phone ? 8 : 0, flexDirection: 'row-reverse', gap: 8 }}>
           {phone ? (
-            <Btn kind="success" full onPress={() => callPhone(phone)}>
+            <Btn kind="success" full onPress={trackedCall}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                 <IconPhoneIcon size={15} color="#fff" sw={1.8} />
                 <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>اتصال</Text>

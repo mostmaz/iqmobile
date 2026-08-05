@@ -249,6 +249,12 @@ export const Listings = {
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),
   saved: () => api<Listing[]>('/listings/saved/mine'),
+  // Report a call/WhatsApp tap. This is what fills the dashboard's contact
+  // columns — a tap deep-links out of the app, so the POST is the only signal
+  // the server can ever get. Fire-and-forget: never block opening the dialler.
+  contact: (id: number, channel: 'call' | 'whatsapp') =>
+    api(`/listings/${id}/contact`, { method: 'POST', body: JSON.stringify({ channel }) })
+      .catch(() => { /* best-effort analytics */ }),
 };
 
 // ─── Saved searches ───────────────────────────────────────────────────
