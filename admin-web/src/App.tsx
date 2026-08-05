@@ -14,97 +14,133 @@ import { ImportPage } from './pages/ImportPage';
 import { FeatureRequestsPage } from './pages/FeatureRequestsPage';
 import { ShopsPage } from './pages/ShopsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { DailyUsersPage } from './pages/DailyUsersPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { InspectionPage } from './pages/InspectionPage';
 import { ShopNotifier } from './ShopNotifier';
+import { WorkQueue, type Queue } from './WorkQueue';
 
-type Page =
-  | 'overview' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops' | 'listings'
-  | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import' | 'devices' | 'inspection';
+export type Page =
+  | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
+  | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
+  | 'devices' | 'inspection';
+
+// Nav grouped by what the operator is trying to do, rather than one flat row
+// of fifteen equally-weighted links where nothing stands out.
+const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string; badgeKey?: keyof Queue }> }> = [
+  {
+    label: 'نظرة عامة',
+    items: [
+      { key: 'overview', label: 'الرئيسية' },
+      // Not "المستخدمون" — the Growth group already has a page by that name
+      // for the user table, and two identical labels is a coin toss.
+      { key: 'users_daily', label: 'النشاط اليومي' },
+      { key: 'analytics', label: 'الطلب والتواصل' },
+    ],
+  },
+  {
+    label: 'الإشراف',
+    items: [
+      { key: 'inspection', label: 'الفحص', badgeKey: 'inspection' },
+      { key: 'devices', label: 'الأجهزة المقترحة', badgeKey: 'devices' },
+      { key: 'reports', label: 'البلاغات', badgeKey: 'reports' },
+      { key: 'bypass', label: 'التحايل' },
+    ],
+  },
+  {
+    label: 'الكتالوج',
+    items: [
+      { key: 'listings', label: 'الإعلانات' },
+      { key: 'brands', label: 'الماركات' },
+      { key: 'import', label: 'الاستيراد' },
+    ],
+  },
+  {
+    label: 'النمو',
+    items: [
+      { key: 'shops', label: 'المتاجر' },
+      { key: 'banners', label: 'البانرات' },
+      { key: 'featured', label: 'الترويج', badgeKey: 'feature_requests' },
+      { key: 'users', label: 'المستخدمون' },
+      { key: 'deals', label: 'الصفقات' },
+    ],
+  },
+  { label: 'الإعداد', items: [{ key: 'settings', label: 'الإعدادات' }] },
+];
+
+const EMPTY_QUEUE: Queue = {
+  inspection: 0, inspection_errors: 0, devices: 0,
+  reports: 0, feature_requests: 0, new_shops: 0,
+};
 
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
-  // Default landing is the Overview page (KPIs + charts). Operators
-  // appreciate the snapshot before diving into individual tables.
   const [page, setPage] = useState<Page>('overview');
-  // Pending device suggestions. Unlike ShopNotifier's "new shop registered"
-  // notice, this is a WORK QUEUE, so there is deliberately no dismiss/seen
-  // watermark: the count stays up until the queue is actually cleared.
-  // Otherwise suggestions go unnoticed, which is exactly what happened before.
-  const [pendingDevices, setPendingDevices] = useState(0);
+  // Every "someone is waiting on you" count, in one poll. These are work
+  // queues, so there is deliberately no dismiss: a count stays up until the
+  // work is actually done. Suggestions went unnoticed for weeks precisely
+  // because nothing persisted.
+  const [queue, setQueue] = useState<Queue>(EMPTY_QUEUE);
 
-  const refreshDeviceCount = useCallback(() => {
-    api<{ pending: number }>('/admin/device-suggestions/count')
-      .then((r) => setPendingDevices(r.pending))
-      .catch(() => { /* transient — keep the last known count */ });
+  const refreshQueue = useCallback(() => {
+    api<Queue>('/admin/work-queue')
+      .then(setQueue)
+      .catch(() => { /* transient — keep the last known counts */ });
   }, []);
 
   useEffect(() => {
     if (!authed) return;
-    refreshDeviceCount();
-    const t = setInterval(refreshDeviceCount, 30000);
+    refreshQueue();
+    const t = setInterval(refreshQueue, 30000);
     return () => clearInterval(t);
-  }, [authed, refreshDeviceCount]);
+  }, [authed, refreshQueue]);
 
   if (!authed) return <Login onAuth={() => setAuthed(true)} />;
 
-  const NAV: Array<{ key: Page; label: string; badge?: number }> = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'analytics', label: 'التحليلات' },
-    { key: 'brands', label: 'Brands' },
-    { key: 'banners', label: 'Banners' },
-    { key: 'featured', label: 'Featured' },
-    { key: 'shops', label: 'Shops' },
-    { key: 'listings', label: 'Listings' },
-    { key: 'users', label: 'Users' },
-    { key: 'deals', label: 'Deals' },
-    { key: 'reports', label: 'Reports' },
-    { key: 'import', label: 'Import' },
-    { key: 'devices', label: 'الأجهزة المقترحة', badge: pendingDevices },
-    { key: 'inspection', label: 'الفحص' },
-    { key: 'bypass', label: 'Bypass attempts' },
-    { key: 'settings', label: 'Settings' },
-  ];
-
   return (
-    <div style={{ maxWidth: 1200, margin: '24px auto', padding: '0 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1>IQ Mobile · Marketplace Admin</h1>
-        <button className="secondary" onClick={() => { setStoredToken(null); setAuthed(false); }}>Logout</button>
-      </div>
-      <ShopNotifier onGoShops={() => setPage('shops')} />
-      {pendingDevices > 0 && page !== 'devices' ? (
-        <div
-          dir="rtl"
-          className="card"
-          style={{
-            borderInlineStart: '3px solid #f59e0b', background: '#2a220f',
-            display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ color: '#fff', fontWeight: 700 }}>
-            📱 {pendingDevices === 1
-              ? 'جهاز واحد اقترحه بائع وينتظر الإضافة إلى القائمة'
-              : `${pendingDevices} أجهزة اقترحها البائعون وتنتظر الإضافة إلى القائمة`}
-          </div>
-          <button onClick={() => setPage('devices')}>مراجعتها</button>
+    <div style={{ maxWidth: 1240, margin: '24px auto', padding: '0 16px' }}>
+      <div className="app-header">
+        <div className="brand">
+          <div className="brand-mark">iQ</div>
+          <h1>IQ Mobile · Admin</h1>
         </div>
-      ) : null}
-      <div className="nav">
-        {NAV.map((n) => (
-          <a key={n.key} href="#" className={page === n.key ? 'active' : ''}
-             onClick={(e) => { e.preventDefault(); setPage(n.key); }}>
-            {n.label}
-            {n.badge ? (
-              <span style={{
-                background: '#f59e0b', color: '#1b1a18', fontSize: 11, fontWeight: 800,
-                borderRadius: 999, padding: '1px 6px', marginInlineStart: 6, verticalAlign: 'middle',
-              }}>{n.badge}</span>
-            ) : null}
-          </a>
-        ))}
+        <button className="secondary" onClick={() => { setStoredToken(null); setAuthed(false); }}>
+          تسجيل الخروج
+        </button>
       </div>
+
+      <nav className="nav" dir="rtl">
+        {NAV_GROUPS.map((g) => (
+          <div className="nav-group" key={g.label}>
+            <span className="nav-group-label">{g.label}</span>
+            <div className="nav-group-items">
+              {g.items.map((n) => {
+                const badge = n.badgeKey ? queue[n.badgeKey] : 0;
+                return (
+                  <a
+                    key={n.key}
+                    href="#"
+                    className={page === n.key ? 'active' : ''}
+                    onClick={(e) => { e.preventDefault(); setPage(n.key); }}
+                  >
+                    {n.label}
+                    {badge ? <span className="nav-badge">{badge}</span> : null}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <ShopNotifier onGoShops={() => setPage('shops')} />
+
+      {/* Outstanding work leads the overview, so the first thing on screen is
+          what needs a decision rather than a vanity chart. */}
+      {page === 'overview' ? <WorkQueue queue={queue} onGo={setPage} /> : null}
+
       {page === 'overview' && <OverviewPage />}
+      {page === 'users_daily' && <DailyUsersPage />}
       {page === 'analytics' && <AnalyticsPage />}
       {page === 'brands' && <BrandsPage />}
       {page === 'banners' && <BannersPage />}
@@ -117,7 +153,7 @@ export function App() {
       {page === 'import' && <ImportPage />}
       {/* onChanged drops the badge the moment a suggestion is actioned,
           instead of leaving a stale count until the next 30s poll. */}
-      {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshDeviceCount} />}
+      {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshQueue} />}
       {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}

@@ -1708,6 +1708,35 @@ r.get('/analytics', requireAdmin, (req, res) => {
   });
 });
 
+// ─── Work queue ──────────────────────────────────────────────────────
+// Every "someone is waiting on you" count in one call, so the overview can
+// lead with outstanding work instead of the operator having to remember to
+// visit five pages. One request rather than five also means the header can
+// poll it cheaply.
+//
+// Only genuinely actionable things belong here. A number that can't be
+// cleared trains people to ignore the whole row.
+r.get('/work-queue', requireAdmin, (_req, res) => {
+  const count = (sql, ...args) => db.prepare(sql).get(...args).n;
+  res.json({
+    // Flagged listings awaiting a human verdict. Matches the الفحص queue's
+    // filter — a 'clean' verdict is logged for audit, never for review.
+    inspection: count(
+      "SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending' AND verdict != 'clean'",
+    ),
+    inspection_errors: count("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'"),
+    devices: count("SELECT COUNT(*) AS n FROM device_suggestions WHERE status='pending'"),
+    reports: count("SELECT COUNT(*) AS n FROM reports WHERE status='open'"),
+    feature_requests: count("SELECT COUNT(*) AS n FROM feature_requests WHERE status='pending'"),
+    // Shops that registered in the last 7 days — not a queue exactly, but the
+    // thing an operator most often wants to greet or verify.
+    new_shops: count(
+      "SELECT COUNT(*) AS n FROM users WHERE seller_type='shop' AND created_at >= ?",
+      Date.now() - 7 * 86400000,
+    ),
+  });
+});
+
 // ─── Daily users ─────────────────────────────────────────────────────
 // Two series, because "active users" means two different things and the gap
 // between them IS the signal:

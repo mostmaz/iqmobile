@@ -32,6 +32,10 @@ const baseUrl: string =
     ? 'http://localhost:4000'
     : (__DEV__ && devUrl ? devUrl : prodUrl);
 
+// Read once at module load. Falls back to '0' rather than 'unknown' so an
+// unparseable value still sorts below every real release in a comparison.
+const APP_VERSION: string = Constants.expoConfig?.version || '0';
+
 let _token: string | null = null;
 export function setToken(token: string | null) {
   _token = token;
@@ -51,6 +55,12 @@ export async function api<T = any>(
     'content-type': 'application/json',
     // bypass localtunnel browser interstitial when API is tunneled via *.loca.lt
     'bypass-tunnel-reminder': 'true',
+    // Identify the client on every call. The server records these against the
+    // daily-active row, which is the only way to know the version spread of
+    // people actually using the app — the stores report installs, not usage,
+    // and can't tell you who is stuck on an old build.
+    'x-app-platform': Platform.OS,
+    'x-app-version': APP_VERSION,
     ...((init.headers as Record<string, string>) || {}),
   };
   if (_token) headers.authorization = `Bearer ${_token}`;
