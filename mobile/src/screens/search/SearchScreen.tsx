@@ -4,7 +4,7 @@
 // actually match. Falls through to Listings.browse({ brand, model }): brand is
 // an exact filter, model a LIKE on the listing's model field.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ const PAGE_SIZE = 15;
 
 export default function SearchScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const brandRailRef = useRef<ScrollView>(null);
   const [brand, setBrand] = useState<string | null>(null);
   const [model, setModel] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -60,10 +61,16 @@ export default function SearchScreen({ navigation }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 14 }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
-        {/* Brand rail */}
+        {/* Brand rail. row-reverse puts the first brand at the content's RIGHT
+            edge, but a ScrollView opens at offset 0 — its LEFT edge — so the
+            rail started on the last brands (Itel, Nubia…) instead of Apple.
+            Scrolling to the end on layout lands on the first brand, same fix
+            BrowseScreen already uses. */}
         <ScrollView
+          ref={brandRailRef}
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+          onContentSizeChange={() => brandRailRef.current?.scrollToEnd({ animated: false })}
         >
           {brands.map((b) => (
             <Pill key={b.name} active={brand === b.name} onPress={() => pickBrand(b.name)}>

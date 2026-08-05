@@ -4,7 +4,7 @@
 // / Facebook / Instagram. Price-list images open full-screen (swipeable).
 
 import React, { useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, ScrollView, Linking } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, ScrollView, TextInput, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
@@ -12,7 +12,11 @@ import { Img } from '../../components/Img';
 import { Btn } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
-import { IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall, IconPlus } from '../../components/icons';
+import { BrandListModal } from '../../components/BrandListModal';
+import {
+  IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall, IconPlus,
+  IconSearch, IconClose, IconChevronDown,
+} from '../../components/icons';
 import { Shops } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { arOf } from '../../lib/governorates';
@@ -34,20 +38,27 @@ export default function ShopScreen({ navigation, route }: any) {
   // Brand filter. null = الكل. Declared before the early return below so the
   // hook order stays stable across the loading render.
   const [brandFilter, setBrandFilter] = useState<string | null>(null);
+  const [brandPickerOpen, setBrandPickerOpen] = useState(false);
+  const [search, setSearch] = useState('');
 
   // Brands present in THIS shop's inventory, most-stocked first. Derived from
   // the listings we already have rather than the global brand catalogue, so a
-  // shop never shows a chip that filters to nothing.
+  // brand can never filter to nothing.
   const allListings: any[] = (shop as any)?.listings || [];
   const brandCounts = React.useMemo(() => {
     const m = new Map<string, number>();
     for (const l of allListings) if (l?.brand) m.set(l.brand, (m.get(l.brand) || 0) + 1);
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
   }, [allListings]);
-  const visibleListings = React.useMemo(
-    () => (brandFilter ? allListings.filter((l) => l.brand === brandFilter) : allListings),
-    [allListings, brandFilter],
-  );
+  const visibleListings = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allListings.filter((l) => {
+      if (brandFilter && l.brand !== brandFilter) return false;
+      if (!q) return true;
+      // Match brand and model together so "xiaomi poco" works as one query.
+      return `${l.brand || ''} ${l.model || ''}`.toLowerCase().includes(q);
+    });
+  }, [allListings, brandFilter, search]);
 
   if (isLoading || !shop) {
     return (
@@ -219,52 +230,73 @@ export default function ShopScreen({ navigation, route }: any) {
               إعلانات المتجر
             </Text>
 
-            {/* Brand filter — only worth showing once the shop actually
-                stocks more than one brand. */}
-            {brandCounts.length > 1 ? (
-              // Wraps rather than scrolling sideways. As a hidden-indicator
-              // horizontal strip only the first few brands were on screen and
-              // the rest read as missing — a shop with 9 brands looked like it
-              // stocked 4.
-              <View
-                style={{
-                  flexDirection: 'row-reverse', flexWrap: 'wrap',
-                  gap: 8, paddingBottom: 12,
-                }}
-              >
-                {([[null, allListings.length]] as [string | null, number][])
-                  .concat(brandCounts as [string | null, number][])
-                  .map(([b, n]) => {
-                    const active = brandFilter === b;
-                    return (
-                      <TouchableOpacity
-                        key={b ?? '__all__'}
-                        onPress={() => setBrandFilter(b)}
-                        activeOpacity={0.7}
-                        style={{
-                          paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
-                          backgroundColor: active ? theme.ink : theme.surface,
-                          borderWidth: 1, borderColor: active ? theme.ink : theme.line,
-                          flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
-                        }}
-                      >
-                        <Text style={{
-                          fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600',
-                          color: active ? '#fff' : theme.ink,
-                        }}>
-                          {b ?? 'الكل'}
-                        </Text>
-                        <Text style={{
-                          fontFamily: fonts.ltr, fontSize: 11,
-                          color: active ? 'rgba(255,255,255,0.7)' : theme.subtle,
-                        }}>
-                          {n}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+            {/* Search + brand filter. Both replaced a wrapped pill grid: with
+                nine brands the pills sprawled over three lines, and as a
+                single scrolling rail the later ones were off-screen entirely.
+                A one-line summary that opens a list avoids both. */}
+            <View style={{ flexDirection: 'row-reverse', gap: 8, paddingBottom: 12 }}>
+              <View style={{
+                flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+                borderWidth: 1, borderColor: theme.line, borderRadius: radius.lg,
+                backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 10,
+              }}>
+                <IconSearch size={16} color={theme.subtle} sw={1.8} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="ابحث في إعلانات المتجر…"
+                  placeholderTextColor={theme.subtle}
+                  style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right', padding: 0 }}
+                />
+                {search ? (
+                  <TouchableOpacity onPress={() => setSearch('')} activeOpacity={0.7}>
+                    <IconClose size={16} color={theme.subtle} sw={1.8} />
+                  </TouchableOpacity>
+                ) : null}
               </View>
+
+              {brandCounts.length > 1 ? (
+                <TouchableOpacity
+                  onPress={() => setBrandPickerOpen(true)}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+                    borderWidth: 1, borderRadius: radius.lg,
+                    borderColor: brandFilter ? theme.ink : theme.line,
+                    backgroundColor: brandFilter ? theme.ink : theme.surface,
+                    paddingHorizontal: 12, paddingVertical: 10,
+                  }}
+                >
+                  <Text style={{
+                    fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600',
+                    color: brandFilter ? '#fff' : theme.ink,
+                  }}>
+                    {brandFilter ?? 'كل الماركات'}
+                  </Text>
+                  <IconChevronDown size={15} color={brandFilter ? '#fff' : theme.subtle} sw={1.8} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Result count, so a filter that hides most of the shop is
+                visibly a filter and not an empty catalogue. */}
+            {(brandFilter || search.trim()) ? (
+              <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', paddingBottom: 10 }}>
+                {visibleListings.length} من {allListings.length}
+              </Text>
             ) : null}
+
+            <BrandListModal
+              visible={brandPickerOpen}
+              title="اختر الماركة"
+              brands={[
+                { name: '', label: 'كل الماركات', count: allListings.length },
+                ...brandCounts.map(([b, n]: [string, number]) => ({ name: b, count: n })),
+              ]}
+              value={brandFilter}
+              onClose={() => setBrandPickerOpen(false)}
+              onSelect={(b) => setBrandFilter(b)}
+            />
           </View>
         }
         ListEmptyComponent={

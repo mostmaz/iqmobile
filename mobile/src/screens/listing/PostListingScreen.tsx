@@ -11,6 +11,7 @@ import { StepDots, ChipTag } from '../../components/marketplace';
 import { IconPin, IconPhoneIcon, IconCheck, IconChevronDown } from '../../components/icons';
 import { Listings, Brands, DeviceCatalog, type Condition } from '../../api/endpoints';
 import { DevicePickerModal } from '../../components/DevicePickerModal';
+import { BrandListModal } from '../../components/BrandListModal';
 import { useTrack } from '../../analytics/track';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
@@ -61,6 +62,7 @@ export default function PostListingScreen({ navigation }: any) {
   // upgrade to a real account via AuthGate before they can post.)
 
   const [brand, setBrand] = useState('Apple');
+  const [brandPickerOpen, setBrandPickerOpen] = useState(false);
   // Brand options come from the server so the catalog stays in sync without
   // an app update. "Other" is forced last. Falls back to the hardcoded list
   // only if the fetch fails (e.g. offline first launch).
@@ -300,11 +302,30 @@ export default function PostListingScreen({ navigation }: any) {
         {step === 0 && (
           <>
             <FieldLabel>العلامة التجارية</FieldLabel>
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {brandOptions.map((b) => (
-                <Pill key={b} active={brand === b} onPress={() => { setBrand(b); setModel(''); }}>{b}</Pill>
-              ))}
-            </View>
+            {/* A tap-to-open list rather than a pill grid: 20 brands as pills
+                sprawled over several lines and buried the later ones. */}
+            <TouchableOpacity
+              onPress={() => setBrandPickerOpen(true)}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+                borderWidth: 1, borderColor: theme.line, borderRadius: radius.lg,
+                backgroundColor: theme.surface, paddingHorizontal: 14, paddingVertical: 13,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '600', color: theme.ink }}>
+                {brand}
+              </Text>
+              <IconChevronDown size={18} color={theme.subtle} sw={1.8} />
+            </TouchableOpacity>
+            <BrandListModal
+              visible={brandPickerOpen}
+              brands={brandOptions.map((b) => ({ name: b }))}
+              value={brand}
+              onClose={() => setBrandPickerOpen(false)}
+              onSelect={(b) => { if (b) { setBrand(b); setModel(''); } }}
+            />
             <FieldLabel>الموديل</FieldLabel>
             {/* Model is picked from the device catalog for this brand, so it
                 matches what buyers search for. If it's not in the list the

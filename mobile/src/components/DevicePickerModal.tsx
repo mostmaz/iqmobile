@@ -9,7 +9,10 @@
 // leaves this off — you can only search for devices that exist.
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, Modal, TextInput, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import {
+  View, Text, Modal, TextInput, TouchableOpacity, FlatList, ActivityIndicator,
+  Keyboard, Platform,
+} from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../theme';
 import { IconSearch, IconClose, IconCheck, IconPlus } from './icons';
@@ -39,6 +42,27 @@ export function DevicePickerModal({
     return () => clearTimeout(t);
   }, [text]);
 
+  // Lift the sheet above the keyboard ourselves rather than relying on the
+  // platform. This sheet is bottom-anchored, so its height follows its
+  // content: with a full device list it is tall enough that the top rows stay
+  // visible, but once a search narrows it to one or two results the whole
+  // sheet is short and sits entirely inside the keyboard's area. Android's
+  // windowSoftInputMode=adjustResize does not apply to a transparent Modal,
+  // and KeyboardAvoidingView is unreliable inside one, so measure directly.
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    // iOS reports the frame before the animation so the sheet travels with the
+    // keyboard instead of jumping after it; Android only has the Did events.
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e: any) => setKbHeight(e?.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+  // Drop back to 0 between openings, so a sheet opened without focus doesn't
+  // start floating on a stale measurement.
+  useEffect(() => { if (!visible) setKbHeight(0); }, [visible]);
+
   const { data, isLoading } = useQuery({
     queryKey: ['device-catalog', type, brand, q],
     queryFn: () => DeviceCatalog.devices(brand, q, type),
@@ -59,7 +83,11 @@ export function DevicePickerModal({
         <View style={{
           backgroundColor: theme.bg,
           borderTopLeftRadius: 22, borderTopRightRadius: 22,
-          paddingTop: 12, paddingBottom: 24, maxHeight: '82%',
+          paddingTop: 12, paddingBottom: 24,
+          // Sit on top of the keyboard rather than behind it, and give up the
+          // space it takes so a long list still scrolls within what's visible.
+          marginBottom: kbHeight,
+          maxHeight: kbHeight ? '58%' : '82%',
         }}>
           <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 999, backgroundColor: theme.line, marginBottom: 10 }} />
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 10 }}>
