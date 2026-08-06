@@ -253,6 +253,10 @@ r.post('/listings', requireAdmin, (req, res) => {
   const description = String(req.body?.description || '').trim().slice(0, 2000);
   const wa = req.body?.contact_whatsapp ? normalizeIraqiPhone(req.body.contact_whatsapp) : null;
   const displayNameInput = String(req.body?.display_name || '').trim();
+  // Price-only listings (e.g. the El Ryan website source in the aggregator):
+  // no contact at all. The app hides the call/WhatsApp row when both contact
+  // fields are null, so this creates a pure price entry with no buy button.
+  const noContact = !!req.body?.no_contact;
 
   if (!brand || !model || !governorate) return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
@@ -294,7 +298,7 @@ r.post('/listings', requireAdmin, (req, res) => {
     seller.id, finalBrand, model, storage || null, color || null, condition,
     null, null, '[]', askingPrice,
     governorate, city || null, description || null, 'active',
-    phone, wa,
+    noContact ? null : phone, noContact ? null : wa,
     t, t + TTL_MS, t,
   ).lastInsertRowid;
 
@@ -365,6 +369,17 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
       const wa = normalizeIraqiPhone(raw);
       if (!wa) return res.status(400).json({ error: 'bad_contact_whatsapp' });
       fields.push('contact_whatsapp=?'); params.push(wa);
+    }
+  }
+  if (has('contact_phone')) {
+    // Same empty→NULL semantics. Used to turn a listing "price-only" (no call
+    // button) when a no-contact source like El Ryan becomes its cheapest price.
+    const raw = String(b.contact_phone || '').trim();
+    if (!raw) { fields.push('contact_phone=?'); params.push(null); }
+    else {
+      const cp = normalizeIraqiPhone(raw);
+      if (!cp) return res.status(400).json({ error: 'bad_contact_phone' });
+      fields.push('contact_phone=?'); params.push(cp);
     }
   }
   // Free-text columns: trimmed, length-capped, empty → NULL so the
