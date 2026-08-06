@@ -15,6 +15,7 @@ import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { notify } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
+import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
 import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
 
@@ -191,13 +192,38 @@ r.patch('/users/:id(\\d+)/verify', requireAdmin, (req, res) => {
 // ─── listings ─────────────────────────────────────────────────────────
 r.get('/listings', requireAdmin, (req, res) => {
   const { status } = req.query;
-  let sql = `
-    SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone
-    FROM phone_listings l JOIN users u ON u.id = l.seller_id
-  `;
+  const q = String(req.query.q || '').trim().slice(0, 60);
+
+  const conds = [];
   const params = [];
-  if (status) { sql += ' WHERE l.status=?'; params.push(status); }
-  sql += ' ORDER BY l.created_at DESC LIMIT 200';
+  if (status) { conds.push('l.status=?'); params.push(status); }
+
+  // Search across the things an operator actually has to hand: a listing id
+  // from a report, a phone number from a complaint, or a device name. Run in
+  // SQL rather than filtering the loaded page — the list is capped at 200 of
+  // ~700 listings, so client-side filtering could never reach an older one,
+  // which is exactly when someone needs to find it.
+  if (q) {
+    const like = `%${q}%`;
+    // A bare number is almost always a listing id being looked up; still
+    // OR it against the text columns so "13" also finds "iPhone 13".
+    const idMatch = /^\d+$/.test(q) ? 'l.id = ? OR ' : '';
+    conds.push(`(${idMatch}l.brand LIKE ? OR l.model LIKE ? OR l.description LIKE ?
+                 OR u.display_name LIKE ? OR u.phone LIKE ?
+                 OR ${arabicNormalizeSql('l.model')} LIKE ?)`);
+    if (idMatch) params.push(Number(q));
+    params.push(like, like, like, like, like);
+    // Arabic-normalised copy of the query, matched against the identically
+    // normalised model column, so "ايفون" finds a model stored "أيفون".
+    const norm = (expandQuery(q).pop() || q).toLowerCase().replace(/\s+/g, '');
+    params.push(`%${norm}%`);
+  }
+
+  const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+  const sql = `
+    SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone
+    FROM phone_listings l JOIN users u ON u.id = l.seller_id${where}
+    ORDER BY l.created_at DESC LIMIT 200`;
   res.json(db.prepare(sql).all(...params));
 });
 

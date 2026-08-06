@@ -127,6 +127,11 @@ const EMPTY_FORM = {
 export function ListingsPage() {
   const [rows, setRows] = useState<Listing[]>([]);
   const [status, setStatus] = useState<string>('');
+  // `search` is what the operator is typing; `q` is the debounced value that
+  // actually hits the server. Searching on every keystroke would fire a query
+  // per character over a 700-row table for no benefit.
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
   // Per-id checkbox state. Cleared when the filter changes (otherwise
   // selections "carry over" silently to a new view, which is confusing
   // when the user then clicks Remove and rows they can't see also go).
@@ -137,11 +142,22 @@ export function ListingsPage() {
   // Listing open in the marketing-post modal (null = closed).
   const [promoting, setPromoting] = useState<Listing | null>(null);
 
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   async function load() {
-    const r = await api<Listing[]>(`/admin/listings${status ? `?status=${status}` : ''}`);
+    const p = new URLSearchParams();
+    if (status) p.set('status', status);
+    if (q) p.set('q', q);
+    const qs = p.toString();
+    const r = await api<Listing[]>(`/admin/listings${qs ? `?${qs}` : ''}`);
     setRows(r);
   }
-  useEffect(() => { load(); setSelected(new Set()); }, [status]);
+  // Search runs server-side, so it reaches listings beyond the 200-row page —
+  // which is precisely when someone is hunting for one.
+  useEffect(() => { load(); setSelected(new Set()); }, [status, q]);
 
   async function remove(id: number) {
     if (!confirm('Remove this listing?')) return;
@@ -243,6 +259,17 @@ export function ListingsPage() {
               {s || 'All'}
             </button>
           ))}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginInlineStart: 'auto' }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="id, brand, model, seller, phone…"
+              style={{ width: 260 }}
+            />
+            {search ? (
+              <button className="ghost" onClick={() => setSearch('')}>clear</button>
+            ) : null}
+          </div>
           {/* Batch action — only visible when at least one row is ticked.
               Disabled while a request is in flight so a double-click
               doesn't fire two PATCHes (the second one would just hit
