@@ -13,7 +13,15 @@ import { Platform } from 'react-native';
 //     out apiBaseUrlDev in app.json.
 //   - Production builds use apiBaseUrl unconditionally.
 const extra = (Constants.expoConfig?.extra as any) || {};
-const prodUrl: string = extra.apiBaseUrl ?? 'http://10.0.2.2:4000';
+// The fallback is the REAL production API, not an emulator alias. It used
+// to be 'http://10.0.2.2:4000', which is the Android-emulator alias for the
+// host Mac and is unroutable anywhere else. Whenever `extra` came back empty
+// — a debug build launched without the Metro manifest, for instance — every
+// request on iOS went to that dead address, hung until the OS timeout, and
+// never rejected, so the app sat on its loading state forever with no error
+// in the console. Degrading to production means a missing manifest costs you
+// the dev-server override, not the whole app.
+const prodUrl: string = extra.apiBaseUrl ?? 'https://api.iqmobile.org';
 const rawDevUrl: string | undefined = extra.apiBaseUrlDev;
 
 // 10.0.2.2 is the Android emulator's alias for the host machine. It means
@@ -27,10 +35,17 @@ const devUrl: string | undefined =
     ? rawDevUrl.replace('10.0.2.2', 'localhost')
     : rawDevUrl;
 
-const baseUrl: string =
+const rawBaseUrl: string =
   Platform.OS === 'web'
     ? 'http://localhost:4000'
     : (__DEV__ && devUrl ? devUrl : prodUrl);
+
+// Final backstop: apply the alias rewrite to whatever we ended up with, not
+// just to the dev URL. Any 10.0.2.2 reaching this point off Android — from
+// `extra.apiBaseUrl`, from a stale cached manifest, from anywhere — would
+// otherwise reproduce the silent-hang above.
+const baseUrl: string =
+  Platform.OS !== 'android' ? rawBaseUrl.replace('10.0.2.2', 'localhost') : rawBaseUrl;
 
 // Read once at module load. Falls back to '0' rather than 'unknown' so an
 // unparseable value still sorts below every real release in a comparison.
