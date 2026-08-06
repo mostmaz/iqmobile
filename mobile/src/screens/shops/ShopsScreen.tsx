@@ -1,9 +1,10 @@
-// Shops directory — businesses grouped/filterable by governorate, featured
-// shops floated to the top (the server orders them). Tapping a shop opens its
-// page (listings + contact). A "register my shop" CTA sits up top — free for
-// now (self-serve), with a WhatsApp-contact alternative on the register screen.
+// Shops directory — businesses filterable by governorate and defaulting to
+// the shopper's own, featured shops floated to the top (the server orders
+// them). Tapping a shop opens its page (listings + contact). A "register my
+// shop" CTA sits up top — free for now (self-serve), with a WhatsApp-contact
+// alternative on the register screen.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,14 +15,30 @@ import { IconStore, IconStar, IconPin, IconSpark, IconPlus, IconChevronLeft } fr
 import { GovPicker } from '../../components/GovPicker';
 import { Shops, type ShopCard } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
-import { GOV_AR_TO_EN, arOf } from '../../lib/governorates';
+import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
 
 export default function ShopsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [govAr, setGovAr] = useState('');
+  // Open on the user's own governorate rather than the whole country — a
+  // buyer in Mosul scrolling past Baghdad shops they can't reach is noise.
+  // Read through GOV_EN_TO_AR rather than arOf(): arOf falls back to echoing
+  // its input, and an unmapped value would set a filter the picker can't
+  // round-trip back to English, silently emptying the list.
+  const homeGovAr = (user?.governorate && GOV_EN_TO_AR[user.governorate]) || '';
+  const [govAr, setGovAr] = useState(homeGovAr);
+  // The default applies once. `user` may hydrate a frame or two after first
+  // render, so it can't just be the initial state — but once the shopper has
+  // touched the picker (or we've already applied it) we must never reach in
+  // and change their filter underneath them.
+  const govPinned = useRef(!!homeGovAr);
+  useEffect(() => {
+    if (govPinned.current || !homeGovAr) return;
+    govPinned.current = true;
+    setGovAr(homeGovAr);
+  }, [homeGovAr]);
   const govEn = govAr ? GOV_AR_TO_EN[govAr] : undefined;
 
   const { data, isLoading, refetch } = useQuery({
@@ -65,7 +82,12 @@ export default function ShopsScreen({ navigation }: any) {
           </View>
         </TouchableOpacity>
 
-        <GovPicker valueAr={govAr} onChangeAr={setGovAr} allowAll allLabel="كل المحافظات" />
+        <GovPicker
+          valueAr={govAr}
+          onChangeAr={(v) => { govPinned.current = true; setGovAr(v); }}
+          allowAll
+          allLabel="كل المحافظات"
+        />
       </View>
 
       <FlatList
@@ -80,6 +102,24 @@ export default function ShopsScreen({ navigation }: any) {
             <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center' }}>
               لا توجد متاجر {govAr ? `في ${govAr}` : 'بعد'}.
             </Text>
+            {/* Landing on an empty screen because the default filter happens
+                to be a governorate with no shops yet is a dead end — offer the
+                way out explicitly rather than widening the filter silently. */}
+            {govAr ? (
+              <TouchableOpacity
+                onPress={() => { govPinned.current = true; setGovAr(''); }}
+                activeOpacity={0.85}
+                style={{
+                  marginTop: 14, paddingHorizontal: 16, paddingVertical: 10,
+                  borderRadius: radius.lg, borderWidth: 1, borderColor: theme.line,
+                  backgroundColor: theme.surface,
+                }}
+              >
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.ink }}>
+                  عرض متاجر كل المحافظات
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
