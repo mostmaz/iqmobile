@@ -125,12 +125,18 @@ app.get('/terms', (_req, res) => res.sendFile('terms.html', { root: './static' }
 // dashboard uses. It ships no secrets and does nothing at all until an admin
 // logs in, but there is no reason for it to be crawled or linked, so it is
 // noindex and deliberately absent from every public footer.
+// no-store on the shell, not just noindex: once the console is added to a
+// home screen it IS the app, and a heuristically-cached copy would leave a
+// moderator running a build from days ago with no visible way to refresh it.
+// The page is a few KB, so revalidating every launch costs nothing.
 app.get('/mod', (_req, res) => {
   res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
   res.sendFile('mod.html', { root: './static' });
 });
 app.get('/mod/manifest.webmanifest', (_req, res) => {
   res.type('application/manifest+json');
+  res.set('Cache-Control', 'no-store');
   res.sendFile('mod-manifest.webmanifest', { root: './static' });
 });
 
