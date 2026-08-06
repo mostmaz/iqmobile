@@ -15,6 +15,10 @@ export function ListingCard({
   listing, onPress, onToggleSave, saved, compact,
 }: { listing: Listing; onPress: () => void; onToggleSave?: () => void; saved?: boolean; compact?: boolean }) {
   const cover = listing.images?.[0]?.image_path;
+  // "Last known price": a price-aggregator device that dropped off every
+  // source's list. Grey the whole card and badge it so buyers know it's the
+  // last seen price and the phone is no longer being offered / in stock.
+  const stale = !!(listing as any).stale_since;
   // Status badge: accent for "sold" (final), muted gray for "expired"
   // (dormant — the ad ran out, the phone may still exist), ink for
   // "reserved" (neutral).
@@ -30,7 +34,7 @@ export function ListingCard({
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
-      ...shadowSoft, overflow: 'hidden', marginBottom: 12,
+      ...shadowSoft, overflow: 'hidden', marginBottom: 12, opacity: stale ? 0.62 : 1,
       // Heights trimmed 10% from the previous 152 / 116 baseline. Inner
       // padding + chip margins trimmed proportionally below so the
       // content density stays the same — the card is just shorter.
@@ -71,6 +75,16 @@ export function ListingCard({
               {(ar.listing as any)[listing.status]}
             </Text>
           </View>
+        ) : stale ? (
+          <View style={{
+            position: 'absolute', top: 8, right: 8,
+            backgroundColor: theme.subtle,
+            paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
+          }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 }}>
+              آخر سعر معروف
+            </Text>
+          </View>
         ) : null}
         {/* Featured ribbon — bottom-left of the image so it never collides
             with the save heart (top-left) or status badge (top-right). */}
@@ -93,8 +107,8 @@ export function ListingCard({
           <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right', flex: 1, minWidth: 0 }} numberOfLines={1}>
             {listing.brand} {listing.model}
           </Text>
-          <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: theme.subtle, letterSpacing: 0.6 }}>
-            {fmtRelativeTime(listing.created_at)}
+          <Text style={{ fontFamily: stale ? fonts.arBold : fonts.mono, fontSize: 10, color: theme.subtle, letterSpacing: 0.6 }}>
+            {stale ? 'غير متوفر حالياً' : fmtRelativeTime(listing.created_at)}
           </Text>
         </View>
 

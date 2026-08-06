@@ -236,6 +236,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const showStatusBadge = status !== 'active';
   const statusBg = status === 'sold' ? theme.accent : theme.ink;
   const statusLabel = (ar.listing as any)[status] || status;
+  // "Last known price" — a price-aggregator device that dropped off the
+  // sources' lists. Grey the price + show an unavailable banner.
+  const stale = !!(data as any).stale_since;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -313,12 +316,26 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             {data.brand} {data.model}
           </Text>
 
+          {stale ? (
+            <View style={{
+              marginTop: 10, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.line,
+              borderRadius: radius.lg ?? 12, paddingHorizontal: 12, paddingVertical: 10,
+            }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+                غير متوفر حالياً
+              </Text>
+              <Text style={{ marginTop: 3, fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                هذا آخر سعر معروف لهذا الجهاز — لم يعد ضمن قوائم الأسعار الحالية وقد لا يكون متوفراً في السوق.
+              </Text>
+            </View>
+          ) : null}
+
           <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
             <View>
               <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle }}>
-                السعر المطلوب
+                {stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
               </Text>
-              <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
+              <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: stale ? theme.subtle : theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
                 {fmtIQD(data.asking_price)}
                 <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
               </Text>
