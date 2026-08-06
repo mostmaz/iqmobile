@@ -1,7 +1,7 @@
 // "New costs this much" reference for a second-hand listing.
 //
-// Shown under the asking price on any listing that isn't new, when the
-// aggregator price shop stocks the SAME device at the SAME capacity. Storage
+// Shown under the asking price on any listing outside the price shop, when
+// the shop stocks the SAME device at the SAME capacity. Storage
 // is part of the key, not a detail: the shop prices each capacity separately
 // (iPhone 17 Pro Max — 1TB 2,550,000 / 512GB 2,245,000 / 256GB 1,960,000), so
 // matching on model alone would quote a number that is simply wrong.
@@ -97,10 +97,13 @@ export function storageKey(storage) {
  */
 export function newPriceFor(listing) {
   if (!listing) return null;
-  // Only second-hand listings get the comparison. A new listing compared
-  // against new is noise, and the price shop must not annotate itself.
-  if (!listing.condition || listing.condition === 'new') return null;
-  // No capacity on the used listing means no safe comparison: quoting the
+  // Every listing outside the price shop gets the comparison, including ones
+  // the seller marked "new". Gating this to second-hand was wrong: a private
+  // seller offering a sealed Xiaomi 17T 512GB at 800,000 against the shop's
+  // 825,000 is exactly the comparison a buyer wants, and sellers routinely
+  // tick "new" for a phone used for a day. The shop must still not annotate
+  // itself — that exclusion is by seller_id below, which is the real guard.
+  // No capacity on the listing means no safe comparison: quoting the
   // 256GB price under a 128GB phone is worse than showing nothing.
   const wantStorage = storageKey(listing.storage);
   if (!wantStorage) return null;

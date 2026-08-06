@@ -341,10 +341,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               </Text>
 
               {/* What the same device costs new, at the same capacity. Sent
-                  only for second-hand listings and only on a confident match,
-                  so there is nothing to guard here beyond its presence. The
-                  saving is omitted when the asking price is at or above new —
-                  a negative "discount" would be nonsense. */}
+                  only on a confident match, so there is nothing to guard here
+                  beyond its presence. The saving is omitted when the asking
+                  price is at or above new — a negative "discount" would be
+                  nonsense. */}
               {(data as any).new_price_ref ? (
                 <View style={{ marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                   <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle }}>
