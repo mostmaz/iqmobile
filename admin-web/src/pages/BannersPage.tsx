@@ -11,6 +11,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api, API_BASE, getToken } from '../api';
+import { compressImage, humanSize } from '../lib/imageCompress';
 
 type Banner = {
   id: number;
@@ -81,8 +82,30 @@ export function BannersPage() {
   const [linkValue, setLinkValue] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [position, setPosition] = useState<number | ''>('');
-  const [file, setFile] = useState<File | null>(null);
+  // The picked image, already downscaled and re-encoded. `file` is the upload
+  // payload; `picked` is only what the operator sees, so they can tell the
+  // shrink happened before they commit a banner to every user's home screen.
+  const [file, setFile] = useState<Blob | null>(null);
+  const [fileName, setFileName] = useState('upload.webp');
+  const [picked, setPicked] = useState<{ from: number; to: number; w: number; h: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function pickImage(f: File | null) {
+    if (!f) { setFile(null); setPicked(null); return; }
+    try {
+      const r = await compressImage(f, { maxDim: 1600, quality: 0.85 });
+      setFile(r.blob);
+      setFileName(r.filename);
+      setPicked({ from: f.size, to: r.blob.size, w: r.width, h: r.height });
+      setErr('');
+    } catch {
+      // A format the canvas can't decode still uploads — the server's MIME
+      // check is the real gate. Better an uncompressed banner than none.
+      setFile(f);
+      setFileName(f.name || 'upload.png');
+      setPicked({ from: f.size, to: f.size, w: 0, h: 0 });
+    }
+  }
 
   async function load() {
     setLoading(true);
@@ -114,6 +137,7 @@ export function BannersPage() {
     setEnabled(true);
     setPosition('');
     setFile(null);
+    setPicked(null);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -130,6 +154,7 @@ export function BannersPage() {
     setEnabled(!!b.enabled);
     setPosition(b.position);
     setFile(null);
+    setPicked(null);
     if (fileRef.current) fileRef.current.value = '';
     window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   }
@@ -152,7 +177,7 @@ export function BannersPage() {
       fd.append('link_value', linkMode === 'shop' ? shopUrl(linkValue.trim()) : linkValue.trim());
       fd.append('enabled', enabled ? '1' : '0');
       if (position !== '') fd.append('position', String(position));
-      if (file) fd.append('image', file);
+      if (file) fd.append('image', file, fileName);
 
       if (editingId) await sendForm(`/admin/banners/${editingId}`, 'PATCH', fd);
       else await sendForm('/admin/banners', 'POST', fd);
@@ -332,7 +357,16 @@ export function BannersPage() {
           )}
 
           <label>Image {editingId ? '(leave empty to keep)' : ''}</label>
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+          <div>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => { void pickImage(e.target.files?.[0] || null); }} />
+            {picked ? (
+              <div className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                {picked.to < picked.from
+                  ? `${humanSize(picked.from)} → ${humanSize(picked.to)}${picked.w ? ` · ${picked.w}×${picked.h}` : ''}`
+                  : `${humanSize(picked.from)} — uploaded as-is (couldn't re-encode)`}
+              </div>
+            ) : null}
+          </div>
 
           <label>Position</label>
           <input type="number" min={0} value={position} placeholder="(auto)" onChange={(e) => setPosition(e.target.value === '' ? '' : Number(e.target.value))} />
