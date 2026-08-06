@@ -220,8 +220,14 @@ r.get('/listings', requireAdmin, (req, res) => {
   }
 
   const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+  // Cover photo + photo count come along on the list itself. The moderator
+  // console renders a thumbnail per card, and fetching /listings/:id/images
+  // for each of 200 rows would be 200 extra round-trips over mobile data.
   const sql = `
-    SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone
+    SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone,
+           (SELECT image_path FROM listing_images
+             WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS cover_image,
+           (SELECT COUNT(*) FROM listing_images WHERE listing_id = l.id) AS image_count
     FROM phone_listings l JOIN users u ON u.id = l.seller_id${where}
     ORDER BY l.created_at DESC LIMIT 200`;
   res.json(db.prepare(sql).all(...params));

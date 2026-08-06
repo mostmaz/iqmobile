@@ -121,6 +121,19 @@ app.use(express.static('./static', { maxAge: '1h' }));
 app.get('/privacy', (_req, res) => res.sendFile('privacy.html', { root: './static' }));
 app.get('/terms', (_req, res) => res.sendFile('terms.html', { root: './static' }));
 
+// Moderator console — a phone-shaped client for the same /admin API the
+// dashboard uses. It ships no secrets and does nothing at all until an admin
+// logs in, but there is no reason for it to be crawled or linked, so it is
+// noindex and deliberately absent from every public footer.
+app.get('/mod', (_req, res) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.sendFile('mod.html', { root: './static' });
+});
+app.get('/mod/manifest.webmanifest', (_req, res) => {
+  res.type('application/manifest+json');
+  res.sendFile('mod-manifest.webmanifest', { root: './static' });
+});
+
 // ── Deep-link domain association (free Universal Links / App Links) ──
 // These tell iOS/Android that this domain is owned by the app, so tapping
 // https://api.iqmobile.org/l/:id opens the app straight to the listing when

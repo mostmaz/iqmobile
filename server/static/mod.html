@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1B1A18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="iQ إشراف">
+<link rel="manifest" href="/mod/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/app-icon.png">
+<link rel="icon" href="/app-icon.png">
+<title>الإشراف — iQ Mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14130F; --surface:#1E1C18; --surface2:#272420; --ink:#F2EDE3;
+  --subtle:#9A9082; --line:#332F29; --accent:#D9583A; --accent-ink:#fff;
+  --ok:#34C77B; --warn:#E0A33E; --bad:#E05C4B;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:'IBM Plex Sans Arabic',system-ui,-apple-system,sans-serif;
+  background:var(--bg);color:var(--ink);direction:rtl;text-align:right;
+  line-height:1.55;font-size:15px;overscroll-behavior-y:none;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;direction:ltr;unicode-bidi:isolate}
+
+/* ── shell ── */
+#app{padding-bottom:calc(24px + var(--safe-b))}
+header{
+  position:sticky;top:0;z-index:20;background:rgba(20,19,15,.92);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+  padding:calc(10px + var(--safe-t)) 12px 10px;
+}
+.hrow{display:flex;align-items:center;gap:10px}
+.logo{
+  width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:700;
+  font-family:ui-sans-serif,system-ui;font-size:14px;flex:0 0 auto;
+}
+.htitle{font-weight:700;font-size:15px;flex:1;min-width:0}
+.hsub{font-size:11px;color:var(--subtle);font-weight:400}
+.iconbtn{
+  width:34px;height:34px;border-radius:9px;background:var(--surface2);
+  display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto;
+}
+
+/* ── search + filters ── */
+.search{
+  display:flex;align-items:center;gap:8px;margin-top:10px;background:var(--surface);
+  border:1px solid var(--line);border-radius:11px;padding:0 12px;
+}
+.search input{
+  flex:1;background:none;border:none;outline:none;padding:11px 0;font-size:15px;
+}
+.search input::placeholder{color:var(--subtle)}
+.chips{display:flex;gap:6px;margin-top:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{
+  flex:0 0 auto;padding:5px 12px;border-radius:999px;background:var(--surface);
+  border:1px solid var(--line);font-size:12.5px;color:var(--subtle);white-space:nowrap;
+}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+
+/* ── list ── */
+#list{padding:10px 12px;display:flex;flex-direction:column;gap:9px}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:13px;
+  padding:10px;display:flex;gap:10px;align-items:flex-start;
+}
+.thumb{
+  width:64px;height:64px;border-radius:9px;background:var(--surface2);flex:0 0 auto;
+  object-fit:cover;display:block;
+}
+.thumb.ph{display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--line)}
+.cbody{flex:1;min-width:0}
+.ctitle{font-weight:600;font-size:14.5px;line-height:1.35;word-break:break-word}
+.cprice{font-family:ui-monospace,monospace;direction:ltr;unicode-bidi:isolate;
+  font-size:15px;font-weight:700;color:var(--accent);margin-top:2px}
+.cmeta{font-size:11.5px;color:var(--subtle);margin-top:2px;word-break:break-word}
+.badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.badge{font-size:10.5px;padding:2px 7px;border-radius:999px;background:var(--surface2);color:var(--subtle)}
+.badge.active{color:var(--ok)}
+.badge.removed,.badge.sold{color:var(--bad)}
+.badge.reserved{color:var(--warn)}
+.badge.feat{color:#F0C23C}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.act{
+  padding:6px 11px;border-radius:8px;background:var(--surface2);
+  font-size:12.5px;font-weight:600;color:var(--ink);
+}
+.act.danger{color:var(--bad)}
+.act:active{opacity:.6}
+
+.empty,.loading{padding:44px 20px;text-align:center;color:var(--subtle);font-size:14px}
+.err{margin:12px;padding:11px 13px;border-radius:10px;background:rgba(224,92,75,.12);
+  border:1px solid rgba(224,92,75,.35);color:#F0A79C;font-size:13px}
+
+/* ── login ── */
+#login{padding:calc(60px + var(--safe-t)) 22px 40px;max-width:420px;margin:0 auto}
+#login .logo{width:52px;height:52px;font-size:22px;border-radius:14px;margin-bottom:18px}
+#login h1{font-size:22px;margin:0 0 4px}
+#login p{color:var(--subtle);font-size:13.5px;margin:0 0 26px}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;color:var(--subtle);margin-bottom:5px}
+.field input,.field select,.field textarea{
+  width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:11px 12px;outline:none;font-size:16px; /* 16px stops iOS zoom-on-focus */
+}
+.field textarea{min-height:84px;resize:vertical;font-size:15px}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.btn{
+  width:100%;padding:13px;border-radius:11px;background:var(--accent);color:var(--accent-ink);
+  font-weight:700;font-size:15px;margin-top:6px;
+}
+.btn.ghost{background:var(--surface2);color:var(--ink)}
+.btn.danger{background:rgba(224,92,75,.16);color:var(--bad)}
+.btn:disabled{opacity:.5}
+
+/* ── sheet ── */
+#veil{
+  position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;display:none;
+}
+#veil.on{display:block}
+#sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--bg);
+  border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+  max-height:92vh;display:none;flex-direction:column;
+}
+#sheet.on{display:flex}
+.sheadr{
+  display:flex;align-items:center;gap:10px;padding:12px 16px 10px;
+  border-bottom:1px solid var(--line);flex:0 0 auto;
+}
+.grab{position:absolute;top:6px;left:50%;transform:translateX(-50%);
+  width:36px;height:4px;border-radius:2px;background:var(--line)}
+.sheadr h2{font-size:16px;margin:0;flex:1}
+.sbody{padding:14px 16px calc(20px + var(--safe-b));overflow-y:auto;-webkit-overflow-scrolling:touch}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* ── photos ── */
+.pgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.pcell{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--surface2)}
+.pcell img{width:100%;height:100%;object-fit:cover;display:block}
+.pdel{
+  position:absolute;top:4px;left:4px;width:26px;height:26px;border-radius:7px;
+  background:rgba(0,0,0,.62);color:#fff;font-size:14px;line-height:1;
+  display:flex;align-items:center;justify-content:center;
+}
+.pcover{position:absolute;bottom:0;right:0;left:0;background:rgba(0,0,0,.55);
+  font-size:10px;text-align:center;padding:2px}
+
+#toast{
+  position:fixed;bottom:calc(18px + var(--safe-b));left:50%;transform:translateX(-50%);
+  background:var(--surface2);border:1px solid var(--line);border-radius:10px;
+  padding:10px 16px;font-size:13.5px;z-index:80;opacity:0;pointer-events:none;
+  transition:opacity .18s;max-width:88vw;text-align:center;
+}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="login" hidden>
+  <div class="logo">iQ</div>
+  <h1>لوحة الإشراف</h1>
+  <p>الدخول بحساب الإدارة نفسه المستخدم في لوحة التحكم.</p>
+  <form id="loginForm">
+    <div class="field">
+      <label for="u">اسم المستخدم</label>
+      <input id="u" autocomplete="username" autocapitalize="off" autocorrect="off" required>
+    </div>
+    <div class="field">
+      <label for="p">كلمة المرور</label>
+      <input id="p" type="password" autocomplete="current-password" required>
+    </div>
+    <button class="btn" type="submit" id="loginBtn">دخول</button>
+    <div id="loginErr" class="err" hidden></div>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div class="hrow">
+      <div class="logo">iQ</div>
+      <div class="htitle">
+        الإشراف
+        <div class="hsub" id="count">—</div>
+      </div>
+      <button class="iconbtn" id="refresh" aria-label="تحديث">↻</button>
+      <button class="iconbtn" id="logout" aria-label="خروج">⏻</button>
+    </div>
+    <div class="search">
+      <span style="color:var(--subtle)">⌕</span>
+      <input id="q" placeholder="ابحث برقم الإعلان، الجهاز، الاسم أو الهاتف" autocapitalize="off" autocorrect="off">
+      <button id="qclear" style="color:var(--subtle);display:none">✕</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+  <div id="list"></div>
+</div>
+
+<div id="veil"></div>
+<div id="sheet">
+  <div class="grab"></div>
+  <div class="sheadr">
+    <h2 id="sheetTitle"></h2>
+    <button class="iconbtn" id="sheetClose" aria-label="إغلاق">✕</button>
+  </div>
+  <div class="sbody" id="sheetBody"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+'use strict';
+
+// The console talks to the same admin API the dashboard uses. It is served
+// from the same origin as the API (nginx fronts iqmobile.org and
+// api.iqmobile.org with one upstream) so every path here stays relative —
+// that keeps it working on whichever host it was opened from, and avoids a
+// CORS preflight on every request.
+var TOKEN_KEY = 'iq_mod_token';
+var token = localStorage.getItem(TOKEN_KEY) || '';
+
+var GOV_AR = {
+  Baghdad:'بغداد', Basra:'البصرة', Erbil:'اربيل', Sulaymaniyah:'السليمانية',
+  Duhok:'دهوك', Kirkuk:'كركوك', Najaf:'النجف', Karbala:'كربلاء',
+  Mosul:'الموصل', Anbar:'الأنبار', Babil:'بابل', Diyala:'ديالى',
+  Diwaniyah:'الديوانية', 'Dhi Qar':'ذي قار', Maysan:'ميسان',
+  Muthanna:'المثنى', Salahuddin:'صلاح الدين', Wasit:'واسط'
+};
+var GOVS = Object.keys(GOV_AR);
+var COND_AR = { new:'جديد', used:'مستعمل', refurbished:'مجدّد', repaired:'مصلّح' };
+var STATUS_AR = { active:'نشط', reserved:'محجوز', sold:'مباع', removed:'محذوف', expired:'منتهي' };
+var FILTERS = [
+  { k:'', ar:'الكل' }, { k:'active', ar:'نشط' }, { k:'reserved', ar:'محجوز' },
+  { k:'sold', ar:'مباع' }, { k:'removed', ar:'محذوف' }
+];
+
+var state = { status:'', q:'', rows:[], brands:[], loading:false };
+
+// ── helpers ───────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  });
+}
+function fmt(n) { return Number(n || 0).toLocaleString('en-US'); }
+function govAr(g) { return GOV_AR[g] || g || ''; }
+
+var toastTimer;
+function toast(msg) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove('on'); }, 2200);
+}
+
+// Every call funnels through here so a 401 has exactly one meaning: the
+// stored token is dead. Wipe it and drop back to the login screen rather
+// than leaving the operator tapping buttons that silently do nothing.
+function api(path, opts) {
+  opts = opts || {};
+  var headers = opts.headers || {};
+  headers['Authorization'] = 'Bearer ' + token;
+  if (opts.body && !(opts.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  opts.headers = headers;
+  return fetch('/admin' + path, opts).then(function (r) {
+    if (r.status === 401) { signOut(); throw new Error('انتهت الجلسة، سجّل الدخول مرة أخرى'); }
+    return r.json().catch(function () { return {}; }).then(function (body) {
+      if (!r.ok) throw new Error(body && body.error ? body.error : 'خطأ ' + r.status);
+      return body;
+    });
+  });
+}
+
+function signOut() {
+  token = '';
+  localStorage.removeItem(TOKEN_KEY);
+  $('app').hidden = true;
+  $('login').hidden = false;
+  closeSheet();
+}
+
+// ── login ─────────────────────────────────────────────────────────────
+$('loginForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var btn = $('loginBtn'), err = $('loginErr');
+  err.hidden = true;
+  btn.disabled = true; btn.textContent = '…';
+  fetch('/admin/auth/login', {
+    method:'POST', headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ username: $('u').value.trim(), password: $('p').value })
+  }).then(function (r) { return r.json().then(function (b) { return { ok:r.ok, b:b }; }); })
+    .then(function (res) {
+      if (!res.ok || !res.b.token) throw new Error(res.b.error === 'bad_credentials'
+        ? 'اسم المستخدم أو كلمة المرور غير صحيحة' : 'تعذّر الدخول');
+      token = res.b.token;
+      localStorage.setItem(TOKEN_KEY, token);
+      $('p').value = '';
+      start();
+    })
+    .catch(function (e2) { err.textContent = e2.message; err.hidden = false; })
+    .finally(function () { btn.disabled = false; btn.textContent = 'دخول'; });
+});
+
+$('logout').addEventListener('click', function () {
+  if (confirm('تسجيل الخروج؟')) signOut();
+});
+
+// ── list ──────────────────────────────────────────────────────────────
+function renderChips() {
+  $('chips').innerHTML = FILTERS.map(function (f) {
+    return '<button class="chip' + (state.status === f.k ? ' on' : '') +
+           '" data-k="' + f.k + '">' + f.ar + '</button>';
+  }).join('');
+}
+
+$('chips').addEventListener('click', function (e) {
+  var b = e.target.closest('.chip');
+  if (!b) return;
+  state.status = b.dataset.k;
+  renderChips();
+  load();
+});
+
+// Search is debounced and runs server-side: the list is capped at 200 rows
+// out of several hundred, so filtering what is already loaded could never
+// reach an older listing — which is exactly when someone searches.
+var qTimer;
+$('q').addEventListener('input', function () {
+  state.q = $('q').value.trim();
+  $('qclear').style.display = state.q ? 'block' : 'none';
+  clearTimeout(qTimer);
+  qTimer = setTimeout(load, 320);
+});
+$('qclear').addEventListener('click', function () {
+  $('q').value = ''; state.q = ''; $('qclear').style.display = 'none'; load();
+});
+$('refresh').addEventListener('click', function () { load(); });
+
+function load() {
+  state.loading = true;
+  $('list').innerHTML = '<div class="loading">…جارٍ التحميل</div>';
+  var qs = [];
+  if (state.status) qs.push('status=' + encodeURIComponent(state.status));
+  if (state.q) qs.push('q=' + encodeURIComponent(state.q));
+  api('/listings' + (qs.length ? '?' + qs.join('&') : ''))
+    .then(function (rows) {
+      state.rows = Array.isArray(rows) ? rows : [];
+      renderList();
+    })
+    .catch(function (e) {
+      $('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+    })
+    .finally(function () { state.loading = false; });
+}
+
+function renderList() {
+  var rows = state.rows;
+  $('count').textContent = rows.length
+    ? rows.length + ' إعلان' + (rows.length === 200 ? ' (أحدث 200)' : '')
+    : 'لا نتائج';
+  if (!rows.length) {
+    $('list').innerHTML = '<div class="empty">لا توجد إعلانات مطابقة</div>';
+    return;
+  }
+  $('list').innerHTML = rows.map(card).join('');
+}
+
+function card(l) {
+  var featured = l.featured_until && l.featured_until > Date.now();
+  var thumb = l.cover_image
+    ? '<img class="thumb" loading="lazy" src="' + esc(l.cover_image) + '" alt="">'
+    : '<div class="thumb ph">▢</div>';
+  var st = l.status || 'active';
+  return '' +
+  '<div class="card" data-id="' + l.id + '">' +
+    thumb +
+    '<div class="cbody">' +
+      '<div class="ctitle">' + esc(l.brand) + ' ' + esc(l.model) +
+        (l.storage ? ' <span class="mono" style="color:var(--subtle);font-size:12px">' + esc(l.storage) + '</span>' : '') +
+      '</div>' +
+      '<div class="cprice">' + fmt(l.asking_price) + ' <span style="font-size:11px;color:var(--subtle)">د.ع</span></div>' +
+      '<div class="cmeta">' + esc(govAr(l.governorate)) + (l.city ? ' · ' + esc(l.city) : '') + '</div>' +
+      '<div class="cmeta">' + esc(l.seller_name || '') +
+        (l.seller_phone ? ' · <span class="mono">' + esc(l.seller_phone) + '</span>' : '') + '</div>' +
+      '<div class="badges">' +
+        '<span class="badge mono">#' + l.id + '</span>' +
+        '<span class="badge ' + esc(st) + '">' + esc(STATUS_AR[st] || st) + '</span>' +
+        '<span class="badge">' + esc(COND_AR[l.condition] || l.condition || '') + '</span>' +
+        '<span class="badge">' + (l.image_count || 0) + ' صور</span>' +
+        (featured ? '<span class="badge feat">مميّز</span>' : '') +
+      '</div>' +
+      '<div class="acts">' +
+        '<button class="act" data-act="edit">تعديل</button>' +
+        '<button class="act" data-act="photos">الصور</button>' +
+        '<button class="act" data-act="feature">تمييز</button>' +
+        '<button class="act" data-act="view">معاينة</button>' +
+        (st === 'removed'
+          ? '<button class="act" data-act="restore">استرجاع</button>'
+          : '<button class="act danger" data-act="remove">حذف</button>') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+$('list').addEventListener('click', function (e) {
+  var b = e.target.closest('.act');
+  if (!b) return;
+  var id = Number(e.target.closest('.card').dataset.id);
+  var l = state.rows.find(function (r) { return r.id === id; });
+  if (!l) return;
+  var act = b.dataset.act;
+  if (act === 'edit') openEdit(l);
+  else if (act === 'photos') openPhotos(l);
+  else if (act === 'feature') openFeature(l);
+  else if (act === 'view') window.open('/l/' + id, '_blank');
+  else if (act === 'remove') doRemove(l);
+  else if (act === 'restore') doRestore(l);
+});
+
+// ── sheet plumbing ────────────────────────────────────────────────────
+function openSheet(title, html) {
+  $('sheetTitle').textContent = title;
+  $('sheetBody').innerHTML = html;
+  $('sheet').classList.add('on');
+  $('veil').classList.add('on');
+  $('sheetBody').scrollTop = 0;
+}
+function closeSheet() {
+  $('sheet').classList.remove('on');
+  $('veil').classList.remove('on');
+  $('sheetBody').innerHTML = '';
+}
+$('sheetClose').addEventListener('click', closeSheet);
+$('veil').addEventListener('click', closeSheet);
+
+// Patch the row in place instead of reloading the whole list — the operator
+// keeps their scroll position and their search results.
+function replaceRow(updated) {
+  var i = state.rows.findIndex(function (r) { return r.id === updated.id; });
+  if (i < 0) { load(); return; }
+  // The PATCH response has no cover_image/image_count (it isn't the list
+  // query), so carry those over rather than blanking the thumbnail.
+  state.rows[i] = Object.assign({}, state.rows[i], updated);
+  var el = document.querySelector('.card[data-id="' + updated.id + '"]');
+  if (el) el.outerHTML = card(state.rows[i]);
+  else renderList();
+}
+
+// ── edit ──────────────────────────────────────────────────────────────
+function opts(list, current, labels) {
+  return list.map(function (v) {
+    return '<option value="' + esc(v) + '"' + (v === current ? ' selected' : '') + '>' +
+      esc(labels ? (labels[v] || v) : v) + '</option>';
+  }).join('');
+}
+
+function openEdit(l) {
+  var brands = state.brands.length ? state.brands : [l.brand];
+  openSheet('تعديل #' + l.id,
+    '<form id="editForm">' +
+      '<div class="field"><label>السعر (د.ع)</label>' +
+        '<input id="f_price" type="number" inputmode="numeric" min="1" value="' + esc(l.asking_price) + '" required></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label>الماركة</label><select id="f_brand">' + opts(brands, l.brand) + '</select></div>' +
+        '<div class="field"><label>الذاكرة</label><input id="f_storage" value="' + esc(l.storage || '') + '" placeholder="128GB"></div>' +
+      '</div>' +
+      '<div class="field"><label>الموديل</label><input id="f_model" value="' + esc(l.model || '') + '" required></div>' +
+      '<div class="row2">' +
+        '<div class="field"><label>الحالة</label><select id="f_condition">' +
+          opts(['new','used','refurbished','repaired'], l.condition, COND_AR) + '</select></div>' +
+        '<div class="field"><label>الوضع</label><select id="f_status">' +
+          opts(['active','reserved','sold','removed'], l.status, STATUS_AR) + '</select></div>' +
+      '</div>' +
+      '<div class="row2">' +
+        '<div class="field"><label>المحافظة</label><select id="f_gov">' + opts(GOVS, l.governorate, GOV_AR) + '</select></div>' +
+        '<div class="field"><label>المنطقة</label><input id="f_city" value="' + esc(l.city || '') + '"></div>' +
+      '</div>' +
+      '<div class="row2">' +
+        '<div class="field"><label>اللون</label><input id="f_color" value="' + esc(l.color || '') + '"></div>' +
+        '<div class="field"><label>واتساب</label><input id="f_wa" inputmode="tel" class="mono" value="' + esc(l.contact_whatsapp || '') + '"></div>' +
+      '</div>' +
+      '<div class="field"><label>الوصف</label><textarea id="f_desc">' + esc(l.description || '') + '</textarea></div>' +
+      '<button class="btn" type="submit" id="saveBtn">حفظ</button>' +
+      '<div id="editErr" class="err" hidden></div>' +
+    '</form>');
+
+  $('editForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = $('saveBtn'), err = $('editErr');
+    err.hidden = true; btn.disabled = true; btn.textContent = '…';
+    api('/listings/' + l.id, { method:'PATCH', body:{
+      asking_price: Number($('f_price').value),
+      brand: $('f_brand').value,
+      model: $('f_model').value.trim(),
+      storage: $('f_storage').value.trim(),
+      color: $('f_color').value.trim(),
+      condition: $('f_condition').value,
+      status: $('f_status').value,
+      governorate: $('f_gov').value,
+      city: $('f_city').value.trim(),
+      contact_whatsapp: $('f_wa').value.trim(),
+      description: $('f_desc').value.trim()
+    }}).then(function (res) {
+      replaceRow(res.listing);
+      closeSheet();
+      toast('تم حفظ التعديلات');
+    }).catch(function (e2) {
+      err.textContent = errAr(e2.message); err.hidden = false;
+    }).finally(function () { btn.disabled = false; btn.textContent = 'حفظ'; });
+  });
+}
+
+// The API's error codes are English slugs; the operator reads Arabic.
+function errAr(code) {
+  return ({
+    bad_price:'السعر غير صالح',
+    bad_brand:'الماركة غير معروفة',
+    bad_condition:'حالة الجهاز غير صالحة',
+    bad_status:'الوضع غير صالح',
+    bad_governorate:'المحافظة غير صالحة',
+    bad_contact_whatsapp:'رقم الواتساب غير صالح',
+    missing_fields:'أكمل الحقول المطلوبة',
+    no_fields:'لا يوجد تغيير',
+    not_found:'الإعلان غير موجود',
+    too_many:'وصلت للحد الأقصى من الصور'
+  })[code] || code;
+}
+
+// ── photos ────────────────────────────────────────────────────────────
+function openPhotos(l) {
+  openSheet('صور #' + l.id, '<div class="loading">…</div>');
+  api('/listings/' + l.id + '/images').then(function (res) {
+    renderPhotos(l, res.images || [], res.max || 10);
+  }).catch(function (e) {
+    $('sheetBody').innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+  });
+}
+
+function renderPhotos(l, images, max) {
+  var grid = images.length
+    ? '<div class="pgrid">' + images.map(function (im, i) {
+        return '<div class="pcell">' +
+          '<img loading="lazy" src="' + esc(im.image_path) + '" alt="">' +
+          '<button class="pdel" data-img="' + im.id + '" aria-label="حذف">🗑</button>' +
+          (i === 0 ? '<div class="pcover">الغلاف</div>' : '') +
+        '</div>';
+      }).join('') + '</div>'
+    : '<div class="empty" style="padding:26px">لا توجد صور</div>';
+
+  $('sheetBody').innerHTML = grid +
+    '<label class="btn ghost" style="display:block;text-align:center" for="addPhotos">' +
+      'إضافة صور (' + images.length + '/' + max + ')' +
+    '</label>' +
+    '<input id="addPhotos" type="file" accept="image/*" multiple hidden>' +
+    '<div id="photoErr" class="err" hidden></div>';
+
+  $('sheetBody').querySelectorAll('.pdel').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!confirm('حذف هذه الصورة نهائياً؟')) return;
+      b.disabled = true;
+      api('/listings/' + l.id + '/images/' + b.dataset.img, { method:'DELETE' })
+        .then(function () {
+          l.image_count = Math.max(0, (l.image_count || 1) - 1);
+          toast('تم حذف الصورة');
+          openPhotos(l);
+          load();
+        })
+        .catch(function (e) { b.disabled = false; toast(errAr(e.message)); });
+    });
+  });
+
+  $('addPhotos').addEventListener('change', function () {
+    var files = Array.prototype.slice.call(this.files || []);
+    if (!files.length) return;
+    if (images.length + files.length > max) {
+      $('photoErr').textContent = 'الحد الأقصى ' + max + ' صور';
+      $('photoErr').hidden = false;
+      return;
+    }
+    uploadPhotos(l, files, max);
+  });
+}
+
+// Photos come straight off a phone camera at 3–8 MB each. Downscale to
+// 1600px and re-encode as JPEG in a canvas before uploading — the same
+// thing the dashboard does — so a moderator on mobile data isn't pushing
+// 30 MB to attach four pictures.
+function shrink(file) {
+  return new Promise(function (resolve) {
+    if (!/^image\//.test(file.type)) return resolve(file);
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      var max = 1600;
+      var scale = Math.min(1, max / Math.max(img.width, img.height));
+      var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      c.toBlob(function (blob) {
+        URL.revokeObjectURL(url);
+        // A canvas that fails to encode (very large images on low-memory
+        // phones) falls back to the original file rather than dropping it.
+        resolve(blob ? new File([blob], 'photo.jpg', { type:'image/jpeg' }) : file);
+      }, 'image/jpeg', 0.8);
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+function uploadPhotos(l, files, max) {
+  var err = $('photoErr');
+  err.hidden = true;
+  $('sheetBody').insertAdjacentHTML('afterbegin', '<div class="loading" id="upl">…جارٍ الرفع</div>');
+  Promise.all(files.map(shrink)).then(function (shrunk) {
+    var fd = new FormData();
+    shrunk.forEach(function (f) { fd.append('images', f); });
+    return api('/listings/' + l.id + '/images', { method:'POST', body: fd });
+  }).then(function () {
+    toast('تمت إضافة الصور');
+    openPhotos(l);
+    load();
+  }).catch(function (e) {
+    var u = $('upl'); if (u) u.remove();
+    err.textContent = errAr(e.message); err.hidden = false;
+  });
+}
+
+// ── feature ───────────────────────────────────────────────────────────
+function openFeature(l) {
+  var on = l.featured_until && l.featured_until > Date.now();
+  openSheet('تمييز #' + l.id,
+    (on ? '<p style="color:var(--subtle);font-size:13px;margin-top:0">مميّز حتى ' +
+          esc(new Date(l.featured_until).toLocaleDateString('en-GB')) + '</p>' : '') +
+    '<div class="row2">' +
+      '<div class="field"><label>عدد الأيام</label>' +
+        '<input id="f_days" type="number" inputmode="numeric" min="1" value="7"></div>' +
+      '<div class="field"><label>رفعات باليوم</label>' +
+        '<input id="f_bpd" type="number" inputmode="numeric" min="1" value="3"></div>' +
+    '</div>' +
+    '<button class="btn" id="featBtn">تمييز</button>' +
+    (on ? '<button class="btn danger" id="unfeatBtn">إلغاء التمييز</button>' : '') +
+    '<div id="featErr" class="err" hidden></div>');
+
+  $('featBtn').addEventListener('click', function () {
+    setFeature(l, Number($('f_days').value), Number($('f_bpd').value));
+  });
+  if (on) $('unfeatBtn').addEventListener('click', function () { setFeature(l, 0, 0); });
+}
+
+function setFeature(l, days, bpd) {
+  api('/listings/' + l.id + '/feature', { method:'PATCH', body:{ days:days, boosts_per_day:bpd } })
+    .then(function (res) {
+      l.featured_until = res.featured_until;
+      replaceRow(l);
+      closeSheet();
+      toast(days ? 'تم التمييز' : 'تم إلغاء التمييز');
+    })
+    .catch(function (e) {
+      $('featErr').textContent = errAr(e.message); $('featErr').hidden = false;
+    });
+}
+
+// ── remove / restore ──────────────────────────────────────────────────
+function doRemove(l) {
+  if (!confirm('حذف الإعلان #' + l.id + '؟\n' + l.brand + ' ' + l.model)) return;
+  api('/listings/' + l.id + '/remove', { method:'PATCH' })
+    .then(function () { l.status = 'removed'; replaceRow(l); toast('تم حذف الإعلان'); })
+    .catch(function (e) { toast(errAr(e.message)); });
+}
+
+// "Restore" is a plain status edit back to active — there is no dedicated
+// endpoint, and PATCH /listings/:id accepts the same status set.
+function doRestore(l) {
+  api('/listings/' + l.id, { method:'PATCH', body:{ status:'active' } })
+    .then(function (res) { replaceRow(res.listing); toast('تم استرجاع الإعلان'); })
+    .catch(function (e) { toast(errAr(e.message)); });
+}
+
+// ── boot ──────────────────────────────────────────────────────────────
+function start() {
+  $('login').hidden = true;
+  $('app').hidden = false;
+  renderChips();
+  load();
+  // Brand list feeds the edit form's dropdown. Failure is not fatal —
+  // openEdit falls back to the listing's own brand as the only option.
+  api('/brands').then(function (rows) {
+    state.brands = (rows || []).map(function (b) { return b.name || b; });
+  }).catch(function () {});
+}
+
+if (token) start(); else $('login').hidden = false;
+})();
+</script>
+</body>
+</html>

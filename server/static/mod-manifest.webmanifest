@@ -1,0 +1,17 @@
+{
+  "name": "iQ Mobile — الإشراف",
+  "short_name": "iQ إشراف",
+  "description": "لوحة إشراف الإعلانات",
+  "start_url": "/mod",
+  "scope": "/mod",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14130F",
+  "theme_color": "#14130F",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "/app-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" }
+  ]
+}
