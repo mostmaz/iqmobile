@@ -7,6 +7,11 @@ import { emitTo } from './sse.js';
 // listing the seller forgot about).
 const DEAL_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
+// A "last known price" listing is auto-removed once it's been stale this long
+// (~6 months). Long enough that a still-relevant model that briefly vanishes
+// from the lists survives, short enough that truly-dead models don't linger.
+const STALE_MAX_MS = 182 * 24 * 60 * 60 * 1000;
+
 // Per-tick cap on rows we touch. After downtime/sleep the SELECT can match
 // thousands of overdue rows; processing them in a single tight loop locks
 // the DB for seconds and stalls every concurrent request. 500 per 30s is
@@ -89,6 +94,16 @@ function tick() {
     db.prepare('UPDATE phone_listings SET boosted_at=?, next_boost_at=? WHERE id=?')
       .run(now, now + interval, l.id);
   }
+
+  // ─── stale "last known price" cleanup ────────────────────────────────
+  // A price-aggregator device marked stale_since (dropped off every source's
+  // price list) shows as "آخر سعر معروف · غير متوفر حالياً" for a grace
+  // window, then is soft-removed so the market view doesn't carry phones that
+  // have been unavailable for half a year.
+  db.prepare(
+    `UPDATE phone_listings SET status='removed', updated_at=?
+     WHERE status='active' AND stale_since IS NOT NULL AND stale_since <= ?`,
+  ).run(now, now - STALE_MAX_MS);
 }
 
 export function startExpirer() {

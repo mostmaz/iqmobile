@@ -181,6 +181,7 @@ r.get('/shops/:id(\\d+)', (req, res) => {
     `SELECT * FROM phone_listings
      WHERE seller_id=? AND ${statusClause}
      ORDER BY
+       (CASE WHEN stale_since IS NOT NULL THEN 1 ELSE 0 END) ASC,
        (CASE WHEN featured_until > ? THEN 1 ELSE 0 END) DESC,
        created_at DESC
      LIMIT 300`,

@@ -668,6 +668,13 @@ addColumnIfMissing('phone_listings', 'next_boost_at INTEGER');
 addColumnIfMissing('phone_listings', 'boost_interval_ms INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS idx_listings_featured ON phone_listings(featured_until)');
 
+// "Last known price" marker for the price-aggregator shop. Set (to the ms
+// timestamp it dropped off the sources' price lists) when a device is no
+// longer being priced anywhere, so the app can grey the card + badge it
+// "آخر سعر معروف · غير متوفر حالياً" instead of pretending it's in stock.
+// null = a live, in-stock price. The expirer removes rows stale > 6 months.
+addColumnIfMissing('phone_listings', 'stale_since INTEGER');
+
 // ─── revenue: shops ──────────────────────────────────────────────────
 // A "shop" is a user with seller_type='shop'. These columns hold the shop
 // profile shown in the Shops directory + shop page. shop_featured_until > now

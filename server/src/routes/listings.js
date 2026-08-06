@@ -390,7 +390,7 @@ r.get('/', optionalAuth(), (req, res) => {
     SELECT l.* FROM phone_listings l
     JOIN users u ON u.id = l.seller_id
     WHERE ${where}${exclude}
-    ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+    ORDER BY (l.stale_since IS NOT NULL) ASC, ${orderBy} LIMIT ? OFFSET ?`;
 
   let rows;
   if (offset === 0) {

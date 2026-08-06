@@ -486,6 +486,28 @@ r.patch('/listings/remove-batch', requireAdmin, (req, res) => {
   res.json({ ok: true, removed: result.changes });
 });
 
+// Mark/clear the "last known price" flag on a batch of listings. Used by the
+// price-aggregator refresh: stale=true greys a device that dropped off every
+// source's price list ("آخر سعر معروف · غير متوفر حالياً"); stale=false
+// revives one that came back. Stamping only touches rows not already stale so
+// a long-unavailable device keeps its original drop-off date (which drives the
+// expirer's 6-month auto-removal).
+r.patch('/listings/stale-batch', requireAdmin, (req, res) => {
+  const raw = Array.isArray(req.body?.ids) ? req.body.ids : null;
+  if (!raw || raw.length === 0) return res.status(400).json({ error: 'missing_ids' });
+  const ids = [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 1000);
+  if (ids.length === 0) return res.status(400).json({ error: 'no_valid_ids' });
+  const stale = !!req.body?.stale;
+  const t = now();
+  const placeholders = ids.map(() => '?').join(',');
+  const sql = stale
+    ? `UPDATE phone_listings SET stale_since=?, updated_at=? WHERE id IN (${placeholders}) AND stale_since IS NULL`
+    : `UPDATE phone_listings SET stale_since=NULL, updated_at=? WHERE id IN (${placeholders}) AND stale_since IS NOT NULL`;
+  const params = stale ? [t, t, ...ids] : [t, ...ids];
+  const changed = db.prepare(sql).run(...params).changes;
+  res.json({ ok: true, stale, changed });
+});
+
 // Manual feature/unfeature — for sellers who pay directly (WhatsApp / cash)
 // without filing an in-app request. days>0 features from now for that many
 // days (boost cadence defaults to 3×/day); days=0 clears the featured state.
