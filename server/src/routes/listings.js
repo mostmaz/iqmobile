@@ -14,6 +14,7 @@ import { alertOnNewListing } from './savedSearches.js';
 import { alertWishlistOnListing } from './wishlist.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import { inspectListingAsync } from '../listingInspect.js';
+import { newPriceFor } from '../newPriceRef.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -512,6 +513,10 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     phone_visible: hideContact ? false : !!row.contact_phone,
     is_saved,
     is_price_watched,
+    // What this device costs new, when the price shop stocks the same model
+    // at the same capacity. Null unless the match is confident — see
+    // newPriceRef.js for why every ambiguity resolves to showing nothing.
+    new_price_ref: newPriceFor(row),
   });
 });
 

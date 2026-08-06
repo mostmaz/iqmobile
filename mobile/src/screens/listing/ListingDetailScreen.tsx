@@ -322,6 +322,33 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 {fmtIQD(data.asking_price)}
                 <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
               </Text>
+
+              {/* What the same device costs new, at the same capacity. Sent
+                  only for second-hand listings and only on a confident match,
+                  so there is nothing to guard here beyond its presence. The
+                  saving is omitted when the asking price is at or above new —
+                  a negative "discount" would be nonsense. */}
+              {(data as any).new_price_ref ? (
+                <View style={{ marginTop: 6, flexDirection: 'row-reverse', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle }}>
+                    جديد {(data as any).new_price_ref.storage}:{' '}
+                    <Text style={{ fontFamily: fonts.ltr, color: theme.ink }}>
+                      {fmtIQD((data as any).new_price_ref.new_price)}
+                    </Text>
+                    {' '}د.ع
+                  </Text>
+                  {(data as any).new_price_ref.saving ? (
+                    <View style={{
+                      backgroundColor: theme.successSoft ?? 'rgba(16,185,129,0.14)',
+                      paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill,
+                    }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, fontWeight: '700', color: theme.success }}>
+                        توفّر {fmtIQD((data as any).new_price_ref.saving)} ({(data as any).new_price_ref.saving_pct}%)
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
               <IconPin size={13} color={theme.subtle} />
