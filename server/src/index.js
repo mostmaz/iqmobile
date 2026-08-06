@@ -119,6 +119,7 @@ app.use('/uploads', express.static('./uploads', { maxAge: '7d' }));
 // URL works at both — Play Store wants iqmobile.org/privacy.
 app.use(express.static('./static', { maxAge: '1h' }));
 app.get('/privacy', (_req, res) => res.sendFile('privacy.html', { root: './static' }));
+app.get('/terms', (_req, res) => res.sendFile('terms.html', { root: './static' }));
 
 // ── Deep-link domain association (free Universal Links / App Links) ──
 // These tell iOS/Android that this domain is owned by the app, so tapping

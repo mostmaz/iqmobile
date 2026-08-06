@@ -83,7 +83,7 @@ function landingPage(playHref) {
     <p>سوق الموبايلات بالعراق — بيع واشترِ بمحافظتك مجاناً.</p>
     <a class="btn play" href="${playHref}">تحميل من Google Play</a>
     <a class="btn ios" href="${APPSTORE_URL}">تحميل من App Store</a>
-    <div class="foot"><a href="/privacy">سياسة الخصوصية</a></div>
+    <div class="foot"><a href="/privacy">سياسة الخصوصية</a> · <a href="/terms">شروط الاستخدام</a></div>
   </div>
 </body>
 </html>`;

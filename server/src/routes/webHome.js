@@ -273,7 +273,7 @@ r.get('/', (req, res) => {
 </div>
 
 <footer class="wrap">
-  <a href="/privacy">سياسة الخصوصية</a> · © ${new Date().getFullYear()} iQ Mobile
+  <a href="/privacy">سياسة الخصوصية</a> · <a href="/terms">شروط الاستخدام</a> · © ${new Date().getFullYear()} iQ Mobile
 </footer>
 </body></html>`;
 
