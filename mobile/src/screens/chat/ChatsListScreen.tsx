@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, fmtIQD } from '../../components/ui';
 import { IconChat } from '../../components/icons';
+import { RowListSkeleton } from '../../components/Skeleton';
 import { Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useAuth } from '../../auth/AuthContext';
@@ -148,9 +149,7 @@ export default function ChatsListScreen({ navigation, route }: any) {
           //      CTA so the user has somewhere to go from the dead end.
           //   3. (Non-empty case never hits ListEmptyComponent.)
           !hasFetched ? (
-            <View style={{ alignItems: 'center', paddingTop: 60 }}>
-              <ActivityIndicator color={theme.accent} />
-            </View>
+            <RowListSkeleton count={6} />
           ) : isEmpty ? (
             <View style={{ alignItems: 'center', paddingTop: 60, paddingHorizontal: 28 }}>
               <View style={{

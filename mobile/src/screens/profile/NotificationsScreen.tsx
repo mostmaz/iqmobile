@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
+import { RowListSkeleton } from '../../components/Skeleton';
 import { Notifications, type NotificationRow } from '../../api/endpoints';
 import { navigationRef } from '../../navigation/ref';
 import { toLatinDigits } from '../../lib/format';
@@ -44,7 +45,7 @@ function subline(item: NotificationRow): string | null {
 export default function NotificationsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
-  const { data, refetch, isRefetching } = useQuery({
+  const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => Notifications.list(),
   });
@@ -115,7 +116,11 @@ export default function NotificationsScreen({ navigation }: any) {
             </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إشعارات</Text>}
+        ListEmptyComponent={isLoading ? (
+          <RowListSkeleton count={5} avatar={38} />
+        ) : (
+          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إشعارات</Text>
+        )}
       />
     </View>
   );

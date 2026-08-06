@@ -6,6 +6,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts } from '../../theme';
 import { Btn, Header } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { ListingListSkeleton } from '../../components/Skeleton';
 import { Listings } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { useAuth } from '../../auth/AuthContext';
@@ -19,7 +20,7 @@ export default function SavedScreen({ navigation }: any) {
   // gate the query off so we don't log-spam and so the inline CTA below
   // can offer signup instead of an empty list.
   const isGuest = !user || !!user.is_guest;
-  const { data, refetch, isRefetching } = useQuery({
+  const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['saved'],
     queryFn: () => Listings.saved(),
     enabled: !isGuest,
@@ -80,7 +81,14 @@ export default function SavedScreen({ navigation }: any) {
             onToggleSave={() => unsave(item.id)}
           />
         )}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد مفضلات</Text>}
+        // Without the isLoading branch the "no favourites" copy flashed
+        // during the first fetch — an outright wrong answer for a user
+        // who does have saved listings.
+        ListEmptyComponent={isLoading ? (
+          <ListingListSkeleton count={4} />
+        ) : (
+          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد مفضلات</Text>
+        )}
       />
     </View>
   );

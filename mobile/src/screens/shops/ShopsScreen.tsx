@@ -5,7 +5,7 @@
 // alternative on the register screen.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
 import { IconStore, IconStar, IconPin, IconSpark, IconPlus, IconChevronLeft } from '../../components/icons';
 import { GovPicker } from '../../components/GovPicker';
+import { ShopListSkeleton } from '../../components/Skeleton';
 import { Shops, type ShopCard } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
@@ -122,7 +123,7 @@ export default function ShopsScreen({ navigation }: any) {
             ) : null}
           </View>
         ) : (
-          <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+          <ShopListSkeleton count={5} />
         )}
       />
     </View>

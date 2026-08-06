@@ -7,6 +7,7 @@ import { theme, fonts } from '../../theme';
 import { Btn, Header, Pill } from '../../components/ui';
 import { IconSpark } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
+import { ListingListSkeleton } from '../../components/Skeleton';
 import { SHOW_PROMOTE } from '../../config/flags';
 import { Listings, type ListingStatus } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
@@ -29,7 +30,7 @@ export default function MyListingsScreen({ navigation }: any) {
   // and the server would just 401 on every focus. Gate the query off
   // so we don't spam logs and so we can show a sign-in CTA below.
   const isGuest = !user || !!user.is_guest;
-  const { data, refetch, isRefetching } = useQuery({
+  const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['mine', tab],
     queryFn: () => Listings.mine(tab),
     enabled: !isGuest,
@@ -104,7 +105,14 @@ export default function MyListingsScreen({ navigation }: any) {
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إعلانات</Text>}
+        // Each status tab is its own query key, so switching tabs is a
+        // cold fetch — skeletons here also cover the tab switch instead
+        // of flashing "no listings" at a seller who has plenty.
+        ListEmptyComponent={isLoading ? (
+          <ListingListSkeleton count={4} />
+        ) : (
+          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إعلانات</Text>
+        )}
       />
     </View>
   );

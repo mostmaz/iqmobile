@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header, fmtIQD } from '../../components/ui';
+import { RowListSkeleton } from '../../components/Skeleton';
 import { Deals } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { useAuth } from '../../auth/AuthContext';
@@ -12,7 +13,7 @@ import { callPhone } from '../../lib/contact';
 export default function DealsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { data, refetch, isRefetching } = useQuery({
+  const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['deals'],
     queryFn: () => Deals.mine(undefined, 'all'),
   });
@@ -73,7 +74,11 @@ export default function DealsScreen({ navigation }: any) {
             </View>
           );
         }}
-        ListEmptyComponent={<Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد صفقات بعد</Text>}
+        ListEmptyComponent={isLoading ? (
+          <RowListSkeleton count={4} />
+        ) : (
+          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد صفقات بعد</Text>
+        )}
       />
     </View>
   );

@@ -12,6 +12,7 @@ import { theme, fonts, radius } from '../../theme';
 import { IconClose, IconBell, IconChevronDown } from '../../components/icons';
 import { Pill } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { ListingListSkeleton } from '../../components/Skeleton';
 import { Listings, Brands, type BrandRow } from '../../api/endpoints';
 import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { useSaveSearch } from '../../lib/useSaveSearch';
@@ -144,12 +145,20 @@ export default function SearchScreen({ navigation }: any) {
         ListFooterComponent={isFetchingNextPage ? (
           <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
         ) : null}
+        // Three states: no query yet → prompt; query inflight with no
+        // results yet → shimmer cards (previously an empty string, which
+        // made a slow search look like a dead one); settled and empty →
+        // "no results".
         ListEmptyComponent={
-          <View style={{ padding: 48, alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
-              {!enabled ? 'اختر الماركة ثم الجهاز للبحث' : (isLoading ? '' : ar.browse.none)}
-            </Text>
-          </View>
+          enabled && isLoading ? (
+            <ListingListSkeleton count={5} />
+          ) : (
+            <View style={{ padding: 48, alignItems: 'center' }}>
+              <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
+                {!enabled ? 'اختر الماركة ثم الجهاز للبحث' : ar.browse.none}
+              </Text>
+            </View>
+          )
         }
       />
 

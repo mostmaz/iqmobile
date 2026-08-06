@@ -4,12 +4,13 @@
 // matches (see server/src/routes/savedSearches.js).
 
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, Switch, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Switch, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header, fmtIQD } from '../../components/ui';
 import { IconBell, IconClose } from '../../components/icons';
+import { TextRowListSkeleton } from '../../components/Skeleton';
 import { SavedSearches, type SavedSearch, type SavedSearchCriteria } from '../../api/endpoints';
 import { arOf } from '../../lib/governorates';
 import { ar } from '../../i18n/ar';
@@ -67,7 +68,7 @@ export default function SavedSearchesScreen({ navigation }: any) {
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header title="عمليات البحث المحفوظة" onBack={() => navigation.goBack()} />
       {isLoading ? (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+        <TextRowListSkeleton count={4} />
       ) : (
         <FlatList
           data={data || []}

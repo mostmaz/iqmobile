@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, ScrollView, TouchableOpacity,
   Alert, Dimensions, Modal,
 } from 'react-native';
 import { Img } from '../../components/Img';
@@ -10,6 +10,7 @@ import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
 import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell } from '../../components/icons';
 import { ChipTag, SpecRow } from '../../components/marketplace';
+import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
@@ -157,7 +158,11 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const [chatStarting, setChatStarting] = useState(false);
 
   if (isLoading || !data) {
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.bg }}><ActivityIndicator color={theme.accent} /></View>;
+    // Skeleton mirrors the real page (320pt gallery → title/price card →
+    // spec rows → contact buttons), so tapping a card from the feed lands
+    // on something with the right shape immediately instead of a blank
+    // screen with a spinner.
+    return <ListingDetailSkeleton />;
   }
 
   const isMine = user?.id === data.seller_id;

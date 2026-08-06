@@ -4,13 +4,14 @@
 // / Facebook / Instagram. Price-list images open full-screen (swipeable).
 
 import React, { useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, TouchableOpacity, ScrollView, TextInput, Linking } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, TextInput, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
 import { Btn } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { ShopScreenSkeleton } from '../../components/Skeleton';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { BrandListModal } from '../../components/BrandListModal';
 import {
@@ -60,10 +61,21 @@ export default function ShopScreen({ navigation, route }: any) {
     });
   }, [allListings, brandFilter, search]);
 
+  // Skeleton (not a centered spinner) so the shop page keeps its shape
+  // while loading — header card, contact buttons, then its listings —
+  // and the back bar stays tappable instead of the whole screen going
+  // blank behind a spinner.
   if (isLoading || !shop) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={theme.accent} />
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <View style={{ paddingTop: insets.top + 6, paddingHorizontal: 16, paddingBottom: 6, flexDirection: 'row-reverse' }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }} activeOpacity={0.6}>
+            <View style={{ transform: [{ scaleX: -1 }] }}>
+              <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <ShopScreenSkeleton />
       </View>
     );
   }

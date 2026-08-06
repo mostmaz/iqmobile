@@ -8,6 +8,7 @@ import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { ListingListSkeleton } from '../../components/Skeleton';
 import { BannerCarousel } from '../../components/BannerCarousel';
 import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
@@ -432,11 +433,19 @@ export default function BrowseScreen({ navigation }: any) {
             <ActivityIndicator color={theme.accent} />
           </View>
         ) : null}
-        ListEmptyComponent={!isLoading ? (
+        // First fetch (no cached feed yet) shows shimmering card
+        // placeholders instead of a blank screen — on a slow connection
+        // the feed can take a few seconds and an empty page reads as
+        // "there is nothing here". Pull-to-refresh and pagination keep
+        // their own affordances (RefreshControl / footer spinner), so
+        // this only fires on a genuinely cold list.
+        ListEmptyComponent={isLoading ? (
+          <ListingListSkeleton count={6} />
+        ) : (
           <View style={{ padding: 40, alignItems: 'center' }}>
             <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14 }}>{ar.browse.none}</Text>
           </View>
-        ) : null}
+        )}
       />
     </View>
   );

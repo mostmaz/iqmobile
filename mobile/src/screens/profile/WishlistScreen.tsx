@@ -8,7 +8,7 @@
 // this device cheaper".
 
 import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -16,6 +16,7 @@ import { Btn, Header, Pill, fmtIQD } from '../../components/ui';
 import { IconBell, IconClose, IconMinus, IconPlus, IconChevronDown } from '../../components/icons';
 import { Wishlist, DeviceCatalog, type WishItem } from '../../api/endpoints';
 import { DevicePickerModal } from '../../components/DevicePickerModal';
+import { TextRowListSkeleton } from '../../components/Skeleton';
 import { useAuth } from '../../auth/AuthContext';
 
 const PRICE_STEP = 25_000;
@@ -192,7 +193,7 @@ export default function WishlistScreen({ navigation, route }: any) {
       </View>
 
       {isLoading ? (
-        <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+        <TextRowListSkeleton count={4} />
       ) : (
         <FlatList
           data={data || []}
