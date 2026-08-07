@@ -635,6 +635,13 @@ addColumnIfMissing('users', 'shop_hidden INTEGER NOT NULL DEFAULT 0');
 // flag restores them. Suppressing server-side also means apps already on the
 // stores stop showing the buttons without needing an update.
 addColumnIfMissing('users', 'shop_no_contact INTEGER NOT NULL DEFAULT 0');
+// A shop operated from someone's personal account. When set on a shop row,
+// that user receives every notification addressed to the shop (chat messages
+// first and foremost) and can read/reply in the shop's chats from their own
+// login. Built for the aggregator price shop: its own login (a placeholder
+// phone) is never signed in anywhere, so buyer messages were landing in an
+// inbox nobody looked at.
+addColumnIfMissing('users', 'shop_manager_id INTEGER');
 
 // One-time repair: early shop-gallery and logo writes stored a bare filename
 // ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via

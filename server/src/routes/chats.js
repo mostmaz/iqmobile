@@ -73,10 +73,26 @@ r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
   res.json(row);
 });
 
+// Shops this user operates from their personal account (users.shop_manager_id
+// points from the shop row at the manager). Nearly always empty; the price
+// aggregator shop is the reason it exists — its own login is never signed in,
+// so its chats have to surface in the operator's account instead.
+function managedShopIds(userId) {
+  return db.prepare('SELECT id FROM users WHERE shop_manager_id=?')
+    .all(userId).map((r) => r.id);
+}
+
+// Is this user a party to the chat? Buyer, seller, or manager of the selling
+// shop. All chat access goes through this one predicate.
+function isChatMember(chat, userId) {
+  if (chat.buyer_id === userId || chat.seller_id === userId) return true;
+  return managedShopIds(userId).includes(chat.seller_id);
+}
+
 function loadChatForUser(req, res) {
   const row = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.id);
   if (!row) { res.status(404).json({ error: 'not_found' }); return null; }
-  if (row.buyer_id !== req.user.id && row.seller_id !== req.user.id) {
+  if (!isChatMember(row, req.user.id)) {
     res.status(403).json({ error: 'forbidden' }); return null;
   }
   return row;
@@ -90,7 +106,7 @@ function loadChatForUser(req, res) {
 function chatGuard(req, res, next) {
   const row = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
-  if (row.buyer_id !== req.user.id && row.seller_id !== req.user.id) {
+  if (!isChatMember(row, req.user.id)) {
     return res.status(403).json({ error: 'forbidden' });
   }
   req.chat = row;
@@ -152,10 +168,14 @@ function enrichChat(chat, viewerId) {
 r.get('/chats', requireAuth(), (req, res) => {
   const role = req.query.role; // 'buyer' | 'seller' | undefined
   const listingId = Number(req.query.listing_id);
-  let sql = 'SELECT * FROM chats WHERE (buyer_id=? OR seller_id=?)';
-  const params = [req.user.id, req.user.id];
+  // The seller side includes shops this user manages, so the price shop's
+  // buyer chats appear in the operator's own chat list with no app change.
+  const sellerIds = [req.user.id, ...managedShopIds(req.user.id)];
+  const sellerIn = `seller_id IN (${sellerIds.map(() => '?').join(',')})`;
+  let sql = `SELECT * FROM chats WHERE (buyer_id=? OR ${sellerIn})`;
+  const params = [req.user.id, ...sellerIds];
   if (role === 'buyer') { sql = 'SELECT * FROM chats WHERE buyer_id=?'; params.length = 0; params.push(req.user.id); }
-  else if (role === 'seller') { sql = 'SELECT * FROM chats WHERE seller_id=?'; params.length = 0; params.push(req.user.id); }
+  else if (role === 'seller') { sql = `SELECT * FROM chats WHERE ${sellerIn}`; params.length = 0; params.push(...sellerIds); }
   if (Number.isInteger(listingId) && listingId > 0) {
     sql += ' AND listing_id=?';
     params.push(listingId);
@@ -246,9 +266,9 @@ r.get('/messages/inbox', requireAuth(), (req, res) => {
     JOIN chats c ON c.id = m.chat_id
     WHERE m.created_at > ?
       AND m.sender_id != ?
-      AND (c.buyer_id = ? OR c.seller_id = ?)
+      AND (c.buyer_id = ? OR c.seller_id IN (SELECT ? UNION SELECT id FROM users WHERE shop_manager_id=?))
     ORDER BY m.created_at DESC LIMIT 20
-  `).all(since, req.user.id, req.user.id, req.user.id);
+  `).all(since, req.user.id, req.user.id, req.user.id, req.user.id);
   res.json(rows);
 });
 

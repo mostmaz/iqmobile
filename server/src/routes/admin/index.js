@@ -1513,6 +1513,21 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
   if (b.shop_instagram !== undefined) { fields.push('shop_instagram=?'); params.push(sanitizeUrl(b.shop_instagram)); }
   if (b.shop_hidden !== undefined) { fields.push('shop_hidden=?'); params.push(b.shop_hidden ? 1 : 0); }
   if (b.shop_no_contact !== undefined) { fields.push('shop_no_contact=?'); params.push(b.shop_no_contact ? 1 : 0); }
+  // Delegate the shop's inbox to a personal account, addressed by phone
+  // (that's what the operator knows — nobody knows their own user id).
+  // Empty string clears the delegation. The target must be an existing,
+  // different account: pointing a shop at itself would make notify()'s
+  // fan-out a no-op in the best case and a loop risk in the worst.
+  if (b.shop_manager_phone !== undefined) {
+    if (!b.shop_manager_phone) { fields.push('shop_manager_id=?'); params.push(null); }
+    else {
+      const p = normalizeIraqiPhone(b.shop_manager_phone);
+      const mgr = p && db.prepare('SELECT id FROM users WHERE phone=?').get(p);
+      if (!mgr) return res.status(400).json({ error: 'manager_not_found' });
+      if (mgr.id === u.id) return res.status(400).json({ error: 'manager_is_shop' });
+      fields.push('shop_manager_id=?'); params.push(mgr.id);
+    }
+  }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);
     if (!g) return res.status(400).json({ error: 'bad_governorate' });

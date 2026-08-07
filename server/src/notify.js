@@ -20,7 +20,7 @@ export function hasNotified(userId, kind, listingId) {
   ).get(userId, kind, `%"listing_id":${Number(listingId)},%`, `%"listing_id":${Number(listingId)}}%`);
 }
 
-export function notify(userId, kind, payload, push) {
+function deliver(userId, kind, payload, push) {
   db.prepare(
     'INSERT INTO notifications(user_id, kind, payload_json, read, created_at) VALUES(?,?,?,?,?)',
   ).run(userId, kind, JSON.stringify(payload || {}), 0, now());
@@ -35,4 +35,17 @@ export function notify(userId, kind, payload, push) {
     pushTo([userId], push.title, push.body, { kind, ...(payload || {}) })
       .catch((err) => console.error('[notify] pushTo failed', err));
   }
+}
+
+export function notify(userId, kind, payload, push) {
+  deliver(userId, kind, payload, push);
+  // Shop delegation: a shop operated from a personal account forwards every
+  // notification to that account, each as the manager's OWN row — their app
+  // polls their own inbox, not the shop's. The shop row keeps its copy too,
+  // so removing a manager later loses nothing. Self-guard covers a row
+  // pointing at itself; a manager chatting with their own shop as a buyer
+  // will see a self-echo, which is harmless and only affects test chats.
+  const row = db.prepare('SELECT shop_manager_id FROM users WHERE id=?').get(userId);
+  const managerId = row?.shop_manager_id;
+  if (managerId && managerId !== userId) deliver(managerId, kind, payload, push);
 }
