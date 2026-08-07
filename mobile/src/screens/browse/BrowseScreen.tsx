@@ -72,7 +72,16 @@ export default function BrowseScreen({ navigation }: any) {
       return res.json() as Promise<{ price_shop_id?: number | null }>;
     },
     staleTime: 10 * 60 * 1000,
-    retry: 1,
+    // A cold start on a slow Iraqi connection routinely loses the first
+    // request or two. With one retry and a 10-minute staleTime, that failure
+    // stuck: the row stayed hidden for the whole session even after the
+    // network recovered. The feed hides this because useFocusEffect
+    // re-invalidates it; this query has no such trigger, so it needs to
+    // recover on its own.
+    retry: 3,
+    retryDelay: (n) => Math.min(1000 * 2 ** n, 8000),
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
   });
   const priceShopId = appConfig?.price_shop_id ?? null;
 
