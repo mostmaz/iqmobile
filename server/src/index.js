@@ -94,6 +94,13 @@ const CORS_ORIGINS = new Set([
   // so a malicious FB page can't replay the admin token even with
   // CORS open. Only a script that explicitly carries the token (i.e.
   // our injected one) can authenticate.
+  // Used when releasing: Play Console's page fetches our release .aab from
+  // /static so it can be attached to the upload form in-browser (Chrome's
+  // Private Network Access blocks fetching it from localhost). Same safety
+  // argument as the Facebook entries below: auth here is Bearer-only, and
+  // browsers never auto-attach Authorization cross-origin, so an allowlisted
+  // origin gains nothing beyond what anonymous requests already get.
+  'https://play.google.com',
   'https://web.facebook.com',
   'https://www.facebook.com',
 ]);
