@@ -54,12 +54,10 @@ async function register(phone, name) {
   return r.data;
 }
 
-test('full deal flow: list, chat, propose, accept, confirm, phone unlocked, rate', async () => {
+test('listing + chat still work; every deal mutation is retired (410)', async () => {
   const seller = await register('07700000001', 'Seller');
   const buyer = await register('07700000002', 'Buyer');
 
-  // Seller posts listing. contact_phone is required now; use the seller's
-  // own phone since that's the realistic case for an individual seller.
   const lc = await call('POST', '/listings', {
     brand: 'Apple', model: 'iPhone 13',
     condition: 'used', asking_price: 500000,
@@ -69,79 +67,46 @@ test('full deal flow: list, chat, propose, accept, confirm, phone unlocked, rate
   assert.equal(lc.status, 200);
   const listingId = lc.data.id;
 
-  // Buyer browses → sees the listing.
-  const browse = await call('GET', '/listings', null, buyer.token);
-  assert.equal(browse.status, 200);
-  assert.ok(browse.data.find((l) => l.id === listingId));
-
-  // Buyer fetches detail — phone is now always visible (per-listing
-  // contact_phone, no deal-confirmation gate).
+  // Phone is public on the listing — the thing deal confirmation used to
+  // gate. This is WHY the deal flow could be retired.
   const detail = await call('GET', `/listings/${listingId}`, null, buyer.token);
-  assert.equal(detail.data.seller_phone, '07700000001');
   assert.equal(detail.data.phone_visible, true);
   assert.equal(detail.data.contact_phone, '07700000001');
 
-  // Buyer starts chat.
   const chat = await call('POST', `/listings/${listingId}/chat`, null, buyer.token);
   assert.equal(chat.status, 200);
   const chatId = chat.data.id;
 
-  // Seller proposes a price (deal flow data still works for record-keeping
-  // even though the UI no longer surfaces it).
-  const propose = await call('POST', `/chats/${chatId}/propose-price`, { final_price: 480000 }, seller.token);
-  assert.equal(propose.status, 200);
-  const dealId = propose.data.id;
-  assert.equal(propose.data.status, 'proposed');
+  // Every mutation answers 410 deals_removed — even from the seller, even
+  // with a well-formed body, and before any id validation.
+  const gone = (r) => {
+    assert.equal(r.status, 410, JSON.stringify(r.data));
+    assert.equal(r.data.error, 'deals_removed');
+  };
+  gone(await call('POST', `/chats/${chatId}/propose-price`, { final_price: 480000 }, seller.token));
+  gone(await call('POST', '/deals/1/buyer-accept', null, buyer.token));
+  gone(await call('POST', '/deals/1/buyer-reject', null, buyer.token));
+  gone(await call('POST', '/deals/1/counter-offer', { final_price: 1 }, buyer.token));
+  gone(await call('POST', '/deals/1/seller-confirm', null, seller.token));
+  gone(await call('POST', '/deals/1/cancel', null, seller.token));
 
-  // Buyer accepts.
-  const accept = await call('POST', `/deals/${dealId}/buyer-accept`, null, buyer.token);
-  assert.equal(accept.status, 200);
-  assert.equal(accept.data.status, 'buyer_accepted');
+  // No deal row was created by any of the rejected calls.
+  assert.equal(db.prepare('SELECT COUNT(*) c FROM deals').get().c, 0);
 
-  // Seller confirms.
-  const confirm = await call('POST', `/deals/${dealId}/seller-confirm`, null, seller.token);
-  assert.equal(confirm.status, 200);
-  assert.equal(confirm.data.status, 'seller_confirmed');
-
-  // Listing status flipped to reserved (default behaviour).
-  const reserved = await call('GET', `/listings/${listingId}`, null, buyer.token);
-  assert.equal(reserved.data.status, 'reserved');
-
-  // Buyer rates the seller.
-  const rate = await call('POST', `/deals/${dealId}/rating`, { stars: 5, comment: 'تجربة ممتازة' }, buyer.token);
-  assert.equal(rate.status, 200);
-
-  // Cannot rate twice.
-  const rate2 = await call('POST', `/deals/${dealId}/rating`, { stars: 4 }, buyer.token);
-  assert.equal(rate2.status, 409);
-});
-
-test('seller cannot confirm before buyer accepts', async () => {
-  const s = await register('07700000010', 'S');
-  const b = await register('07700000011', 'B');
-  const lc = await call('POST', '/listings', { brand: 'Samsung', model: 'S22', condition: 'new', asking_price: 700000, governorate: 'Baghdad', contact_phone: '07700000010' }, s.token);
-  const chat = await call('POST', `/listings/${lc.data.id}/chat`, null, b.token);
-  const propose = await call('POST', `/chats/${chat.data.id}/propose-price`, { final_price: 650000 }, s.token);
-  const tooSoon = await call('POST', `/deals/${propose.data.id}/seller-confirm`, null, s.token);
-  assert.equal(tooSoon.status, 409);
-});
-
-test('buyer cannot rate without confirmed deal', async () => {
-  const s = await register('07700000020', 'S2');
-  const b = await register('07700000021', 'B2');
-  const lc = await call('POST', '/listings', { brand: 'Apple', model: '12', condition: 'used', asking_price: 100000, governorate: 'Baghdad', contact_phone: '07700000020' }, s.token);
-  const chat = await call('POST', `/listings/${lc.data.id}/chat`, null, b.token);
-  const propose = await call('POST', `/chats/${chat.data.id}/propose-price`, { final_price: 90000 }, s.token);
-  const earlyRate = await call('POST', `/deals/${propose.data.id}/rating`, { stars: 5 }, b.token);
-  assert.equal(earlyRate.status, 409);
+  // History read stays alive (and empty).
+  const mine = await call('GET', '/deals/mine', null, seller.token);
+  assert.equal(mine.status, 200);
+  assert.deepEqual(mine.data, []);
 });
 
 test('phone numbers in chat messages pass through unchanged (no masking)', async () => {
-  const s = await register('07700000030', 'S3');
-  const b = await register('07700000031', 'B3');
-  const lc = await call('POST', '/listings', { brand: 'Apple', model: '14', condition: 'new', asking_price: 1, governorate: 'Baghdad', contact_phone: '07700000030' }, s.token);
-  const chat = await call('POST', `/listings/${lc.data.id}/chat`, null, b.token);
-  const msg = await call('POST', `/chats/${chat.data.id}/messages`, { body: 'تواصل 07710000000' }, b.token);
+  // Reuse the users from the previous test — the auth limiter allows only
+  // 5 register calls a minute and the suite shares one process.
+  const s = await call('POST', '/auth/login', { phone: '07700000001', password: 'pw1234' });
+  const b = await call('POST', '/auth/login', { phone: '07700000002', password: 'pw1234' });
+  const lc = await call('POST', '/listings', { brand: 'Apple', model: '14', condition: 'new', asking_price: 1, governorate: 'Baghdad', contact_phone: '07700000001' }, s.data.token);
+  const chat = await call('POST', `/listings/${lc.data.id}/chat`, null, b.data.token);
+  const msg = await call('POST', `/chats/${chat.data.id}/messages`, { body: 'تواصل 07710000000' }, b.data.token);
   assert.equal(msg.data.blocked, false);
   assert.equal(/07710000000/.test(msg.data.body), true);
 });

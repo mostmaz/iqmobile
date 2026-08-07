@@ -5,6 +5,24 @@ import { notify } from '../notify.js';
 
 const r = Router();
 
+// ─── retired ──────────────────────────────────────────────────────────
+// The deal flow (propose → accept → confirm) is switched off. The app has
+// hidden its buttons since launch (DEAL_FLOW_ENABLED=false in ChatScreen —
+// phone numbers are public on every listing, so there is nothing left for a
+// confirmed deal to unlock), and prod has ZERO deals ever created. The one
+// thing the dormant endpoints could still do is harm: create a dangling
+// 'proposed' row in a price-shop chat that no UI can act on.
+//
+// Mutations return 410 so any stray caller gets a deliberate, mapped answer
+// rather than a confusing validation error. GET /deals/mine stays live and
+// returns the (empty) history; the deals table and the dashboard's history
+// page are untouched. Flip DEALS_RETIRED to false to resurrect the flow.
+const DEALS_RETIRED = true;
+function retired(_req, res, next) {
+  if (DEALS_RETIRED) return res.status(410).json({ error: 'deals_removed' });
+  next();
+}
+
 function loadChatForUser(chatId, userId) {
   const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(chatId);
   if (!chat) return { error: 'not_found' };
@@ -34,7 +52,7 @@ function cancelOpenDeals(chatId) {
 }
 
 // ─── seller proposes a final price ───────────────────────────────────
-r.post('/chats/:id(\\d+)/propose-price', requireAuth(), (req, res) => {
+r.post('/chats/:id(\\d+)/propose-price', requireAuth(), retired, (req, res) => {
   const { chat, error } = loadChatForUser(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (chat.seller_id !== req.user.id) return res.status(403).json({ error: 'seller_only' });
@@ -61,7 +79,7 @@ r.post('/chats/:id(\\d+)/propose-price', requireAuth(), (req, res) => {
 });
 
 // ─── buyer accepts price ─────────────────────────────────────────────
-r.post('/deals/:id(\\d+)/buyer-accept', requireAuth(), (req, res) => {
+r.post('/deals/:id(\\d+)/buyer-accept', requireAuth(), retired, (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.buyer_id !== req.user.id) return res.status(403).json({ error: 'buyer_only' });
@@ -83,7 +101,7 @@ r.post('/deals/:id(\\d+)/buyer-accept', requireAuth(), (req, res) => {
 // Reject is only valid in 'proposed'. Once the buyer has accepted, the
 // deal is a commitment — the only escape is /cancel (and even that's
 // seller-only after acceptance; see below).
-r.post('/deals/:id(\\d+)/buyer-reject', requireAuth(), (req, res) => {
+r.post('/deals/:id(\\d+)/buyer-reject', requireAuth(), retired, (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.buyer_id !== req.user.id) return res.status(403).json({ error: 'buyer_only' });
@@ -98,7 +116,7 @@ r.post('/deals/:id(\\d+)/buyer-reject', requireAuth(), (req, res) => {
 
 // ─── buyer counter-offer (creates a brand-new deal in 'proposed' from the
 // buyer side — the seller can then accept by re-proposing, etc.) ──────
-r.post('/deals/:id(\\d+)/counter-offer', requireAuth(), (req, res) => {
+r.post('/deals/:id(\\d+)/counter-offer', requireAuth(), retired, (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.buyer_id !== req.user.id) return res.status(403).json({ error: 'buyer_only' });
@@ -138,7 +156,7 @@ r.post('/deals/:id(\\d+)/counter-offer', requireAuth(), (req, res) => {
 });
 
 // ─── seller confirms deal — phone number unlocks here ────────────────
-r.post('/deals/:id(\\d+)/seller-confirm', requireAuth(), (req, res) => {
+r.post('/deals/:id(\\d+)/seller-confirm', requireAuth(), retired, (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.seller_id !== req.user.id) return res.status(403).json({ error: 'seller_only' });
@@ -182,7 +200,7 @@ r.post('/deals/:id(\\d+)/seller-confirm', requireAuth(), (req, res) => {
 //                    The buyer can still walk away in practice by not
 //                    answering — that's a marketplace, not contract law.
 //   seller_confirmed → cannot be cancelled by either side; deal is done.
-r.post('/deals/:id(\\d+)/cancel', requireAuth(), (req, res) => {
+r.post('/deals/:id(\\d+)/cancel', requireAuth(), retired, (req, res) => {
   const { deal, error } = loadDealForParty(req.params.id, req.user.id);
   if (error) return res.status(error === 'not_found' ? 404 : 403).json({ error });
   if (deal.status === 'proposed') {
