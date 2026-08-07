@@ -138,6 +138,70 @@ function ChatsStackNav() {
 }
 
 const Tabs = createBottomTabNavigator();
+
+// Tapping a tab should land on that tab's ROOT screen, not wherever its
+// nested stack was last left. Without this, opening a conversation and later
+// tapping المحادثات again re-showed that same conversation instead of the
+// inbox — the stack had simply been restored. Sell needs the same treatment
+// for a different reason (see its call site).
+//
+// preventDefault + manual navigate keeps the tab switch; the deferred reset
+// then targets the nested stack once it's active. `always` forces a reset
+// even when the stack is already at its root — Sell uses it to defeat
+// component-instance reuse so PostListingScreen mounts with a fresh form.
+// Chats skips it so re-tapping the tab while on the inbox doesn't remount
+// the list and throw away scroll position.
+function resetToRootOnTabPress(tabName: string, rootRoute: string, opts?: { always?: boolean }) {
+  return ({ navigation }: any) => ({
+    tabPress: (e: any) => {
+      e.preventDefault();
+      navigation.dispatch({
+        ...CommonActions.navigate({ name: tabName }),
+        target: navigation.getState().key,
+      });
+      // setTimeout(0) lets the tab switch propagate first; the dispatched
+      // reset then targets the (now active) nested stack.
+      setTimeout(() => {
+        const state = navigation.getState();
+        const route = state.routes.find((r: any) => r.name === tabName) as any;
+        const doReset = (key: string) => navigation.dispatch({
+          ...CommonActions.reset({ index: 0, routes: [{ name: rootRoute }] }),
+          target: key,
+        });
+
+        if (route?.state?.key) {
+          // Nested stack is materialised — judge "at root" by the FOCUSED
+          // ROUTE'S NAME, not by index: a deep-linked stack can hold a
+          // non-root screen at index 0 with nothing beneath it.
+          const focused = route.state.routes?.[route.state.index ?? route.state.routes.length - 1];
+          if (opts?.always || (focused && focused.name !== rootRoute)) doReset(route.state.key);
+          return;
+        }
+
+        // No nested state AT ALL. This is what a deep link leaves behind:
+        // ListingDetail does getParent().navigate('Chats', { screen: 'Chat' }),
+        // the nested navigator mounts straight onto Chat driven purely by
+        // route.params — and params are sticky, so every later tab press
+        // re-opened that same conversation. Navigate the nested navigator to
+        // its root (overwriting params.screen), then reset on the next tick
+        // once the state object exists, so the old conversation isn't left
+        // under the inbox for the back button to find.
+        if (route?.params?.screen && route.params.screen !== rootRoute) {
+          navigation.dispatch({
+            ...CommonActions.navigate({ name: tabName, params: { screen: rootRoute } }),
+            target: state.key,
+          });
+          setTimeout(() => {
+            const s2 = navigation.getState();
+            const r2 = s2.routes.find((r: any) => r.name === tabName) as any;
+            if (r2?.state?.key) doReset(r2.state.key);
+          }, 0);
+        }
+      }, 0);
+    },
+  });
+}
+
 function MainTabs() {
   return (
     <Tabs.Navigator screenOptions={{ headerShown: false }} tabBar={(p) => <TabBar {...p} />}>
@@ -146,45 +210,20 @@ function MainTabs() {
       <Tabs.Screen
         name="Sell"
         component={SellStackNav}
-        listeners={({ navigation }) => ({
-          // After a successful post we replace SellHome with ListingDetail
-          // (so the user lands on their new listing). Without this listener,
-          // tapping Sell again would keep showing that previous detail page
-          // — the user expects a fresh "post a new listing" form instead.
-          //
-          // We also need to defeat React's component-instance reuse: when
-          // the SellHome route still exists, navigating to it doesn't
-          // remount PostListingScreen, so any leftover form state from a
-          // canceled wizard would persist. Dispatching a full reset of the
-          // Sell stack guarantees both:
-          //   1. The Sell tab is on the SellHome route
-          //   2. PostListingScreen mounts fresh (empty form)
-          tabPress: (e) => {
-            e.preventDefault();
-            navigation.dispatch({
-              ...CommonActions.navigate({ name: 'Sell' }),
-              target: navigation.getState().key,
-            });
-            // Reset the nested Sell stack to a single SellHome route. The
-            // setTimeout(0) lets the tab switch propagate first; the
-            // dispatched reset then targets the (now active) Sell stack.
-            setTimeout(() => {
-              const state = navigation.getState();
-              const sellRoute = state.routes.find((r: any) => r.name === 'Sell') as any;
-              if (sellRoute?.state?.key) {
-                navigation.dispatch({
-                  ...CommonActions.reset({
-                    index: 0,
-                    routes: [{ name: 'SellHome' }],
-                  }),
-                  target: sellRoute.state.key,
-                });
-              }
-            }, 0);
-          },
-        })}
+        // After a successful post we replace SellHome with ListingDetail (so
+        // the user lands on their new listing) — tapping Sell again must show
+        // a fresh post form, not that stale detail page. `always` forces the
+        // reset even at root to defeat component-instance reuse: without it,
+        // leftover form state from a canceled wizard would persist.
+        listeners={resetToRootOnTabPress('Sell', 'SellHome', { always: true })}
       />
-      <Tabs.Screen name="Chats" component={ChatsStackNav} />
+      <Tabs.Screen
+        name="Chats"
+        component={ChatsStackNav}
+        // Re-entering المحادثات lands on the inbox, not the last-open
+        // conversation the stack happened to be left on.
+        listeners={resetToRootOnTabPress('Chats', 'ChatsHome')}
+      />
       <Tabs.Screen name="Profile" component={ProfileStackNav} />
     </Tabs.Navigator>
   );

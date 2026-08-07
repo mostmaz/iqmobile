@@ -9,6 +9,15 @@
         "export PATH=/opt/homebrew/bin:$PATH && cd '/Users/mustafa/Downloads/IQ Mobile 2/admin-web' && exec npm run dev"
       ],
       "port": 5173
+    },
+    {
+      "name": "metro",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "export PATH=/opt/homebrew/bin:$PATH && cd '/Users/mustafa/Downloads/IQ Mobile 2/mobile' && exec npx expo start --clear --port 8081"
+      ],
+      "port": 8081
     }
   ]
 }
