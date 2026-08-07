@@ -12,7 +12,7 @@
 // is exactly the situation a forced update often needs to resolve.
 
 import { Router } from 'express';
-import { getSetting } from '../db.js';
+import { db, getSetting } from '../db.js';
 
 const r = Router();
 
@@ -38,7 +38,19 @@ r.get('/app-config', (_req, res) => {
   const image = getSetting('overlay_image') || '';
   const overlayOn = getSetting('overlay_enabled') === '1';
 
+  // The aggregator price shop, so the home screen's "new device prices" row
+  // knows where to go. Looked up by the shop_hidden flag rather than shipped
+  // as a constant: the shop is invisible in /shops by design, so the app has
+  // no other way to discover its id, and hardcoding one would silently break
+  // the row if the price book ever moves to a different shop.
+  // Null when no hidden shop exists — the app hides the row rather than
+  // offering a link that dead-ends.
+  const priceShop = db.prepare(
+    "SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_hidden,0)=1 ORDER BY id ASC LIMIT 1",
+  ).get();
+
   res.set('Cache-Control', 'public, max-age=60').json({
+    price_shop_id: priceShop ? priceShop.id : null,
     update: {
       // The app compares its own version against these. Doing the comparison
       // client-side (rather than the server reading x-app-version) means the
