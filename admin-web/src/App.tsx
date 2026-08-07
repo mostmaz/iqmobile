@@ -16,6 +16,7 @@ import { ShopsPage } from './pages/ShopsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DailyUsersPage } from './pages/DailyUsersPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
+import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
 import { InspectionPage } from './pages/InspectionPage';
 import { AppControlPage } from './pages/AppControlPage';
 import { ShopNotifier } from './ShopNotifier';
@@ -24,7 +25,7 @@ import { WorkQueue, type Queue } from './WorkQueue';
 export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
-  | 'devices' | 'inspection' | 'appcontrol';
+  | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -53,6 +54,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     items: [
       { key: 'listings', label: 'الإعلانات' },
       { key: 'brands', label: 'الماركات' },
+      { key: 'device_catalog', label: 'الأجهزة' },
       { key: 'import', label: 'الاستيراد' },
     ],
   },
@@ -161,6 +163,7 @@ export function App() {
       {/* onChanged drops the badge the moment a suggestion is actioned,
           instead of leaving a stale count until the next 30s poll. */}
       {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshQueue} />}
+      {page === 'device_catalog' && <DeviceCatalogPage />}
       {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}

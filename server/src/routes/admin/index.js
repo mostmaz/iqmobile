@@ -2035,6 +2035,128 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
 // GSMArena snapshot). When a seller can't find their device they type it
 // manually and a row lands in `device_suggestions` for review here.
 // Approving copies the device into the catalog so the next seller finds it.
+//
+// Until now approving a suggestion was the ONLY way a device entered the
+// catalog, which meant fixing a typo in one of the ~4000 seeded names, or
+// adding a model nobody had asked for yet, was a SQL job. The CRUD below
+// makes the catalog directly editable from the dashboard.
+
+const DEVICE_TYPES = ['phone', 'tablet', 'watch'];
+
+// Shared validation for create + edit so an edit can never write a value the
+// create path would have rejected — same principle as PATCH /listings/:id.
+function readDeviceFields(body, { partial }) {
+  const out = {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(body || {}, k);
+
+  if (!partial || has('brand')) {
+    const brand = String(body?.brand || '').trim();
+    if (!brand) return { error: 'brand_required' };
+    // Same guard the suggestion-approve path uses: a catalog entry under a
+    // brand the listing form doesn't offer is unreachable in the dropdown.
+    if (!isBrand(brand)) return { error: 'unknown_brand' };
+    out.brand = brand;
+  }
+  if (!partial || has('model')) {
+    const model = String(body?.model || '').trim().slice(0, 80);
+    if (!model) return { error: 'model_required' };
+    out.model = model;
+  }
+  if (!partial || has('device_type')) {
+    const t = String(body?.device_type || 'phone').trim();
+    if (!DEVICE_TYPES.includes(t)) return { error: 'bad_device_type' };
+    out.device_type = t;
+  }
+  if (has('is_active')) out.is_active = body.is_active ? 1 : 0;
+  return { fields: out };
+}
+
+// UNIQUE(brand, device_type, model) is the only constraint on the table, so a
+// SQLITE_CONSTRAINT here always means "this device already exists". Report it
+// as 409 rather than letting it surface as a 500.
+function isDuplicate(e) {
+  return String(e?.code || '').startsWith('SQLITE_CONSTRAINT');
+}
+
+r.get('/device-catalog', requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  const brand = String(req.query.brand || '').trim();
+  const type = DEVICE_TYPES.includes(req.query.type) ? req.query.type : '';
+  // 'all' shows deactivated rows too; default hides them the way the app does.
+  const active = req.query.active === 'all' ? null : req.query.active === '0' ? 0 : 1;
+  const limit = Math.min(Number(req.query.limit) || 200, 500);
+
+  const conds = [];
+  const params = [];
+  if (brand) { conds.push('brand = ?'); params.push(brand); }
+  if (type) { conds.push('device_type = ?'); params.push(type); }
+  if (active !== null) { conds.push('is_active = ?'); params.push(active); }
+  if (q) {
+    // Escape LIKE metacharacters — an operator pasting "iPhone_15" should not
+    // turn the _ into a single-character wildcard across 4000 rows.
+    const esc = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+    conds.push("(model LIKE ? ESCAPE '\\' COLLATE NOCASE OR brand LIKE ? ESCAPE '\\' COLLATE NOCASE)");
+    params.push(`%${esc}%`, `%${esc}%`);
+  }
+  const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+
+  // Total is the count BEFORE the limit, so the UI can say "showing 200 of
+  // 3972" instead of silently implying the catalog is 200 rows deep.
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM device_catalog${where}`).get(...params).n;
+  const rows = db.prepare(
+    `SELECT id, brand, device_type, model, source, is_active, created_at
+       FROM device_catalog${where}
+      ORDER BY brand COLLATE NOCASE ASC, model COLLATE NOCASE ASC
+      LIMIT ?`,
+  ).all(...params, limit);
+
+  res.json({ total, limit, devices: rows });
+});
+
+r.post('/device-catalog', requireAdmin, (req, res) => {
+  const { error, fields } = readDeviceFields(req.body, { partial: false });
+  if (error) return res.status(400).json({ error });
+  try {
+    const id = db.prepare(
+      `INSERT INTO device_catalog(brand, device_type, model, source, is_active, created_at)
+       VALUES(?,?,?,'manual',1,?)`,
+    ).run(fields.brand, fields.device_type, fields.model, now()).lastInsertRowid;
+    res.json({ ok: true, device: db.prepare('SELECT * FROM device_catalog WHERE id=?').get(id) });
+  } catch (e) {
+    if (isDuplicate(e)) return res.status(409).json({ error: 'duplicate' });
+    throw e;
+  }
+});
+
+r.patch('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT * FROM device_catalog WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+
+  const { error, fields } = readDeviceFields(req.body, { partial: true });
+  if (error) return res.status(400).json({ error });
+  const keys = Object.keys(fields);
+  if (!keys.length) return res.status(400).json({ error: 'no_fields' });
+
+  try {
+    db.prepare(`UPDATE device_catalog SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`)
+      .run(...keys.map((k) => fields[k]), row.id);
+    res.json({ ok: true, device: db.prepare('SELECT * FROM device_catalog WHERE id=?').get(row.id) });
+  } catch (e) {
+    if (isDuplicate(e)) return res.status(409).json({ error: 'duplicate' });
+    throw e;
+  }
+});
+
+// Hard delete is safe: nothing has a foreign key to device_catalog, and a
+// listing stores its model as free text rather than a catalog id. Removing a
+// row takes the device out of the picker and leaves every existing listing
+// exactly as it was. Deactivating (PATCH is_active=0) is the reversible
+// option and is what the UI offers first.
+r.delete('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
+  const r2 = db.prepare('DELETE FROM device_catalog WHERE id=?').run(req.params.id);
+  if (r2.changes === 0) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
 
 r.get('/device-suggestions', requireAdmin, (req, res) => {
   const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
