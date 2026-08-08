@@ -467,6 +467,64 @@ CREATE TABLE IF NOT EXISTS device_suggestions (
   reviewed_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_device_suggestions_status ON device_suggestions(status, created_at DESC);
+
+-- ─── direct orders (cash on delivery) ────────────────────────────────
+-- The marketplace is otherwise contact-only: a buyer rings the seller and
+-- they settle it between themselves. An order-enabled shop is different —
+-- the buyer checks out in-app and the shop ships to them.
+--
+-- Prices are SNAPSHOTTED onto order_items at checkout. A listing's
+-- asking_price can change (or the listing can be deleted) long before the
+-- order is delivered, and the customer owes what they were quoted, not
+-- whatever the row says later. Same reason the device name is copied in:
+-- an order must stay readable after its listing is gone.
+--
+-- Money is stored in whole IQD, matching phone_listings.asking_price. No
+-- payment integration — COD only, so the total is what the courier collects.
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  -- Human-facing reference the customer quotes on the phone ("IQ-1042").
+  code TEXT NOT NULL UNIQUE,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- NULL for a guest checkout. Orders outlive accounts, so this is
+  -- deliberately not a hard requirement.
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  customer_name TEXT NOT NULL,
+  customer_phone TEXT NOT NULL,
+  governorate TEXT NOT NULL,
+  address TEXT NOT NULL,
+  note TEXT,
+  subtotal INTEGER NOT NULL,
+  shipping_fee INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  payment_method TEXT NOT NULL DEFAULT 'cod' CHECK(payment_method IN ('cod')),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending','confirmed','shipped','delivered','cancelled')),
+  cancel_reason TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_shop ON orders(shop_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, created_at DESC);
+
+-- listing_id keeps NO foreign key on purpose: deleting a listing must never
+-- delete or blank a historical order line. The snapshot columns below are
+-- the source of truth once the order exists.
+CREATE TABLE IF NOT EXISTS order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  listing_id INTEGER,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
+  storage TEXT,
+  color TEXT,
+  image_path TEXT,
+  unit_price INTEGER NOT NULL,
+  qty INTEGER NOT NULL DEFAULT 1,
+  line_total INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so
@@ -642,6 +700,15 @@ addColumnIfMissing('users', 'shop_no_contact INTEGER NOT NULL DEFAULT 0');
 // phone) is never signed in anywhere, so buyer messages were landing in an
 // inbox nobody looked at.
 addColumnIfMissing('users', 'shop_manager_id INTEGER');
+// Turns a shop into an order-taking storefront: its listings get an
+// add-to-cart button and the app offers COD checkout instead of "call the
+// seller". Off for every existing shop, so this changes nothing until a
+// shop is explicitly opted in from the dashboard.
+addColumnIfMissing('users', 'shop_orders_enabled INTEGER NOT NULL DEFAULT 0');
+// Flat delivery charge in IQD, added once per order regardless of basket
+// size. Per-shop rather than a global setting so a second storefront can
+// price delivery differently later.
+addColumnIfMissing('users', 'shop_shipping_fee INTEGER NOT NULL DEFAULT 5000');
 
 // One-time repair: early shop-gallery and logo writes stored a bare filename
 // ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via

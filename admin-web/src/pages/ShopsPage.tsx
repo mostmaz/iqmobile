@@ -28,6 +28,8 @@ type Shop = {
   // from this shop's responses — page and listings alike.
   shop_hidden: number;
   shop_no_contact: number;
+  shop_orders_enabled: number;
+  shop_shipping_fee: number;
 };
 
 type ShopDetail = Shop & {
@@ -106,7 +108,7 @@ export function ShopsPage() {
   // Both flags are plain PATCH toggles. Contact suppression is server-side, so
   // flipping it takes effect on apps already installed from the stores — no
   // release needed.
-  async function toggleFlag(s: Shop, flag: 'shop_hidden' | 'shop_no_contact') {
+  async function toggleFlag(s: Shop, flag: 'shop_hidden' | 'shop_no_contact' | 'shop_orders_enabled') {
     setBusy(true);
     try {
       await api(`/admin/shops/${s.id}`, { method: 'PATCH', body: JSON.stringify({ [flag]: !s[flag] }) });
@@ -179,11 +181,17 @@ export function ShopsPage() {
                              onChange={() => toggleFlag(s, 'shop_hidden')} />
                       Hidden
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}
                            title="Strip phone + WhatsApp from the shop page AND all its listings. Applies to apps already installed.">
                       <input type="checkbox" disabled={busy} checked={!!s.shop_no_contact}
                              onChange={() => toggleFlag(s, 'shop_no_contact')} />
                       No contact
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                           title="Storefront mode: this shop's listings get add-to-cart and cash-on-delivery checkout instead of call/WhatsApp.">
+                      <input type="checkbox" disabled={busy} checked={!!s.shop_orders_enabled}
+                             onChange={() => toggleFlag(s, 'shop_orders_enabled')} />
+                      Orders{s.shop_orders_enabled ? ` (${Number(s.shop_shipping_fee || 0).toLocaleString('en-US')} د.ع)` : ''}
                     </label>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>

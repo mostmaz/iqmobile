@@ -137,6 +137,11 @@ function shopCard(u, nowTs) {
     verified: !!u.verified,
     is_featured: !!(u.shop_featured_until && u.shop_featured_until > nowTs),
     listing_count,
+    // Storefront mode. The app shows add-to-cart + COD checkout instead of
+    // the call/WhatsApp row when this is on. Shipping is a flat per-order
+    // charge, sent alongside so the cart can show the total before checkout.
+    orders_enabled: !!u.shop_orders_enabled,
+    shipping_fee: u.shop_orders_enabled ? (Number(u.shop_shipping_fee) || 0) : null,
   };
 }
 

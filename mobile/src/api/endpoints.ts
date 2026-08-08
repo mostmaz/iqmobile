@@ -497,6 +497,9 @@ export interface ShopCard {
   verified: boolean;
   is_featured: boolean;
   listing_count: number;
+  // Storefront mode — add-to-cart + COD checkout instead of call/WhatsApp.
+  orders_enabled?: boolean;
+  shipping_fee?: number | null;
 }
 export interface ShopImage { id: number; image_path: string; position?: number }
 export interface ShopDetail extends ShopCard {
@@ -514,4 +517,32 @@ export const Shops = {
   }) => api<ShopCard & { shop_images?: ShopImage[] }>('/shops/register', { method: 'POST', body: JSON.stringify(body) }),
   removeImage: (imageId: number) =>
     api<{ ok: boolean; images: ShopImage[] }>(`/shops/me/images/${imageId}`, { method: 'DELETE' }),
+};
+
+// ─── COD orders ───────────────────────────────────────────────────────
+export type OrderStatus = 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
+export interface OrderItem {
+  id: number; listing_id: number | null; brand: string; model: string;
+  storage: string | null; color: string | null; image_path: string | null;
+  unit_price: number; qty: number; line_total: number;
+}
+export interface Order {
+  id: number; code: string; shop_id: number; shop_name: string | null;
+  customer_name: string; customer_phone: string; governorate: string;
+  address: string; note: string | null;
+  subtotal: number; shipping_fee: number; total: number;
+  payment_method: 'cod'; status: OrderStatus; cancel_reason: string | null;
+  created_at: number; updated_at: number;
+  items: OrderItem[];
+}
+export const Orders = {
+  // The server prices the order; we only ever send listing ids + quantities.
+  create: (body: {
+    items: Array<{ listing_id: number; qty: number }>;
+    customer_name: string; customer_phone: string;
+    governorate: string; address: string; note?: string;
+  }) => api<Order>('/orders', { method: 'POST', body: JSON.stringify(body) }),
+  mine: () => api<Order[]>('/orders/mine'),
+  get: (id: number) => api<Order>(`/orders/${id}`),
+  cancel: (id: number) => api<Order>(`/orders/${id}/cancel`, { method: 'POST' }),
 };

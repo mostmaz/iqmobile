@@ -10,6 +10,7 @@ import type { Page } from './App';
 // review" is a statement rather than an absence.
 
 export type Queue = {
+  orders: number;
   inspection: number;
   inspection_errors: number;
   devices: number;
@@ -21,6 +22,8 @@ export type Queue = {
 type Tile = { key: keyof Queue; label: string; page: Page; icon: string };
 
 const TILES: Tile[] = [
+  // Orders lead: a COD customer is waiting on a phone call.
+  { key: 'orders', label: 'طلبات جديدة', page: 'orders', icon: '🛒' },
   { key: 'inspection', label: 'إعلانات بانتظار الفحص', page: 'inspection', icon: '🔍' },
   { key: 'devices', label: 'أجهزة مقترحة', page: 'devices', icon: '📱' },
   { key: 'reports', label: 'بلاغات مفتوحة', page: 'reports', icon: '🚩' },

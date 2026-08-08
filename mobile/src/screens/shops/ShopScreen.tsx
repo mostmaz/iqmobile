@@ -9,8 +9,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
-import { Btn } from '../../components/ui';
+import { Btn, fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { AddToCartRow } from '../../components/AddToCartRow';
+import { useCart } from '../../lib/cart';
 import { ShopScreenSkeleton } from '../../components/Skeleton';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { BrandListModal } from '../../components/BrandListModal';
@@ -34,6 +36,10 @@ export default function ShopScreen({ navigation, route }: any) {
   // the new listing shows up here automatically (shop listings are just
   // their marketplace listings).
   const isOwner = !!user && user.id === id;
+  // Storefront mode (users.shop_orders_enabled). Owners keep the normal
+  // seller view — you don't order from your own shop.
+  const cart = useCart();
+  const storefront = !!(shop as any)?.orders_enabled && !isOwner;
   // Full-screen price-image viewer (index of the tapped image, or null).
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   // Brand filter. null = الكل. Declared before the early return below so the
@@ -102,12 +108,47 @@ export default function ShopScreen({ navigation, route }: any) {
         </TouchableOpacity>
       </View>
 
+      {storefront && cart.count > 0 && cart.shop_id === shop.id ? (
+        <View style={{
+          position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 16, zIndex: 20,
+        }}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => navigation.navigate('Cart')}
+            style={{
+              backgroundColor: theme.accent, borderRadius: radius.xxl,
+              paddingVertical: 14, paddingHorizontal: 18,
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+              ...shadowSoft,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff' }}>
+              عرض السلة ({cart.count})
+            </Text>
+            <Text style={{ fontFamily: fonts.ltrBold, fontSize: 15, color: '#fff' }}>
+              {fmtIQD(cart.total)} د.ع
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <FlatList
         data={visibleListings}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
         renderItem={({ item }) => (
-          <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+          <View style={{ marginBottom: storefront ? 8 : 0 }}>
+            <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+            {/* Storefront shops get add-to-cart under each card. A sold or
+                reserved device can't be ordered, so the row is only offered
+                on active ones. */}
+            {storefront && item.status === 'active' ? (
+              <AddToCartRow
+                listing={item}
+                shop={{ id: shop.id, name: shop.shop_name || shop.display_name, shipping_fee: shop.shipping_fee || 0 }}
+              />
+            ) : null}
+          </View>
         )}
         ListHeaderComponent={
           <View style={{ marginBottom: 8 }}>
@@ -172,7 +213,10 @@ export default function ShopScreen({ navigation, route }: any) {
               {/* Contact — hidden on your own shop (you don't call yourself);
                   owners get the post-device CTA instead. One call button per
                   public number, then WhatsApp, then Facebook / Instagram. */}
-              {!isOwner ? (
+              {/* A storefront takes orders in-app, so the call/WhatsApp block is
+                  replaced by the cart flow — offering both would leave the
+                  customer guessing which one actually places an order. */}
+              {!isOwner && !storefront ? (
                 <View style={{ marginTop: 14, gap: 8 }}>
                   {phones.map((p) => (
                     <Btn key={p} kind="primary" full onPress={() => callPhone(p)}>

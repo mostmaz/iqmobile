@@ -17,6 +17,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { DailyUsersPage } from './pages/DailyUsersPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
+import { OrdersPage } from './pages/OrdersPage';
 import { InspectionPage } from './pages/InspectionPage';
 import { AppControlPage } from './pages/AppControlPage';
 import { ShopNotifier } from './ShopNotifier';
@@ -25,7 +26,7 @@ import { WorkQueue, type Queue } from './WorkQueue';
 export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
-  | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol';
+  | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -43,6 +44,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
   {
     label: 'الإشراف',
     items: [
+      { key: 'orders', label: 'الطلبات', badgeKey: 'orders' },
       { key: 'inspection', label: 'الفحص', badgeKey: 'inspection' },
       { key: 'devices', label: 'الأجهزة المقترحة', badgeKey: 'devices' },
       { key: 'reports', label: 'البلاغات', badgeKey: 'reports' },
@@ -78,7 +80,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
 ];
 
 const EMPTY_QUEUE: Queue = {
-  inspection: 0, inspection_errors: 0, devices: 0,
+  orders: 0, inspection: 0, inspection_errors: 0, devices: 0,
   reports: 0, feature_requests: 0, new_shops: 0,
 };
 
@@ -164,6 +166,7 @@ export function App() {
           instead of leaving a stale count until the next 30s poll. */}
       {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshQueue} />}
       {page === 'device_catalog' && <DeviceCatalogPage />}
+      {page === 'orders' && <OrdersPage onChanged={refreshQueue} />}
       {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}

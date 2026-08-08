@@ -1,0 +1,124 @@
+// The customer's own order history.
+//
+// Cancel is offered only while an order is still 'pending', matching the
+// server: once the shop has confirmed it, the device may already be with a
+// courier and cancelling becomes a phone call, not a button.
+
+import React from 'react';
+import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { theme, fonts, radius } from '../../theme';
+import { fmtIQD } from '../../components/ui';
+import { IconChevronLeft } from '../../components/icons';
+import { Orders, type Order, type OrderStatus } from '../../api/endpoints';
+import { arOf } from '../../lib/governorates';
+
+const STATUS_AR: Record<OrderStatus, string> = {
+  pending: 'قيد المراجعة',
+  confirmed: 'مؤكّد',
+  shipped: 'قيد التوصيل',
+  delivered: 'تم التسليم',
+  cancelled: 'ملغي',
+};
+const STATUS_COLOR: Record<OrderStatus, string> = {
+  pending: '#E0A33E', confirmed: '#2F6FB5', shipped: '#5B52B8',
+  delivered: theme.success, cancelled: theme.danger,
+};
+
+export default function MyOrdersScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const qc = useQueryClient();
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ['orders', 'mine'],
+    queryFn: () => Orders.mine(),
+  });
+  const orders = data || [];
+
+  function cancel(o: Order) {
+    Alert.alert('إلغاء الطلب', `تريد إلغاء الطلب ${o.code}؟`, [
+      { text: 'رجوع', style: 'cancel' },
+      {
+        text: 'إلغاء الطلب',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await Orders.cancel(o.id);
+            qc.invalidateQueries({ queryKey: ['orders', 'mine'] });
+          } catch {
+            Alert.alert('خطأ', 'تعذّر إلغاء الطلب. ربما تم تأكيده من المتجر.');
+          }
+        },
+      },
+    ]);
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{
+        paddingTop: insets.top + 10, paddingHorizontal: 16, paddingBottom: 10,
+        flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+        borderBottomWidth: 1, borderBottomColor: theme.line,
+      }}>
+        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+          طلباتي
+        </Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
+          <View style={{ transform: [{ scaleX: -1 }] }}>
+            <IconChevronLeft size={20} color={theme.ink} sw={2} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <FlatList
+        data={orders}
+        keyExtractor={(o) => String(o.id)}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        ListEmptyComponent={isLoading ? (
+          <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+        ) : (
+          <View style={{ padding: 48, alignItems: 'center' }}>
+            <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.subtle }}>لا توجد طلبات بعد.</Text>
+          </View>
+        )}
+        renderItem={({ item: o }) => (
+          <View style={{
+            backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
+            borderColor: theme.line, padding: 14, marginBottom: 10,
+          }}>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+              <View style={{ backgroundColor: STATUS_COLOR[o.status], borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 11, fontWeight: '700', color: '#fff' }}>
+                  {STATUS_AR[o.status]}
+                </Text>
+              </View>
+              <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: theme.ink }}>{o.code}</Text>
+              <Text style={{ flex: 1, textAlign: 'left', fontFamily: fonts.ltrBold, fontSize: 15, color: theme.accentDeep }}>
+                {fmtIQD(o.total)}
+              </Text>
+            </View>
+
+            <View style={{ marginTop: 8 }}>
+              {o.items.map((it) => (
+                <Text key={it.id} numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
+                  {it.brand} {it.model}{it.qty > 1 ? ` × ${it.qty}` : ''}
+                </Text>
+              ))}
+            </View>
+
+            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 6 }}>
+              {arOf(o.governorate)} — {o.address}
+            </Text>
+
+            {o.status === 'pending' ? (
+              <TouchableOpacity onPress={() => cancel(o)} style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.danger }}>إلغاء الطلب</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
+      />
+    </View>
+  );
+}

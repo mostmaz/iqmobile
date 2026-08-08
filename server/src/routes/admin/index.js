@@ -1429,6 +1429,8 @@ r.get('/shops', requireAdmin, (req, res) => {
            u.shop_image_path, u.shop_featured_until, u.verified, u.created_at,
            COALESCE(u.shop_hidden,0) AS shop_hidden,
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
+           COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
+           COALESCE(u.shop_shipping_fee,5000) AS shop_shipping_fee,
            (SELECT COUNT(*) FROM phone_listings l
             WHERE l.seller_id = u.id AND l.status != 'removed') AS listing_count
     FROM users u WHERE u.seller_type='shop'`;
@@ -1527,6 +1529,16 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
       if (mgr.id === u.id) return res.status(400).json({ error: 'manager_is_shop' });
       fields.push('shop_manager_id=?'); params.push(mgr.id);
     }
+  }
+  // Storefront mode: add-to-cart + COD checkout on this shop's listings.
+  if (b.shop_orders_enabled !== undefined) {
+    fields.push('shop_orders_enabled=?'); params.push(b.shop_orders_enabled ? 1 : 0);
+  }
+  if (b.shop_shipping_fee !== undefined) {
+    const fee = Math.round(Number(b.shop_shipping_fee));
+    // 0 is legitimate (free delivery); negative or non-numeric is not.
+    if (!Number.isFinite(fee) || fee < 0) return res.status(400).json({ error: 'bad_shipping_fee' });
+    fields.push('shop_shipping_fee=?'); params.push(fee);
   }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);
@@ -1838,6 +1850,9 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     devices: count("SELECT COUNT(*) AS n FROM device_suggestions WHERE status='pending'"),
     reports: count("SELECT COUNT(*) AS n FROM reports WHERE status='open'"),
     feature_requests: count("SELECT COUNT(*) AS n FROM feature_requests WHERE status='pending'"),
+    // Orders nobody has acted on yet. The most time-critical queue here —
+    // a COD customer is waiting on a phone call.
+    orders: count("SELECT COUNT(*) AS n FROM orders WHERE status='pending'"),
     // Shops that registered in the last 7 days — not a queue exactly, but the
     // thing an operator most often wants to greet or verify.
     new_shops: count(
@@ -2043,6 +2058,84 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
   ).run(listing.id, imagePath, caption, JSON.stringify(results), slot, now());
 
   res.json({ ok: true, results, scheduled_for: dueAt, remaining: Math.max(0, cap - socialUsedToday()) });
+});
+
+// ─── orders (COD storefront) ──────────────────────────────────────────
+// Fulfilment queue for order-enabled shops. The lifecycle is deliberately
+// linear — pending → confirmed → shipped → delivered — with cancel available
+// until it's delivered. Anything else (delivered → shipped, resurrecting a
+// cancelled order) is a mistake, not a workflow, so the transition map
+// rejects it rather than letting the dashboard write an impossible state.
+const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+const ORDER_NEXT = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['shipped', 'cancelled'],
+  shipped: ['delivered', 'cancelled'],
+  delivered: [],
+  cancelled: [],
+};
+
+r.get('/orders', requireAdmin, (req, res) => {
+  const status = ORDER_STATUSES.includes(req.query.status) ? req.query.status : '';
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  const conds = [];
+  const params = [];
+  if (status) { conds.push('o.status=?'); params.push(status); }
+  if (q) {
+    const like = `%${q}%`;
+    conds.push('(o.code LIKE ? OR o.customer_name LIKE ? OR o.customer_phone LIKE ? OR o.address LIKE ?)');
+    params.push(like, like, like, like);
+  }
+  const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM orders o${where}`).get(...params).n;
+  const rows = db.prepare(
+    `SELECT o.*, u.shop_name, u.display_name AS shop_display_name
+       FROM orders o JOIN users u ON u.id = o.shop_id${where}
+      ORDER BY o.created_at DESC LIMIT 200`,
+  ).all(...params);
+  const items = db.prepare('SELECT * FROM order_items WHERE order_id=? ORDER BY id ASC');
+  res.json({
+    total,
+    // Counts per status drive the tab badges, and must ignore the status
+    // filter itself or every tab would read as the one you're looking at.
+    counts: Object.fromEntries(ORDER_STATUSES.map((s) => [
+      s, db.prepare('SELECT COUNT(*) AS n FROM orders WHERE status=?').get(s).n,
+    ])),
+    orders: rows.map((o) => ({ ...o, shop_name: o.shop_name || o.shop_display_name, items: items.all(o.id) })),
+  });
+});
+
+r.patch('/orders/:id(\\d+)', requireAdmin, (req, res) => {
+  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id);
+  if (!o) return res.status(404).json({ error: 'not_found' });
+  const next = String(req.body?.status || '');
+  if (!ORDER_STATUSES.includes(next)) return res.status(400).json({ error: 'bad_status' });
+  if (next === o.status) return res.json({ ok: true, order: o });
+  if (!ORDER_NEXT[o.status].includes(next)) {
+    return res.status(409).json({ error: 'bad_transition', from: o.status, to: next });
+  }
+  const reason = next === 'cancelled'
+    ? (String(req.body?.cancel_reason || '').trim().slice(0, 200) || 'cancelled_by_admin')
+    : null;
+  const t = now();
+  db.prepare('UPDATE orders SET status=?, cancel_reason=?, updated_at=? WHERE id=?')
+    .run(next, reason, t, o.id);
+
+  // Keep the customer informed. Guest orders have user_id NULL — skip
+  // rather than throwing on the notifications FK.
+  if (o.user_id) {
+    const AR = {
+      confirmed: 'تم تأكيد طلبك',
+      shipped: 'طلبك في الطريق',
+      delivered: 'تم تسليم طلبك',
+      cancelled: 'أُلغي طلبك',
+    };
+    if (AR[next]) {
+      notify(o.user_id, 'order.' + next, { order_id: o.id, code: o.code, status: next },
+        { title: AR[next], body: o.code });
+    }
+  }
+  res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
 });
 
 // ─── device catalog ───────────────────────────────────────────────────

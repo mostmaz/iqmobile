@@ -48,6 +48,7 @@ import {
 import { Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { AuthProvider } from './src/auth/AuthContext';
+import { CartProvider } from './src/lib/cart';
 import RootNav from './src/navigation';
 import { theme } from './src/theme';
 
@@ -108,8 +109,10 @@ function AppInner() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <RootNav />
-          <StatusBar style="dark" />
+          <CartProvider>
+            <RootNav />
+            <StatusBar style="dark" />
+          </CartProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

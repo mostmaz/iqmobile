@@ -36,6 +36,9 @@ import ShopScreen from '../screens/shops/ShopScreen';
 import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
 import AdvertiseScreen from '../screens/advertise/AdvertiseScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
+import CartScreen from '../screens/orders/CartScreen';
+import OrderConfirmedScreen from '../screens/orders/OrderConfirmedScreen';
+import MyOrdersScreen from '../screens/orders/MyOrdersScreen';
 import ChatsListScreen from '../screens/chat/ChatsListScreen';
 import DealsScreen from '../screens/deal/DealsScreen';
 import RateUserScreen from '../screens/deal/RateUserScreen';
@@ -64,6 +67,9 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="Cart" component={CartScreen} />
+      <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
+      <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
@@ -94,6 +100,9 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="Cart" component={CartScreen} />
+      <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
+      <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
       <BrowseStack.Screen name="Advertise" component={AdvertiseScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
