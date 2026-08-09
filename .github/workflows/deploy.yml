@@ -1,9 +1,14 @@
 # Auto-deploy the server to the DigitalOcean droplet on every push to main.
 #
 # Trigger conditions:
-#   - any push to main that touches server/, scripts that affect the
-#     server, or this workflow file. Mobile-only changes are skipped
-#     (no need to restart the API for a UI tweak).
+#   - any push to main that touches server/, the built dashboard, or this
+#     workflow file. Mobile-only changes are skipped (no need to restart
+#     the API for a UI tweak).
+#
+#     admin-web/dist is in the list because Express serves the dashboard
+#     straight out of the repo at /dashboard — a dashboard-only commit used
+#     to land on GitHub and never reach the droplet, so the deployed UI
+#     silently drifted behind main until someone deployed by hand.
 #   - manual run via the "Run workflow" button in the Actions tab.
 #
 # Required GitHub repo secret:
@@ -18,6 +23,7 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      - 'admin-web/dist/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
