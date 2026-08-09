@@ -197,6 +197,10 @@ r.get('/listings', requireAdmin, (req, res) => {
   const conds = [];
   const params = [];
   if (status) { conds.push('l.status=?'); params.push(status); }
+  // Scope to one seller — how the storefront page loads just its own stock
+  // instead of paging through the whole marketplace.
+  const sellerId = Number(req.query.seller_id);
+  if (Number.isInteger(sellerId) && sellerId > 0) { conds.push('l.seller_id=?'); params.push(sellerId); }
 
   // Search across the things an operator actually has to hand: a listing id
   // from a report, a phone number from a complaint, or a device name. Run in
