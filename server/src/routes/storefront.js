@@ -15,6 +15,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { expandQuery, arabicNormalizeSql } from '../searchNormalize.js';
+import { PRODUCT_TYPES } from '../productType.js';
 
 const r = Router();
 
@@ -55,6 +56,19 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
      ) GROUP BY brand ORDER BY count DESC, brand ASC`,
   ).all(shop.id);
 
+  // Product types are the OTHER axis, and the more useful one here: brand
+  // chips can't answer "show me tablets" when Honor is a phone, a tablet and
+  // five pairs of earbuds. Same product-level counting as brands. NULL means
+  // phone (see db.js), and types with nothing in stock are omitted rather
+  // than shown as an empty chip.
+  const types = db.prepare(
+    `SELECT type, COUNT(*) AS count FROM (
+       SELECT COALESCE(product_type, 'phone') AS type FROM phone_listings
+        WHERE seller_id=? AND status='active'
+        GROUP BY brand, LOWER(TRIM(model))
+     ) GROUP BY type ORDER BY count DESC, type ASC`,
+  ).all(shop.id);
+
   const totals = db.prepare(
     `SELECT COUNT(*) AS products, MIN(p) AS min_price, MAX(p) AS max_price FROM (
        SELECT MIN(asking_price) AS p FROM phone_listings
@@ -71,6 +85,7 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
       shipping_fee: Number(shop.shop_shipping_fee) || 0,
     },
     categories,
+    types,
     product_count: totals.products || 0,
     min_price: totals.min_price ?? null,
     max_price: totals.max_price ?? null,
@@ -84,6 +99,7 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
 
   const q = String(req.query.q || '').trim().slice(0, 60);
   const brand = String(req.query.brand || '').trim();
+  const type = String(req.query.type || '').trim().toLowerCase();
   const sort = SORTS[req.query.sort] ? req.query.sort : 'newest';
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || PAGE, 1), MAX_PAGE);
   const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -93,6 +109,14 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
   const conds = ["l.seller_id = ?", "l.status = 'active'"];
   const params = [shop.id];
   if (brand) { conds.push('l.brand = ?'); params.push(brand); }
+  // NULL product_type means phone, so filtering for phones has to match the
+  // un-backfilled rows too.
+  if (PRODUCT_TYPES.includes(type)) {
+    conds.push(type === 'phone'
+      ? "COALESCE(l.product_type, 'phone') = 'phone'"
+      : 'l.product_type = ?');
+    if (type !== 'phone') params.push(type);
+  }
   if (Number.isFinite(minPrice) && minPrice > 0) { conds.push('l.asking_price >= ?'); params.push(minPrice); }
   if (Number.isFinite(maxPrice) && maxPrice > 0) { conds.push('l.asking_price <= ?'); params.push(maxPrice); }
   if (q) {

@@ -557,9 +557,14 @@ export interface StoreShop {
   id: number; name: string; phone: string | null; shipping_fee: number;
 }
 export interface StoreCategory { brand: string; count: number }
+export type StoreType = 'phone' | 'tablet' | 'accessory';
+export interface StoreTypeCount { type: StoreType; count: number }
 export interface StoreHome {
   shop: StoreShop;
   categories: StoreCategory[];
+  // Product kinds actually in stock. Brands alone can't answer "show me
+  // tablets" — one brand spans a phone, a tablet and five pairs of earbuds.
+  types: StoreTypeCount[];
   product_count: number;
   min_price: number | null;
   max_price: number | null;
@@ -595,7 +600,7 @@ export type StoreSort = 'newest' | 'price_asc' | 'price_desc';
 export const Storefront = {
   home: (shopId: number) => api<StoreHome>(`/storefront/${shopId}`),
   products: (shopId: number, opts: {
-    q?: string; brand?: string; sort?: StoreSort;
+    q?: string; brand?: string; type?: StoreType; sort?: StoreSort;
     min_price?: number; max_price?: number; limit?: number; offset?: number;
   } = {}) => {
     const qs = new URLSearchParams();

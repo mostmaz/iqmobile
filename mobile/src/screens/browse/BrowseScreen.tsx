@@ -339,19 +339,6 @@ export default function BrowseScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* The storefront, as a card rather than a link: three products with
-            prices say "this is a shop" in a way no label can. Server omits it
-            entirely when the shelf is bare. */}
-        {storefront ? (
-          <StorefrontCard
-            storefront={storefront}
-            onOpenShop={() => navigation.navigate('StoreHome', { id: storefront.shop_id })}
-            onOpenProduct={(p) => navigation.navigate('StoreProduct', {
-              shopId: storefront.shop_id, brand: p.brand, model: p.model, shopName: storefront.shop_name,
-            })}
-          />
-        ) : null}
-
         {showFilter ? (
           <View style={{
             marginTop: 2, padding: 14, backgroundColor: theme.surface,
@@ -468,6 +455,20 @@ export default function BrowseScreen({ navigation }: any) {
           if (hasNextPage && !isFetchingNextPage) fetchNextPage();
         }}
         onEndReachedThreshold={0.5}
+        // The storefront card belongs to the FEED, not the chrome. It used to
+        // sit in the fixed header above this list, which pinned it to the top
+        // of every screen and cost that much vertical space on every scroll.
+        // As a list header it leads the feed, then scrolls away with the
+        // banner and the listings like any other content.
+        ListHeaderComponent={storefront ? (
+          <StorefrontCard
+            storefront={storefront}
+            onOpenShop={() => navigation.navigate('StoreHome', { id: storefront.shop_id })}
+            onOpenProduct={(p) => navigation.navigate('StoreProduct', {
+              shopId: storefront.shop_id, brand: p.brand, model: p.model, shopName: storefront.shop_name,
+            })}
+          />
+        ) : null}
         ListFooterComponent={isFetchingNextPage ? (
           <View style={{ paddingVertical: 20, alignItems: 'center' }}>
             <ActivityIndicator color={theme.accent} />

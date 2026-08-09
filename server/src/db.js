@@ -749,6 +749,17 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_listings_featured ON phone_listings(feat
 // null = a live, in-stock price. The expirer removes rows stale > 6 months.
 addColumnIfMissing('phone_listings', 'stale_since INTEGER');
 
+// What KIND of thing this listing is: 'phone' | 'tablet' | 'accessory'.
+// NULL means phone — the marketplace is overwhelmingly phones and every row
+// predating this column is one, so the default costs no backfill.
+//
+// It exists because the storefront sells tablets and earbuds alongside
+// phones, and brand chips alone can't express that: "Honor" spans a phone, a
+// tablet and five pairs of earbuds. Derived from the model name at import
+// time rather than at query time, so the dashboard can correct the guesses —
+// the supplier's own sheet files a Reno14F as a tablet.
+addColumnIfMissing('phone_listings', 'product_type TEXT');
+
 // ─── revenue: shops ──────────────────────────────────────────────────
 // A "shop" is a user with seller_type='shop'. These columns hold the shop
 // profile shown in the Shops directory + shop page. shop_featured_until > now

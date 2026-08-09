@@ -24,7 +24,7 @@ import { SkBlock } from '../../components/Skeleton';
 import {
   IconArrowLeft, IconSearch, IconClose, IconChevronDown, IconMsgCall, IconBox,
 } from '../../components/icons';
-import { Storefront, type StoreProductCard, type StoreSort } from '../../api/endpoints';
+import { Storefront, type StoreProductCard, type StoreSort, type StoreType } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useCart } from '../../lib/cart';
 import { callPhone } from '../../lib/contact';
@@ -33,6 +33,10 @@ const PAGE = 24;
 // The store lives inside a tab stack, so the floating tab bar overlaps the
 // bottom of the list — without this the last grid row is half-hidden.
 const TAB_CLEARANCE = 100;
+
+const TYPE_AR: Record<StoreType, string> = {
+  phone: 'هواتف', tablet: 'أجهزة لوحية', accessory: 'أكسسوارات',
+};
 
 const SORT_LABELS: Record<StoreSort, string> = {
   newest: 'الأحدث',
@@ -48,6 +52,7 @@ export default function StoreHomeScreen({ navigation, route }: any) {
   const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
   const [brand, setBrand] = useState<string | null>(null);
+  const [type, setType] = useState<StoreType | null>(null);
   const [sort, setSort] = useState<StoreSort>('newest');
   const [sortOpen, setSortOpen] = useState(false);
   const catRef = useRef<ScrollView>(null);
@@ -60,10 +65,11 @@ export default function StoreHomeScreen({ navigation, route }: any) {
   const {
     data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage, refetch, isRefetching,
   } = useInfiniteQuery({
-    queryKey: ['storefront-products', shopId, q, brand, sort],
+    queryKey: ['storefront-products', shopId, q, brand, type, sort],
     queryFn: ({ pageParam = 0 }) => Storefront.products(shopId, {
       q: q || undefined,
       brand: brand || undefined,
+      type: type || undefined,
       sort,
       limit: PAGE,
       offset: pageParam as number,
@@ -82,6 +88,7 @@ export default function StoreHomeScreen({ navigation, route }: any) {
   const total = data?.pages?.[0]?.total ?? 0;
 
   const shop = home?.shop;
+  const typeCounts = home?.types || [];
   const cartHere = cart.count > 0 && cart.shop_id === shopId;
 
   // Debounce is unnecessary here — the catalogue is a few hundred rows and the
@@ -162,6 +169,27 @@ export default function StoreHomeScreen({ navigation, route }: any) {
           ) : null}
         </View>
       </View>
+
+      {/* ── Product kind: phones / tablets / accessories ─────────────
+          Sits ABOVE the brand rail because it's the coarser cut and the
+          one a shopper actually arrives with ("I want a tablet"). Hidden
+          when the shop only sells one kind — a lone chip is not a choice. */}
+      {typeCounts.length > 1 ? (
+        <View style={{
+          backgroundColor: theme.surface, paddingBottom: 10,
+          flexDirection: 'row-reverse', paddingHorizontal: 14, gap: 7,
+        }}>
+          <TypeChip active={!type} label="الكل" onPress={() => setType(null)} />
+          {typeCounts.map((t) => (
+            <TypeChip
+              key={t.type}
+              active={type === t.type}
+              label={`${TYPE_AR[t.type]} ${t.count}`}
+              onPress={() => setType(type === t.type ? null : t.type)}
+            />
+          ))}
+        </View>
+      ) : null}
 
       {/* ── Categories (brands) ──────────────────────────────────── */}
       {home?.categories?.length ? (
@@ -268,9 +296,9 @@ export default function StoreHomeScreen({ navigation, route }: any) {
               <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center' }}>
                 {q ? 'جرّب كلمة بحث أخرى أو تصفّح الأقسام.' : 'لا توجد أجهزة في هذا القسم حالياً.'}
               </Text>
-              {(q || brand) ? (
+              {(q || brand || type) ? (
                 <TouchableOpacity
-                  onPress={() => { clearSearch(); setBrand(null); }}
+                  onPress={() => { clearSearch(); setBrand(null); setType(null); }}
                   activeOpacity={0.8}
                   style={{
                     marginTop: 4, paddingHorizontal: 16, paddingVertical: 9,
@@ -332,6 +360,30 @@ export default function StoreHomeScreen({ navigation, route }: any) {
         </View>
       ) : null}
     </View>
+  );
+}
+
+function TypeChip({ active, label, onPress }: {
+  active: boolean; label: string; onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={{
+        flex: 1, paddingVertical: 8, borderRadius: radius.lg, alignItems: 'center',
+        backgroundColor: active ? theme.accentSoft : theme.bg,
+        borderWidth: active ? 1.5 : 1,
+        borderColor: active ? theme.accent : theme.line,
+      }}
+    >
+      <Text numberOfLines={1} style={{
+        fontFamily: fonts.arBold, fontSize: 12.5,
+        color: active ? theme.accentDeep : theme.ink,
+      }}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
