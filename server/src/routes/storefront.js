@@ -51,7 +51,7 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
   const categories = db.prepare(
     `SELECT brand, COUNT(*) AS count FROM (
        SELECT brand FROM phone_listings
-        WHERE seller_id=? AND status='active'
+        WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
         GROUP BY brand, LOWER(TRIM(model))
      ) GROUP BY brand ORDER BY count DESC, brand ASC`,
   ).all(shop.id);
@@ -64,7 +64,7 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
   const types = db.prepare(
     `SELECT type, COUNT(*) AS count FROM (
        SELECT COALESCE(product_type, 'phone') AS type FROM phone_listings
-        WHERE seller_id=? AND status='active'
+        WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
         GROUP BY brand, LOWER(TRIM(model))
      ) GROUP BY type ORDER BY count DESC, type ASC`,
   ).all(shop.id);
@@ -72,7 +72,7 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
   const totals = db.prepare(
     `SELECT COUNT(*) AS products, MIN(p) AS min_price, MAX(p) AS max_price FROM (
        SELECT MIN(asking_price) AS p FROM phone_listings
-        WHERE seller_id=? AND status='active'
+        WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
         GROUP BY brand, LOWER(TRIM(model))
      )`,
   ).get(shop.id);
@@ -106,7 +106,9 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
   const minPrice = Number(req.query.min_price);
   const maxPrice = Number(req.query.max_price);
 
-  const conds = ["l.seller_id = ?", "l.status = 'active'"];
+  // Sold out means gone from the shelf: a tile you can open but never buy
+  // is worse than no tile. NULL stock is untracked, hence COALESCE to 1.
+  const conds = ["l.seller_id = ?", "l.status = 'active'", "COALESCE(l.stock_qty, 1) > 0"];
   const params = [shop.id];
   if (brand) { conds.push('l.brand = ?'); params.push(brand); }
   // NULL product_type means phone, so filtering for phones has to match the
@@ -201,9 +203,11 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
   if (!brand || !model) return res.status(400).json({ error: 'brand_and_model_required' });
 
   const variants = db.prepare(
-    `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at
+    `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at,
+            stock_qty
        FROM phone_listings
-      WHERE seller_id=? AND status='active' AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
+      WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
+        AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
       ORDER BY asking_price ASC`,
   ).all(shop.id, brand, model);
   if (!variants.length) return res.status(404).json({ error: 'not_found' });

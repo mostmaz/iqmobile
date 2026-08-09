@@ -628,6 +628,15 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
     params.push(JSON.stringify(req.body.accessories));
   }
   if (fields.length === 0) return res.json(attachImages([row])[0]);
+  // Stamp the moment of sale. Without this, "sold" is only a current-state
+  // flag and no report can ask how many sold in a window — which is exactly
+  // how the analytics sold KPI ended up showing the all-time total for
+  // every period. Re-listing clears it so a revived listing isn't counted
+  // as a sale that never un-happened.
+  if (req.body.status !== undefined && req.body.status !== row.status) {
+    if (req.body.status === 'sold') { fields.push('sold_at=?'); params.push(now()); }
+    else if (row.status === 'sold') { fields.push('sold_at=?'); params.push(null); }
+  }
   fields.push('updated_at=?');
   params.push(now(), req.params.id);
   db.prepare(`UPDATE phone_listings SET ${fields.join(', ')} WHERE id=?`).run(...params);

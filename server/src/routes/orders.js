@@ -19,6 +19,7 @@ import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGovernorate } from '../governorates.js';
 import { notify } from '../notify.js';
+import { applyStatusToStock } from '../stock.js';
 
 const r = Router();
 
@@ -124,6 +125,18 @@ r.post('/orders', requireAuth(), (req, res) => {
     return res.status(409).json({ error: 'item_unavailable', listing_ids: unavailable.map((l) => l.id) });
   }
 
+  // Stock, where the shop tracks it. NULL means untracked (a private
+  // seller's one physical phone), so only a real number gates the order —
+  // otherwise every marketplace listing would suddenly be unorderable.
+  const short = rows.filter((l) => l.stock_qty !== null && l.stock_qty !== undefined
+    && wanted.get(l.id) > l.stock_qty);
+  if (short.length) {
+    return res.status(409).json({
+      error: 'out_of_stock',
+      items: short.map((l) => ({ listing_id: l.id, available: l.stock_qty })),
+    });
+  }
+
   const shipping_fee = Math.max(0, Number(shop.shop_shipping_fee) || 0);
 
   const t = now();
@@ -139,11 +152,15 @@ r.post('/orders', requireAuth(), (req, res) => {
       const image = db.prepare(
         'SELECT image_path FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC LIMIT 1',
       ).get(l.id);
+      // Cost is snapshotted like the price: the supplier reprices constantly
+      // and margin history has to stay true to what this order actually made.
+      const costRow = db.prepare('SELECT cost_price FROM listing_costs WHERE listing_id=?').get(l.id);
       return {
         listing_id: l.id, brand: l.brand, model: l.model,
         storage: l.storage || null, color: l.color || null,
         image_path: image ? image.image_path : null,
         unit_price, qty, line_total,
+        unit_cost: costRow ? costRow.cost_price : null,
       };
     });
 
@@ -164,12 +181,19 @@ r.post('/orders', requireAuth(), (req, res) => {
 
     const insItem = db.prepare(
       `INSERT INTO order_items(order_id, listing_id, brand, model, storage, color,
-                               image_path, unit_price, qty, line_total)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
+                               image_path, unit_price, qty, line_total, unit_cost)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    );
+    // Reserve the stock inside the SAME transaction as the order. Doing it
+    // afterwards would let two simultaneous checkouts both pass the check
+    // above and oversell the last unit.
+    const dec = db.prepare(
+      'UPDATE phone_listings SET stock_qty = stock_qty - ?, updated_at=? WHERE id=? AND stock_qty IS NOT NULL',
     );
     for (const l of lines) {
       insItem.run(orderId, l.listing_id, l.brand, l.model, l.storage, l.color,
-        l.image_path, l.unit_price, l.qty, l.line_total);
+        l.image_path, l.unit_price, l.qty, l.line_total, l.unit_cost);
+      dec.run(l.qty, t, l.listing_id);
     }
     created = db.prepare('SELECT * FROM orders WHERE id=?').get(orderId);
   })();
@@ -214,6 +238,10 @@ r.post('/orders/:id(\\d+)/cancel', requireAuth(), (req, res) => {
   if (row.user_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
   if (row.status !== 'pending') return res.status(409).json({ error: 'not_cancellable' });
   const t = now();
+  // Release the reserved units before flipping the status, so a crash
+  // between the two leaves stock over-counted rather than lost — an
+  // over-count is visible and fixable, a silent leak is neither.
+  applyStatusToStock(row, 'cancelled');
   db.prepare("UPDATE orders SET status='cancelled', cancel_reason=?, updated_at=? WHERE id=?")
     .run('cancelled_by_customer', t, row.id);
   notify(row.shop_id, 'order.cancelled', { order_id: row.id, code: row.code }, {

@@ -27,6 +27,7 @@ interface Analytics {
   kpis: {
     total_listings: number; listings_with_contact: number; listings_with_contact_pct: number;
     listings_without_contact: number; avg_contact_attempts: number; sold_count: number;
+    sold_total: number;
   };
   contact_per_listing: ContactRow[];
   listings_without_contact: NoContactRow[];
@@ -103,7 +104,12 @@ export function AnalyticsPage() {
             <Kpi label="إعلانات وصلها تواصل" value={`${k.listings_with_contact}`} sub={`${k.listings_with_contact_pct}% من ${k.total_listings} إعلان`} color="#10b981" />
             <Kpi label="إعلانات بدون أي تواصل" value={`${k.listings_without_contact}`} sub="بائعون قد ينسحبون" color="#ef4444" />
             <Kpi label="متوسط محاولات التواصل" value={`${k.avg_contact_attempts}`} sub="لكل إعلان" />
-            <Kpi label="إعلانات مباعة" value={`${k.sold_count}`} sub="تحوّلت إلى مباع" color="#3b82f6" />
+            <Kpi
+              label="إعلانات مباعة"
+              value={`${k.sold_count}`}
+              sub={`في هذه الفترة · ${k.sold_total} إجمالاً`}
+              color="#3b82f6"
+            />
           </div>
 
           {/* Contact per listing */}

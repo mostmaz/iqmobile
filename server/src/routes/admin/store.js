@@ -45,6 +45,35 @@ export function registerStoreRoutes(requireAdmin) {
     // Deliberately from DELIVERED orders only: average order value computed
     // over placed orders flatters itself with everything that got refused.
     const aov = delivered.n ? Math.round(delivered.sum / delivered.n) : 0;
+
+    // Margin on DELIVERED orders only, and only over lines whose cost is
+    // actually known — averaging in a null cost as zero would report the
+    // full sale price as profit and flatter the number badly. `covered`
+    // says how much of the revenue the figure is based on, so a margin
+    // computed from two priced lines out of fifty can't masquerade as fact.
+    const marginRow = db.prepare(
+      `SELECT COALESCE(SUM(oi.line_total),0) AS revenue,
+              COALESCE(SUM(oi.unit_cost * oi.qty),0) AS cost,
+              COUNT(*) AS lines_with_cost
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+        WHERE o.shop_id=? AND o.status='delivered' AND o.created_at >= ?
+          AND oi.unit_cost IS NOT NULL`,
+    ).get(shopId, since);
+    const allLines = db.prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(oi.line_total),0) AS revenue
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+        WHERE o.shop_id=? AND o.status='delivered' AND o.created_at >= ?`,
+    ).get(shopId, since);
+    const profit = marginRow.revenue - marginRow.cost;
+    const margin = {
+      revenue: marginRow.revenue,
+      cost: marginRow.cost,
+      profit,
+      pct: marginRow.revenue ? +(profit / marginRow.revenue * 100).toFixed(1) : null,
+      lines_with_cost: marginRow.lines_with_cost,
+      lines_total: allLines.n,
+      covered_pct: allLines.revenue ? Math.round(marginRow.revenue / allLines.revenue * 100) : 0,
+    };
     const cancelRate = windowAll.n ? +(cancelled.n / windowAll.n * 100).toFixed(1) : 0;
 
     const byStatus = db.prepare(
@@ -85,7 +114,13 @@ export function registerStoreRoutes(requireAdmin) {
     const inventory = db.prepare(
       `SELECT COUNT(*) AS listings,
               COUNT(DISTINCT l.brand || '|' || LOWER(TRIM(l.model))) AS products,
-              COALESCE(SUM(l.asking_price),0) AS retail_value
+              COALESCE(SUM(l.asking_price),0) AS retail_value,
+              SUM(CASE WHEN l.stock_qty = 0 THEN 1 ELSE 0 END) AS out_of_stock,
+              SUM(CASE WHEN l.stock_qty IS NOT NULL AND l.stock_qty > 0 AND l.stock_qty <= 2 THEN 1 ELSE 0 END) AS low_stock,
+              SUM(CASE WHEN l.stock_qty IS NULL THEN 1 ELSE 0 END) AS untracked,
+              COALESCE((SELECT SUM(c.cost_price) FROM listing_costs c
+                          JOIN phone_listings pl ON pl.id = c.listing_id
+                         WHERE pl.seller_id = l.seller_id AND pl.status='active'), 0) AS cost_value
          FROM phone_listings l WHERE l.seller_id=? AND l.status='active'`,
     ).get(shopId);
 
@@ -98,6 +133,7 @@ export function registerStoreRoutes(requireAdmin) {
       open_orders: open.n,
       pending_orders: pending.n,
       aov,
+      margin,
       cancel_rate: cancelRate,
       by_status: byStatus,
       series,

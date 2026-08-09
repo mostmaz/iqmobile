@@ -8,6 +8,7 @@ import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
+import { applyStatusToStock } from '../../stock.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
@@ -232,7 +233,8 @@ r.get('/listings', requireAdmin, (req, res) => {
     SELECT l.*, u.display_name AS seller_name, u.phone AS seller_phone,
            (SELECT image_path FROM listing_images
              WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS cover_image,
-           (SELECT COUNT(*) FROM listing_images WHERE listing_id = l.id) AS image_count
+           (SELECT COUNT(*) FROM listing_images WHERE listing_id = l.id) AS image_count,
+           (SELECT cost_price FROM listing_costs WHERE listing_id = l.id) AS cost_price
     FROM phone_listings l JOIN users u ON u.id = l.seller_id${where}
     ORDER BY l.created_at DESC LIMIT 200`;
   res.json(db.prepare(sql).all(...params));
@@ -365,6 +367,11 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'bad_status' });
     }
     fields.push('status=?'); params.push(b.status);
+    // Same sale stamp as the seller-side PATCH — see routes/listings.js.
+    if (b.status !== listing.status) {
+      if (b.status === 'sold') { fields.push('sold_at=?'); params.push(now()); }
+      else if (listing.status === 'sold') { fields.push('sold_at=?'); params.push(null); }
+    }
   }
   if (has('contact_whatsapp')) {
     // Empty string clears the number; anything non-empty must normalise.
@@ -395,7 +402,48 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
     fields.push(`${key}=?`); params.push(v || null);
   }
 
-  if (fields.length === 0) return res.status(400).json({ error: 'no_fields' });
+  // Units in stock. Explicit null/'' clears it back to UNTRACKED, which is
+  // different from 0 (0 means sold out and hides the product).
+  if (has('stock_qty')) {
+    const raw = b.stock_qty;
+    if (raw === null || raw === '') { fields.push('stock_qty=?'); params.push(null); }
+    else {
+      const n = Math.floor(Number(raw));
+      if (!Number.isFinite(n) || n < 0 || n > 100000) return res.status(400).json({ error: 'bad_stock' });
+      fields.push('stock_qty=?'); params.push(n);
+    }
+  }
+
+  // cost_price is NOT a column on phone_listings — see the listing_costs
+  // table in db.js. Public listing routes spread a SELECT-star row into
+  // their response, so a cost column there would leak the shop's supplier
+  // price to buyers. Written separately, below the main update.
+  let costOp = null;
+  if (has('cost_price')) {
+    const raw = b.cost_price;
+    if (raw === null || raw === '') costOp = { clear: true };
+    else {
+      const n = Math.round(Number(raw));
+      if (!Number.isFinite(n) || n < 0 || n > 1000000000) return res.status(400).json({ error: 'bad_cost' });
+      costOp = { value: n };
+    }
+  }
+
+  if (fields.length === 0 && !costOp) return res.status(400).json({ error: 'no_fields' });
+
+  if (costOp) {
+    if (costOp.clear) db.prepare('DELETE FROM listing_costs WHERE listing_id=?').run(listing.id);
+    else {
+      db.prepare(
+        `INSERT INTO listing_costs(listing_id, cost_price, updated_at) VALUES(?,?,?)
+         ON CONFLICT(listing_id) DO UPDATE SET cost_price=excluded.cost_price, updated_at=excluded.updated_at`,
+      ).run(listing.id, costOp.value, now());
+    }
+  }
+  if (fields.length === 0) {
+    const only = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listing.id);
+    return res.json({ ok: true, listing: only });
+  }
 
   fields.push('updated_at=?'); params.push(now());
   params.push(listing.id);
@@ -1741,7 +1789,7 @@ r.get('/analytics', requireAdmin, (req, res) => {
   const lWhere = lConds.join(' AND ');
 
   const listings = db.prepare(
-    `SELECT l.id, l.brand, l.model, l.governorate, l.status, l.created_at,
+    `SELECT l.id, l.brand, l.model, l.governorate, l.status, l.created_at, l.sold_at,
             u.display_name AS seller_name, u.phone AS seller_phone
      FROM phone_listings l JOIN users u ON u.id = l.seller_id
      WHERE ${lWhere}`,
@@ -1763,7 +1811,14 @@ r.get('/analytics', requireAdmin, (req, res) => {
   const rows = [...byId.values()].map((l) => ({ ...l, total: l.calls + l.whatsapps + l.chats }));
   const withContact = rows.filter((l) => l.total > 0);
   const totalContacts = rows.reduce((a, l) => a + l.total, 0);
-  const soldCount = rows.filter((l) => l.status === 'sold').length;
+  // Sold WITHIN THE SELECTED PERIOD. This used to be a plain
+  // `status === 'sold'` count over every listing ever, so the KPI showed
+  // the same all-time number whether you picked today, 7d or 30d while
+  // every metric beside it moved — it looked broken because it was.
+  // Rows sold before sold_at existed carry a backfilled approximation
+  // (see db.js); `sold_total` is the honest all-time figure.
+  const soldCount = rows.filter((l) => l.status === 'sold' && l.sold_at && l.sold_at >= since).length;
+  const soldTotal = rows.filter((l) => l.status === 'sold').length;
 
   const kpis = {
     total_listings: rows.length,
@@ -1772,6 +1827,7 @@ r.get('/analytics', requireAdmin, (req, res) => {
     listings_without_contact: rows.length - withContact.length,
     avg_contact_attempts: rows.length ? Math.round((totalContacts / rows.length) * 100) / 100 : 0,
     sold_count: soldCount,
+    sold_total: soldTotal,
   };
 
   // Most-contacted listings (the engaged ones), and the at-risk list of
@@ -2123,6 +2179,8 @@ r.patch('/orders/:id(\\d+)', requireAdmin, (req, res) => {
     ? (String(req.body?.cancel_reason || '').trim().slice(0, 200) || 'cancelled_by_admin')
     : null;
   const t = now();
+  // Cancelling gives the reserved units back to stock (see src/stock.js).
+  applyStatusToStock(o, next);
   db.prepare('UPDATE orders SET status=?, cancel_reason=?, updated_at=? WHERE id=?')
     .run(next, reason, t, o.id);
 

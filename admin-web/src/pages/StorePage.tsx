@@ -21,6 +21,7 @@ type Shop = {
 type Listing = {
   id: number; brand: string; model: string; storage: string | null;
   color: string | null; condition: string; asking_price: number;
+  stock_qty: number | null; cost_price: number | null;
   status: string; description: string | null; created_at: number;
   cover_image: string | null; image_count: number;
 };
@@ -81,6 +82,10 @@ export function StorePage() {
 
   // Inline price editing
   const [editId, setEditId] = useState<number | null>(null);
+  const [stockId, setStockId] = useState<number | null>(null);
+  const [stockVal, setStockVal] = useState('');
+  const [costId, setCostId] = useState<number | null>(null);
+  const [costVal, setCostVal] = useState('');
   const [editPrice, setEditPrice] = useState('');
 
   const shop = useMemo(() => shops.find((s) => s.id === shopId) || null, [shops, shopId]);
@@ -178,6 +183,27 @@ export function StorePage() {
     await patch(l, { asking_price: p });
   }
 
+  // Empty means UNTRACKED, which is not the same as 0 — 0 is sold out and
+  // hides the product from the storefront, untracked means the shop simply
+  // doesn't count this one.
+  async function saveStock(l: Listing, raw: string) {
+    setStockId(null);
+    const v = raw.trim();
+    if (v === '') { await patch(l, { stock_qty: null }); return; }
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n) || n < 0) { setErr('الكمية غير صالحة.'); return; }
+    await patch(l, { stock_qty: n });
+  }
+
+  async function saveCost(l: Listing, raw: string) {
+    setCostId(null);
+    const v = raw.trim();
+    if (v === '') { await patch(l, { cost_price: null }); return; }
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n) || n < 0) { setErr('الكلفة غير صالحة.'); return; }
+    await patch(l, { cost_price: n });
+  }
+
   async function remove(l: Listing) {
     if (!confirm(`حذف "${l.brand} ${l.model}" من المتجر؟\n\nالطلبات السابقة لن تتأثر — هي تحفظ اسم الجهاز وسعره وقت الطلب.`)) return;
     setBusy(true);
@@ -188,6 +214,8 @@ export function StorePage() {
   }
 
   const inStock = items.filter((l) => l.status === 'active');
+  const soldOut = inStock.filter((l) => l.stock_qty === 0).length;
+  const lowStock = inStock.filter((l) => l.stock_qty !== null && l.stock_qty > 0 && l.stock_qty <= 2).length;
   const stockValue = inStock.reduce((s, l) => s + l.asking_price, 0);
 
   if (!loading && !shops.length) {
@@ -278,7 +306,7 @@ export function StorePage() {
           <table className="data-table" style={{ marginTop: 10 }}>
             <thead>
               <tr>
-                <th>صورة</th><th>المنتج</th><th>الحالة</th><th>السعر</th><th>الوضع</th><th>إجراءات</th>
+                <th>صورة</th><th>المنتج</th><th>الحالة</th><th>السعر</th><th>المخزون</th><th>الكلفة</th><th>الوضع</th><th>إجراءات</th>
               </tr>
             </thead>
             <tbody>
@@ -310,6 +338,52 @@ export function StorePage() {
                         {iqd(l.asking_price)} د.ع
                       </button>
                     )}
+                  </td>
+                  <td>
+                    {stockId === l.id ? (
+                      <input
+                        value={stockVal}
+                        onChange={(e) => setStockVal(e.target.value)}
+                        type="number" min={0} style={{ width: 74 }} autoFocus
+                        placeholder="غير محدود"
+                        onBlur={() => void saveStock(l, stockVal)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void saveStock(l, stockVal); }}
+                      />
+                    ) : (
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => { setStockId(l.id); setStockVal(l.stock_qty == null ? '' : String(l.stock_qty)); }}
+                        style={{ color: l.stock_qty === 0 ? '#E05C4B' : (l.stock_qty !== null && l.stock_qty <= 2 ? '#E0A33E' : undefined) }}
+                      >
+                        {l.stock_qty == null ? '—' : l.stock_qty}
+                      </button>
+                    )}
+                  </td>
+                  <td>
+                    {costId === l.id ? (
+                      <input
+                        value={costVal}
+                        onChange={(e) => setCostVal(e.target.value)}
+                        type="number" min={0} style={{ width: 100 }} autoFocus
+                        onBlur={() => void saveCost(l, costVal)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void saveCost(l, costVal); }}
+                      />
+                    ) : (
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => { setCostId(l.id); setCostVal(l.cost_price == null ? '' : String(l.cost_price)); }}
+                      >
+                        {l.cost_price == null ? '—' : iqd(l.cost_price)}
+                      </button>
+                    )}
+                    {l.cost_price != null && l.asking_price > 0 ? (
+                      <div className="muted" style={{ fontSize: 11 }}>
+                        ربح {iqd(l.asking_price - l.cost_price)} ·{' '}
+                        {Math.round((1 - l.cost_price / l.asking_price) * 100)}%
+                      </div>
+                    ) : null}
                   </td>
                   <td>{STATUS_AR[l.status] || l.status}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>

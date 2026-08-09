@@ -23,12 +23,19 @@ type Stats = {
   open_orders: number;
   pending_orders: number;
   aov: number;
+  margin: {
+    revenue: number; cost: number; profit: number; pct: number | null;
+    lines_with_cost: number; lines_total: number; covered_pct: number;
+  };
   cancel_rate: number;
   by_status: Array<{ status: string; n: number }>;
   series: Array<{ bucket: number; placed: number; delivered: number; revenue: number }>;
   top_products: Array<{ brand: string; model: string; units: number; revenue: number }>;
   dead_stock: Array<{ id: number; brand: string; model: string; storage: string | null; asking_price: number; created_at: number }>;
-  inventory: { listings: number; products: number; retail_value: number };
+  inventory: {
+    listings: number; products: number; retail_value: number;
+    out_of_stock: number; low_stock: number; untracked: number; cost_value: number;
+  };
 };
 type Shop = { id: number; shop_name: string | null; display_name: string; shop_orders_enabled: number };
 
@@ -93,6 +100,13 @@ export function StoreOverviewPage() {
             <Kpi label="بانتظار الاتصال" value={s.pending_orders} accent={s.pending_orders > 0} />
             <Kpi label="قيد التنفيذ" value={s.open_orders} />
             <Kpi label="المخزون" value={s.inventory.products} sub={`${s.inventory.listings} إعلان · ${iqd(s.inventory.retail_value)} د.ع`} />
+            <Kpi
+              label="نفد / على وشك"
+              value={`${s.inventory.out_of_stock} / ${s.inventory.low_stock}`}
+              sub={s.inventory.untracked ? `${s.inventory.untracked} بلا تتبّع` : 'كل الأصناف متتبَّعة'}
+              bad={s.inventory.out_of_stock > 0}
+              accent={s.inventory.out_of_stock === 0 && s.inventory.low_stock > 0}
+            />
           </div>
 
           {/* Placed vs delivered, never merged. */}
@@ -108,6 +122,27 @@ export function StoreOverviewPage() {
             <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
               الدفع عند الاستلام: الطلب المُسجّل ليس مبيعاً حتى يُسلَّم. الأرقام أعلاه تفصل الاثنين عمداً.
             </p>
+
+            {/* Margin is only as good as its cost coverage, so the coverage
+                is shown next to it rather than buried — a profit figure
+                drawn from a fifth of the lines is not a profit figure. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10, marginTop: 10 }}>
+              <Kpi
+                label="الربح"
+                value={s.margin.lines_with_cost ? `${iqd(s.margin.profit)} د.ع` : '—'}
+                sub={s.margin.lines_with_cost
+                  ? `هامش ${s.margin.pct}% · محسوب على ${s.margin.covered_pct}% من المبيعات`
+                  : 'أدخل كلفة الشراء في المخزون لحساب الربح'}
+                good={!!s.margin.lines_with_cost && s.margin.profit > 0}
+                bad={!!s.margin.lines_with_cost && s.margin.profit < 0}
+              />
+              <Kpi label="كلفة البضاعة المباعة" value={s.margin.lines_with_cost ? `${iqd(s.margin.cost)} د.ع` : '—'} />
+              <Kpi
+                label="كلفة المخزون الحالي"
+                value={s.inventory.cost_value ? `${iqd(s.inventory.cost_value)} د.ع` : '—'}
+                sub="رأس المال على الرف"
+              />
+            </div>
           </div>
 
           {s.series.length ? (

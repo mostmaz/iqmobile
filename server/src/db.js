@@ -525,6 +525,17 @@ CREATE TABLE IF NOT EXISTS order_items (
   line_total INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
+
+-- What the shop PAID for a device. Deliberately its own table rather than a
+-- column on phone_listings: the public listing routes build their response
+-- by spreading a SELECT-star row, so a cost column there would ship the
+-- shop's supplier price to every buyer that opens the ad. A separate table
+-- cannot leak by accident — it has to be joined in on purpose.
+CREATE TABLE IF NOT EXISTS listing_costs (
+  listing_id INTEGER PRIMARY KEY REFERENCES phone_listings(id) ON DELETE CASCADE,
+  cost_price INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `);
 
 // Additive column migrations — safe to run every boot (PRAGMA-guarded so
@@ -759,6 +770,35 @@ addColumnIfMissing('phone_listings', 'stale_since INTEGER');
 // time rather than at query time, so the dashboard can correct the guesses —
 // the supplier's own sheet files a Reno14F as a tablet.
 addColumnIfMissing('phone_listings', 'product_type TEXT');
+
+// Units in stock, for storefront shops that hold real inventory.
+//
+// NULL means UNTRACKED, and that is the right default for the marketplace:
+// a private seller's listing is one physical phone, and "stock" is a
+// meaningless idea there — it sells, and the status becomes 'sold'. Only a
+// storefront needs a count, and only there does 0 mean "hide it".
+addColumnIfMissing('phone_listings', 'stock_qty INTEGER');
+
+// WHEN a listing sold. status='sold' is only a current-state flag, so
+// before this column there was no way to ask "how many sold last week" —
+// the analytics page's sold KPI silently returned the all-time total for
+// every period, and updated_at is no substitute because it moves on any
+// edit. Backfilled once from updated_at (approximate, see below).
+addColumnIfMissing('phone_listings', 'sold_at INTEGER');
+
+// One-time backfill for rows that were already sold when the column landed.
+// updated_at is the closest thing to a sale date we have — it's the last
+// edit, which for a sold listing is usually the edit that marked it sold.
+// It is an APPROXIMATION and anything older than the column is only as good
+// as that assumption; new sales are stamped exactly.
+db.prepare(
+  "UPDATE phone_listings SET sold_at = updated_at WHERE status='sold' AND sold_at IS NULL",
+).run();
+
+// Cost snapshotted onto the order line, so margin history stays true after
+// the supplier changes their price — the same reason unit_price is
+// snapshotted rather than read back off the listing.
+addColumnIfMissing('order_items', 'unit_cost INTEGER');
 
 // ─── revenue: shops ──────────────────────────────────────────────────
 // A "shop" is a user with seller_type='shop'. These columns hold the shop
