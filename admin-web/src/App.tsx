@@ -19,6 +19,8 @@ import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { StorePage } from './pages/StorePage';
+import { StoreOverviewPage } from './pages/StoreOverviewPage';
+import { StoreCustomersPage } from './pages/StoreCustomersPage';
 import { InspectionPage } from './pages/InspectionPage';
 import { AppControlPage } from './pages/AppControlPage';
 import { ShopNotifier } from './ShopNotifier';
@@ -27,7 +29,8 @@ import { WorkQueue, type Queue } from './WorkQueue';
 export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
-  | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store';
+  | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
+  | 'store_overview' | 'store_customers';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -43,9 +46,19 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     ],
   },
   {
+    // The storefront is a shop, not a corner of the catalog: running it is
+    // one job (stock -> orders -> customers) and it deserves one group.
+    label: 'متجر iQ Mobile',
+    items: [
+      { key: 'store_overview', label: 'أداء المتجر' },
+      { key: 'store', label: 'المخزون' },
+      { key: 'orders', label: 'الطلبات', badgeKey: 'orders' },
+      { key: 'store_customers', label: 'الزبائن' },
+    ],
+  },
+  {
     label: 'الإشراف',
     items: [
-      { key: 'orders', label: 'الطلبات', badgeKey: 'orders' },
       { key: 'inspection', label: 'الفحص', badgeKey: 'inspection' },
       { key: 'devices', label: 'الأجهزة المقترحة', badgeKey: 'devices' },
       { key: 'reports', label: 'البلاغات', badgeKey: 'reports' },
@@ -58,7 +71,6 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
       { key: 'listings', label: 'الإعلانات' },
       { key: 'brands', label: 'الماركات' },
       { key: 'device_catalog', label: 'الأجهزة' },
-      { key: 'store', label: 'المتجر' },
       { key: 'import', label: 'الاستيراد' },
     ],
   },
@@ -170,6 +182,8 @@ export function App() {
       {page === 'device_catalog' && <DeviceCatalogPage />}
       {page === 'orders' && <OrdersPage onChanged={refreshQueue} />}
       {page === 'store' && <StorePage />}
+      {page === 'store_overview' && <StoreOverviewPage />}
+      {page === 'store_customers' && <StoreCustomersPage />}
       {page === 'inspection' && <InspectionPage />}
       {page === 'bypass' && <BypassAttemptsPage />}
       {page === 'settings' && <SettingsPage />}
