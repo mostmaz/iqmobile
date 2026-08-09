@@ -342,8 +342,18 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             </View>
           ) : null}
 
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
-            <View>
+          {/* Price and location share a row only while they both fit. The row
+              wraps, and neither child shrinks, so a location too long for the
+              leftover space drops to its own full-width line instead of being
+              squeezed. Squeezing was the old behaviour and it failed silently:
+              Android dropped the trailing " · <city>" run with no ellipsis and
+              no second line, and at a large font_scale the price column alone
+              fills the row, so there is no width left to squeeze into. */}
+          <View style={{
+            flexDirection: 'row-reverse', flexWrap: 'wrap', alignItems: 'flex-end',
+            justifyContent: 'space-between', marginTop: 8, columnGap: 10, rowGap: 6,
+          }}>
+            <View style={{ flexShrink: 0 }}>
               <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle }}>
                 {stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
               </Text>
@@ -379,9 +389,17 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 </View>
               ) : null}
             </View>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
+            {/* maxWidth caps this at the row width so it can never overflow
+                once it has wrapped onto its own line; the Text then wraps
+                inside it, ellipsizing only a city long enough to beat two
+                full-width lines. */}
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 4, flexShrink: 0, maxWidth: '100%' }}>
               <IconPin size={13} color={theme.subtle} />
-              <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>
+              <Text
+                numberOfLines={2}
+                ellipsizeMode="tail"
+                style={{ flexShrink: 1, fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 17 }}
+              >
                 {arOf(data.governorate)}{data.city ? ` · ${data.city}` : ''}
               </Text>
             </View>
