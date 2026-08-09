@@ -108,6 +108,20 @@ export default function CartScreen({ navigation }: any) {
           <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center' }}>
             تصفّح أجهزة المتجر وأضف ما يعجبك للسلة.
           </Text>
+          {/* A dead end here is a lost sale — the last thing an emptied cart
+              should do is strand the shopper on a blank screen. */}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.85}
+            style={{
+              marginTop: 16, paddingHorizontal: 20, paddingVertical: 11,
+              borderRadius: radius.pill, backgroundColor: theme.ink,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.buttonInk }}>
+              متابعة التسوّق
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

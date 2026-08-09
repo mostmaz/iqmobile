@@ -35,6 +35,7 @@ import priceWatchRoutes from './routes/priceWatches.js';
 import wishlistRoutes from './routes/wishlist.js';
 import deviceCatalogRoutes from './routes/deviceCatalog.js';
 import ordersRoutes from './routes/orders.js';
+import storefrontRoutes from './routes/storefront.js';
 import adminRoutes from './routes/admin/index.js';
 import brandsRoutes from './routes/brands.js';
 import webListingRoutes from './routes/webListing.js';
@@ -207,6 +208,7 @@ app.use('/', priceWatchRoutes);  // mounts /listings/:id/price-watch
 app.use('/', wishlistRoutes);    // mounts /wishlist
 app.use('/', deviceCatalogRoutes); // mounts /device-catalog/*, /device-suggestions
 app.use('/', ordersRoutes);        // mounts /orders, /orders/mine, /orders/:id
+app.use('/', storefrontRoutes);    // mounts /storefront/:id, /products, /product
 app.use('/admin', adminRoutes);
 
 // Admin dashboard SPA — served from the same Express process at

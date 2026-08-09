@@ -395,6 +395,32 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             Call + WhatsApp render only when their backing field is set, so
             listings that opted out of a phone number still surface the chat
             entry point. */}
+        {/* A storefront device found through the general feed still has to be
+            buyable. Rather than bolt a second add-to-cart onto this screen,
+            send the shopper to the product page, where the other capacities
+            and colours of the same model are options rather than separate
+            search results. */}
+        {!isMine && isStorefront && data.status === 'active' ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('StoreProduct', {
+                shopId: data.seller_id ?? data.seller?.id,
+                brand: data.brand,
+                model: data.model,
+              })}
+              style={{
+                backgroundColor: theme.accent, borderRadius: radius.xl,
+                paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff' }}>
+                اشترِ من المتجر · الدفع عند الاستلام
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {!isMine ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
             <ContactRow

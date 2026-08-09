@@ -40,6 +40,15 @@ export default function ShopScreen({ navigation, route }: any) {
   // seller view — you don't order from your own shop.
   const cart = useCart();
   const storefront = !!(shop as any)?.orders_enabled && !isOwner;
+
+  // An order-taking shop is browsed as a store, not as a seller profile —
+  // product grid, options, checkout. Redirecting here rather than at each
+  // call site means every route in (shops directory, a listing's seller link,
+  // a banner, a deep link) lands on the store. `replace` keeps Back going to
+  // wherever they came from instead of bouncing through this screen.
+  React.useEffect(() => {
+    if (storefront) navigation.replace('StoreHome', { id });
+  }, [storefront, id, navigation]);
   // Full-screen price-image viewer (index of the tapped image, or null).
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
   // Brand filter. null = الكل. Declared before the early return below so the

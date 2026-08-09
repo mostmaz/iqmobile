@@ -38,7 +38,10 @@ export function StorefrontCard({
 }: {
   storefront: Storefront;
   onOpenShop: () => void;
-  onOpenProduct: (listingId: number) => void;
+  // The product, not its listing id — the storefront's product page is keyed
+  // on brand+model because one model can be several listings (one per
+  // capacity), and tapping a tile should open all of them as options.
+  onOpenProduct: (product: StorefrontProduct) => void;
 }) {
   const { shop_name, shipping_fee, products } = storefront;
   if (!products?.length) return null;
@@ -83,7 +86,7 @@ export function StorefrontCard({
         {products.slice(0, 3).map((p) => (
           <TouchableOpacity
             key={p.id}
-            onPress={() => onOpenProduct(p.id)}
+            onPress={() => onOpenProduct(p)}
             activeOpacity={0.85}
             style={{ flex: 1, backgroundColor: theme.bg, borderRadius: radius.lg, padding: 6 }}
           >

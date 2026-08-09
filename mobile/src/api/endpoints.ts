@@ -546,3 +546,67 @@ export const Orders = {
   get: (id: number) => api<Order>(`/orders/${id}`),
   cancel: (id: number) => api<Order>(`/orders/${id}/cancel`, { method: 'POST' }),
 };
+
+// ─── Storefront (shop browsed as a shop, not as a listings feed) ──────
+//
+// The marketplace's unit is a listing — one device, one price. A storefront's
+// unit is a PRODUCT with options ("Realme C100i" in 64/128/256GB). The server
+// derives products by grouping the shop's listings on brand + model, so each
+// variant here IS a listing and checkout is unchanged.
+export interface StoreShop {
+  id: number; name: string; phone: string | null; shipping_fee: number;
+}
+export interface StoreCategory { brand: string; count: number }
+export interface StoreHome {
+  shop: StoreShop;
+  categories: StoreCategory[];
+  product_count: number;
+  min_price: number | null;
+  max_price: number | null;
+}
+export interface StoreProductCard {
+  key: string;
+  brand: string;
+  model: string;
+  variant_count: number;
+  min_price: number;
+  max_price: number;
+  image_path: string | null;
+  lead_id: number;
+}
+export interface StoreProductPage {
+  total: number; limit: number; offset: number; products: StoreProductCard[];
+}
+export interface StoreVariant {
+  id: number; brand: string; model: string;
+  storage: string | null; color: string | null; condition: string;
+  asking_price: number; description: string | null;
+  images: Array<{ id: number; image_path: string; position: number }>;
+}
+export interface StoreProduct {
+  brand: string; model: string; description: string | null;
+  images: Array<{ id: number; image_path: string; position: number }>;
+  min_price: number; max_price: number;
+  storages: string[]; colors: string[];
+  variants: StoreVariant[];
+  shop: StoreShop;
+}
+export type StoreSort = 'newest' | 'price_asc' | 'price_desc';
+export const Storefront = {
+  home: (shopId: number) => api<StoreHome>(`/storefront/${shopId}`),
+  products: (shopId: number, opts: {
+    q?: string; brand?: string; sort?: StoreSort;
+    min_price?: number; max_price?: number; limit?: number; offset?: number;
+  } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts)) {
+      if (v !== undefined && v !== null && String(v) !== '') qs.set(k, String(v));
+    }
+    const s = qs.toString();
+    return api<StoreProductPage>(`/storefront/${shopId}/products${s ? `?${s}` : ''}`);
+  },
+  product: (shopId: number, brand: string, model: string) =>
+    api<StoreProduct>(
+      `/storefront/${shopId}/product?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`,
+    ),
+};

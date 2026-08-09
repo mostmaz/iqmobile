@@ -345,8 +345,10 @@ export default function BrowseScreen({ navigation }: any) {
         {storefront ? (
           <StorefrontCard
             storefront={storefront}
-            onOpenShop={() => navigation.navigate('ShopDetail', { id: storefront.shop_id })}
-            onOpenProduct={(listingId) => navigation.navigate('ListingDetail', { id: listingId })}
+            onOpenShop={() => navigation.navigate('StoreHome', { id: storefront.shop_id })}
+            onOpenProduct={(p) => navigation.navigate('StoreProduct', {
+              shopId: storefront.shop_id, brand: p.brand, model: p.model, shopName: storefront.shop_name,
+            })}
           />
         ) : null}
 

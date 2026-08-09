@@ -64,19 +64,53 @@ r.get('/app-config', (_req, res) => {
     ).get();
     if (!shop) return null;
 
+    // Grouped by brand + model, exactly like /storefront/:id — a shop
+    // stocking one phone in three capacities has ONE product, and three
+    // teaser tiles that all open the same page would look broken. This also
+    // keeps product_count agreeing with the number the store screen shows.
     const total = db.prepare(
-      "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status='active'",
+      `SELECT COUNT(*) AS n FROM (
+         SELECT 1 FROM phone_listings WHERE seller_id=? AND status='active'
+          GROUP BY brand, LOWER(TRIM(model))
+       )`,
     ).get(shop.id).n;
     if (!total) return null;
 
-    const products = db.prepare(
-      `SELECT l.id, l.brand, l.model, l.storage, l.asking_price,
-              (SELECT image_path FROM listing_images
-                WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS image_path
+    const groups = db.prepare(
+      `SELECT MIN(l.id) AS lead_id, l.brand, GROUP_CONCAT(l.id) AS ids
          FROM phone_listings l
         WHERE l.seller_id=? AND l.status='active'
-        ORDER BY l.created_at DESC LIMIT 3`,
+        GROUP BY l.brand, LOWER(TRIM(l.model))
+        ORDER BY MAX(l.created_at) DESC LIMIT 3`,
     ).all(shop.id);
+
+    const products = groups.map((g) => {
+      const ids = String(g.ids || '').split(',').filter(Boolean).map(Number);
+      const ph = ids.map(() => '?').join(',');
+      // Photos usually sit on whichever variant was added first, so look
+      // across the whole group rather than leaving a tile blank.
+      const img = ids.length ? db.prepare(
+        `SELECT image_path FROM listing_images WHERE listing_id IN (${ph})
+          ORDER BY position ASC, id ASC LIMIT 1`,
+      ).get(...ids) : null;
+      // Price and storage both come from the CHEAPEST variant — taking each
+      // from a different row would advertise the 64GB price beside the
+      // 256GB label. The name comes from the earliest-added spelling, which
+      // is the rule the store screen uses.
+      const cheapest = db.prepare(
+        `SELECT storage, asking_price FROM phone_listings WHERE id IN (${ph})
+          ORDER BY asking_price ASC, id ASC LIMIT 1`,
+      ).get(...ids);
+      const lead = db.prepare('SELECT model FROM phone_listings WHERE id=?').get(g.lead_id);
+      return {
+        id: g.lead_id,
+        brand: g.brand,
+        model: String(lead?.model || '').trim(),
+        storage: cheapest ? cheapest.storage : null,
+        asking_price: cheapest ? cheapest.asking_price : 0,
+        image_path: img ? img.image_path : null,
+      };
+    });
 
     return {
       shop_id: shop.id,

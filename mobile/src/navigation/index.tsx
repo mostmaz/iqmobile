@@ -34,6 +34,8 @@ import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
 import ShopsScreen from '../screens/shops/ShopsScreen';
 import ShopScreen from '../screens/shops/ShopScreen';
 import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
+import StoreHomeScreen from '../screens/store/StoreHomeScreen';
+import StoreProductScreen from '../screens/store/StoreProductScreen';
 import AdvertiseScreen from '../screens/advertise/AdvertiseScreen';
 import ChatScreen from '../screens/chat/ChatScreen';
 import CartScreen from '../screens/orders/CartScreen';
@@ -67,6 +69,8 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="StoreHome" component={StoreHomeScreen} />
+      <BrowseStack.Screen name="StoreProduct" component={StoreProductScreen} />
       <BrowseStack.Screen name="Cart" component={CartScreen} />
       <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
       <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
@@ -85,6 +89,14 @@ function SearchStackNav() {
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="SearchHome" component={SearchScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      {/* A storefront device turns up in ordinary search results, and its
+          "buy from the store" CTA has to land somewhere — so the store and
+          the checkout it feeds live in this stack too. */}
+      <BrowseStack.Screen name="StoreHome" component={StoreHomeScreen} />
+      <BrowseStack.Screen name="StoreProduct" component={StoreProductScreen} />
+      <BrowseStack.Screen name="Cart" component={CartScreen} />
+      <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
+      <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
@@ -100,6 +112,8 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
+      <BrowseStack.Screen name="StoreHome" component={StoreHomeScreen} />
+      <BrowseStack.Screen name="StoreProduct" component={StoreProductScreen} />
       <BrowseStack.Screen name="Cart" component={CartScreen} />
       <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
       <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
