@@ -16,7 +16,11 @@ import type { BannerRow } from '../api/endpoints';
 // an external URL in the browser (link_type='external').
 
 const ROTATE_MS = 4000;
-const RATIO = 5 / 2; // width : height — matches the single-banner layout.
+// width : height. Was 5/2 (height = 0.400 × width); trimmed 20% off the
+// height to 0.320 × width so the banner takes less of the first screen now
+// that the storefront card sits above it. Existing banner art still fits —
+// it's cropped by the Img's cover fit, not letterboxed.
+const RATIO = 5 / 1.6;
 
 function openBanner(
   banner: BannerRow,

@@ -504,8 +504,25 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // it exists to protect numbers that aren't the seller's to publish.
   const hideContact = (row.status === 'sold' && (!req.user || req.user.id !== row.seller_id))
     || noContactSellers().has(row.seller_id);
+
+  // Storefront listings answer on ONE support line instead of per-listing
+  // seller contact, and take orders through the cart rather than chat.
+  //
+  // This deliberately survives shop_no_contact. That flag exists to stop the
+  // price aggregator republishing OTHER shops' numbers — numbers that aren't
+  // its to publish. A storefront's own support line is the opposite case: it
+  // is exactly the number it wants customers to ring.
+  const storefrontShop = db.prepare(
+    `SELECT shop_phone, phone FROM users
+      WHERE id=? AND seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1`,
+  ).get(row.seller_id);
+
   res.json({
     ...withImgs,
+    orders_enabled: !!storefrontShop,
+    // Falls back to null (not the login phone) when no support line is set:
+    // the shop's account phone is a placeholder nobody answers.
+    storefront_phone: storefrontShop ? (storefrontShop.shop_phone || null) : null,
     contact_phone: hideContact ? null : withImgs.contact_phone,
     contact_whatsapp: hideContact ? null : withImgs.contact_whatsapp,
     seller,

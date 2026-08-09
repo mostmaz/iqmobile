@@ -167,8 +167,15 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 
   const isMine = user?.id === data.seller_id;
   // Per-listing contact info — always public, no deal-confirmation gate.
-  const contactPhone = (data as any).contact_phone || data.seller_phone || null;
-  const contactWhatsApp = (data as any).contact_whatsapp || null;
+  // A storefront answers on ONE dashboard-set support line, which replaces
+  // the per-listing seller number (and outranks the shop_no_contact blanking
+  // — that flag protects OTHER shops' numbers, not the storefront's own).
+  const isStorefront = !!(data as any).orders_enabled;
+  const storefrontPhone = (data as any).storefront_phone || null;
+  const contactPhone = isStorefront
+    ? storefrontPhone
+    : ((data as any).contact_phone || data.seller_phone || null);
+  const contactWhatsApp = isStorefront ? null : ((data as any).contact_whatsapp || null);
 
   // Wrap a Reports.submit() call so guests are bounced to AuthGate first,
   // failures surface as an Arabic Alert (instead of vanishing silently), and
@@ -398,6 +405,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               sellerType={data.seller?.seller_type}
               onStartChat={startChat}
               chatStarting={chatStarting}
+              storefront={isStorefront}
             />
           </View>
         ) : null}
@@ -703,7 +711,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 //   - WhatsApp: deeplink wa.me, only when seller provided a number
 //   - Chat: opens the in-app chat so buyers can negotiate without leaving
 function ContactRow({
-  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting,
+  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting, storefront,
 }: {
   phone: string | null;
   whatsapp: string | null;
@@ -712,6 +720,9 @@ function ContactRow({
   sellerType?: string;
   onStartChat: () => void;
   chatStarting: boolean;
+  // A storefront sells through the cart and answers on one support line, so
+  // its listings drop the per-seller chat entirely.
+  storefront?: boolean;
 }) {
   const track = useTrack();
   // The contact-tap is the closest thing this app has to a "sale" —
@@ -787,14 +798,19 @@ function ContactRow({
           ) : null}
         </View>
       ) : null}
-      <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
-        <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-            <IconChat size={15} color="#fff" sw={1.8} />
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>{ar.listing.chat}</Text>
-          </View>
-        </Btn>
-      </View>
+      {/* No chat on storefront listings: ordering happens in the cart and
+          questions go to the shop's support line, so a per-listing thread
+          would be a third channel nobody is watching. */}
+      {!storefront ? (
+        <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
+          <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+              <IconChat size={15} color="#fff" sw={1.8} />
+              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>{ar.listing.chat}</Text>
+            </View>
+          </Btn>
+        </View>
+      ) : null}
     </View>
   );
 }
