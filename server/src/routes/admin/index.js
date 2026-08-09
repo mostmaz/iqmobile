@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
+import { registerStoreRoutes } from './store.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
@@ -2420,5 +2421,10 @@ r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
   setImmediate(() => inspectListingAsync(listing.id));
   res.json({ ok: true, queued: true });
 });
+
+// Store management (KPIs, customers) lives in its own module — this file is
+// already the marketplace-wide admin surface and the storefront is a
+// different job with different questions.
+r.use('/', registerStoreRoutes(requireAdmin));
 
 export default r;
