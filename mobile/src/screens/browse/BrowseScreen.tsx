@@ -5,11 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
-import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore, IconTag, IconChevronLeft } from '../../components/icons';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { BannerCarousel } from '../../components/BannerCarousel';
+import { StorefrontCard, type Storefront } from '../../components/StorefrontCard';
 import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -59,17 +60,16 @@ export default function BrowseScreen({ navigation }: any) {
   // ones — bumped on pull-to-refresh, filter change, and re-opening the tab.
   const [bannerTick, setBannerTick] = useState(0);
 
-  // Which shop the "new device prices" row opens. Comes from /app-config
-  // because the price shop is shop_hidden=1 and therefore absent from
-  // /shops — the app has no other way to learn its id. Failure is silent by
-  // design: no id means the row simply doesn't render, which is better than
-  // a visible button that goes nowhere.
+  // The storefront card's data. Comes from /app-config because the shop is
+  // shop_hidden=1 and therefore absent from /shops — the app has no other way
+  // to discover it. The server returns null unless the shop has stock, so the
+  // card can never render three empty boxes or a link that dead-ends.
   const { data: appConfig } = useQuery({
-    queryKey: ['app-config-price-shop'],
+    queryKey: ['app-config-storefront'],
     queryFn: async () => {
       const res = await fetch(`${getBaseUrl()}/app-config`);
       if (!res.ok) throw new Error('app_config_failed');
-      return res.json() as Promise<{ price_shop_id?: number | null }>;
+      return res.json() as Promise<{ storefront?: Storefront | null }>;
     },
     staleTime: 10 * 60 * 1000,
     // A cold start on a slow Iraqi connection routinely loses the first
@@ -83,7 +83,7 @@ export default function BrowseScreen({ navigation }: any) {
     refetchOnMount: 'always',
     refetchOnReconnect: true,
   });
-  const priceShopId = appConfig?.price_shop_id ?? null;
+  const storefront = appConfig?.storefront ?? null;
 
   // Brand catalog — server-side now (table-backed, admin-editable).
   // staleTime 5min so we don't refetch on every focus; the dashboard
@@ -339,35 +339,15 @@ export default function BrowseScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* New-device price book. A fixed row rather than a banner slide:
-            banners rotate and can be switched off, so nobody ever learns the
-            feature is there. Hidden entirely when the server reports no price
-            shop, so this can never render a link that dead-ends. */}
-        {priceShopId ? (
-          <TouchableOpacity
-            onPress={() => navigation.navigate('ShopDetail', { id: priceShopId })}
-            activeOpacity={0.85}
-            style={{
-              marginTop: 10,
-              flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
-              backgroundColor: theme.accent, borderRadius: radius.lg,
-              paddingHorizontal: 12, paddingVertical: 11,
-            }}
-          >
-            <IconTag size={17} color={theme.buttonInk} sw={1.8} />
-            <Text
-              numberOfLines={1}
-              style={{
-                flex: 1, fontFamily: fonts.arBold, fontSize: 13.5,
-                fontWeight: '700', color: theme.buttonInk, textAlign: 'right',
-              }}
-            >
-              تعرف على اسعار الاجهزة الجديدة
-            </Text>
-            <View style={{ transform: [{ scaleX: -1 }] }}>
-              <IconChevronLeft size={14} color={theme.buttonInk} sw={2} />
-            </View>
-          </TouchableOpacity>
+        {/* The storefront, as a card rather than a link: three products with
+            prices say "this is a shop" in a way no label can. Server omits it
+            entirely when the shelf is bare. */}
+        {storefront ? (
+          <StorefrontCard
+            storefront={storefront}
+            onOpenShop={() => navigation.navigate('ShopDetail', { id: storefront.shop_id })}
+            onOpenProduct={(listingId) => navigation.navigate('ListingDetail', { id: listingId })}
+          />
         ) : null}
 
         {showFilter ? (

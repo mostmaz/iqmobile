@@ -49,8 +49,47 @@ r.get('/app-config', (_req, res) => {
     "SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_hidden,0)=1 ORDER BY id ASC LIMIT 1",
   ).get();
 
+  // The order-taking storefront, plus enough of its stock to render the home
+  // card in ONE request — three products with prices is what makes the card
+  // read as a shop rather than another link.
+  //
+  // Returns null unless the shop actually has something to sell. A storefront
+  // card showing three empty boxes is worse than no card, and the app has no
+  // way to know the shelf is bare without asking.
+  const storefront = (() => {
+    const shop = db.prepare(
+      `SELECT id, shop_name, display_name, shop_shipping_fee FROM users
+        WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
+        ORDER BY id ASC LIMIT 1`,
+    ).get();
+    if (!shop) return null;
+
+    const total = db.prepare(
+      "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status='active'",
+    ).get(shop.id).n;
+    if (!total) return null;
+
+    const products = db.prepare(
+      `SELECT l.id, l.brand, l.model, l.storage, l.asking_price,
+              (SELECT image_path FROM listing_images
+                WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS image_path
+         FROM phone_listings l
+        WHERE l.seller_id=? AND l.status='active'
+        ORDER BY l.created_at DESC LIMIT 3`,
+    ).all(shop.id);
+
+    return {
+      shop_id: shop.id,
+      shop_name: shop.shop_name || shop.display_name,
+      shipping_fee: Number(shop.shop_shipping_fee) || 0,
+      product_count: total,
+      products,
+    };
+  })();
+
   res.set('Cache-Control', 'public, max-age=60').json({
     price_shop_id: priceShop ? priceShop.id : null,
+    storefront,
     update: {
       // The app compares its own version against these. Doing the comparison
       // client-side (rather than the server reading x-app-version) means the
