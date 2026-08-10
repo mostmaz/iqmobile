@@ -123,7 +123,14 @@ export function DevicePickerModal({
             </View>
           </View>
 
-          {showManual ? (
+          {/* "Use what I typed" is the escape hatch, not the happy path. The
+              catalogue search now understands Arabic, so a seller typing
+              "ايفون 13 برو ماكس" gets real devices back — and offering a
+              free-text button in accent colour right above them is what
+              filled a third of live listings with typed Arabic model names.
+              It stays prominent only when the catalogue genuinely has
+              nothing; otherwise it drops below the suggestions, quietly. */}
+          {showManual && !devices.length ? (
             <TouchableOpacity
               onPress={() => onSelect(typed, { fromCatalog: false })}
               activeOpacity={0.8}
@@ -138,6 +145,15 @@ export function DevicePickerModal({
                 استخدم «{typed}» — جهازي غير موجود بالقائمة
               </Text>
             </TouchableOpacity>
+          ) : null}
+
+          {showManual && devices.length ? (
+            <Text style={{
+              paddingHorizontal: 18, paddingBottom: 6,
+              fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right',
+            }}>
+              هل تقصد أحد هذه الأجهزة؟
+            </Text>
           ) : null}
 
           {isLoading ? (
@@ -174,6 +190,27 @@ export function DevicePickerModal({
                   </Text>
                 </View>
               }
+              // Still reachable when none of the suggestions fit — just no
+              // longer the first thing the eye lands on.
+              ListFooterComponent={showManual && devices.length ? (
+                <TouchableOpacity
+                  onPress={() => onSelect(typed, { fromCatalog: false })}
+                  activeOpacity={0.8}
+                  style={{
+                    flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+                    marginHorizontal: 18, marginTop: 10, paddingVertical: 11, paddingHorizontal: 14,
+                    borderRadius: radius.lg, borderWidth: 1, borderColor: theme.line,
+                  }}
+                >
+                  <IconPlus size={14} color={theme.subtle} sw={2} />
+                  <Text style={{
+                    flex: 1, fontFamily: fonts.ar, fontSize: 12.5,
+                    color: theme.subtle, textAlign: 'right',
+                  }}>
+                    لا شيء مما فوق؟ استخدم «{typed}»
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             />
           )}
         </View>

@@ -11,6 +11,7 @@
 // (POST) do require auth so an admin reviewing the queue can see who asked.
 
 import { Router } from 'express';
+import { suggestFromText } from '../listingNameNormalize.js';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { emitToAdmins } from '../sse.js';
@@ -85,7 +86,18 @@ r.get('/device-catalog/devices', (req, res) => {
         LIMIT ?`,
     )
     .all(brand, type, `%${esc}%`, `${esc}%`, limit);
-  res.json(rows);
+  if (rows.length) return res.json(rows);
+
+  // Nothing matched literally. That is overwhelmingly because the seller
+  // typed Arabic — "ايفون 13 برو" can never LIKE-match a Latin catalogue
+  // row — and the picker's response to an empty list is to offer "use what
+  // I typed", which is precisely how the catalogue filled up with
+  // free-text Arabic model names in the first place.
+  //
+  // So fall back to the same transliterating matcher the name-cleanup job
+  // uses, and answer with real catalogue devices instead of nothing.
+  const fuzzy = suggestFromText(brand, q, type, limit);
+  res.json(fuzzy);
 });
 
 // "My device isn't in the list" → queue it for admin review.

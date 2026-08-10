@@ -192,3 +192,46 @@ export function resolveListingName(brand, rawModel) {
   }
   return { model: null, brand: null, confidence: 'none', tokens };
 }
+
+/**
+ * Catalogue suggestions for free text a seller typed into the device picker.
+ *
+ * The picker's literal LIKE can only match Latin, so "ايفون 13 برو ماكس"
+ * returns nothing and the seller is handed "use what I typed" — which is how
+ * a third of live listings ended up with an Arabic sentence in the model
+ * field. This transliterates first and then scores catalogue rows by how
+ * many of the typed tokens they contain, so the same input comes back as
+ * "iPhone 13 Pro Max".
+ *
+ * Ranked, not resolved: this feeds a list the seller chooses from, so a
+ * near-miss is useful here in a way it would not be for an automatic rename.
+ */
+export function suggestFromText(brand, raw, deviceType = 'phone', limit = 20) {
+  const tokens = transliterateTokens(raw);
+  if (!tokens.length) return [];
+
+  // Words that carry no model information — every phone is a "phone".
+  const NOISE = new Set(['phone', 'mobile', 'apple', 'iphone', 'samsung', 'galaxy',
+    'xiaomi', 'redmi', 'poco', 'honor', 'huawei', 'oppo', 'vivo', 'realme',
+    'tecno', 'infinix', 'itel', 'nokia', 'motorola', 'google', 'pixel', 'ipad']);
+  const useful = tokens.filter((t) => !NOISE.has(t));
+  const needles = (useful.length ? useful : tokens).map((t) => t.toLowerCase());
+
+  const rows = db.prepare(
+    `SELECT id, model FROM device_catalog
+      WHERE brand=? AND device_type=? AND is_active=1`,
+  ).all(brand, deviceType);
+
+  const scored = [];
+  for (const row of rows) {
+    const hay = keyOf(row.model);
+    let hits = 0;
+    for (const n of needles) if (hay.includes(keyOf(n))) hits++;
+    if (!hits) continue;
+    // Prefer rows that matched more of what was typed, then shorter names —
+    // "13" alone should offer "iPhone 13" ahead of "iPhone 13 Pro Max".
+    scored.push({ id: row.id, model: row.model, hits, len: row.model.length });
+  }
+  scored.sort((a, b) => (b.hits - a.hits) || (a.len - b.len) || a.model.localeCompare(b.model));
+  return scored.slice(0, limit).map(({ id, model }) => ({ id, model }));
+}
