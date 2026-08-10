@@ -90,20 +90,28 @@ export async function api<T = any>(
   // that has "signal" but no working data path, which is routine on Iraqi
   // mobile networks — leaves the promise pending forever, and a screen
   // waiting on it shows loading skeletons until the user force-quits.
-  // AbortSignal.timeout rejects instead, so react-query can retry and then
-  // surface a real error state.
+  // Aborting rejects instead, so react-query can retry and then surface a
+  // real error state.
+  // AbortController + setTimeout rather than AbortSignal.timeout(): the
+  // static helper is recent and NOT present in every Hermes build, and
+  // calling a missing function here would turn every single request into a
+  // failure. The controller pair has been in React Native for years.
   const timeoutMs = (init as RequestInitWithTimeout).timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
   let res: Response;
   try {
     res = await fetch(baseUrl + path, {
       ...init,
       headers,
-      signal: (init as any).signal ?? AbortSignal.timeout(timeoutMs),
+      signal: (init as any).signal ?? controller.signal,
     });
   } catch (e: any) {
-    // An abort is a timeout as far as callers are concerned; give it a
-    // stable code so screens can tell "slow network" from "server said no".
-    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') {
+    // An abort we caused is a timeout as far as callers are concerned; give
+    // it a stable code so screens can tell "slow network" from "server said
+    // no". Anything else is a genuine transport failure.
+    if (timedOut || e?.name === 'AbortError') {
       const err: any = new Error('network_timeout');
       err.isTimeout = true;
       throw err;
@@ -112,6 +120,8 @@ export async function api<T = any>(
     err.isNetwork = true;
     err.cause = e;
     throw err;
+  } finally {
+    clearTimeout(timer);
   }
   const text = await res.text();
   let data: any = null;
