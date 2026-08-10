@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Alert, Dimensions, Modal,
+  Alert, Dimensions, Modal, Animated,
 } from 'react-native';
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
-import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell } from '../../components/icons';
+import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock } from '../../components/icons';
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
@@ -21,6 +21,7 @@ import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useTrack } from '../../analytics/track';
 import { logMetaEvent } from '../../analytics/meta';
 import { SHOW_PROMOTE } from '../../config/flags';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
@@ -28,6 +29,7 @@ const SCREEN_H = Dimensions.get('window').height;
 export default function ListingDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const qc = useQueryClient();
   const track = useTrack();
   const { user } = useAuth();
@@ -156,6 +158,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // more hooks than during the previous render"). All hooks-using state
   // belongs in the unconditional prefix of the component.
   const [chatStarting, setChatStarting] = useState(false);
+  // Drives the status-bar scrim below: transparent over the hero photo, solid
+  // once the page has scrolled far enough that text is passing under the
+  // clock. Native-driven so it never lags the finger.
+  const scrollY = React.useRef(new Animated.Value(0)).current;
 
   if (isLoading || !data) {
     // Skeleton mirrors the real page (320pt gallery → title/price card →
@@ -245,6 +251,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   }
 
   const status = data.status;
+  // Sold or expired: the listing is finished. Both stay browsable as a price
+  // record but neither should route anyone to the seller.
+  const isDead = status === 'sold' || status === 'expired';
   const showStatusBadge = status !== 'active';
   const statusBg = status === 'sold' ? theme.accent : theme.ink;
   const statusLabel = (ar.listing as any)[status] || status;
@@ -254,7 +263,14 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingBottom: tabClearance }}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+      >
         {/* Gallery — floating overlay buttons over the image */}
         <View style={{ position: 'relative', height: 320, backgroundColor: theme.chipBg }}>
           <ScrollView
@@ -421,7 +437,32 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
-        {!isMine ? (
+        {/* A finished listing must not offer a way to contact the seller.
+            The feed keeps sold and expired ads visible because they're a
+            useful price record, but a 60-day-dead listing that renders call,
+            WhatsApp and chat all live just sends people to ring sellers about
+            phones that are long gone. The server already withholds the phone
+            numbers; chat is client-side, so it has to be stopped here. */}
+        {!isMine && isDead ? (
+          <View style={{
+            marginHorizontal: 16, marginTop: 14, padding: 14,
+            backgroundColor: theme.chipBg, borderRadius: radius.xxl,
+            borderWidth: 1, borderColor: theme.line,
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+          }}>
+            <IconLock size={17} color={theme.subtle} sw={1.8} />
+            <Text style={{
+              flex: 1, fontFamily: fonts.ar, fontSize: 13,
+              color: theme.subtle, textAlign: 'right', lineHeight: 20,
+            }}>
+              {status === 'sold'
+                ? 'هذا الإعلان مباع — التواصل مع البائع مغلق.'
+                : 'انتهت صلاحية هذا الإعلان ولم يعد البائع يستقبل اتصالات بشأنه.'}
+            </Text>
+          </View>
+        ) : null}
+
+        {!isMine && !isDead ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
             <ContactRow
               phone={contactPhone}
@@ -718,7 +759,26 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             </>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Status-bar scrim. The gallery is edge-to-edge on purpose, so the
+          scroll content passes under the clock and signal icons — fine for a
+          photo, unreadable the moment the seller's phone number scrolls into
+          that band. A permanently solid strip would crop the hero, so it
+          fades in only once the page has scrolled past the gallery.
+          Non-interactive, so the floating back button still receives taps. */}
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute', top: 0, left: 0, right: 0,
+          height: insets.top, backgroundColor: theme.bg,
+          opacity: scrollY.interpolate({
+            inputRange: [200, 280],
+            outputRange: [0, 1],
+            extrapolate: 'clamp',
+          }),
+        }}
+      />
 
       {/* Tap any gallery photo to open it full-screen (swipe between, tap ✕). */}
       {viewerIdx != null && (data.images?.length || 0) > 0 ? (

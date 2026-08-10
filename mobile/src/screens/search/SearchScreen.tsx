@@ -42,7 +42,10 @@ export default function SearchScreen({ navigation }: any) {
 
   // Results load once a brand is chosen; model (if set) narrows further.
   const enabled = !!brand;
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const {
+    data, isLoading, isError, error, refetch, isFetching,
+    fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['search', brand, model],
     queryFn: ({ pageParam = 0 }) =>
       Listings.browse({ brand: brand!, ...(model ? { model } : {}), limit: PAGE_SIZE, offset: pageParam as number }),
@@ -150,7 +153,34 @@ export default function SearchScreen({ navigation }: any) {
         // made a slow search look like a dead one); settled and empty →
         // "no results".
         ListEmptyComponent={
-          enabled && isLoading ? (
+          // A failed search used to be indistinguishable from a slow one:
+          // the skeletons just stayed up. Now the error is its own state
+          // with a way out, because the only previous escape was to change
+          // a filter and hope.
+          enabled && isError ? (
+            <View style={{ padding: 40, alignItems: 'center', gap: 12 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center' }}>
+                {(error as any)?.isTimeout ? 'البحث استغرق وقتاً طويلاً' : 'تعذّر إجراء البحث'}
+              </Text>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', lineHeight: 20 }}>
+                تحقّق من الاتصال بالإنترنت وحاول مرة أخرى.
+              </Text>
+              <TouchableOpacity
+                onPress={() => refetch()}
+                disabled={isFetching}
+                activeOpacity={0.85}
+                style={{
+                  marginTop: 4, paddingHorizontal: 22, paddingVertical: 11,
+                  borderRadius: radius.pill, backgroundColor: theme.ink,
+                  opacity: isFetching ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.buttonInk }}>
+                  {isFetching ? 'جاري المحاولة…' : 'إعادة المحاولة'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : enabled && isLoading ? (
             <ListingListSkeleton count={5} />
           ) : (
             <View style={{ padding: 48, alignItems: 'center' }}>

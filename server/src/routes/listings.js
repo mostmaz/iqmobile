@@ -498,11 +498,18 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // are untouched; we only omit them from the response, so restoring the
   // listing to active brings them back, and the owner still sees them for
   // their own management/edit.
-  // Two independent reasons to withhold contact: the listing is sold, or the
-  // seller is contact-suppressed outright (shop_no_contact). The owner still
-  // sees their own number on a sold listing, but suppression is absolute —
-  // it exists to protect numbers that aren't the seller's to publish.
-  const hideContact = (row.status === 'sold' && (!req.user || req.user.id !== row.seller_id))
+  // Reasons to withhold contact: the listing is finished (sold OR expired),
+  // or the seller is contact-suppressed outright (shop_no_contact). The owner
+  // still sees their own number, but suppression is absolute — it exists to
+  // protect numbers that aren't the seller's to publish.
+  //
+  // 'expired' was missing here, so a two-month-dead listing rendered with
+  // call, WhatsApp and chat all live and no warning. The feed still shows
+  // expired listings (they're useful as a price record), which made that a
+  // steady trickle of calls to sellers about phones long since gone.
+  const DEAD = new Set(['sold', 'expired']);
+  const isDead = DEAD.has(row.status);
+  const hideContact = (isDead && (!req.user || req.user.id !== row.seller_id))
     || noContactSellers().has(row.seller_id);
 
   // Storefront listings answer on ONE support line instead of per-listing

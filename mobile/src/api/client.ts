@@ -58,6 +58,12 @@ export function setToken(token: string | null) {
 export function getToken() {
   return _token;
 }
+// 20s: long enough for a cold server + a slow 3G round trip, short enough
+// that a dead connection surfaces as an error while the user is still
+// looking at the screen.
+const DEFAULT_TIMEOUT_MS = 20000;
+type RequestInitWithTimeout = RequestInit & { timeoutMs?: number };
+
 export function getBaseUrl() {
   return baseUrl;
 }
@@ -79,7 +85,34 @@ export async function api<T = any>(
     ...((init.headers as Record<string, string>) || {}),
   };
   if (_token) headers.authorization = `Bearer ${_token}`;
-  const res = await fetch(baseUrl + path, { ...init, headers });
+
+  // Every request gets a deadline. Without one a stalled socket — a phone
+  // that has "signal" but no working data path, which is routine on Iraqi
+  // mobile networks — leaves the promise pending forever, and a screen
+  // waiting on it shows loading skeletons until the user force-quits.
+  // AbortSignal.timeout rejects instead, so react-query can retry and then
+  // surface a real error state.
+  const timeoutMs = (init as RequestInitWithTimeout).timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let res: Response;
+  try {
+    res = await fetch(baseUrl + path, {
+      ...init,
+      headers,
+      signal: (init as any).signal ?? AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e: any) {
+    // An abort is a timeout as far as callers are concerned; give it a
+    // stable code so screens can tell "slow network" from "server said no".
+    if (e?.name === 'AbortError' || e?.name === 'TimeoutError') {
+      const err: any = new Error('network_timeout');
+      err.isTimeout = true;
+      throw err;
+    }
+    const err: any = new Error('network_error');
+    err.isNetwork = true;
+    err.cause = e;
+    throw err;
+  }
   const text = await res.text();
   let data: any = null;
   try {

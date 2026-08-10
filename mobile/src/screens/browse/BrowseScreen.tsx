@@ -3,6 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, Act
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
@@ -49,6 +50,7 @@ const PAGE_SIZE = 15;
 
 export default function BrowseScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const [filters, setFilters] = useState<BrowseFilters>({});
   // Search lives in its own dedicated tab now (it replaced Favorites in the
   // bottom bar). Browse is pure filtering — no inline search box here.
@@ -435,7 +437,7 @@ export default function BrowseScreen({ navigation }: any) {
       <FlatList
         data={feedData}
         keyExtractor={(item) => (item.__bannerPool ? 'banner-carousel' : String(item.id))}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
           item.__bannerPool ? (

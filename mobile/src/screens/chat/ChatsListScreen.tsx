@@ -4,6 +4,7 @@ import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, fmtIQD } from '../../components/ui';
 import { IconChat } from '../../components/icons';
@@ -16,6 +17,7 @@ import { ar } from '../../i18n/ar';
 
 export default function ChatsListScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const { user } = useAuth();
   const qc = useQueryClient();
   // Two modes:
@@ -91,7 +93,7 @@ export default function ChatsListScreen({ navigation, route }: any) {
       <FlatList
         data={filtered}
         keyExtractor={(it) => String(it.id)}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => {
           const counter = user?.id === item.buyer_id ? item.seller : item.buyer;
