@@ -305,7 +305,12 @@ r.get('/', optionalAuth(), (req, res) => {
   // /listings/mine. "Never expire" mode (default on) ignores the TTL
   // window; toggle off from admin settings to restore the expires_at filter.
   const neverExpire = getSetting('listings_never_expire') !== '0';
-  let where = sort === 'new'
+  // available_only: the buyer's opt-out of the sold/expired rows the default
+  // feed carries for market context. My Listings has always had status chips
+  // for sellers; buyers had no equivalent, so a shopper who only wants things
+  // they can actually buy had to read every badge themselves.
+  const availableOnly = String(req.query.available_only || '') === '1';
+  let where = (sort === 'new' && !availableOnly)
     ? `l.status IN ('active','reserved','sold','expired')`
     : `l.status IN ('active','reserved')`;
   const params = [];

@@ -8,7 +8,7 @@
 // caller files a device-suggestion for admin review). The Search screen
 // leaves this off — you can only search for devices that exist.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Modal, TextInput, TouchableOpacity, FlatList, ActivityIndicator,
   Keyboard, Platform,
@@ -29,6 +29,7 @@ export function DevicePickerModal({
   onClose: () => void;
   onSelect: (model: string, meta: { fromCatalog: boolean }) => void;
 }) {
+  const searchRef = useRef<TextInput>(null);
   const [text, setText] = useState('');
   const [q, setQ] = useState('');
 
@@ -78,7 +79,18 @@ export function DevicePickerModal({
   const showManual = allowManual && typed.length >= 2 && !exact;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    // autoFocus alone loses a race with the modal's own window attach on
+    // Android: the field draws a caret but the IME never opens (mInputShown
+    // stays false), so the first tap is spent raising a keyboard the caret
+    // already promised. onShow fires after the window exists, and the frame
+    // delay lets the slide-in settle first.
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      onRequestClose={onClose}
+      onShow={() => setTimeout(() => searchRef.current?.focus(), 120)}
+    >
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' }}>
         <View style={{
           backgroundColor: theme.bg,
@@ -108,11 +120,11 @@ export function DevicePickerModal({
             }}>
               <IconSearch size={17} color={theme.subtle} sw={1.7} />
               <TextInput
+                ref={searchRef}
                 value={text}
                 onChangeText={setText}
                 placeholder="ابحث عن الموديل…"
                 placeholderTextColor={theme.subtle}
-                autoFocus
                 style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right', padding: 0 }}
               />
               {text ? (

@@ -130,9 +130,34 @@ function enrichChat(chat, viewerId) {
   const seller = db.prepare('SELECT id, display_name, profile_image_path, rating_avg, rating_count, verified, seller_type, shop_years, phone FROM users WHERE id=?').get(chat.seller_id);
   const deal = activeDealFor(chat.id);
   const phoneVisible = !!deal && deal.status === 'seller_confirmed';
+  const isBuyer = viewerId === chat.buyer_id;
+
+  // The list showed only a pseudonym and a listing — no preview, no time,
+  // no unread state — so two threads with the same guest name were
+  // indistinguishable. All three come from data we already store.
+  const last = db.prepare(
+    `SELECT sender_id, body, image_path, created_at FROM chat_messages
+      WHERE chat_id=? ORDER BY created_at DESC, id DESC LIMIT 1`,
+  ).get(chat.id);
+  const since = (isBuyer ? chat.buyer_last_read_at : chat.seller_last_read_at) || 0;
+  const unread = db.prepare(
+    `SELECT COUNT(*) AS n FROM chat_messages
+      WHERE chat_id=? AND created_at > ? AND sender_id != ?`,
+  ).get(chat.id, since, viewerId).n;
+
   return {
     ...chat,
-    role: viewerId === chat.buyer_id ? 'buyer' : 'seller',
+    role: isBuyer ? 'buyer' : 'seller',
+    last_message: last
+      ? {
+          // Body is truncated server-side: the list renders one line and
+          // there is no reason to ship a 2,000-character message for it.
+          preview: last.body ? String(last.body).slice(0, 120) : (last.image_path ? '📷 صورة' : ''),
+          created_at: last.created_at,
+          mine: last.sender_id === viewerId,
+        }
+      : null,
+    unread_count: unread,
     listing: listing
       ? {
           id: listing.id, brand: listing.brand, model: listing.model,
@@ -202,6 +227,12 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
      FROM chat_messages m JOIN users u ON u.id = m.sender_id
      WHERE m.chat_id=? ORDER BY m.created_at ASC LIMIT 500`,
   ).all(chat.id);
+
+  // Opening the thread IS reading it. Stamped on whichever side the viewer
+  // is, so the other party's unread count is unaffected.
+  const col = req.user.id === chat.buyer_id ? 'buyer_last_read_at' : 'seller_last_read_at';
+  db.prepare(`UPDATE chats SET ${col}=? WHERE id=?`).run(Date.now(), chat.id);
+
   res.json(rows);
 });
 

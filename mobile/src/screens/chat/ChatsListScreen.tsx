@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
+import { timeAgoAr, deviceTitle } from '../../lib/format';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, fmtIQD } from '../../components/ui';
 import { IconChat } from '../../components/icons';
@@ -106,8 +107,10 @@ export default function ChatsListScreen({ navigation, route }: any) {
           const counterName = counter?.display_name?.trim() || ar.chat.fallbackUser;
           const initial = counterName.charAt(0).toUpperCase();
           const listingLabel = item.listing
-            ? `${item.listing.brand} ${item.listing.model} · ${fmtIQD(item.listing.asking_price)} د.ع`
+            ? `${deviceTitle(item.listing.brand, item.listing.model)} · ${fmtIQD(item.listing.asking_price)} د.ع`
             : ar.chat.listingMissing;
+          const unread = item.unread_count || 0;
+          const last = item.last_message;
           return (
             <TouchableOpacity
               activeOpacity={0.85}
@@ -126,12 +129,48 @@ export default function ChatsListScreen({ navigation, route }: any) {
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
-                  {counterName}
-                </Text>
-                <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
+                {/* Name and time share the top line; the preview and the
+                    unread badge share the bottom one. Without any of this,
+                    two threads from the same guest pseudonym were literally
+                    indistinguishable in the list. */}
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}
+                  >
+                    {counterName}
+                  </Text>
+                  {last ? (
+                    <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle }}>
+                      {timeAgoAr(last.created_at)}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
                   {listingLabel}
                 </Text>
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1, textAlign: 'right', fontSize: 12.5,
+                      fontFamily: unread ? fonts.arBold : fonts.ar,
+                      color: unread ? theme.ink : theme.subtle,
+                    }}
+                  >
+                    {last ? `${last.mine ? 'أنت: ' : ''}${last.preview}` : 'لا رسائل بعد'}
+                  </Text>
+                  {unread > 0 ? (
+                    <View style={{
+                      minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 999,
+                      backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ fontFamily: fonts.ltrBold, fontSize: 11, color: '#fff' }}>
+                        {unread > 99 ? '99+' : unread}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
               </View>
               {/* Deal-status badge hidden for v1 — the propose-price /
                   confirm flow is gated off (DEAL_FLOW_ENABLED in

@@ -392,6 +392,33 @@ export default function BrowseScreen({ navigation }: any) {
             marginTop: 2, padding: 14, backgroundColor: theme.surface,
             borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
           }}>
+            {/* The feed deliberately carries sold and expired rows so it
+                reads as a live market. A shopper who only wants what they can
+                actually buy had no way to say so — the seller's own My
+                Listings has had status chips all along. */}
+            <TouchableOpacity
+              onPress={() => patch({ available_only: filters.available_only ? undefined : true })}
+              activeOpacity={0.75}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: !!filters.available_only }}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+                paddingVertical: 10, marginBottom: 4,
+              }}
+            >
+              <View style={{
+                width: 22, height: 22, borderRadius: 7,
+                backgroundColor: filters.available_only ? theme.ink : 'transparent',
+                borderWidth: filters.available_only ? 0 : 2, borderColor: theme.subtle,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                {filters.available_only ? <IconCheck size={13} color={theme.bg} sw={2.6} /> : null}
+              </View>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink }}>
+                المتوفر للبيع فقط
+              </Text>
+            </TouchableOpacity>
+
             <Section label="الماركة">
               <Pill active={!filters.brand} onPress={() => patch({ brand: undefined })}>الكل</Pill>
               {sortedBrands.map((b) => (

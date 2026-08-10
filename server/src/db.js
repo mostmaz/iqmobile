@@ -725,6 +725,13 @@ addColumnIfMissing('users', 'shop_shipping_fee INTEGER NOT NULL DEFAULT 5000');
 // flow and delivery TIME never once, which is the question a cash-on-
 // delivery buyer actually has. Two columns rather than a free-text string
 // so the dashboard can validate them and the app can format them itself.
+// When each side last opened the thread, so the list can show an unread
+// badge. There was no read tracking at all, which is why the chat list had
+// no unread state to render — two threads from the same pseudonym looked
+// identical whether one held five new messages or none.
+addColumnIfMissing('chats', 'buyer_last_read_at INTEGER');
+addColumnIfMissing('chats', 'seller_last_read_at INTEGER');
+
 addColumnIfMissing('users', 'shop_delivery_days_min INTEGER NOT NULL DEFAULT 2');
 addColumnIfMissing('users', 'shop_delivery_days_max INTEGER NOT NULL DEFAULT 4');
 

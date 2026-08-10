@@ -106,6 +106,10 @@ export interface Deal {
 }
 
 export interface Chat {
+  // Populated by the list endpoint so the row can show a preview, a
+  // timestamp and an unread badge without a fetch per thread.
+  last_message?: { preview: string; created_at: number; mine: boolean } | null;
+  unread_count?: number;
   id: number;
   listing_id: number;
   buyer_id: number;
@@ -220,6 +224,8 @@ export interface BrowseFilters {
   min_price?: number;
   max_price?: number;
   verified_only?: boolean;
+  // Drop the sold/expired rows the default feed carries for market context.
+  available_only?: boolean;
   seller_type?: SellerType;
   limit?: number;
   offset?: number;

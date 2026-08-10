@@ -125,7 +125,14 @@ export function ListingCard({
         ) : null}
 
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 5 : 9, gap: 8 }}>
-          <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3 }}>
+          {/* One card split "375,000" from "د.ع" across two lines while its
+              neighbours kept them inline, because a longer location on the
+              same row competed for the width. The price is the thing that
+              must never wrap; the location shrinks instead. */}
+          <Text
+            numberOfLines={1}
+            style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3, flexShrink: 0 }}
+          >
             {fmtIQD(listing.asking_price)}
             <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
           </Text>
