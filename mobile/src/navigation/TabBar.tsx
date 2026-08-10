@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { theme, fonts, radius } from '../theme';
+import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { IconHome, IconSearch, IconPlus, IconPerson, IconChat } from '../components/icons';
 
 const LABELS: Record<string, string> = {
@@ -77,7 +77,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               }}
             >
               <Icon size={22} color={theme.buttonInk} sw={2} />
-              <Text style={{ color: theme.buttonInk, fontFamily: fonts.arBold, fontSize: 10.5, fontWeight: '700' }}>
+              <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ color: theme.buttonInk, fontFamily: fonts.arBold, fontSize: 10.5, fontWeight: '700' }}>
                 {LABELS[route.name]}
               </Text>
             </TouchableOpacity>
@@ -97,7 +97,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             }}
           >
             <Icon size={22} color={focused ? theme.ink : theme.subtle} sw={1.7} />
-            <Text style={{
+            <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
               fontFamily: focused ? fonts.arBold : fonts.ar,
               fontSize: 10.5,
               fontWeight: focused ? '600' : '500',

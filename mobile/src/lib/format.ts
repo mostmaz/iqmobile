@@ -51,3 +51,75 @@ export function formatCountdown(ms: number) {
   if (h > 0) return `${ltrNum(h)}س ${ltrNum(m % 60)}د`;
   return `${ltrNum(m)}د ${ltrNum(s % 60)}ث`;
 }
+
+// ─── Relative time, in grammatical Arabic ────────────────────────
+//
+// The feed used to mix two systems in one column: spelled-out singulars
+// ("قبل يوم", "قبل ساعة") next to abbreviated counts ("قبل 10ي", "قبل 28د",
+// "قبل 4س"). Two rows of the same list disagreeing about their own units
+// reads as two different features.
+//
+// One system, and one that respects the language: Arabic inflects by count,
+// so 1 takes the bare noun, 2 takes the dual, 3–10 take the plural, and 11+
+// return to the singular. Getting this wrong ("قبل 2 ساعة") is the sort of
+// thing that marks an app as machine-translated.
+type ArUnit = { one: string; two: string; few: string; many: string };
+
+const AR_MINUTE: ArUnit = { one: 'دقيقة', two: 'دقيقتين', few: 'دقائق', many: 'دقيقة' };
+const AR_HOUR: ArUnit = { one: 'ساعة', two: 'ساعتين', few: 'ساعات', many: 'ساعة' };
+const AR_DAY: ArUnit = { one: 'يوم', two: 'يومين', few: 'أيام', many: 'يوم' };
+const AR_MONTH: ArUnit = { one: 'شهر', two: 'شهرين', few: 'أشهر', many: 'شهر' };
+
+function arCount(n: number, u: ArUnit): string {
+  if (n === 1) return u.one;
+  if (n === 2) return u.two;
+  // 3–10 take the plural WITHOUT repeating the numeral as a separate word;
+  // 11 and up go back to the singular, which is correct Arabic even though
+  // it looks wrong to an English eye.
+  if (n >= 3 && n <= 10) return `${ltrNum(n)} ${u.few}`;
+  return `${ltrNum(n)} ${u.many}`;
+}
+
+/** "الآن" / "قبل دقيقتين" / "قبل 5 ساعات" / "قبل 3 أيام". */
+export function timeAgoAr(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'الآن';
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `قبل ${arCount(mins, AR_MINUTE)}`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `قبل ${arCount(hrs, AR_HOUR)}`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `قبل ${arCount(days, AR_DAY)}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `قبل ${arCount(months, AR_MONTH)}`;
+  return new Date(ts).toLocaleDateString('ar-IQ', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/** Day bucket for grouping a list — "اليوم" / "أمس" / a short date. */
+export function dayBucketAr(ts: number): string {
+  const d = new Date(ts);
+  const today = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const delta = Math.round((startOf(today) - startOf(d)) / 86_400_000);
+  if (delta <= 0) return 'اليوم';
+  if (delta === 1) return 'أمس';
+  if (delta < 7) return `قبل ${arCount(delta, AR_DAY)}`;
+  return d.toLocaleDateString('ar-IQ', { month: 'long', day: 'numeric' });
+}
+
+// ─── Device title ────────────────────────────────────────────────
+//
+// Titles are composed "{brand} {model}", which produces "Oukitel Oukitel C62"
+// whenever the seller typed the brand into the model box too, and "Other TCL
+// 605" for anything under the catch-all brand — "Other" is a bucket in a
+// dropdown, not a manufacturer, and it should never reach a buyer's screen.
+export function deviceTitle(brand?: string | null, model?: string | null): string {
+  const b = String(brand || '').trim();
+  const m = String(model || '').trim();
+  if (!m) return b === 'Other' ? '' : b;
+  // "Other" carries no information; the model text is all there is.
+  if (!b || b === 'Other' || b === 'أخرى') return m;
+  // Already self-describing — "Oukitel C62" needs no second "Oukitel".
+  if (m.toLowerCase().startsWith(b.toLowerCase())) return m;
+  return `${b} ${m}`;
+}

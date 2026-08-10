@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
@@ -53,6 +54,7 @@ function subline(item: NotificationRow): string | null {
 
 export default function NotificationsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const qc = useQueryClient();
   const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -104,7 +106,7 @@ export default function NotificationsScreen({ navigation }: any) {
       <FlatList
         data={data || []}
         keyExtractor={(it) => String(it.id)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => {
           const sub = subline(item);

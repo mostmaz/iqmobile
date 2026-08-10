@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleProp, ViewStyle, TextStyle, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { theme, fonts, radius, shadowSoft } from '../theme';
+import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT, FONT_SCALE_RELAXED } from '../theme';
 import { IconArrowLeft } from './icons';
 
 // ─── Button ──────────────────────────────────────────────────────
@@ -69,7 +69,11 @@ export function Btn({ children, onPress, kind = 'primary', full, sm, disabled, b
       {busy ? (
         <ActivityIndicator color={k.ink} size="small" />
       ) : typeof children === 'string' ? (
-        <Text style={{ color: k.ink, fontFamily: fonts.arBold, fontSize: sm ? 13 : 15, fontWeight: '600' }}>
+        <Text
+          numberOfLines={1}
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ color: k.ink, fontFamily: fonts.arBold, fontSize: sm ? 13 : 15, fontWeight: '600' }}
+        >
           {children}
         </Text>
       ) : (
@@ -129,7 +133,7 @@ export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: Heade
 // ─── Field label (mono uppercase) ────────────────────────────────
 export function FieldLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   return (
-    <Text style={[{
+    <Text maxFontSizeMultiplier={FONT_SCALE_RELAXED} style={[{
       fontFamily: fonts.mono,
       fontSize: 10.5,
       letterSpacing: 1.2,
@@ -170,11 +174,19 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
         flexShrink: 0,
       }}
     >
-      <Text style={{ fontFamily: fonts.ar, fontSize: small ? 12 : 12.5, fontWeight: '500', color: active ? theme.bg : theme.ink }}>
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+        style={{ fontFamily: fonts.ar, fontSize: small ? 12 : 12.5, fontWeight: '500', color: active ? theme.bg : theme.ink }}
+      >
         {children}
       </Text>
       {count != null ? (
-        <Text style={{ fontFamily: fonts.ltr, fontSize: 10.5, color: active ? theme.bg : theme.subtle, opacity: 0.65 }}>
+        <Text
+          numberOfLines={1}
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ fontFamily: fonts.ltr, fontSize: 10.5, color: active ? theme.bg : theme.subtle, opacity: 0.65 }}
+        >
           {count}
         </Text>
       ) : null}
@@ -203,6 +215,10 @@ interface IInput {
   // keystrokes (vs. an empty onChangeText, which lets the user type
   // into a visually editable field then silently swallows everything).
   editable?: boolean;
+  // Outlines the field in the error colour. A banner by the submit button
+  // says WHAT is wrong; this says WHICH field it means.
+  invalid?: boolean;
+  onBlur?: () => void;
 }
 
 const AC_MAP: Record<AutofillKind, 'tel' | 'password' | 'username' | 'name'> = {
@@ -212,7 +228,7 @@ const TCT_MAP: Record<AutofillKind, 'telephoneNumber' | 'password' | 'username' 
   phone: 'telephoneNumber', password: 'password', username: 'username', name: 'name',
 };
 
-export function Input({ value, onChangeText, placeholder, secure, numeric, multiline, ltr, bare, autofill, editable = true }: IInput) {
+export function Input({ value, onChangeText, placeholder, secure, numeric, multiline, ltr, bare, autofill, editable = true, invalid, onBlur }: IInput) {
   // Autofill suppression — layered approach because no single prop is
   // honored by every Android skin (MIUI, OneUI, ColorOS each ignore
   // different ones).
@@ -262,11 +278,12 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
       autoComplete={autofill ? AC_MAP[autofill] : 'off'}
       textContentType={autofill ? TCT_MAP[autofill] : 'none'}
       importantForAutofill={autofill ? 'yes' : 'noExcludeDescendants'}
+      onBlur={onBlur}
       style={{
         backgroundColor: bare ? 'transparent' : (editable ? theme.surface : theme.chipBg),
         borderRadius: bare ? 0 : radius.lg,
-        borderWidth: bare ? 0 : 1,
-        borderColor: theme.line,
+        borderWidth: bare ? 0 : (invalid ? 1.5 : 1),
+        borderColor: invalid ? theme.danger : theme.line,
         paddingHorizontal: bare ? 0 : 14,
         paddingVertical: bare ? 0 : 12,
         fontFamily: fonts.ar,

@@ -4,6 +4,7 @@ import {
   Alert, Dimensions, Modal, Animated,
 } from 'react-native';
 import { Img } from '../../components/Img';
+import { deviceTitle, ltrNum } from '../../lib/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
@@ -341,7 +342,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
 
           <Text style={{ fontFamily: fonts.arBold, fontSize: 22, fontWeight: '700', color: theme.ink, letterSpacing: -0.3, textAlign: 'right' }}>
-            {data.brand} {data.model}
+            {deviceTitle(data.brand, data.model)}
           </Text>
 
           {stale ? (
@@ -388,7 +389,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                       paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill,
                     }}>
                       <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, fontWeight: '700', color: theme.success }}>
-                        توفّر {fmtIQD((data as any).new_price_ref.saving)} ({(data as any).new_price_ref.saving_pct}%)
+                        {/* The number and its "%" are a single LTR run. Left
+                            to the bidi algorithm inside Arabic text, the sign
+                            reordered to the front and the badge read "(%16)". */}
+                        توفّر {fmtIQD((data as any).new_price_ref.saving)} ({ltrNum(`${(data as any).new_price_ref.saving_pct}%`)})
                       </Text>
                     </View>
                   ) : null}

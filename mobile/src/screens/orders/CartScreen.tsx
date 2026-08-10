@@ -1,3 +1,4 @@
+import { deviceTitle } from '../../lib/format';
 // Cart + cash-on-delivery checkout, in one screen.
 //
 // Deliberately not a multi-step wizard: the basket is short (a shop selling
@@ -145,7 +146,7 @@ export default function CartScreen({ navigation }: any) {
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={2} style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
-                    {l.brand} {l.model}
+                    {deviceTitle(l.brand, l.model)}
                   </Text>
                   <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
                     {[l.storage, l.color].filter(Boolean).join(' · ')}

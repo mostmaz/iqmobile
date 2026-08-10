@@ -1,3 +1,4 @@
+import { deviceTitle } from '../../lib/format';
 // Post-checkout receipt. Its whole job is to make the order feel real: show
 // the reference the customer can quote on the phone, what the courier will
 // collect, and where it's going.
@@ -51,7 +52,7 @@ export default function OrderConfirmedScreen({ route, navigation }: any) {
             {order.items.map((it) => (
               <View key={it.id} style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
                 <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}>
-                  {it.brand} {it.model}{it.qty > 1 ? ` × ${it.qty}` : ''}
+                  {deviceTitle(it.brand, it.model)}{it.qty > 1 ? ` × ${it.qty}` : ''}
                 </Text>
                 <Text style={{ fontFamily: fonts.ltr, fontSize: 13.5, color: theme.ink }}>{fmtIQD(it.line_total)}</Text>
               </View>

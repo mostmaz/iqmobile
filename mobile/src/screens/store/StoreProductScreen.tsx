@@ -9,9 +9,9 @@
 // Each option combination is a real listing behind the scenes, so adding to
 // the cart stores that listing's id and checkout is unchanged.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, Alert, Dimensions,
+  View, Text, TouchableOpacity, ScrollView, Alert, Dimensions, Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +35,7 @@ const BUY_BAR_H = 69;
 
 export default function StoreProductScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
+  const scrollY = useRef(new Animated.Value(0)).current;
   const shopId: number = route.params?.shopId;
   const brand: string = route.params?.brand;
   const model: string = route.params?.model;
@@ -179,7 +180,15 @@ export default function StoreProductScreen({ navigation, route }: any) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: BUY_BAR_H + 16 }} showsVerticalScrollIndicator={false}>
+      <Animated.ScrollView
+        contentContainerStyle={{ paddingBottom: BUY_BAR_H + 16 }}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+      >
         {/* ── Gallery ─────────────────────────────────────────────── */}
         <View>
           {gallery.length ? (
@@ -408,7 +417,25 @@ export default function StoreProductScreen({ navigation, route }: any) {
               : 'التوصيل مجاني'}
           />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+
+          {/* Status-bar scrim, same treatment as the marketplace listing page:
+              the gallery is deliberately edge-to-edge, so once it scrolls away
+              the price and specs would otherwise run under the clock. Fades in
+              rather than sitting solid, which would crop the hero photo.
+              Non-interactive so the back/cart buttons above still take taps. */}
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute', top: 0, left: 0, right: 0,
+              height: insets.top, backgroundColor: theme.bg,
+              opacity: scrollY.interpolate({
+                inputRange: [SCREEN_W * 0.5, SCREEN_W * 0.72],
+                outputRange: [0, 1],
+                extrapolate: 'clamp',
+              }),
+            }}
+          />
 
           <View style={{ position: 'absolute', top: insets.top + 6, right: 14, left: 14 }}>
             <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>

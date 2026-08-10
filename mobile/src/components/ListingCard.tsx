@@ -7,7 +7,7 @@ import { IconStar, IconPin, IconSpark } from './icons';
 import { ChipTag } from './marketplace';
 import { fullImageUrl } from '../api/upload';
 import { arOf } from '../lib/governorates';
-import { ltrNum } from '../lib/format';
+import { timeAgoAr, deviceTitle } from '../lib/format';
 import { ar } from '../i18n/ar';
 import type { Listing } from '../api/endpoints';
 
@@ -103,14 +103,18 @@ export function ListingCard({
       {/* Details — trailing (right) column. Padding tightened with the
           10% height cut so the rows breathe at the new card height. */}
       <View style={{ flex: 1, padding: compact ? 10 : 12, justifyContent: 'center' }}>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right', flex: 1, minWidth: 0 }} numberOfLines={1}>
-            {listing.brand} {listing.model}
-          </Text>
-          <Text style={{ fontFamily: stale ? fonts.arBold : fonts.mono, fontSize: 10, color: theme.subtle, letterSpacing: 0.6 }}>
-            {stale ? 'غير متوفر حالياً' : fmtRelativeTime(listing.created_at)}
-          </Text>
-        </View>
+        {/* The timestamp used to share this row, and since it is a fixed-width
+            sibling against a flexible title, the TITLE is what gave way —
+            "Apple iPhone 1…" cut off exactly at the model number, the single
+            most important field on a phone marketplace. The title now owns the
+            full width over two lines and the timestamp moved down beside the
+            location, which has room to spare. */}
+        <Text
+          style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right' }}
+          numberOfLines={2}
+        >
+          {deviceTitle(listing.brand, listing.model)}
+        </Text>
 
         {!compact ? (
           <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
@@ -127,8 +131,11 @@ export function ListingCard({
           </Text>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
             <IconPin size={12} color={theme.subtle} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flexShrink: 1 }}>
               {arOf(listing.governorate)}{!compact && listing.city ? ` · ${listing.city}` : ''}
+            </Text>
+            <Text numberOfLines={1} style={{ fontFamily: stale ? fonts.arBold : fonts.ar, fontSize: 11, color: theme.subtle }}>
+              · {stale ? 'غير متوفر حالياً' : fmtRelativeTime(listing.created_at)}
             </Text>
           </View>
         </View>
@@ -150,15 +157,6 @@ export function ListingCard({
   );
 }
 
-// Wrap a number in Left-to-Right marks so iOS doesn't substitute the bare
-// digit (glued to an Arabic letter) with an Arabic-Indic "Hindi" glyph —
-// we always want Western 0-9. See ltrNum() in lib/format.ts.
-function fmtRelativeTime(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 60) return mins <= 1 ? 'الآن' : `قبل ${ltrNum(mins)}د`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs === 1 ? 'قبل ساعة' : `قبل ${ltrNum(hrs)}س`;
-  const days = Math.floor(hrs / 24);
-  return days === 1 ? 'قبل يوم' : `قبل ${ltrNum(days)}ي`;
-}
+// One shared formatter for the whole app — see timeAgoAr() in lib/format.ts
+// for why the feed can't have its own.
+const fmtRelativeTime = timeAgoAr;

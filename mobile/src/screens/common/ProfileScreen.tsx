@@ -12,11 +12,13 @@ import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, Icon
 import { Auth, Listings } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
 import { ar } from '../../i18n/ar';
 
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const { user, logout, refresh } = useAuth();
   const [stats, setStats] = useState({ listings: 0 });
 
@@ -81,7 +83,7 @@ export default function ProfileScreen({ navigation }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header title={ar.profile.title} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 30 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: tabClearance }}>
         <View style={{
           backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
           padding: 16, marginBottom: 14, flexDirection: 'row-reverse', alignItems: 'center', gap: 12,

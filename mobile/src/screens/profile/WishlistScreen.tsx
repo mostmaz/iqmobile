@@ -1,3 +1,4 @@
+import { deviceTitle } from '../../lib/format';
 // Wish list — "I want THIS device at THIS price or less". The user keeps a
 // list of wanted devices (exact catalog models) with a price ceiling each;
 // the server pushes a notification when a matching listing appears (newly
@@ -209,7 +210,7 @@ export default function WishlistScreen({ navigation, route }: any) {
             }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, fontWeight: '600', textAlign: 'right', writingDirection: 'ltr' }}>
-                  {item.brand} {item.model}
+                  {deviceTitle(item.brand, item.model)}
                 </Text>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 6 }}>
                   <IconBell size={13} color={theme.accent} sw={1.7} />

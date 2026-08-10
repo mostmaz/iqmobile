@@ -31,6 +31,21 @@ export const fonts = {
 
 export const radius = { sm: 8, md: 10, lg: 12, xl: 14, xxl: 16, pill: 999 } as const;
 
+// How far OS font scaling may enlarge text inside a fixed-size control.
+//
+// Font scaling is on by default and nothing in the app clamped it. On a
+// device set to 1.3× — common on Arabic HONOR and Xiaomi handsets — chips,
+// buttons and tab labels overflow the rounded shapes they sit in and get
+// clipped mid-glyph, which is what "the first character of the string is
+// cut" turns out to be. Verified on the emulator at font_scale 1.3.
+//
+// Two limits rather than one: a control whose height is fixed (a pill, a
+// tab label, a badge) can only give away a little, while body copy and
+// headings reflow freely and should keep scaling for the people who need
+// it. Only the first is clamped hard.
+export const FONT_SCALE_TIGHT = 1.15;   // pills, buttons, tabs, badges
+export const FONT_SCALE_RELAXED = 1.4;  // titles and single-line labels
+
 export const shadowSoft = {
   shadowColor: '#261C0E',
   shadowOpacity: 0.06,

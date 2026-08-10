@@ -488,6 +488,9 @@ function ProductTile({ product, onPress }: { product: StoreProductCard; onPress:
             {multi && product.max_price !== product.min_price
               ? `${fmtIQD(product.min_price)} – ${fmtIQD(product.max_price)}`
               : fmtIQD(product.min_price)}
+            {/* Bare "240,000" on the grid while the product page, the cart and
+                the whole used marketplace say "240,000 د.ع". */}
+            <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, fontWeight: '500', color: theme.subtle }}> د.ع</Text>
           </Text>
         )}
       </View>

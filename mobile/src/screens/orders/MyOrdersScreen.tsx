@@ -1,3 +1,4 @@
+import { deviceTitle } from '../../lib/format';
 // The customer's own order history.
 //
 // Cancel is offered only while an order is still 'pending', matching the
@@ -93,16 +94,20 @@ export default function MyOrdersScreen({ navigation }: any) {
                   {STATUS_AR[o.status]}
                 </Text>
               </View>
-              <Text style={{ fontFamily: fonts.mono, fontSize: 13, color: theme.ink }}>{o.code}</Text>
+              {/* The order ID was the only monospace text on the card, which
+                  read as a different app's component dropped in. */}
+              <Text style={{ fontFamily: fonts.ltr, fontSize: 12.5, color: theme.subtle, letterSpacing: 0.3 }}>{o.code}</Text>
               <Text style={{ flex: 1, textAlign: 'left', fontFamily: fonts.ltrBold, fontSize: 15, color: theme.accentDeep }}>
                 {fmtIQD(o.total)}
+                {/* Every other price in the app carries its currency. */}
+                <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, fontWeight: '500', color: theme.subtle }}> د.ع</Text>
               </Text>
             </View>
 
             <View style={{ marginTop: 8 }}>
               {o.items.map((it) => (
                 <Text key={it.id} numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
-                  {it.brand} {it.model}{it.qty > 1 ? ` × ${it.qty}` : ''}
+                  {deviceTitle(it.brand, it.model)}{it.qty > 1 ? ` × ${it.qty}` : ''}
                 </Text>
               ))}
             </View>

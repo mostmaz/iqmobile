@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
+import { districtHint } from '../../lib/governorates';
+import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
 import { IconPin, IconPhoneIcon, IconCheck, IconChevronDown } from '../../components/icons';
 import { Listings, Brands, DeviceCatalog, type Condition } from '../../api/endpoints';
@@ -17,7 +21,7 @@ import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
 import { compressForListing } from '../../lib/imageCompress';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
-import { digitsOnly, parsePrice } from '../../lib/format';
+import { digitsOnly, parsePrice, deviceTitle } from '../../lib/format';
 import { useAuth } from '../../auth/AuthContext';
 
 // Fallback brand list used only if the /brands fetch fails (offline first
@@ -26,6 +30,9 @@ import { useAuth } from '../../auth/AuthContext';
 // list is exactly what pushed those phones into "Other".
 const FALLBACK_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei', 'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Other'];
 const CONDITIONS: Condition[] = ['new', 'used', 'refurbished', 'repaired'];
+// Ascending by capacity. The old order put 1TB last after descending
+// GB values, so the largest option looked like the smallest.
+const STORAGE_CHOICES = ['64GB', '128GB', '256GB', '512GB', '1TB'];
 const ACCESSORIES_CHOICES = ['الشاحن', 'السماعات', 'العلبة الأصلية', 'كفر', 'لاصق شاشة', 'فاتورة'];
 // Warranty options surfaced on step 0. Stored as the raw Arabic value on
 // the server (warranty_status is a free-text TEXT column, no enum check);
@@ -39,6 +46,9 @@ export default function PostListingScreen({ navigation }: any) {
   const { user } = useAuth();
   const track = useTrack();
   const [step, setStep] = useState(0);
+  // Which field the current error belongs to, so it can be outlined instead
+  // of leaving the user to guess which of five inputs the banner means.
+  const [fieldErr, setFieldErr] = useState<string | null>(null);
 
   // Posting requires a real (non-guest) account. Auto-provisioned guests
   // get bounced to the AuthGate on first entry to this screen, then
@@ -102,7 +112,7 @@ export default function PostListingScreen({ navigation }: any) {
 
   // Contact step — public on the listing. WhatsApp is optional and can
   // mirror the contact phone via the "same number" toggle.
-  const [contactPhone, setContactPhone] = useState('');
+  const [contactPhone, setContactPhone] = useState(user?.phone || '');
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [waSameAsPhone, setWaSameAsPhone] = useState(false);
 
@@ -114,21 +124,47 @@ export default function PostListingScreen({ navigation }: any) {
     !!model || !!color || !!batteryHealth || accessories.length > 0 ||
     !!askingPrice || !!city || !!description || images.length > 0 ||
     !!contactPhone || !!contactWhatsapp;
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!isDirty) return false; // let the default back behaviour run
-      Alert.alert(
-        'تأكيد الخروج',
-        'ستفقد الإعلان الذي بدأت بكتابته. هل تريد الخروج؟',
-        [
-          { text: 'متابعة الكتابة', style: 'cancel' },
-          { text: 'خروج', style: 'destructive', onPress: () => navigation.goBack() },
-        ],
-      );
-      return true; // we handled it; don't fall through to the default
-    });
-    return () => sub.remove();
-  }, [isDirty, navigation]);
+
+  // Wipe the wizard back to a blank step 1.
+  const resetForm = useCallback(() => {
+    setStep(0); setErr(''); setBusy(false);
+    setBrand('Apple'); setModel('');
+    setCondition('used'); setStorage('128GB'); setColor(''); setBatteryHealth('');
+    setWarranty('بدون ضمان');
+    setAccessories([]);
+    setAskingPrice(''); setCity(''); setDescription('');
+    setImages([]);
+    setContactPhone(user?.phone || ''); setContactWhatsapp(''); setWaSameAsPhone(false);
+  }, [user?.phone]);
+
+  // useFocusEffect, NOT useEffect. BackHandler is app-global and this screen
+  // is the Sell TAB ROOT, so it never unmounts — a plain useEffect leaves the
+  // handler registered for the life of the process. Combined with the bug
+  // below that meant the confirm dialog fired on every back press anywhere in
+  // the app, on Browse, on Account, forever, until the process was killed.
+  const [exitAsk, setExitAsk] = useState(false);
+
+  // Discard for real. goBack() alone was a no-op from a tab root, so the
+  // form kept its values, isDirty stayed true, and the guard re-armed
+  // itself on the very next back press.
+  const discardDraft = useCallback(() => {
+    setExitAsk(false);
+    resetForm();
+    const parent = navigation.getParent?.();
+    if (parent) parent.navigate('Browse');
+    else if (navigation.canGoBack()) navigation.goBack();
+  }, [navigation, resetForm]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (!isDirty) return false; // let the default back behaviour run
+        setExitAsk(true);
+        return true; // we handled it; don't fall through to the default
+      });
+      return () => sub.remove();
+    }, [isDirty]),
+  );
 
   // Battery-health % is only a meaningful spec on Apple devices (iOS
   // surfaces an exact number). For other brands we hide the field.
@@ -191,7 +227,7 @@ export default function PostListingScreen({ navigation }: any) {
     mutationFn: async () => {
       const wa = waSameAsPhone ? contactPhone : (contactWhatsapp || null);
       const listing = await Listings.create({
-        brand, model, storage: storage || null, color: color || null,
+        brand, model, storage: storage || null, color: canonicalColor(color) || null,
         condition,
         // Server ignores null; only Apple listings carry a battery value.
         battery_health: showBattery && batteryHealth ? Number(batteryHealth) : null,
@@ -250,21 +286,45 @@ export default function PostListingScreen({ navigation }: any) {
   //   5 Review
   function next() {
     setErr('');
-    if (step === 0 && (!brand || !model)) return setErr('أدخل العلامة والموديل');
-    if (step === 2 && parsePrice(askingPrice) == null) return setErr('أدخل سعراً صحيحاً');
+    // Name the field that is actually empty. The old message asked for
+    // "the brand and the model" even when the brand was already filled,
+    // which reads as the form not knowing what it has.
+    if (step === 0 && !brand) { setFieldErr('brand'); return setErr('اختر العلامة التجارية'); }
+    if (step === 0 && !model) { setFieldErr('model'); return setErr('اختر موديل الجهاز'); }
+    if (step === 1) {
+      const cp = colorProblem(color);
+      if (cp) { setFieldErr('color'); return setErr(cp); }
+      // Battery health is a percentage. 999 used to sail through.
+      if (batteryHealth) {
+        const n = Number(digitsOnly(batteryHealth));
+        if (!Number.isFinite(n) || n < 1 || n > 100) {
+          setFieldErr('battery');
+          return setErr('صحة البطارية بين 1 و 100 بالمئة.');
+        }
+      }
+    }
+    if (step === 2 && parsePrice(askingPrice) == null) { setFieldErr('price'); return setErr('أدخل سعراً صحيحاً'); }
     if (step === 3) {
       // Accept Arabic-Indic digits (٠١٢…) in phone fields. Iraqi keyboards
       // default to them, so a raw /\D/g filter would silently empty the
       // field and block the wizard at step 3 for many real users.
       const digits = digitsOnly(contactPhone);
-      if (digits.length < 10) return setErr('أدخل رقم هاتف صحيح للتواصل');
+      if (digits.length < 10) { setFieldErr('phone'); return setErr('أدخل رقم هاتف صحيح للتواصل'); }
       if (!waSameAsPhone && contactWhatsapp) {
         const waDigits = digitsOnly(contactWhatsapp);
-        if (waDigits.length < 10) return setErr('رقم واتساب غير صحيح');
+        if (waDigits.length < 10) { setFieldErr('whatsapp'); return setErr('رقم واتساب غير صحيح'); }
       }
     }
-    if (step === 4 && images.length < 3) return setErr(ar.post.needAtLeast3);
+    // Say how many are still missing rather than repeating, word for word,
+    // the helper text already on screen above the button.
+    if (step === 4 && images.length < 3) {
+      const missing = 3 - images.length;
+      return setErr(images.length === 0
+        ? 'أضف 3 صور على الأقل للمتابعة.'
+        : `أضفت ${images.length} من 3 — بقيت ${missing === 1 ? 'صورة واحدة' : `${missing} صور`}.`);
+    }
     if (step === 5) { create.mutate(); return; }
+    setFieldErr(null);
     setStep(step + 1);
   }
 
@@ -298,7 +358,14 @@ export default function PostListingScreen({ navigation }: any) {
       <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
         <StepDots total={6} current={step} />
       </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+      {/* automaticallyAdjustKeyboardInsets keeps the focused input visible;
+          without it the battery keypad opened directly over its own field
+          and the seller typed blind. */}
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+      >
         {step === 0 && (
           <>
             <FieldLabel>العلامة التجارية</FieldLabel>
@@ -395,17 +462,48 @@ export default function PostListingScreen({ navigation }: any) {
             </View>
             <FieldLabel>{ar.listing.storage}</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {['64GB', '128GB', '256GB', '512GB', '1TB'].map((s) => <Pill key={s} active={storage === s} onPress={() => setStorage(s)}>{s}</Pill>)}
+              {STORAGE_CHOICES.map((s) => <Pill key={s} active={storage === s} onPress={() => setStorage(s)}>{s}</Pill>)}
             </View>
             <FieldLabel>{ar.listing.color}</FieldLabel>
-            <Input value={color} onChangeText={setColor} placeholder="أسود، أبيض، …" />
+            {/* Chips first, free text second. One tap gives a canonical
+                spelling, which is what makes colour filterable at all. */}
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {COLOR_CHOICES.map((c) => (
+                <Pill
+                  key={c}
+                  active={canonicalColor(color) === c}
+                  onPress={() => { setColor(canonicalColor(color) === c ? '' : c); setFieldErr(null); }}
+                >
+                  {c}
+                </Pill>
+              ))}
+            </View>
+            <Input
+              value={color}
+              onChangeText={(v) => { setColor(v); if (fieldErr === 'color') setFieldErr(null); }}
+              onBlur={() => setColor((c) => canonicalColor(c))}
+              placeholder="أو اكتب لوناً آخر…"
+              invalid={fieldErr === 'color'}
+            />
             {/* Battery health only renders for Apple — iOS surfaces an
                 exact percentage in Settings, while non-Apple devices
                 don't have an equivalent canonical metric. */}
             {showBattery ? (
               <>
                 <FieldLabel style={{ marginTop: 12 }}>{ar.listing.battery} (%)</FieldLabel>
-                <Input value={batteryHealth} onChangeText={setBatteryHealth} placeholder="مثلاً 92 (اختياري)" numeric />
+                <Input
+                  value={batteryHealth}
+                  onChangeText={(v) => {
+                    // Cap at three characters and drop anything over 100 as
+                    // it is typed, so the field cannot hold 999 at all.
+                    const d = digitsOnly(v).slice(0, 3);
+                    setBatteryHealth(d && Number(d) > 100 ? '100' : d);
+                    if (fieldErr === 'battery') setFieldErr(null);
+                  }}
+                  placeholder="مثلاً 92 (اختياري)"
+                  numeric
+                  invalid={fieldErr === 'battery'}
+                />
               </>
             ) : null}
           </>
@@ -430,8 +528,8 @@ export default function PostListingScreen({ navigation }: any) {
               <TextInput
                 value={askingPrice ? Number(askingPrice).toLocaleString('en-US') : ''}
                 onChangeText={(v) => setAskingPrice(digitsOnly(v))}
-                placeholder="500,000"
-                placeholderTextColor={theme.subtle}
+                placeholder="٠"
+                placeholderTextColor={theme.line}
                 keyboardType="phone-pad"
                 autoComplete="off"
                 textContentType="none"
@@ -462,7 +560,7 @@ export default function PostListingScreen({ navigation }: any) {
               </View>
             </View>
             <Text style={{ marginTop: 6, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
-              السعر بالدينار العراقي — اكتب الأرقام فقط، التنسيق تلقائي.
+              السعر بالدينار العراقي — اكتب الأرقام فقط، التنسيق تلقائي. مثال: 500,000
             </Text>
             {/* Thousands-nudge: IQD listings are almost always in the 100k–
                 millions range, so a raw "500" is almost certainly meant as
@@ -493,7 +591,7 @@ export default function PostListingScreen({ navigation }: any) {
               <GovPicker label="موقع الإعلان · المحافظة" valueAr={govAr} onChangeAr={setGovAr} />
             </View>
             <FieldLabel>{ar.auth.city}</FieldLabel>
-            <Input value={city} onChangeText={setCity} placeholder="الكرادة، المنصور، …" />
+            <Input value={city} onChangeText={setCity} placeholder={districtHint(govAr)} />
             <FieldLabel style={{ marginTop: 12 }}>{ar.listing.description}</FieldLabel>
             <Input value={description} onChangeText={setDescription} placeholder="ملاحظات إضافية…" multiline />
           </>
@@ -545,9 +643,21 @@ export default function PostListingScreen({ navigation }: any) {
         )}
         {step === 4 && (
           <>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', marginBottom: 10 }}>
-              {ar.post.needAtLeast3}
-            </Text>
+            <View style={{
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 10,
+            }}>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right' }}>
+                {ar.post.needAtLeast3}
+              </Text>
+              {/* Progress, so "3 required" is a target and not just a rule. */}
+              <Text style={{
+                fontFamily: fonts.mono, fontSize: 12,
+                color: images.length >= 3 ? theme.success : theme.subtle,
+              }}>
+                {images.length} / 3
+              </Text>
+            </View>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
               {images.map((uri, i) => (
                 <View key={i} style={{ position: 'relative' }}>
@@ -637,7 +747,7 @@ export default function PostListingScreen({ navigation }: any) {
                   fontFamily: fonts.arBold, fontSize: 19, fontWeight: '700',
                   color: theme.ink, textAlign: 'right', letterSpacing: -0.3,
                 }}>
-                  {brand} {model}
+                  {deviceTitle(brand, model)}
                 </Text>
 
                 {/* Price block — accent deep, matching the live detail page */}
@@ -754,12 +864,31 @@ export default function PostListingScreen({ navigation }: any) {
           </View>
         ) : null}
         <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-          {step > 0 ? <Btn kind="ghost" full onPress={() => setStep(step - 1)}>{ar.post.back}</Btn> : null}
+          {/* Step 1 used to show only "التالي", leaving a 30dp top arrow as
+              the sole way out. Every step now pairs forward with back. */}
+          <Btn
+            kind="ghost"
+            full
+            onPress={() => (step > 0 ? setStep(step - 1) : (isDirty ? setExitAsk(true) : navigation.goBack()))}
+          >
+            {step > 0 ? ar.post.back : 'إلغاء'}
+          </Btn>
           <Btn kind="primary" full onPress={next} busy={create.isPending}>
             {step === 5 ? ar.post.publish : ar.post.next}
           </Btn>
         </View>
       </View>
+
+      <ConfirmSheet
+        visible={exitAsk}
+        title="تترك الإعلان؟"
+        body="ستفقد ما كتبته حتى الآن. لا يمكن التراجع."
+        confirmText="حذف المسودة"
+        cancelText="متابعة الكتابة"
+        destructive
+        onConfirm={discardDraft}
+        onCancel={() => setExitAsk(false)}
+      />
     </View>
   );
 }
