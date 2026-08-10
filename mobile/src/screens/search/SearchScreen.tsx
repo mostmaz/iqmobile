@@ -129,7 +129,7 @@ export default function SearchScreen({ navigation }: any) {
           >
             <IconBell size={15} color={theme.accent} sw={1.8} />
             <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
-              نبّهني عند إضافة إعلان مطابق
+              احفظ البحث ونبّهني عند إعلان مطابق
             </Text>
           </TouchableOpacity>
         ) : null}

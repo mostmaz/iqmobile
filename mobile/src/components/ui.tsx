@@ -173,6 +173,14 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      // A chip is 37dp tall against a 48dp guideline, and growing the padding
+      // to close that would bloat every filter row on every screen. hitSlop
+      // buys the missing height in the touch layer only, where the problem
+      // actually is. Vertical only — the rails are horizontal, so widening
+      // the sides would make neighbouring chips overlap each other's targets.
+      hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
       style={{
         paddingHorizontal: small ? 11 : 13,
         paddingVertical: small ? 6 : 7,

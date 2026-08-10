@@ -500,7 +500,7 @@ export default function BrowseScreen({ navigation }: any) {
             >
               <IconBell size={15} color={theme.accent} sw={1.8} />
               <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
-                احفظ هذا البحث ونبّهني
+                احفظ البحث ونبّهني عند إعلان مطابق
               </Text>
             </TouchableOpacity>
           </View>
@@ -511,6 +511,11 @@ export default function BrowseScreen({ navigation }: any) {
         data={feedData}
         keyExtractor={(item) => (item.__bannerPool ? 'banner-carousel' : String(item.id))}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: tabClearance }}
+        // The filter panel lives in this list's header and now holds text
+        // inputs. Without this the first tap on a field is swallowed
+        // dismissing the keyboard instead of moving focus between the two
+        // price bounds.
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
           item.__bannerPool ? (
@@ -614,8 +619,11 @@ function PriceStepper({
     const n = Number(digitsOnly(draft));
     setDraft(null);
     if (!Number.isFinite(n)) return;
-    const snapped = Math.round(n / PRICE_STEP) * PRICE_STEP;
-    onChange(Math.min(PRICE_MAX, Math.max(PRICE_MIN, snapped)));
+    // Clamped, NOT snapped to the stepper's 100,000 grid. Typing 450,000 and
+    // watching it become 500,000 is a worse failure than the taps this
+    // replaced — nothing about a min/max price query needs that granularity.
+    // The +/- buttons still move in 100,000 steps from wherever it lands.
+    onChange(Math.min(PRICE_MAX, Math.max(PRICE_MIN, n)));
   };
   const dec = () => { setDraft(null); onChange(Math.max(PRICE_MIN, value - PRICE_STEP)); };
   const inc = () => { setDraft(null); onChange(Math.min(PRICE_MAX, value + PRICE_STEP)); };
@@ -641,13 +649,22 @@ function PriceStepper({
         }}>
           <IconMinus size={14} color={theme.ink} sw={2.4} />
         </TouchableOpacity>
-        <Text style={{
-          flex: 1, textAlign: 'center',
-          fontFamily: fonts.ltrBold, fontSize: 15, fontWeight: '700', color: theme.ink,
-          writingDirection: 'ltr',
-        }} numberOfLines={1} adjustsFontSizeToFit>
-          {display}
-        </Text>
+        <TextInput
+          value={display}
+          onChangeText={(v) => setDraft(digitsOnly(v))}
+          onFocus={() => setDraft(String(value))}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          keyboardType="phone-pad"
+          returnKeyType="done"
+          selectTextOnFocus
+          accessibilityLabel={label}
+          style={{
+            flex: 1, textAlign: 'center', padding: 0,
+            fontFamily: fonts.ltrBold, fontSize: 15, fontWeight: '700', color: theme.ink,
+            writingDirection: 'ltr',
+          }}
+        />
         <TouchableOpacity onPress={inc} disabled={incDisabled} activeOpacity={0.7} style={{
           width: 32, height: 32, borderRadius: 999,
           backgroundColor: theme.chipBg,
