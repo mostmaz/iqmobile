@@ -261,7 +261,7 @@ export default function BrowseScreen({ navigation }: any) {
               <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 12 }}>iQ</Text>
             </View>
             <View>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
                 {ar.app.name}
               </Text>
               <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.6, color: theme.subtle, textTransform: 'uppercase' }}>
@@ -282,7 +282,7 @@ export default function BrowseScreen({ navigation }: any) {
             }}
           >
             <IconPin size={13} color={theme.accent} sw={1.7} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12, fontWeight: '600', color: theme.ink }}>
+            <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.ink }}>
               {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
             </Text>
           </TouchableOpacity>
@@ -426,7 +426,7 @@ export default function BrowseScreen({ navigation }: any) {
               }}
             >
               <IconBell size={15} color={theme.accent} sw={1.8} />
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent, fontWeight: '600' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
                 احفظ هذا البحث ونبّهني
               </Text>
             </TouchableOpacity>

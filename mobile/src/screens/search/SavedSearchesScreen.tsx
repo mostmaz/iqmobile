@@ -83,7 +83,7 @@ export default function SavedSearchesScreen({ navigation }: any) {
               backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
             }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}>
                   {item.label || describeCriteria(item.criteria)}
                 </Text>
                 {item.label ? (

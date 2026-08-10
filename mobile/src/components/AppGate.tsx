@@ -185,9 +185,8 @@ const S = {
     borderRadius: radius.xxl, padding: 22,
   },
   title: {
-    fontFamily: fonts.arBold, fontSize: 19, fontWeight: '700',
-    color: theme.ink, textAlign: 'center', marginBottom: 8,
-  },
+    fontFamily: fonts.arBold, fontSize: 19,
+    color: theme.ink, textAlign: 'center', marginBottom: 8 },
   body: {
     fontFamily: fonts.ar, fontSize: 14.5, lineHeight: 23,
     color: theme.subtle, textAlign: 'center', marginBottom: 8,
@@ -200,7 +199,7 @@ const S = {
     backgroundColor: theme.accent, borderRadius: radius.lg,
     paddingVertical: 14, alignItems: 'center', marginTop: 10,
   },
-  ctaText: { fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff' },
+  ctaText: { fontFamily: fonts.arBold, fontSize: 15, color: '#fff' },
   later: {
     fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle,
     textAlign: 'center', paddingVertical: 14,

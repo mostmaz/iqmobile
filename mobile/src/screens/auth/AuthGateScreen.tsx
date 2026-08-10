@@ -67,7 +67,7 @@ export default function AuthGateScreen({ navigation }: any) {
             }, shadowAccent]}>
               <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 14 }}>iQ</Text>
             </View>
-            <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 15, color: theme.ink }}>IQ Mobile</Text>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>IQ Mobile</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
             width: 38, height: 38, borderRadius: 999,
@@ -81,9 +81,8 @@ export default function AuthGateScreen({ navigation }: any) {
         </View>
 
         <Text style={{
-          fontFamily: fonts.arBold, fontWeight: '700', fontSize: 26, color: theme.ink,
-          letterSpacing: -0.5, lineHeight: 32, textAlign: 'right',
-        }}>
+          fontFamily: fonts.arBold, fontSize: 26, color: theme.ink,
+          letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
           أدخل رقم هاتفك
         </Text>
         <Text style={{

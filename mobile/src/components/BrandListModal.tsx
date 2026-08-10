@@ -38,7 +38,7 @@ export function BrandListModal({
             flexDirection: 'row-reverse', alignItems: 'center',
             justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 10,
           }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, color: theme.ink }}>
               {title}
             </Text>
             <TouchableOpacity onPress={onClose} activeOpacity={0.7}>

@@ -85,9 +85,7 @@ export function StorefrontCard({
         <Text
           numberOfLines={1}
           style={{
-            flex: 1, fontFamily: fonts.arBold, fontSize: 14.5,
-            fontWeight: '700', color: theme.ink, textAlign: 'right',
-          }}
+            flex: 1, fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink, textAlign: 'right' }}
         >
           {shop_name} · {heading}
         </Text>
@@ -157,7 +155,7 @@ export function StorefrontCard({
           paddingVertical: 11, alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <Text style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: '#fff' }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff' }}>
           اشترِ جهاز جديد
         </Text>
       </TouchableOpacity>
@@ -168,7 +166,7 @@ export function StorefrontCard({
 function Badge({ bg, fg, label }: { bg: string; fg: string; label: string }) {
   return (
     <View style={{ backgroundColor: bg, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, fontWeight: '700', color: fg }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: fg }}>{label}</Text>
     </View>
   );
 }

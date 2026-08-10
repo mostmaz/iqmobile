@@ -31,7 +31,7 @@ export default function OrderConfirmedScreen({ route, navigation }: any) {
           }}>
             <IconCheck size={30} color={theme.success} sw={2.4} />
           </View>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 19, fontWeight: '700', color: theme.ink }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 19, color: theme.ink }}>
             تم استلام طلبك
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', marginTop: 6 }}>
@@ -74,7 +74,7 @@ export default function OrderConfirmedScreen({ route, navigation }: any) {
 
         <View style={{ marginTop: 20, gap: 8 }}>
           <Btn kind="primary" full onPress={() => navigation.navigate('MyOrders')}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.buttonInk }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.buttonInk }}>
               طلباتي
             </Text>
           </Btn>

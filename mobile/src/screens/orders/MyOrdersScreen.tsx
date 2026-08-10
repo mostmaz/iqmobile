@@ -61,7 +61,7 @@ export default function MyOrdersScreen({ navigation }: any) {
         flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
         borderBottomWidth: 1, borderBottomColor: theme.line,
       }}>
-        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
           طلباتي
         </Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
@@ -90,7 +90,7 @@ export default function MyOrdersScreen({ navigation }: any) {
           }}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
               <View style={{ backgroundColor: STATUS_COLOR[o.status], borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 11, fontWeight: '700', color: '#fff' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: '#fff' }}>
                   {STATUS_AR[o.status]}
                 </Text>
               </View>
@@ -100,7 +100,7 @@ export default function MyOrdersScreen({ navigation }: any) {
               <Text style={{ flex: 1, textAlign: 'left', fontFamily: fonts.ltrBold, fontSize: 15, color: theme.accentDeep }}>
                 {fmtIQD(o.total)}
                 {/* Every other price in the app carries its currency. */}
-                <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, fontWeight: '500', color: theme.subtle }}> د.ع</Text>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle }}> د.ع</Text>
               </Text>
             </View>
 

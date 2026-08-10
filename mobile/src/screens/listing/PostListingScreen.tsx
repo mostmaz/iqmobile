@@ -336,7 +336,7 @@ export default function PostListingScreen({ navigation }: any) {
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <Header title={ar.post.title} onBack={() => navigation.goBack()} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center' }}>
             سجّل الدخول لنشر إعلان
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
@@ -381,7 +381,7 @@ export default function PostListingScreen({ navigation }: any) {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '600', color: theme.ink }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink }}>
                 {brand}
               </Text>
               <IconChevronDown size={18} color={theme.subtle} sw={1.8} />
@@ -554,7 +554,7 @@ export default function PostListingScreen({ navigation }: any) {
                 paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
                 backgroundColor: theme.accentSoft, marginLeft: 8,
               }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '700', color: theme.accentDeep }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accentDeep }}>
                   د.ع
                 </Text>
               </View>
@@ -583,7 +583,7 @@ export default function PostListingScreen({ navigation }: any) {
                   هل تقصد {(Number(askingPrice) * 1000).toLocaleString('en-US')} د.ع؟
                 </Text>
                 <View style={{ backgroundColor: theme.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
-                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12, fontWeight: '700', color: '#fff' }}>نعم</Text>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: '#fff' }}>نعم</Text>
                 </View>
               </TouchableOpacity>
             ) : null}
@@ -625,7 +625,7 @@ export default function PostListingScreen({ navigation }: any) {
                 }}>
                   {waSameAsPhone ? <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>✓</Text> : null}
                 </View>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '700', color: waSameAsPhone ? theme.success : theme.subtle }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: waSameAsPhone ? theme.success : theme.subtle }}>
                   نفس الرقم
                 </Text>
               </TouchableOpacity>
@@ -744,9 +744,8 @@ export default function PostListingScreen({ navigation }: any) {
                 </View>
 
                 <Text numberOfLines={1} style={{
-                  fontFamily: fonts.arBold, fontSize: 19, fontWeight: '700',
-                  color: theme.ink, textAlign: 'right', letterSpacing: -0.3,
-                }}>
+                  fontFamily: fonts.arBold, fontSize: 19,
+                  color: theme.ink, textAlign: 'right', letterSpacing: -0.3 }}>
                   {deviceTitle(brand, model)}
                 </Text>
 
@@ -763,7 +762,7 @@ export default function PostListingScreen({ navigation }: any) {
                     color: theme.accentDeep, fontWeight: '700', letterSpacing: -0.5,
                   }}>
                     {fmtIQD(Number(askingPrice))}
-                    <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>
+                    <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar }}>
                       {'  '}د.ع
                     </Text>
                   </Text>

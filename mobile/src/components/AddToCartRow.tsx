@@ -57,7 +57,7 @@ export function AddToCartRow({
           alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.buttonInk }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.buttonInk }}>
           إضافة للسلة
         </Text>
       </TouchableOpacity>
@@ -71,7 +71,7 @@ export function AddToCartRow({
       borderWidth: 1, borderColor: theme.accent,
       flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
     }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '700', color: theme.accentDeep }}>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accentDeep }}>
         في السلة
       </Text>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 12 }}>

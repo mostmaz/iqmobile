@@ -295,7 +295,7 @@ export default function ShopRegisterScreen({ navigation }: any) {
             }}>
               <IconPin size={18} color={coords ? theme.success : theme.subtle} sw={1.7} />
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '600', color: coords ? theme.success : theme.ink, textAlign: 'right' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: coords ? theme.success : theme.ink, textAlign: 'right' }}>
                   {coords ? 'تم تحديد الموقع' : 'استخدم موقعي الحالي'}
                 </Text>
                 {coords ? (
@@ -346,7 +346,7 @@ export default function ShopRegisterScreen({ navigation }: any) {
             <Btn kind="successSoft" full onPress={contactUs}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                 <IconMsgCall size={16} color={theme.success} />
-                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>أو سجّل عبر واتساب</Text>
+                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontSize: 15 }}>أو سجّل عبر واتساب</Text>
               </View>
             </Btn>
           </>

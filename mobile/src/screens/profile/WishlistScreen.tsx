@@ -112,7 +112,7 @@ export default function WishlistScreen({ navigation, route }: any) {
             }}
           >
             <IconPlus size={15} color={theme.accent} sw={2.2} />
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.accent, fontWeight: '600' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.accent }}>
               أضف جهازاً أريده
             </Text>
           </TouchableOpacity>
@@ -209,7 +209,7 @@ export default function WishlistScreen({ navigation, route }: any) {
               backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
             }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, fontWeight: '600', textAlign: 'right', writingDirection: 'ltr' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right', writingDirection: 'ltr' }}>
                   {deviceTitle(item.brand, item.model)}
                 </Text>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 6 }}>

@@ -43,7 +43,7 @@ export default function DealsScreen({ navigation }: any) {
               }}
             >
               <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, fontWeight: '600' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
                   {item.listing ? `${item.listing.brand} ${item.listing.model}` : '—'}
                 </Text>
                 <View style={{ paddingHorizontal: 8, paddingVertical: 3, backgroundColor: item.status === 'seller_confirmed' ? theme.successSoft : theme.chipBg, borderRadius: 999 }}>

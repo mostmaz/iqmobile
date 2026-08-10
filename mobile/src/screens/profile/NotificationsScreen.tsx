@@ -120,7 +120,7 @@ export default function NotificationsScreen({ navigation }: any) {
                 borderWidth: 1, borderColor: item.read ? theme.line : theme.accent,
               }}
             >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
                 {KIND_LABEL[item.kind] || item.kind}
               </Text>
               {sub ? (

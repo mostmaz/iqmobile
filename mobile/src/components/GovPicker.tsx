@@ -61,7 +61,7 @@ export function GovPicker({
           }}
         >
           <IconPin size={13} color={theme.accent} sw={1.8} />
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: theme.ink, textAlign: 'right' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
             {displayValue}
           </Text>
           <IconChevronDown size={13} color={theme.subtle} sw={2} />
@@ -101,7 +101,7 @@ export function GovPicker({
               {label}
             </Text>
           ) : null}
-          <Text style={{ marginTop: label ? 2 : 0, fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+          <Text style={{ marginTop: label ? 2 : 0, fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right' }}>
             {displayValue}
           </Text>
         </View>
@@ -145,7 +145,7 @@ function PickerModal({
             flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
             paddingHorizontal: 18, paddingBottom: 10,
           }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, color: theme.ink }}>
               المحافظة
             </Text>
             <TouchableOpacity onPress={() => setOpen(false)} activeOpacity={0.7}>

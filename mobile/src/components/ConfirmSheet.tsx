@@ -53,9 +53,8 @@ export function ConfirmSheet({
             backgroundColor: theme.line, marginBottom: 16,
           }} />
           <Text style={{
-            fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700',
-            color: theme.ink, textAlign: 'right',
-          }}>
+            fontFamily: fonts.arBold, fontSize: 17,
+            color: theme.ink, textAlign: 'right' }}>
             {title}
           </Text>
           {body ? (
@@ -77,7 +76,7 @@ export function ConfirmSheet({
               backgroundColor: theme.ink, alignItems: 'center',
             }}
           >
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '700', color: theme.bg }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.bg }}>
               {cancelText}
             </Text>
           </TouchableOpacity>
@@ -87,9 +86,8 @@ export function ConfirmSheet({
             style={{ marginTop: 6, borderRadius: radius.lg, paddingVertical: 15, alignItems: 'center' }}
           >
             <Text style={{
-              fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '700',
-              color: destructive ? theme.danger : theme.ink,
-            }}>
+              fontFamily: fonts.arBold, fontSize: 14.5,
+              color: destructive ? theme.danger : theme.ink }}>
               {confirmText}
             </Text>
           </TouchableOpacity>

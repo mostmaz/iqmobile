@@ -91,7 +91,7 @@ export function DevicePickerModal({
         }}>
           <View style={{ alignSelf: 'center', width: 38, height: 4, borderRadius: 999, backgroundColor: theme.line, marginBottom: 10 }} />
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingBottom: 10 }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, color: theme.ink }}>
               {brand ? `اختر جهاز ${brand}` : 'اختر الجهاز'}
             </Text>
             <TouchableOpacity onPress={onClose} activeOpacity={0.7}>
@@ -141,7 +141,7 @@ export function DevicePickerModal({
               }}
             >
               <IconPlus size={15} color={theme.accent} sw={2.2} />
-              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, color: theme.accentDeep, fontWeight: '600', textAlign: 'right' }}>
+              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, color: theme.accentDeep, textAlign: 'right' }}>
                 استخدم «{typed}» — جهازي غير موجود بالقائمة
               </Text>
             </TouchableOpacity>

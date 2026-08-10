@@ -71,7 +71,7 @@ export function ListingCard({
             backgroundColor: statusBg,
             paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
           }}>
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, letterSpacing: 0.4 }}>
               {(ar.listing as any)[listing.status]}
             </Text>
           </View>
@@ -81,7 +81,7 @@ export function ListingCard({
             backgroundColor: theme.subtle,
             paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
           }}>
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, letterSpacing: 0.4 }}>
               آخر سعر معروف
             </Text>
           </View>
@@ -95,7 +95,7 @@ export function ListingCard({
             flexDirection: 'row-reverse', alignItems: 'center', gap: 3,
           }}>
             <IconSpark size={11} color="#fff" />
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700' }}>مميّز</Text>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10 }}>مميّز</Text>
           </View>
         ) : null}
       </View>
@@ -110,7 +110,7 @@ export function ListingCard({
             full width over two lines and the timestamp moved down beside the
             location, which has room to spare. */}
         <Text
-          style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right' }}
+          style={{ fontFamily: fonts.arBold, fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right' }}
           numberOfLines={2}
         >
           {deviceTitle(listing.brand, listing.model)}
@@ -127,7 +127,7 @@ export function ListingCard({
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 5 : 9, gap: 8 }}>
           <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3 }}>
             {fmtIQD(listing.asking_price)}
-            <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
+            <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
           </Text>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
             <IconPin size={12} color={theme.subtle} />

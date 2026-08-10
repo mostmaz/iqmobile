@@ -35,7 +35,7 @@ export default function ProfileScreen({ navigation }: any) {
       <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
         <Header title={ar.profile.title} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 12 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center', fontWeight: '700' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center' }}>
             لم تسجّل الدخول
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', lineHeight: 21 }}>
@@ -92,11 +92,11 @@ export default function ProfileScreen({ navigation }: any) {
             {user.profile_image_path ? (
               <Img source={{ uri: fullImageUrl(user.profile_image_path) }} style={{ width: 56, height: 56 }} />
             ) : (
-              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 22 }}>{initial}</Text>
+              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 22 }}>{initial}</Text>
             )}
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 17, color: theme.ink, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
               {user.display_name}
             </Text>
             <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: theme.subtle, marginTop: 6, textAlign: 'right', writingDirection: 'ltr' }}>
@@ -138,7 +138,7 @@ export default function ProfileScreen({ navigation }: any) {
           >
             <IconID size={20} color="#fff" sw={1.8} />
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff', fontWeight: '700', textAlign: 'right' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff', textAlign: 'right' }}>
                 {ar.auth.login}
               </Text>
               <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2, textAlign: 'right' }}>
@@ -164,7 +164,7 @@ export default function ProfileScreen({ navigation }: any) {
             }}
           >
             <s.Icon size={18} color={theme.subtle} sw={1.7} />
-            <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, fontWeight: '500', textAlign: 'right' }}>{s.label}</Text>
+            <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right' }}>{s.label}</Text>
             <View style={{ transform: [{ scaleX: -1 }] }}><IconChevronLeft size={14} color={theme.subtle} sw={2} /></View>
           </TouchableOpacity>
         ))}
@@ -196,7 +196,7 @@ export default function ProfileScreen({ navigation }: any) {
           }}
         >
           <IconClose size={18} color={theme.danger} sw={1.7} />
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger, fontWeight: '500' }}>{ar.auth.logout}</Text>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger }}>{ar.auth.logout}</Text>
         </TouchableOpacity>
 
         {/* Account deletion — required by Play Store + App Store policy.
@@ -250,7 +250,7 @@ export default function ProfileScreen({ navigation }: any) {
           }}
         >
           <IconClose size={18} color={theme.danger} sw={1.7} />
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger, fontWeight: '600' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger }}>
             حذف الحساب
           </Text>
         </TouchableOpacity>

@@ -23,7 +23,7 @@ export function Stamp({ children, icon, sm }: { children: React.ReactNode; icon?
       borderRadius: 999,
     }}>
       {icon || <IconCheck size={sm ? 9 : 11} color={theme.success} sw={2} />}
-      <Text style={{ fontFamily: fonts.arBold, fontSize: sm ? 10 : 11, color: theme.success, fontWeight: '700' }}>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: sm ? 10 : 11, color: theme.success }}>
         {children}
       </Text>
     </View>
@@ -34,7 +34,7 @@ export function Stamp({ children, icon, sm }: { children: React.ReactNode; icon?
 export function ChipTag({ children }: { children: React.ReactNode }) {
   return (
     <View style={{ paddingHorizontal: 9, paddingVertical: 3, backgroundColor: theme.chipBg, borderRadius: 999 }}>
-      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.chipInk, fontWeight: '500' }}>{children}</Text>
+      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.chipInk }}>{children}</Text>
     </View>
   );
 }
@@ -114,7 +114,7 @@ export function LockedCard({ message, style }: { message: string; style?: StyleP
                 {i === 3 ? <IconUnlock size={11} color="#fff" sw={2} />
                   : <Text style={{ color: theme.accentDeep, fontFamily: fonts.ltrBold, fontSize: 10, fontWeight: '700' }}>{i + 1}</Text>}
               </View>
-              <Text style={{ fontFamily: fonts.ar, fontSize: 9, color: theme.accentDeep, textAlign: 'center', lineHeight: 12, fontWeight: '600', maxWidth: 64 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 9, color: theme.accentDeep, textAlign: 'center', lineHeight: 12, maxWidth: 64 }}>
                 {step}
               </Text>
             </View>
@@ -164,7 +164,7 @@ export function UnlockedCard({ phone, eyebrow, style }: { phone: string; eyebrow
           paddingVertical: 12, minHeight: 44,
         }}>
           <IconPhoneIcon size={15} color="#fff" sw={1.8} />
-          <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14, color: '#fff' }}>اتصال</Text>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff' }}>اتصال</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => openWhatsApp(phone)} activeOpacity={0.85} style={{
           flex: 1, backgroundColor: theme.successSoft, borderRadius: radius.lg, borderWidth: 1.5, borderColor: theme.success,
@@ -172,7 +172,7 @@ export function UnlockedCard({ phone, eyebrow, style }: { phone: string; eyebrow
           paddingVertical: 12, minHeight: 44,
         }}>
           <IconMsgCall size={15} color={theme.success} sw={1.8} />
-          <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14, color: theme.success }}>واتساب</Text>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.success }}>واتساب</Text>
         </TouchableOpacity>
       </View>
     </View>

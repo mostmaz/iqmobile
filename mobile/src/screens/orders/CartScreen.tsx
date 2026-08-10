@@ -93,7 +93,7 @@ export default function CartScreen({ navigation }: any) {
         flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
         borderBottomWidth: 1, borderBottomColor: theme.line,
       }}>
-        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
           السلة
         </Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
@@ -121,7 +121,7 @@ export default function CartScreen({ navigation }: any) {
               borderRadius: radius.pill, backgroundColor: theme.ink,
             }}
           >
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.buttonInk }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.buttonInk }}>
               متابعة التسوّق
             </Text>
           </TouchableOpacity>
@@ -145,7 +145,7 @@ export default function CartScreen({ navigation }: any) {
                   {l.image_path ? <Img source={{ uri: fullImageUrl(l.image_path) }} style={{ width: 56, height: 56 }} /> : null}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text numberOfLines={2} style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+                  <Text numberOfLines={2} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
                     {deviceTitle(l.brand, l.model)}
                   </Text>
                   <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
@@ -185,7 +185,7 @@ export default function CartScreen({ navigation }: any) {
               </Text>
             </View>
 
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 8 }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right', marginBottom: 8 }}>
               معلومات التوصيل
             </Text>
 
@@ -214,7 +214,7 @@ export default function CartScreen({ navigation }: any) {
 
             <Btn kind="primary" full disabled={!canSubmit} onPress={submit}>
               {busy ? <ActivityIndicator color={theme.buttonInk} /> : (
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 15.5, fontWeight: '700', color: theme.buttonInk }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 15.5, color: theme.buttonInk }}>
                   تأكيد الطلب · {fmtIQD(cart.subtotal + shippingShown)} د.ع
                 </Text>
               )}

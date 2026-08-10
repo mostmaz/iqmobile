@@ -159,7 +159,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                     }}>
                       <IconPhoneIcon size={20} color="#fff" sw={1.8} />
                     </View>
-                    <Text style={{ fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: theme.ink }}>{meta.label}</Text>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>{meta.label}</Text>
                     {active ? <IconCheck size={16} color={theme.accent} /> : null}
                   </TouchableOpacity>
                 );
@@ -192,7 +192,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                       <IconSpark size={20} color={active ? '#fff' : theme.subtle} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right' }}>
                         {t.label_ar}
                       </Text>
                       <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
@@ -246,7 +246,7 @@ function StatusCard({ tone, title, body }: { tone: 'pending' | 'ok'; title: stri
   const border = tone === 'ok' ? theme.success : theme.accent;
   return (
     <View style={{ backgroundColor: bg, borderWidth: 1, borderColor: border, borderRadius: radius.xxl, padding: 16, marginBottom: 16 }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>{title}</Text>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right' }}>{title}</Text>
       <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', marginTop: 4, lineHeight: 21 }}>{body}</Text>
     </View>
   );

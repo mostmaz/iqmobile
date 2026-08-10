@@ -47,7 +47,7 @@ export default function MyListingsScreen({ navigation }: any) {
       <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
         <Header title={ar.profile.listings} onBack={() => navigation.goBack()} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center' }}>
             سجّل الدخول لرؤية إعلاناتك
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>
@@ -99,7 +99,7 @@ export default function MyListingsScreen({ navigation }: any) {
                   }}
                 >
                   <IconSpark size={13} color={theme.accent} />
-                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, fontWeight: '700', color: theme.accentDeep }}>ميّز إعلانك</Text>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.accentDeep }}>ميّز إعلانك</Text>
                 </TouchableOpacity>
               ) : null}
             </View>

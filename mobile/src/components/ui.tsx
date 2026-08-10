@@ -72,7 +72,7 @@ export function Btn({ children, onPress, kind = 'primary', full, sm, disabled, b
         <Text
           numberOfLines={1}
           maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ color: k.ink, fontFamily: fonts.arBold, fontSize: sm ? 13 : 15, fontWeight: '600' }}
+          style={{ color: k.ink, fontFamily: fonts.arBold, fontSize: sm ? 13 : 15 }}
         >
           {children}
         </Text>
@@ -119,11 +119,11 @@ export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: Heade
         {right}
       </View>
       {eyebrow ? (
-        <Text style={{ marginTop: 14, fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, letterSpacing: 1.2, textTransform: 'uppercase', textAlign: 'right' }}>
+        <Text maxFontSizeMultiplier={FONT_SCALE_RELAXED} style={{ marginTop: 14, fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
           {eyebrow}
         </Text>
       ) : null}
-      <Text style={{ marginTop: eyebrow ? 4 : 14, fontFamily: fonts.arBold, fontSize: 26, color: theme.ink, fontWeight: '700', letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
+      <Text style={{ marginTop: eyebrow ? 4 : 14, fontFamily: fonts.arBold, fontSize: 26, color: theme.ink, letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
         {title}
       </Text>
     </View>
@@ -131,17 +131,21 @@ export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: Heade
 }
 
 // ─── Field label (mono uppercase) ────────────────────────────────
+// A mono font with uppercase tracking is a Latin idiom, and both halves of
+// it misfire on Arabic. JetBrains Mono carries no Arabic glyphs, so the
+// label silently falls back to a system face with different metrics;
+// textTransform: uppercase is a no-op for a script with no case; and
+// letterSpacing on a cursive script widens every gap, which is what makes
+// "رقم الهاتف للتواصل" look like it was typed with double spaces. The
+// spacing lives in the label's own style, not in the string.
 export function FieldLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   return (
     <Text maxFontSizeMultiplier={FONT_SCALE_RELAXED} style={[{
-      fontFamily: fonts.mono,
-      fontSize: 10.5,
-      letterSpacing: 1.2,
+      fontFamily: fonts.arBold,
+      fontSize: 12,
       color: theme.subtle,
-      textTransform: 'uppercase',
       marginBottom: 8,
-      textAlign: 'right',
-    }, style]}>
+      textAlign: 'right' }, style]}>
       {children}
     </Text>
   );
@@ -177,7 +181,7 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
       <Text
         numberOfLines={1}
         maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-        style={{ fontFamily: fonts.ar, fontSize: small ? 12 : 12.5, fontWeight: '500', color: active ? theme.bg : theme.ink }}
+        style={{ fontFamily: fonts.ar, fontSize: small ? 12 : 12.5, color: active ? theme.bg : theme.ink }}
       >
         {children}
       </Text>
@@ -321,14 +325,12 @@ export function Card({ children, style, accent }: { children: React.ReactNode; s
 
 export function Eyebrow({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   return (
-    <Text style={[{
-      fontFamily: fonts.mono,
-      fontSize: 10.5,
-      letterSpacing: 1.2,
+    <Text maxFontSizeMultiplier={FONT_SCALE_RELAXED} style={[{
+      fontFamily: fonts.arBold,
+      fontSize: 11,
+      letterSpacing: 0.4,
       color: theme.subtle,
-      textTransform: 'uppercase',
-      textAlign: 'right',
-    }, style]}>{children}</Text>
+      textAlign: 'right' }, style]}>{children}</Text>
   );
 }
 

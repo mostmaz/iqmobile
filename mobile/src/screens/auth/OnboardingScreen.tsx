@@ -149,7 +149,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
             <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 14, letterSpacing: -0.5 }}>iQ</Text>
           </View>
           <View>
-            <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14, color: theme.ink }}>IQ Mobile</Text>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>IQ Mobile</Text>
             <Text style={{
               marginTop: 2, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4,
               textTransform: 'uppercase', color: theme.subtle,
@@ -162,9 +162,8 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
         {/* hero copy */}
         <View style={{ marginTop: 4 }}>
           <Text style={{
-            fontFamily: fonts.arBold, fontWeight: '700', fontSize: 28,
-            letterSpacing: -0.6, lineHeight: 34, color: theme.ink, textAlign: 'right',
-          }}>
+            fontFamily: fonts.arBold, fontSize: 28,
+            letterSpacing: -0.6, lineHeight: 34, color: theme.ink, textAlign: 'right' }}>
             سوق الموبايلات.{'\n'}
             <Text style={{ color: theme.accent }}>محلي · صادق · بحساب واحد.</Text>
           </Text>
@@ -216,7 +215,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
               <Btn kind="accent" full onPress={start} busy={busy}>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                   <IconPin size={14} color="#fff" sw={1.7} />
-                  <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>
+                  <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>
                     حدد محافظتي وابدأ
                   </Text>
                 </View>
@@ -241,7 +240,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
             paddingTop: 16, paddingBottom: insets.bottom + 16, maxHeight: '80%',
           }}>
             <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'right' }}>
                 حدد محافظتك
               </Text>
               <Text style={{ marginTop: 4, fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
@@ -260,7 +259,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
                   style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 14 }}
                 >
                   <IconPin size={15} color={theme.accent} sw={1.7} />
-                  <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 15, fontWeight: '500', color: theme.ink, textAlign: 'right' }}>
+                  <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 15, color: theme.ink, textAlign: 'right' }}>
                     {item}
                   </Text>
                 </TouchableOpacity>
@@ -290,7 +289,7 @@ function Move({ icon, title, sub, divider }: {
         {icon}
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14, color: theme.ink, textAlign: 'right' }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
           {title}
         </Text>
         <Text style={{ marginTop: 1, fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, lineHeight: 18, textAlign: 'right' }}>
@@ -303,7 +302,7 @@ function Move({ icon, title, sub, divider }: {
 
 function TrustChip({ children }: { children: React.ReactNode }) {
   return (
-    <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, fontWeight: '600', color: theme.ink, textAlign: 'center' }}>
+    <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.ink, textAlign: 'center' }}>
       {children}
     </Text>
   );

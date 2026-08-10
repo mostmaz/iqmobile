@@ -121,9 +121,8 @@ export function NotificationBanner() {
         }} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={{
-            fontFamily: fonts.arBold, fontWeight: '700', fontSize: 13.5,
-            color: theme.buttonInk, textAlign: 'right',
-          }}>
+            fontFamily: fonts.arBold, fontSize: 13.5,
+            color: theme.buttonInk, textAlign: 'right' }}>
             {banner.title}
           </Text>
           <Text numberOfLines={1} style={{

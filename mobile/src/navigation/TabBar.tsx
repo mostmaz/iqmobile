@@ -77,7 +77,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               }}
             >
               <Icon size={22} color={theme.buttonInk} sw={2} />
-              <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ color: theme.buttonInk, fontFamily: fonts.arBold, fontSize: 10.5, fontWeight: '700' }}>
+              <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ color: theme.buttonInk, fontFamily: fonts.arBold, fontSize: 10.5 }}>
                 {LABELS[route.name]}
               </Text>
             </TouchableOpacity>

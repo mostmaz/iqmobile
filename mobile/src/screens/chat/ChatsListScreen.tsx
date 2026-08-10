@@ -126,7 +126,7 @@ export default function ChatsListScreen({ navigation, route }: any) {
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, fontWeight: '600', textAlign: 'right' }}>
+                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
                   {counterName}
                 </Text>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
@@ -163,10 +163,9 @@ export default function ChatsListScreen({ navigation, route }: any) {
                 <IconChat size={32} color={theme.subtle} sw={1.6} />
               </View>
               <Text style={{
-                fontFamily: fonts.arBold, fontWeight: '700',
+                fontFamily: fonts.arBold,
                 fontSize: 17, color: theme.ink, textAlign: 'center',
-                marginBottom: 6,
-              }}>
+                marginBottom: 6 }}>
                 {ar.chat.emptyTitle}
               </Text>
               <Text style={{

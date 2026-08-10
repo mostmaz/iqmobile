@@ -49,7 +49,7 @@ export default function SavedScreen({ navigation }: any) {
       <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
         <Header title={ar.profile.saved} />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center' }}>
             سجّل الدخول لحفظ الإعلانات
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 22 }}>

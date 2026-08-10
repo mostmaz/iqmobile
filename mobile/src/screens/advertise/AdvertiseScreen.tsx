@@ -47,7 +47,7 @@ export default function AdvertiseScreen({ navigation }: any) {
             <IconSpark size={20} color="#fff" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 16, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.ink, textAlign: 'right' }}>
               روّج لمتجرك في تطبيق iQ
             </Text>
             <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, marginTop: 4, textAlign: 'right', lineHeight: 21 }}>

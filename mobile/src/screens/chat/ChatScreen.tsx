@@ -226,9 +226,8 @@ export default function ChatScreen({ route, navigation }: any) {
       }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text numberOfLines={1} style={{
-            fontFamily: fonts.arBold, fontWeight: '700', fontSize: 16,
-            color: theme.ink, textAlign: 'right',
-          }}>
+            fontFamily: fonts.arBold, fontSize: 16,
+            color: theme.ink, textAlign: 'right' }}>
             {counterpartyName}
           </Text>
           {listingLabel ? (
@@ -284,7 +283,7 @@ export default function ChatScreen({ route, navigation }: any) {
         ListEmptyComponent={
           messages === undefined ? null : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 15, color: theme.ink, textAlign: 'center', marginBottom: 6 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center', marginBottom: 6 }}>
                 {ar.chat.noMessagesTitle}
               </Text>
               <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', lineHeight: 20 }}>

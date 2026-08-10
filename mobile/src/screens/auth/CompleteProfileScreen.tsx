@@ -113,9 +113,8 @@ export default function CompleteProfileScreen() {
         paddingTop: insets.top + 18, paddingBottom: insets.bottom + 30, paddingHorizontal: 20,
       }}>
         <Text style={{
-          fontFamily: fonts.arBold, fontWeight: '700', fontSize: 26, color: theme.ink,
-          letterSpacing: -0.5, lineHeight: 32, textAlign: 'right',
-        }}>
+          fontFamily: fonts.arBold, fontSize: 26, color: theme.ink,
+          letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
           أكمل ملفك الشخصي
         </Text>
         <Text style={{
@@ -187,7 +186,7 @@ export default function CompleteProfileScreen() {
               }}>
                 <IconPin size={18} color={coords ? theme.success : theme.subtle} sw={1.7} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '600', color: coords ? theme.success : theme.ink, textAlign: 'right' }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: coords ? theme.success : theme.ink, textAlign: 'right' }}>
                     {coords ? 'تم تحديد الموقع' : 'استخدم موقعي الحالي'}
                   </Text>
                   {coords ? (
@@ -232,7 +231,7 @@ function TypeBtn({ active, onPress, title, subtitle }: { active: boolean; onPres
       backgroundColor: active ? theme.accentSoft : theme.surface,
       alignItems: 'center',
     }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: active ? theme.accentDeep : theme.ink }}>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: active ? theme.accentDeep : theme.ink }}>
         {title}
       </Text>
       <Text style={{ marginTop: 2, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>

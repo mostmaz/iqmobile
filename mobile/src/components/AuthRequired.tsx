@@ -19,7 +19,7 @@ export function AuthRequired({ title, body, mode = 'login' }: { title: string; b
       }}>
         <IconLock size={26} color={theme.accent} sw={1.7} />
       </View>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, textAlign: 'center' }}>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'center' }}>
         {title}
       </Text>
       <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center', lineHeight: 21 }}>

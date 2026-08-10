@@ -58,7 +58,7 @@ export default function ShopsScreen({ navigation }: any) {
           <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center' }}>
             <IconStore size={17} color="#fff" sw={1.8} />
           </View>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, fontWeight: '700', color: theme.ink, flex: 1, textAlign: 'right' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, flex: 1, textAlign: 'right' }}>
             المتاجر
           </Text>
         </View>
@@ -75,7 +75,7 @@ export default function ShopsScreen({ navigation }: any) {
           }}
         >
           <IconPlus size={18} color={isShop ? theme.ink : theme.buttonInk} sw={2} />
-          <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700', color: isShop ? theme.ink : theme.buttonInk, textAlign: 'right' }}>
+          <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14, color: isShop ? theme.ink : theme.buttonInk, textAlign: 'right' }}>
             {isShop ? 'إدارة متجري' : 'سجّل متجرك مجاناً'}
           </Text>
           <View style={{ transform: [{ scaleX: -1 }] }}>
@@ -116,7 +116,7 @@ export default function ShopsScreen({ navigation }: any) {
                   backgroundColor: theme.surface,
                 }}
               >
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.ink }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink }}>
                   عرض متاجر كل المحافظات
                 </Text>
               </TouchableOpacity>
@@ -143,18 +143,18 @@ function ShopRow({ shop, onPress }: { shop: ShopCard; onPress: () => void }) {
         {logo ? (
           <Img source={{ uri: fullImageUrl(logo) }} style={{ width: 56, height: 56 }} />
         ) : (
-          <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 22, color: theme.subtle }}>{initial}</Text>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 22, color: theme.subtle }}>{initial}</Text>
         )}
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-          <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 15, color: theme.ink, textAlign: 'right', flexShrink: 1 }}>
+          <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right', flexShrink: 1 }}>
             {shop.shop_name}
           </Text>
           {shop.is_featured ? (
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 2, backgroundColor: theme.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
               <IconSpark size={9} color="#fff" />
-              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 9, fontWeight: '700' }}>مميّز</Text>
+              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 9 }}>مميّز</Text>
             </View>
           ) : null}
         </View>

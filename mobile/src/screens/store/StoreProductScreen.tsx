@@ -485,7 +485,7 @@ export default function StoreProductScreen({ navigation, route }: any) {
             }}
           >
             <IconMsgCall size={17} color="#fff" sw={1.9} />
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '700', color: '#fff' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: '#fff' }}>
               اتصل للسعر والطلب
             </Text>
           </TouchableOpacity>

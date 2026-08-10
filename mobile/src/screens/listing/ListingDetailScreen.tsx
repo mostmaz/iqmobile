@@ -326,7 +326,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
               backgroundColor: statusBg,
             }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: '#fff', fontWeight: '700', letterSpacing: 0.4 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: '#fff', letterSpacing: 0.4 }}>
                 {statusLabel}
               </Text>
             </View>
@@ -341,7 +341,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             {data.color ? <ChipTag>{data.color}</ChipTag> : null}
           </View>
 
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 22, fontWeight: '700', color: theme.ink, letterSpacing: -0.3, textAlign: 'right' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 22, color: theme.ink, letterSpacing: -0.3, textAlign: 'right' }}>
             {deviceTitle(data.brand, data.model)}
           </Text>
 
@@ -350,7 +350,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               marginTop: 10, backgroundColor: theme.chipBg, borderWidth: 1, borderColor: theme.line,
               borderRadius: radius.lg ?? 12, paddingHorizontal: 12, paddingVertical: 10,
             }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
                 غير متوفر حالياً
               </Text>
               <Text style={{ marginTop: 3, fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
@@ -366,7 +366,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               </Text>
               <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: stale ? theme.subtle : theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
                 {fmtIQD(data.asking_price)}
-                <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar, fontWeight: '500' }}>  د.ع</Text>
+                <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
               </Text>
 
               {/* What the same device costs new, at the same capacity. Sent
@@ -388,7 +388,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                       backgroundColor: theme.successSoft ?? 'rgba(16,185,129,0.14)',
                       paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill,
                     }}>
-                      <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, fontWeight: '700', color: theme.success }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.success }}>
                         {/* The number and its "%" are a single LTR run. Left
                             to the bidi algorithm inside Arabic text, the sign
                             reordered to the front and the badge read "(%16)". */}
@@ -434,7 +434,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
                 اشترِ من المتجر · الدفع عند الاستلام
               </Text>
             </TouchableOpacity>
@@ -495,7 +495,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               borderRadius: radius.xxl, flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
             }}>
               <IconSpark size={18} color={theme.success} />
-              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, fontWeight: '700', color: theme.ink, textAlign: 'right' }}>
+              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}>
                 إعلانك مميّز حتى {new Date((data as any).featured_until).toLocaleDateString('en-GB')}
               </Text>
             </View>
@@ -517,7 +517,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 <IconSpark size={20} color="#fff" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff', textAlign: 'right' }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff', textAlign: 'right' }}>
                   ميّز إعلانك
                 </Text>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: 'rgba(255,255,255,0.9)', marginTop: 2, textAlign: 'right' }}>
@@ -539,7 +539,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             <Btn kind="ghost" full onPress={openBuyerChats}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
                 <IconChat size={16} color={theme.ink} sw={1.7} />
-                <Text style={{ color: theme.ink, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>
+                <Text style={{ color: theme.ink, fontFamily: fonts.arBold, fontSize: 14 }}>
                   {ar.listing.buyerChats}
                 </Text>
               </View>
@@ -579,20 +579,20 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                     {data.seller.profile_image_path ? (
                       <Img source={{ uri: fullImageUrl(data.seller.profile_image_path) }} style={{ width: 44, height: 44 }} />
                     ) : (
-                      <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.chipInk, fontWeight: '700' }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.chipInk }}>
                         {data.seller.display_name?.[0]}
                       </Text>
                     )}
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                      <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14, color: theme.ink, flexShrink: 1 }}>
+                      <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, flexShrink: 1 }}>
                         {data.seller.display_name}
                       </Text>
                       {/* Tiny "متجر" chip when seller is a shop. */}
                       {data.seller.seller_type === 'shop' ? (
                         <View style={{ paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, backgroundColor: theme.accentSoft }}>
-                          <Text style={{ fontFamily: fonts.arBold, fontSize: 10, fontWeight: '700', color: theme.accentDeep }}>متجر</Text>
+                          <Text style={{ fontFamily: fonts.arBold, fontSize: 10, color: theme.accentDeep }}>متجر</Text>
                         </View>
                       ) : null}
                     </View>
@@ -644,7 +644,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                     flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
                   }}>
                   <IconPin size={14} color={theme.accent} sw={1.7} />
-                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: theme.ink }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink }}>
                     افتح موقع المتجر على الخريطة
                   </Text>
                 </TouchableOpacity>
@@ -688,7 +688,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 }}
               >
                 <IconBell size={15} color={isWatched ? theme.accent : theme.ink} sw={1.8} />
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: isWatched ? theme.accent : theme.ink }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: isWatched ? theme.accent : theme.ink }}>
                   {isWatched ? 'سنُنبّهك إذا انخفض السعر ✓' : 'نبّهني إذا انخفض السعر'}
                 </Text>
               </TouchableOpacity>
@@ -702,7 +702,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 }}
               >
                 <IconSpark size={15} color={theme.ink} sw={1.8} />
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600', color: theme.ink }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink }}>
                   أريد هذا الجهاز بسعر أقل — أضفه لقائمة الرغبات
                 </Text>
               </TouchableOpacity>
@@ -874,7 +874,7 @@ function ContactRow({
             <Btn kind="success" full onPress={trackedCall}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                 <IconPhoneIcon size={15} color="#fff" sw={1.8} />
-                <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>اتصال</Text>
+                <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>اتصال</Text>
               </View>
             </Btn>
           ) : null}
@@ -882,7 +882,7 @@ function ContactRow({
             <Btn kind="successSoft" full onPress={trackedWhatsApp}>
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                 <IconMsgCall size={15} color={theme.success} sw={1.8} />
-                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>واتساب</Text>
+                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontSize: 14 }}>واتساب</Text>
               </View>
             </Btn>
           ) : null}
@@ -896,7 +896,7 @@ function ContactRow({
           <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
               <IconChat size={15} color="#fff" sw={1.8} />
-              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontWeight: '700', fontSize: 14 }}>{ar.listing.chat}</Text>
+              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{ar.listing.chat}</Text>
             </View>
           </Btn>
         </View>

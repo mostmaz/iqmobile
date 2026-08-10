@@ -131,7 +131,7 @@ export default function ShopScreen({ navigation, route }: any) {
               ...shadowSoft,
             }}
           >
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: '#fff' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
               عرض السلة ({cart.count})
             </Text>
             <Text style={{ fontFamily: fonts.ltrBold, fontSize: 15, color: '#fff' }}>
@@ -172,18 +172,18 @@ export default function ShopScreen({ navigation, route }: any) {
                   {logo ? (
                     <Img source={{ uri: fullImageUrl(logo) }} style={{ width: 68, height: 68 }} />
                   ) : (
-                    <Text style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 28, color: theme.subtle }}>{initial}</Text>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 28, color: theme.subtle }}>{initial}</Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                    <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontWeight: '700', fontSize: 19, color: theme.ink, textAlign: 'right', flexShrink: 1 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 19, color: theme.ink, textAlign: 'right', flexShrink: 1 }}>
                       {shop.shop_name}
                     </Text>
                     {shop.is_featured ? (
                       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 2, backgroundColor: theme.accent, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999 }}>
                         <IconSpark size={9} color="#fff" />
-                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 9, fontWeight: '700' }}>مميّز</Text>
+                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 9 }}>مميّز</Text>
                       </View>
                     ) : null}
                   </View>
@@ -229,7 +229,7 @@ export default function ShopScreen({ navigation, route }: any) {
                 <View style={{ marginTop: 14, gap: 8 }}>
                   {phones.map((p) => (
                     <Btn key={p} kind="primary" full onPress={() => callPhone(p)}>
-                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>
+                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15 }}>
                         اتصال · <Text style={{ fontFamily: fonts.ltr }}>{p}</Text>
                       </Text>
                     </Btn>
@@ -238,7 +238,7 @@ export default function ShopScreen({ navigation, route }: any) {
                     <Btn kind="success" full onPress={() => openWhatsApp(whatsapp, `مرحباً، أتواصل معك من تطبيق iQ بخصوص متجر ${shop.shop_name}`)}>
                       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                         <IconMsgCall size={16} color="#fff" />
-                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>واتساب</Text>
+                        <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15 }}>واتساب</Text>
                       </View>
                     </Btn>
                   ) : null}
@@ -263,7 +263,7 @@ export default function ShopScreen({ navigation, route }: any) {
                   <Btn kind="accent" full onPress={() => (navigation as any).getParent()?.navigate('Sell')}>
                     <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
                       <IconPlus size={17} color="#fff" sw={2} />
-                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15, fontWeight: '600' }}>
+                      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15 }}>
                         أضف جهازاً وسعره إلى متجرك
                       </Text>
                     </View>
@@ -275,7 +275,7 @@ export default function ShopScreen({ navigation, route }: any) {
             {/* Price-list images — tap to open full-screen (swipe between). */}
             {images.length ? (
               <View style={{ marginBottom: 14 }}>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
                   قائمة الأسعار
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row-reverse' }}>
@@ -291,7 +291,7 @@ export default function ShopScreen({ navigation, route }: any) {
               </View>
             ) : null}
 
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, fontWeight: '700', color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
               إعلانات المتجر
             </Text>
 
@@ -333,9 +333,8 @@ export default function ShopScreen({ navigation, route }: any) {
                   }}
                 >
                   <Text style={{
-                    fontFamily: fonts.arBold, fontSize: 13, fontWeight: '600',
-                    color: brandFilter ? '#fff' : theme.ink,
-                  }}>
+                    fontFamily: fonts.arBold, fontSize: 13,
+                    color: brandFilter ? '#fff' : theme.ink }}>
                     {brandFilter ?? 'كل الماركات'}
                   </Text>
                   <IconChevronDown size={15} color={brandFilter ? '#fff' : theme.subtle} sw={1.8} />
@@ -391,7 +390,7 @@ function SocialButton({ label, bg, onPress }: { label: string; bg: string; onPre
         alignItems: 'center', justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{label}</Text>
     </TouchableOpacity>
   );
 }

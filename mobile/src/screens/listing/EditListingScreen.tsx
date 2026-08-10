@@ -113,7 +113,7 @@ export default function EditListingScreen({ route, navigation }: any) {
               هل تقصد {(Number(askingPrice) * 1000).toLocaleString('en-US')} د.ع؟
             </Text>
             <View style={{ backgroundColor: theme.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 12, fontWeight: '700', color: '#fff' }}>نعم</Text>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: '#fff' }}>نعم</Text>
             </View>
           </TouchableOpacity>
         ) : null}
