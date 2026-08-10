@@ -237,7 +237,7 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
 
   const variants = db.prepare(
     `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at,
-            stock_qty, COALESCE(price_on_request,0) AS price_on_request
+            stock_qty, COALESCE(price_on_request,0) AS price_on_request, specs_json
        FROM phone_listings
       WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
         AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
@@ -260,12 +260,27 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
       seen.add(im.image_path);
       images.push(im);
     }
-    return { ...v, images: own };
+    const { specs_json, ...rest } = v;
+    return { ...rest, images: own };
   });
 
   // Same rule as the grid: name the product after its earliest-added variant
   // so both screens show one identical title.
   const lead = variants.reduce((a, b) => (a.id <= b.id ? a : b));
+
+  // Specs are written to every variant together, but a product imported
+  // before that could have them on only one row — so take the first variant
+  // that actually has any rather than trusting the lead.
+  const specs = (() => {
+    for (const v of [lead, ...variants]) {
+      if (!v.specs_json) continue;
+      try {
+        const arr = JSON.parse(v.specs_json);
+        if (Array.isArray(arr) && arr.length) return arr;
+      } catch { /* malformed row — keep looking */ }
+    }
+    return [];
+  })();
 
   res.json({
     brand: lead.brand,
@@ -277,6 +292,7 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
     min_price: Math.min(...variants.map((v) => v.asking_price)),
     max_price: Math.max(...variants.map((v) => v.asking_price)),
     price_on_request: variants.every((v) => v.price_on_request),
+    specs,
     storages: [...new Set(variants.map((v) => v.storage).filter(Boolean))],
     colors: [...new Set(variants.map((v) => v.color).filter(Boolean))],
     variants: withImages,

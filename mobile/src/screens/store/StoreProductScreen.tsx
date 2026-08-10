@@ -29,6 +29,9 @@ import { useCart } from '../../lib/cart';
 import { callPhone } from '../../lib/contact';
 
 const SCREEN_W = Dimensions.get('window').width;
+// Buy bar: 10 top + 48 button + 10 bottom + 1 border. The ScrollView pads by
+// exactly this so the last card clears it instead of being sliced in half.
+const BUY_BAR_H = 69;
 
 export default function StoreProductScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -176,7 +179,7 @@ export default function StoreProductScreen({ navigation, route }: any) {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: BUY_BAR_H + 16 }} showsVerticalScrollIndicator={false}>
         {/* ── Gallery ─────────────────────────────────────────────── */}
         <View>
           {gallery.length ? (
@@ -223,34 +226,6 @@ export default function StoreProductScreen({ navigation, route }: any) {
             </View>
           ) : null}
 
-          <View style={{ position: 'absolute', top: insets.top + 6, right: 14, left: 14 }}>
-            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                activeOpacity={0.8}
-                style={{
-                  width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
-                  alignItems: 'center', justifyContent: 'center', ...shadowSoft,
-                }}
-              >
-                <View style={{ transform: [{ scaleX: -1 }] }}>
-                  <IconArrowLeft size={20} color={theme.ink} sw={1.8} />
-                </View>
-              </TouchableOpacity>
-              {product.shop.phone ? (
-                <TouchableOpacity
-                  onPress={() => callPhone(product.shop.phone as string)}
-                  activeOpacity={0.8}
-                  style={{
-                    width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
-                    alignItems: 'center', justifyContent: 'center', ...shadowSoft,
-                  }}
-                >
-                  <IconMsgCall size={17} color={theme.accentDeep} sw={1.8} />
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          </View>
         </View>
 
         {/* ── Title + price ───────────────────────────────────────── */}
@@ -375,6 +350,49 @@ export default function StoreProductScreen({ navigation, route }: any) {
           </View>
         ) : null}
 
+        {/* ── Key specs ───────────────────────────────────────────────
+            Sits above the reassurance block and below the description,
+            because by this point the shopper has picked their option and
+            the next question is "is this actually the phone I want". */}
+        {product.specs?.length ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 18 }}>
+            <Text style={{
+              fontFamily: fonts.arBold, fontSize: 14,
+              color: theme.ink, textAlign: 'right', marginBottom: 8,
+            }}>
+              المواصفات
+            </Text>
+            <View style={{
+              backgroundColor: theme.surface, borderRadius: radius.xl,
+              borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
+            }}>
+              {product.specs.map((sp, i) => (
+                <View
+                  key={`${sp.label}-${i}`}
+                  style={{
+                    flexDirection: 'row-reverse', alignItems: 'center',
+                    paddingVertical: 10, paddingHorizontal: 14,
+                    borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.line,
+                  }}
+                >
+                  <Text style={{
+                    flex: 1, fontFamily: fonts.ar, fontSize: 12.5,
+                    color: theme.subtle, textAlign: 'right',
+                  }}>
+                    {sp.label}
+                  </Text>
+                  <Text style={{
+                    flex: 1.4, fontFamily: fonts.arBold, fontSize: 13,
+                    color: theme.ink, textAlign: 'left',
+                  }}>
+                    {sp.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         {/* ── Reassurance ─────────────────────────────────────────── */}
         <View style={{
           marginHorizontal: 16, marginTop: 18, padding: 14,
@@ -392,10 +410,39 @@ export default function StoreProductScreen({ navigation, route }: any) {
         </View>
       </ScrollView>
 
+          <View style={{ position: 'absolute', top: insets.top + 6, right: 14, left: 14 }}>
+            <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                activeOpacity={0.8}
+                style={{
+                  width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
+                  alignItems: 'center', justifyContent: 'center', ...shadowSoft,
+                }}
+              >
+                <View style={{ transform: [{ scaleX: -1 }] }}>
+                  <IconArrowLeft size={20} color={theme.ink} sw={1.8} />
+                </View>
+              </TouchableOpacity>
+              {product.shop.phone ? (
+                <TouchableOpacity
+                  onPress={() => callPhone(product.shop.phone as string)}
+                  activeOpacity={0.8}
+                  style={{
+                    width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
+                    alignItems: 'center', justifyContent: 'center', ...shadowSoft,
+                  }}
+                >
+                  <IconMsgCall size={17} color={theme.accentDeep} sw={1.8} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
       {/* ── Buy bar ───────────────────────────────────────────────── */}
       <View style={{
         position: 'absolute', left: 0, right: 0, bottom: 0,
-        paddingHorizontal: 14, paddingTop: 10, paddingBottom: insets.bottom + 10,
+        paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10,
         backgroundColor: theme.surface, borderTopWidth: 1, borderTopColor: theme.line,
         flexDirection: 'row-reverse', gap: 8,
       }}>

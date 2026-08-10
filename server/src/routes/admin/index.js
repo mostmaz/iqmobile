@@ -405,6 +405,24 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
 
   // Units in stock. Explicit null/'' clears it back to UNTRACKED, which is
   // different from 0 (0 means sold out and hides the product).
+  // Key specs. Written to EVERY variant of this product in this shop, not
+  // just the row being edited: screen/chipset/battery don't change with
+  // storage, and asking the operator to retype them per capacity guarantees
+  // the 128GB and 256GB rows eventually disagree.
+  let specsOp = null;
+  if (has('specs')) {
+    const raw = Array.isArray(b.specs) ? b.specs : null;
+    if (raw === null) return res.status(400).json({ error: 'bad_specs' });
+    const clean = raw
+      .map((x) => ({
+        label: String(x?.label ?? '').trim().slice(0, 40),
+        value: String(x?.value ?? '').trim().slice(0, 120),
+      }))
+      .filter((x) => x.label && x.value)
+      .slice(0, 20);
+    specsOp = clean.length ? JSON.stringify(clean) : null;
+  }
+
   if (has('price_on_request')) {
     fields.push('price_on_request=?'); params.push(b.price_on_request ? 1 : 0);
   }
@@ -433,7 +451,20 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
     }
   }
 
-  if (fields.length === 0 && !costOp) return res.status(400).json({ error: 'no_fields' });
+  if (fields.length === 0 && !costOp && specsOp === null && !has('specs')) {
+    return res.status(400).json({ error: 'no_fields' });
+  }
+
+  if (has('specs')) {
+    const n = db.prepare(
+      `UPDATE phone_listings SET specs_json=?, updated_at=?
+        WHERE seller_id=? AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))`,
+    ).run(specsOp, now(), listing.seller_id, listing.brand, listing.model).changes;
+    if (!fields.length && !costOp) {
+      const only = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listing.id);
+      return res.json({ ok: true, listing: only, specs_applied_to: n });
+    }
+  }
 
   if (costOp) {
     if (costOp.clear) db.prepare('DELETE FROM listing_costs WHERE listing_id=?').run(listing.id);
@@ -2204,8 +2235,15 @@ r.patch('/orders/:id(\\d+)', requireAdmin, (req, res) => {
       cancelled: 'أُلغي طلبك',
     };
     if (AR[next]) {
+      // The body was just the order code. "IQ-1042" alone tells the customer
+      // nothing on a lock screen — the amount is what they actually need to
+      // have ready when the courier knocks.
+      const money = `${Number(o.total || 0).toLocaleString('en-US')} د.ع`;
+      const body = next === 'shipped' || next === 'confirmed'
+        ? `${o.code} · ${money} تُدفع عند الاستلام`
+        : `${o.code} · ${money}`;
       notify(o.user_id, 'order.' + next, { order_id: o.id, code: o.code, status: next },
-        { title: AR[next], body: o.code });
+        { title: AR[next], body });
     }
   }
   res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
@@ -2260,6 +2298,12 @@ r.post('/orders/:id(\\d+)/return', requireAdmin, (req, res) => {
   restoreStockForOrder(o.id);
   db.prepare('UPDATE orders SET returned_at=?, return_reason=?, updated_at=? WHERE id=?')
     .run(t, reason, t, o.id);
+  // Tell the customer too — a return recorded silently is how a refund
+  // dispute starts.
+  if (o.user_id) {
+    notify(o.user_id, 'order.returned', { order_id: o.id, code: o.code, reason },
+      { title: 'تم تسجيل إرجاع طلبك', body: o.code });
+  }
   res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
 });
 

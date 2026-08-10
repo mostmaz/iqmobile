@@ -592,8 +592,11 @@ export interface StoreVariant {
   price_on_request?: number | boolean;
   images: Array<{ id: number; image_path: string; position: number }>;
 }
+export interface StoreSpec { label: string; value: string }
 export interface StoreProduct {
   brand: string; model: string; description: string | null;
+  // Key specs, entered per product in the dashboard.
+  specs?: StoreSpec[];
   images: Array<{ id: number; image_path: string; position: number }>;
   min_price: number; max_price: number;
   price_on_request?: boolean;

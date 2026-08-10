@@ -56,6 +56,7 @@ export default function StoreHomeScreen({ navigation, route }: any) {
   const [sort, setSort] = useState<StoreSort>('newest');
   const [sortOpen, setSortOpen] = useState(false);
   const catRef = useRef<ScrollView>(null);
+  const typeRef = useRef<ScrollView>(null);
 
   const { data: home } = useQuery({
     queryKey: ['storefront', shopId],
@@ -171,23 +172,31 @@ export default function StoreHomeScreen({ navigation, route }: any) {
       </View>
 
       {/* ── Product kind: phones / tablets / accessories ─────────────
-          Sits ABOVE the brand rail because it's the coarser cut and the
-          one a shopper actually arrives with ("I want a tablet"). Hidden
-          when the shop only sells one kind — a lone chip is not a choice. */}
+          Same pill shape and states as the brand rail below it. They used to
+          look like two unrelated widgets — one row of stretched outline
+          chips above a row of content-sized dark pills, each with its own
+          differently-styled "الكل" — which read as a glitch rather than as
+          two filters. Hidden when the shop sells only one kind. */}
       {typeCounts.length > 1 ? (
-        <View style={{
-          backgroundColor: theme.surface, paddingBottom: 10,
-          flexDirection: 'row-reverse', paddingHorizontal: 14, gap: 7,
-        }}>
-          <TypeChip active={!type} label="الكل" onPress={() => setType(null)} />
-          {typeCounts.map((t) => (
-            <TypeChip
-              key={t.type}
-              active={type === t.type}
-              label={`${TYPE_AR[t.type]} ${t.count}`}
-              onPress={() => setType(type === t.type ? null : t.type)}
-            />
-          ))}
+        <View style={{ backgroundColor: theme.surface, paddingBottom: 10 }}>
+          <ScrollView
+            ref={typeRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            onContentSizeChange={() => typeRef.current?.scrollToEnd({ animated: false })}
+            contentContainerStyle={{ paddingHorizontal: 14, gap: 7, flexDirection: 'row-reverse' }}
+          >
+            <Chip active={!type} label="الكل" count={home?.product_count ?? 0} onPress={() => setType(null)} />
+            {typeCounts.map((t) => (
+              <Chip
+                key={t.type}
+                active={type === t.type}
+                label={TYPE_AR[t.type]}
+                count={t.count}
+                onPress={() => setType(type === t.type ? null : t.type)}
+              />
+            ))}
+          </ScrollView>
         </View>
       ) : null}
 
@@ -360,30 +369,6 @@ export default function StoreHomeScreen({ navigation, route }: any) {
         </View>
       ) : null}
     </View>
-  );
-}
-
-function TypeChip({ active, label, onPress }: {
-  active: boolean; label: string; onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.8}
-      style={{
-        flex: 1, paddingVertical: 8, borderRadius: radius.lg, alignItems: 'center',
-        backgroundColor: active ? theme.accentSoft : theme.bg,
-        borderWidth: active ? 1.5 : 1,
-        borderColor: active ? theme.accent : theme.line,
-      }}
-    >
-      <Text numberOfLines={1} style={{
-        fontFamily: fonts.arBold, fontSize: 12.5,
-        color: active ? theme.accentDeep : theme.ink,
-      }}>
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 

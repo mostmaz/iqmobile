@@ -24,6 +24,15 @@ const KIND_LABEL: Record<string, string> = {
   'saved_search.match': 'إعلان جديد يطابق بحثك المحفوظ',
   'wishlist.match': 'جهاز من قائمة رغباتك متوفر 🎯',
   'price.drop': 'انخفض سعر إعلان تراقبه 🔻',
+  // Storefront orders. Without these the inbox rendered the raw kind
+  // ("order.confirmed") — the notifications were firing all along, they just
+  // arrived looking like a bug.
+  'order.placed': 'طلب جديد 🛒',
+  'order.confirmed': 'تم تأكيد طلبك ✅',
+  'order.shipped': 'طلبك في الطريق 🚚',
+  'order.delivered': 'تم تسليم طلبك 🎉',
+  'order.cancelled': 'أُلغي طلبك',
+  'order.returned': 'تم تسجيل إرجاع طلبك',
 };
 
 // Compose the secondary line under the kind label: "<sender> · <listing>".
@@ -73,6 +82,13 @@ export default function NotificationsScreen({ navigation }: any) {
           params: { screen: 'Chat', params: { id: chatId } },
         });
       }
+      return;
+    }
+    // An order notification carries an order_id, not a listing — send the
+    // customer to their orders list, which is the only screen that can
+    // actually answer "where is my order".
+    if (item.payload?.order_id || String(item.kind).startsWith('order.')) {
+      navigation.navigate('MyOrders');
       return;
     }
     if (item.payload?.listing_id) {

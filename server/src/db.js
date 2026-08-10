@@ -793,6 +793,17 @@ addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 // rejects these outright, so a placeholder price can never become a charge.
 addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
 
+// Key specs shown on the storefront product page: [{label, value}, …].
+// A JSON column rather than a table because specs are always read as a whole
+// list for one product, never queried or aggregated across products — a
+// table would buy nothing and cost a join on every product page.
+//
+// Written to EVERY variant of a product at once (see the admin PATCH): the
+// screen and chipset of a phone don't change with its storage, and making
+// the operator retype them for the 128 and 256 GB rows would guarantee they
+// drift apart.
+addColumnIfMissing('phone_listings', 'specs_json TEXT');
+
 // One-time backfill for rows that were already sold when the column landed.
 // updated_at is the closest thing to a sale date we have — it's the last
 // edit, which for a sold listing is usually the edit that marked it sold.

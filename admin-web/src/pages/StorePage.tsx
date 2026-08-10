@@ -10,7 +10,7 @@
 // contact-only shop would imply an ordering flow the app doesn't offer there.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, API_BASE, getToken } from '../api';
+import { api, API_BASE, apiForm, getToken } from '../api';
 import { compressImage, humanSize } from '../lib/imageCompress';
 
 type Shop = {
@@ -22,6 +22,7 @@ type Listing = {
   id: number; brand: string; model: string; storage: string | null;
   color: string | null; condition: string; asking_price: number;
   stock_qty: number | null; cost_price: number | null;
+  specs_json: string | null;
   status: string; description: string | null; created_at: number;
   cover_image: string | null; image_count: number;
 };
@@ -86,6 +87,8 @@ export function StorePage() {
   const [stockVal, setStockVal] = useState('');
   const [costId, setCostId] = useState<number | null>(null);
   const [costVal, setCostVal] = useState('');
+  // The expanded per-device panel: photos + specs.
+  const [panelId, setPanelId] = useState<number | null>(null);
   const [editPrice, setEditPrice] = useState('');
 
   const shop = useMemo(() => shops.find((s) => s.id === shopId) || null, [shops, shopId]);
@@ -311,7 +314,8 @@ export function StorePage() {
             </thead>
             <tbody>
               {items.map((l) => (
-                <tr key={l.id} style={{ opacity: l.status === 'active' ? 1 : 0.55 }}>
+                <React.Fragment key={l.id}>
+                <tr style={{ opacity: l.status === 'active' ? 1 : 0.55 }}>
                   <td>
                     {l.cover_image
                       ? <img src={API_BASE + l.cover_image} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 6 }} />
@@ -396,20 +400,163 @@ export function StorePage() {
                         إرجاع للعرض
                       </button>
                     )}{' '}
+                    <button className="secondary" disabled={busy}
+                            onClick={() => setPanelId(panelId === l.id ? null : l.id)}>
+                      {panelId === l.id ? 'إغلاق' : 'صور ومواصفات'}
+                    </button>{' '}
                     <button className="secondary" disabled={busy} style={{ color: 'salmon' }} onClick={() => remove(l)}>
                       حذف
                     </button>
                   </td>
                 </tr>
+                {panelId === l.id ? (
+                  <tr>
+                    <td colSpan={8} style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <DevicePanel listing={l} onChanged={() => loadItems(shopId!)} />
+                    </td>
+                  </tr>
+                ) : null}
+              </React.Fragment>
               ))}
               {!items.length ? (
-                <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 24 }}>
+                <tr><td colSpan={8} className="muted" style={{ textAlign: 'center', padding: 24 }}>
                   لا توجد منتجات في هذا المتجر بعد.
                 </td></tr>
               ) : null}
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─── per-device panel: photos + key specs ──────────────────────────────
+//
+// Photos could only be attached when the device was first created, so a
+// device added without pictures stayed pictureless forever — which is how
+// the store ended up with grey boxes on its front page.
+//
+// Specs are saved to EVERY variant of the product at once (the server does
+// that). Screen and chipset don't change with storage, and asking the
+// operator to retype them for the 128 and 256 GB rows guarantees they drift.
+const SPEC_PRESETS = ['الشاشة', 'الكاميرا', 'البطارية', 'المعالج', 'الرام', 'الشبكة', 'نظام التشغيل', 'الضمان'];
+
+function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () => void }) {
+  const [imgs, setImgs] = useState<Array<{ id: number; image_path: string }>>([]);
+  const [specs, setSpecs] = useState<Array<{ label: string; value: string }>>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    api<Array<{ id: number; image_path: string }>>(`/admin/listings/${listing.id}/images`)
+      .then(setImgs).catch((e) => setErr(friendly(e)));
+    try {
+      const parsed = listing.specs_json ? JSON.parse(listing.specs_json) : [];
+      setSpecs(Array.isArray(parsed) ? parsed : []);
+    } catch { setSpecs([]); }
+  }, [listing.id, listing.specs_json]);
+
+  async function addPhotos(files: FileList | null) {
+    if (!files?.length) return;
+    setBusy(true); setErr('');
+    try {
+      const fd = new FormData();
+      for (const f of Array.from(files).slice(0, 10)) {
+        // Same client-side compression the create form uses — a 4 MB phone
+        // photo becomes ~40 KB before it ever leaves the browser.
+        const r = await compressImage(f, { maxDim: 1600, quality: 0.85 });
+        fd.append('images', r.blob, r.filename);
+      }
+      await apiForm(`/admin/listings/${listing.id}/images`, fd);
+      setImgs(await api(`/admin/listings/${listing.id}/images`));
+      onChanged();
+    } catch (e: any) { setErr(friendly(e)); } finally { setBusy(false); }
+  }
+
+  async function removePhoto(imageId: number) {
+    setBusy(true);
+    try {
+      await api(`/admin/listings/${listing.id}/images/${imageId}`, { method: 'DELETE' });
+      setImgs((a) => a.filter((x) => x.id !== imageId));
+      onChanged();
+    } catch (e: any) { setErr(friendly(e)); } finally { setBusy(false); }
+  }
+
+  async function saveSpecs() {
+    setBusy(true); setErr('');
+    try {
+      const r = await api<{ specs_applied_to?: number }>(`/admin/listings/${listing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ specs: specs.filter((s) => s.label.trim() && s.value.trim()) }),
+      });
+      setNote(`حُفظت على ${r.specs_applied_to ?? 1} نسخة من هذا الجهاز.`);
+      setTimeout(() => setNote(''), 3000);
+      onChanged();
+    } catch (e: any) { setErr(friendly(e)); } finally { setBusy(false); }
+  }
+
+  const setSpec = (i: number, k: 'label' | 'value', v: string) =>
+    setSpecs((a) => a.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
+
+  return (
+    <div style={{ padding: '10px 4px', display: 'grid', gap: 14 }}>
+      {err ? <div style={{ color: 'salmon' }}>{err}</div> : null}
+      {note ? <div style={{ color: '#34C77B' }}>{note}</div> : null}
+
+      <div>
+        <strong>الصور ({imgs.length})</strong>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '8px 0' }}>
+          {imgs.map((im) => (
+            <div key={im.id} style={{ position: 'relative' }}>
+              <img src={API_BASE + im.image_path} alt=""
+                   style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8 }} />
+              <button
+                disabled={busy}
+                onClick={() => removePhoto(im.id)}
+                title="حذف الصورة"
+                style={{ position: 'absolute', top: 2, left: 2, padding: '0 6px' }}
+              >✕</button>
+            </div>
+          ))}
+          {!imgs.length ? <span className="muted">لا صور بعد.</span> : null}
+        </div>
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy}
+               onChange={(e) => { void addPhotos(e.target.files); e.target.value = ''; }} />
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+          الصورة الأولى هي الغلاف. تُضغط الصور تلقائياً قبل الرفع.
+        </div>
+      </div>
+
+      <div>
+        <strong>المواصفات</strong>
+        <div className="muted" style={{ fontSize: 11.5, margin: '4px 0 8px' }}>
+          تظهر في صفحة الجهاز داخل التطبيق، وتُحفظ على كل سعات هذا الجهاز معاً.
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {specs.map((sp, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input list="spec-presets" value={sp.label} placeholder="الخاصية"
+                     style={{ width: 150 }} disabled={busy}
+                     onChange={(e) => setSpec(i, 'label', e.target.value)} />
+              <input value={sp.value} placeholder="القيمة" style={{ flex: 1, minWidth: 160 }}
+                     disabled={busy} onChange={(e) => setSpec(i, 'value', e.target.value)} />
+              <button className="secondary" disabled={busy}
+                      onClick={() => setSpecs((a) => a.filter((_, j) => j !== i))}>✕</button>
+            </div>
+          ))}
+        </div>
+        <datalist id="spec-presets">
+          {SPEC_PRESETS.map((p) => <option key={p} value={p} />)}
+        </datalist>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+          <button className="secondary" disabled={busy || specs.length >= 20}
+                  onClick={() => setSpecs((a) => [...a, { label: '', value: '' }])}>
+            + خاصية
+          </button>
+          <button className="primary" disabled={busy} onClick={saveSpecs}>حفظ المواصفات</button>
+        </div>
       </div>
     </div>
   );
