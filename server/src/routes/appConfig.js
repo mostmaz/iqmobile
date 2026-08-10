@@ -71,17 +71,27 @@ r.get('/app-config', (_req, res) => {
     const total = db.prepare(
       `SELECT COUNT(*) AS n FROM (
          SELECT 1 FROM phone_listings WHERE seller_id=? AND status='active'
+          AND COALESCE(stock_qty, 1) > 0
           GROUP BY brand, LOWER(TRIM(model))
        )`,
     ).get(shop.id).n;
     if (!total) return null;
 
+    // The teaser's whole job is three real products with real prices. So it
+    // skips call-for-price items (their asking_price is a placeholder — the
+    // card would advertise a phone at 1 IQD) and prefers products that
+    // actually have a photo, since three empty boxes read worse than no card.
     const groups = db.prepare(
-      `SELECT MIN(l.id) AS lead_id, l.brand, GROUP_CONCAT(l.id) AS ids
+      `SELECT MIN(l.id) AS lead_id, l.brand, GROUP_CONCAT(l.id) AS ids,
+              MAX(CASE WHEN EXISTS(
+                SELECT 1 FROM listing_images WHERE listing_id = l.id
+              ) THEN 1 ELSE 0 END) AS has_image
          FROM phone_listings l
         WHERE l.seller_id=? AND l.status='active'
+          AND COALESCE(l.price_on_request,0) = 0
+          AND COALESCE(l.stock_qty, 1) > 0
         GROUP BY l.brand, LOWER(TRIM(l.model))
-        ORDER BY MAX(l.created_at) DESC LIMIT 3`,
+        ORDER BY has_image DESC, MAX(l.created_at) DESC LIMIT 3`,
     ).all(shop.id);
 
     const products = groups.map((g) => {
