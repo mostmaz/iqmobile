@@ -34,6 +34,11 @@ export function isBrand(b) {
   return getBrands().some((x) => x.name === b);
 }
 
+/** Canonical brand names, for callers that need to test text against all of them. */
+export function brandNames() {
+  return getBrands().map((x) => x.name);
+}
+
 // Brand list joined with active-listing counts. Used by the public
 // `GET /brands` endpoint AND the admin overview. One DB pass for the
 // counts; cheap enough not to cache.

@@ -6,6 +6,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts } from '../../theme';
 import { Btn, Header } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { EmptyState } from '../../components/EmptyState';
+import { IconBookmark } from '../../components/icons';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { Listings } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
@@ -87,7 +89,13 @@ export default function SavedScreen({ navigation }: any) {
         ListEmptyComponent={isLoading ? (
           <ListingListSkeleton count={4} />
         ) : (
-          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد مفضلات</Text>
+          <EmptyState
+            icon={<IconBookmark size={30} color={theme.subtle} sw={1.5} />}
+            title="لا توجد مفضلات"
+            body="اضغط علامة الحفظ على أي إعلان ليظهر هنا وتعود إليه لاحقاً."
+            actionLabel="تصفّح الإعلانات"
+            onAction={() => navigation.getParent()?.navigate('Browse')}
+          />
         )}
       />
     </View>

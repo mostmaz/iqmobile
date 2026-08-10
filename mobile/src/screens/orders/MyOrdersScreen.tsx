@@ -8,6 +8,7 @@ import { deviceTitle } from '../../lib/format';
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { fmtIQD } from '../../components/ui';
@@ -29,6 +30,7 @@ const STATUS_COLOR: Record<OrderStatus, string> = {
 
 export default function MyOrdersScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const tabClearance = useTabBarClearance();
   const qc = useQueryClient();
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['orders', 'mine'],
@@ -61,20 +63,30 @@ export default function MyOrdersScreen({ navigation }: any) {
         flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
         borderBottomWidth: 1, borderBottomColor: theme.line,
       }}>
-        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
-          طلباتي
-        </Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
+        {/* Back sits at the RIGHT, first in the reading order, matching
+            Header and therefore Notifications, Saved Searches, My Listings
+            and Wishlist. Orders and the cart each had it on the left, which
+            made three back patterns across one app. */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="رجوع"
+          hitSlop={8}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 }}
+        >
           <View style={{ transform: [{ scaleX: -1 }] }}>
             <IconChevronLeft size={20} color={theme.ink} sw={2} />
           </View>
         </TouchableOpacity>
+        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
+          طلباتي
+        </Text>
       </View>
 
       <FlatList
         data={orders}
         keyExtractor={(o) => String(o.id)}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         ListEmptyComponent={isLoading ? (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>

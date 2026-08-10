@@ -105,24 +105,24 @@ export default function CartScreen({ navigation }: any) {
         flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
         borderBottomWidth: 1, borderBottomColor: theme.line,
       }}>
-        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
-          السلة
-        </Text>
-        {/* Same control, same corner, same glyph as Notifications, Saved
-            Searches, My Listings and Wishlist. The cart was introducing a
-            third back pattern to an app that already had two. 44pt so it
-            clears the minimum touch target. */}
+        {/* Back sits at the RIGHT, first in the reading order, matching
+            Header and therefore Notifications, Saved Searches, My Listings
+            and Wishlist. Orders and the cart each had it on the left, which
+            made three back patterns across one app. */}
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
           accessibilityLabel="رجوع"
           hitSlop={8}
-          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -10 }}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 }}
         >
           <View style={{ transform: [{ scaleX: -1 }] }}>
             <IconChevronLeft size={20} color={theme.ink} sw={2} />
           </View>
         </TouchableOpacity>
+        <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
+          السلة
+        </Text>
       </View>
 
       {!cart.lines.length ? (

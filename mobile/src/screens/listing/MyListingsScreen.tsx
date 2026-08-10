@@ -5,8 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { theme, fonts } from '../../theme';
 import { Btn, Header, Pill } from '../../components/ui';
-import { IconSpark } from '../../components/icons';
+import { IconSpark, IconTag } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
+import { EmptyState } from '../../components/EmptyState';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { SHOW_PROMOTE } from '../../config/flags';
 import { Listings, type ListingStatus } from '../../api/endpoints';
@@ -111,7 +112,13 @@ export default function MyListingsScreen({ navigation }: any) {
         ListEmptyComponent={isLoading ? (
           <ListingListSkeleton count={4} />
         ) : (
-          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إعلانات</Text>
+          <EmptyState
+            icon={<IconTag size={30} color={theme.subtle} sw={1.5} />}
+            title="لا توجد إعلانات بعد"
+            body="انشر جهازك خلال دقيقة — صور، سعر، ورقم للتواصل."
+            actionLabel="أضف إعلاناً"
+            onAction={() => navigation.getParent()?.navigate('Sell')}
+          />
         )}
       />
     </View>

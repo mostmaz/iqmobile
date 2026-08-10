@@ -5,6 +5,7 @@ import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
+import { EmptyState } from '../../components/EmptyState';
 import { RowListSkeleton } from '../../components/Skeleton';
 import { Notifications, type NotificationRow } from '../../api/endpoints';
 import { timeAgoAr, dayBucketAr, deviceTitle } from '../../lib/format';
@@ -172,7 +173,10 @@ export default function NotificationsScreen({ navigation }: any) {
         ListEmptyComponent={isLoading ? (
           <RowListSkeleton count={5} avatar={38} />
         ) : (
-          <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar }}>لا توجد إشعارات</Text>
+          <EmptyState
+            title="لا توجد إشعارات"
+            body="سنخبرك هنا عند وصول رسالة، تغيّر حالة طلبك، أو انخفاض سعر جهاز تتابعه."
+          />
         )}
       />
     </View>

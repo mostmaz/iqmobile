@@ -99,7 +99,15 @@ export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: Heade
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', height: 36 }}>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
           {onBack ? (
-            <TouchableOpacity onPress={onBack} style={{ padding: 4 }} activeOpacity={0.6}>
+            <TouchableOpacity
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel="رجوع"
+              hitSlop={8}
+              // 22px glyph in a 4px pad was a 30dp target. 44 is the floor.
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 }}
+              activeOpacity={0.6}
+            >
               <View style={{ transform: [{ scaleX: -1 }] }}>
                 <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
               </View>

@@ -12,7 +12,7 @@ import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
-import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
+import { getBrandsWithCounts, invalidateBrandsCache, isBrand, brandNames } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
@@ -2386,6 +2386,18 @@ function readDeviceFields(body, { partial }) {
   if (!partial || has('model')) {
     const model = String(body?.model || '').trim().slice(0, 80);
     if (!model) return { error: 'model_required' };
+    // A model whose own text names a DIFFERENT brand is filed wrong, and the
+    // mistake is invisible afterwards: "Infinix gt 30 pro" sat in the Apple
+    // dropdown, offered to every seller picking an iPhone. Only refuse when
+    // the foreign brand leads the name — "Galaxy S24 vs iPhone" style
+    // comparison text is not a model name anyone types here, but a trailing
+    // brand word ("… for Samsung") is a plausible accessory name.
+    const brandForCheck = out.brand || String(body?.brand || '').trim();
+    const lead = model.toLowerCase().split(/[\s-]+/)[0];
+    if (brandForCheck && lead && lead !== brandForCheck.toLowerCase()) {
+      const clash = brandNames().find((b) => b.toLowerCase() === lead);
+      if (clash) return { error: 'model_names_other_brand' };
+    }
     out.model = model;
   }
   if (!partial || has('device_type')) {
