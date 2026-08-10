@@ -16,62 +16,7 @@
 // simply never matches, so it needs no vocabulary of its own.
 
 import { db } from './db.js';
-
-const AR_DIGITS = {
-  '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
-  '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
-  '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
-  '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
-};
-
-function normalizeArabic(s) {
-  return s
-    .replace(/[ـً-ْ]/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ؤ/g, 'و')
-    .replace(/ئ/g, 'ي')
-    .replace(/ة/g, 'ه');
-}
-
-// Extends the search dictionary in searchNormalize.js with the product-LINE
-// vocabulary that only shows up in listing titles. Kept separate because
-// search wants loose recall while this wants a defensible rename.
-const DICT = {
-  // brands
-  'سامسونج': 'samsung', 'سامسونغ': 'samsung', 'سمسونج': 'samsung', 'سامسونك': 'samsung', 'سامسونگ': 'samsung',
-  'ايفون': 'iphone', 'ايفونن': 'iphone', 'اايفون': 'iphone', 'ابل': 'apple', 'آيفون': 'iphone',
-  'شاومي': 'xiaomi', 'شياومي': 'xiaomi', 'اكسياومي': 'xiaomi',
-  'ريدمي': 'redmi', 'بوكو': 'poco',
-  'هواوي': 'huawei', 'هاواوي': 'huawei',
-  'اوبو': 'oppo', 'فيفو': 'vivo',
-  'ريلمي': 'realme', 'ريلمى': 'realme',
-  'تكنو': 'tecno', 'تيكنو': 'tecno', 'التكنو': 'tecno',
-  'انفنكس': 'infinix', 'انفينكس': 'infinix', 'انفينيكس': 'infinix', 'انفكس': 'infinix',
-  'هونر': 'honor', 'اونر': 'honor',
-  'نوكيا': 'nokia', 'موتورولا': 'motorola', 'موترلا': 'motorola', 'موتو': 'moto',
-  'جوجل': 'google', 'غوغل': 'google', 'قوقل': 'google', 'ايتل': 'itel', 'سوني': 'sony',
-  // product lines
-  'جالكسي': 'galaxy', 'جالاكسي': 'galaxy', 'غالاكسي': 'galaxy', 'غالكسي': 'galaxy', 'جلكسي': 'galaxy',
-  'ماجك': 'magic', 'ماجيك': 'magic',
-  'سبارك': 'spark', 'سبارت': 'spark', 'سبارك': 'spark',
-  'كامون': 'camon', 'كمون': 'camon', 'كومون': 'camon',
-  'بوفا': 'pova', 'بوغا': 'pova',
-  'هوت': 'hot', 'سمارت': 'smart', 'نوفا': 'nova', 'ميت': 'mate',
-  'ايباد': 'ipad', 'ايبود': 'ipod', 'بكسل': 'pixel', 'بيكسل': 'pixel',
-  'ريدمي': 'redmi', 'دركسون': 'dragon',
-  'نوت': 'note', 'برو': 'pro', 'بروماكس': 'promax', 'برور': 'pro',
-  'ماكس': 'max', 'مكس': 'max', 'بلس': 'plus', 'بلاس': 'plus',
-  'الترا': 'ultra', 'ميني': 'mini', 'مني': 'mini', 'لايت': 'lite',
-  'فولد': 'fold', 'فليب': 'flip', 'اير': 'air', 'ايير': 'air',
-  'ساعه': 'watch', 'ساعة': 'watch', 'واتش': 'watch',
-  'جيل': 'gen', 'اس': 's', 'ايه': 'a', 'سي': 'c', 'ام': 'm', 'اكس': 'x',
-  'زد': 'z', 'كي': 'k', 'جي': 'g', 'تي': 't', 'واي': 'y',
-  'ار': 'r', 'دي': 'd', 'اف': 'f', 'اتش': 'h', 'ان': 'n', 'يو': 'u',
-  'وان': 'one', 'ون': 'one',
-  // spelled-out numbers ("تكنو بوفا سفن الترا" = Pova 7 Ultra)
-  'سفن': '7', 'ايت': '8', 'ناين': '9', 'تن': '10', 'سكس': '6', 'فايف': '5',
-};
+import { AR_DIGITS, normalizeArabic, mapDeviceToken } from './arabicDeviceTerms.js';
 
 // Leading words that name the line, not the device — safe to alias away.
 const LINE_WORDS = new Set(['galaxy', 'iphone', 'ipad', 'redmi', 'poco', 'honor', 'huawei',
@@ -88,7 +33,7 @@ const BRAND_WORDS = {
   google: 'Google', pixel: 'Google', itel: 'Itel', oneplus: 'OnePlus',
 };
 
-const mapToken = (t) => DICT[t] || (t.length > 3 && t.startsWith('ال') && DICT[t.slice(2)]) || t;
+const mapToken = mapDeviceToken;
 
 /** Raw model text → lowercase Latin tokens, ad noise included but harmless. */
 export function transliterateTokens(raw) {
