@@ -94,6 +94,9 @@ export default function StoreProductScreen({ navigation, route }: any) {
   // — picking "Blue" shouldn't blank a gallery that only ever had one photo.
   const gallery = selected?.images?.length ? selected.images : (product?.images || []);
   const inCart = selected ? cart.qtyOf(selected.id) : 0;
+  // The supplier hasn't priced this one. Checkout refuses it server-side, so
+  // the buy bar has to become a phone call rather than a button that 409s.
+  const onRequest = !!selected?.price_on_request;
 
   function addToCart(thenCheckout = false) {
     if (!product || !selected) return;
@@ -261,12 +264,20 @@ export default function StoreProductScreen({ navigation, route }: any) {
           }}>
             {product.model}
           </Text>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
-            <Text style={{ fontFamily: fonts.ltrBold, fontSize: 24, color: theme.accentDeep }}>
-              {fmtIQD(selected.asking_price)}
+          {onRequest ? (
+            <Text style={{
+              fontFamily: fonts.arBold, fontSize: 18, color: theme.ink, textAlign: 'right', marginTop: 8,
+            }}>
+              السعر عند الطلب — اتصل بنا
             </Text>
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}>د.ع</Text>
-          </View>
+          ) : (
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 6, marginTop: 8 }}>
+              <Text style={{ fontFamily: fonts.ltrBold, fontSize: 24, color: theme.accentDeep }}>
+                {fmtIQD(selected.asking_price)}
+              </Text>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}>د.ع</Text>
+            </View>
+          )}
 
           <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
             <Tag bg={theme.successSoft} fg={theme.success} label="الدفع عند الاستلام" />
@@ -388,6 +399,24 @@ export default function StoreProductScreen({ navigation, route }: any) {
         backgroundColor: theme.surface, borderTopWidth: 1, borderTopColor: theme.line,
         flexDirection: 'row-reverse', gap: 8,
       }}>
+        {onRequest ? (
+          <TouchableOpacity
+            onPress={() => product.shop.phone && callPhone(product.shop.phone)}
+            activeOpacity={0.85}
+            disabled={!product.shop.phone}
+            style={{
+              flex: 1, backgroundColor: theme.accent, borderRadius: radius.xl,
+              paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'row-reverse', gap: 8, opacity: product.shop.phone ? 1 : 0.5,
+            }}
+          >
+            <IconMsgCall size={17} color="#fff" sw={1.9} />
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, fontWeight: '700', color: '#fff' }}>
+              اتصل للسعر والطلب
+            </Text>
+          </TouchableOpacity>
+        ) : (
+        <>
         <TouchableOpacity
           onPress={() => addToCart(false)}
           activeOpacity={0.85}
@@ -427,6 +456,8 @@ export default function StoreProductScreen({ navigation, route }: any) {
             اشترِ الآن
           </Text>
         </TouchableOpacity>
+        </>
+        )}
       </View>
 
       {viewer !== null ? (

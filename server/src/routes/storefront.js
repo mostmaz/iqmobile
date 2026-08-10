@@ -23,8 +23,11 @@ const PAGE = 24;
 const MAX_PAGE = 60;
 const SORTS = {
   newest: 'MAX(l.created_at) DESC',
-  price_asc: 'MIN(l.asking_price) ASC',
-  price_desc: 'MIN(l.asking_price) DESC',
+  // Unpriced items carry a placeholder asking_price, so they'd win "cheapest
+  // first" outright and lead "most expensive" backwards. Push them last in
+  // both directions instead of pretending the placeholder is a price.
+  price_asc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MIN(l.asking_price) ASC',
+  price_desc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MIN(l.asking_price) DESC',
 };
 
 // Products are keyed on brand + case/space-insensitive model so "iPhone 16"
@@ -73,6 +76,7 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
     `SELECT COUNT(*) AS products, MIN(p) AS min_price, MAX(p) AS max_price FROM (
        SELECT MIN(asking_price) AS p FROM phone_listings
         WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
+          AND COALESCE(price_on_request,0) = 0
         GROUP BY brand, LOWER(TRIM(model))
      )`,
   ).get(shop.id);
@@ -149,6 +153,7 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
             MAX(l.asking_price) AS max_price,
             MAX(l.created_at) AS newest_at,
             MIN(l.id) AS lead_id,
+            MIN(COALESCE(l.price_on_request,0)) AS all_on_request,
             GROUP_CONCAT(l.id) AS variant_ids
        FROM phone_listings l
       ${where}
@@ -187,8 +192,17 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
       // MIN(model) — that's a lexical pick, so a stray " c100i " with a
       // leading space would beat the properly-cased "C100i".
       const model = String(modelById.get(p.lead_id) || p.model_fallback || '').trim();
-      const { variant_ids, model_fallback, ...rest } = p;
-      return { ...rest, model, image_path, key: productKey(p.brand, model) };
+      // MIN over the group: the tile only says "call for price" when EVERY
+      // variant is unpriced. One priced capacity means there's a real number
+      // to show, and hiding it would lose a sale.
+      const { variant_ids, model_fallback, all_on_request, ...rest } = p;
+      return {
+        ...rest,
+        model,
+        image_path,
+        price_on_request: !!all_on_request,
+        key: productKey(p.brand, model),
+      };
     }),
   });
 });
@@ -204,7 +218,7 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
 
   const variants = db.prepare(
     `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at,
-            stock_qty
+            stock_qty, COALESCE(price_on_request,0) AS price_on_request
        FROM phone_listings
       WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
         AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
@@ -243,6 +257,7 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
     images,
     min_price: Math.min(...variants.map((v) => v.asking_price)),
     max_price: Math.max(...variants.map((v) => v.asking_price)),
+    price_on_request: variants.every((v) => v.price_on_request),
     storages: [...new Set(variants.map((v) => v.storage).filter(Boolean))],
     colors: [...new Set(variants.map((v) => v.color).filter(Boolean))],
     variants: withImages,

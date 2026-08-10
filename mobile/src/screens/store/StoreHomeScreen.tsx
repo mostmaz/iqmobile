@@ -471,14 +471,25 @@ function ProductTile({ product, onPress }: { product: StoreProductCard; onPress:
         </Text>
         {/* A range, not a single figure — the tile must not promise the 64GB
             price and then open on a 512GB one. */}
-        <Text
-          numberOfLines={1}
-          style={{ fontFamily: fonts.ltrBold, fontSize: 13.5, color: theme.accentDeep, textAlign: 'right' }}
-        >
-          {multi && product.max_price !== product.min_price
-            ? `${fmtIQD(product.min_price)} – ${fmtIQD(product.max_price)}`
-            : fmtIQD(product.min_price)}
-        </Text>
+        {product.price_on_request ? (
+          // No number at all rather than a placeholder one — showing a price
+          // the shop hasn't set is how a customer arrives expecting to pay it.
+          <Text
+            numberOfLines={1}
+            style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.subtle, textAlign: 'right' }}
+          >
+            السعر عند الطلب
+          </Text>
+        ) : (
+          <Text
+            numberOfLines={1}
+            style={{ fontFamily: fonts.ltrBold, fontSize: 13.5, color: theme.accentDeep, textAlign: 'right' }}
+          >
+            {multi && product.max_price !== product.min_price
+              ? `${fmtIQD(product.min_price)} – ${fmtIQD(product.max_price)}`
+              : fmtIQD(product.min_price)}
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );

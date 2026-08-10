@@ -9,6 +9,7 @@ import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
 import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
+import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
@@ -404,6 +405,9 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
 
   // Units in stock. Explicit null/'' clears it back to UNTRACKED, which is
   // different from 0 (0 means sold out and hides the product).
+  if (has('price_on_request')) {
+    fields.push('price_on_request=?'); params.push(b.price_on_request ? 1 : 0);
+  }
   if (has('stock_qty')) {
     const raw = b.stock_qty;
     if (raw === null || raw === '') { fields.push('stock_qty=?'); params.push(null); }
@@ -2259,6 +2263,40 @@ r.post('/orders/:id(\\d+)/return', requireAdmin, (req, res) => {
   res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
 });
 
+// ─── listing-name review queue ────────────────────────────────────────
+// The daily name cleanup auto-applies only what it can match against the
+// device catalogue with confidence. What's left lands here: names where the
+// seller typed the whole ad into the model box, or a device the catalogue
+// doesn't know yet. Each row arrives with its transliteration so the
+// operator can see WHY it wasn't matched, and the suggestion (when there is
+// one) is one click to accept.
+r.get('/listings/name-review', requireAdmin, (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 300);
+  const rows = db.prepare(
+    `SELECT l.id, l.brand, l.model, l.status, l.asking_price, l.created_at,
+            u.display_name AS seller_name
+       FROM phone_listings l JOIN users u ON u.id = l.seller_id
+      WHERE l.status='active'
+      ORDER BY l.created_at DESC LIMIT 2000`,
+  ).all();
+
+  const ARABIC = /[\u0600-\u06FF]/;
+  const out = [];
+  for (const l of rows) {
+    if (!ARABIC.test(l.model || '')) continue;
+    const r2 = resolveListingName(l.brand, l.model);
+    out.push({
+      ...l,
+      tokens: r2.tokens.join(' '),
+      suggestion: r2.model || null,
+      suggested_brand: r2.brand && r2.brand !== l.brand ? r2.brand : null,
+      confidence: r2.confidence,
+    });
+    if (out.length >= limit) break;
+  }
+  res.json({ total: out.length, listings: out });
+});
+
 // ─── device catalog ───────────────────────────────────────────────────
 // The post-listing dropdown is driven by `device_catalog` (seeded from a
 // GSMArena snapshot). When a seller can't find their device they type it
@@ -2350,6 +2388,10 @@ r.post('/device-catalog', requireAdmin, (req, res) => {
       `INSERT INTO device_catalog(brand, device_type, model, source, is_active, created_at)
        VALUES(?,?,?,'manual',1,?)`,
     ).run(fields.brand, fields.device_type, fields.model, now()).lastInsertRowid;
+    // The name matcher holds the catalogue in memory; a new device has to be
+    // visible to it immediately or the review queue keeps saying "no match"
+    // for a device that now exists.
+    resetCatalogCache();
     res.json({ ok: true, device: db.prepare('SELECT * FROM device_catalog WHERE id=?').get(id) });
   } catch (e) {
     if (isDuplicate(e)) return res.status(409).json({ error: 'duplicate' });
@@ -2369,6 +2411,7 @@ r.patch('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
   try {
     db.prepare(`UPDATE device_catalog SET ${keys.map((k) => `${k}=?`).join(', ')} WHERE id=?`)
       .run(...keys.map((k) => fields[k]), row.id);
+    resetCatalogCache();
     res.json({ ok: true, device: db.prepare('SELECT * FROM device_catalog WHERE id=?').get(row.id) });
   } catch (e) {
     if (isDuplicate(e)) return res.status(409).json({ error: 'duplicate' });
@@ -2383,6 +2426,7 @@ r.patch('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
 // option and is what the UI offers first.
 r.delete('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
   const r2 = db.prepare('DELETE FROM device_catalog WHERE id=?').run(req.params.id);
+  resetCatalogCache();
   if (r2.changes === 0) return res.status(404).json({ error: 'not_found' });
   res.json({ ok: true });
 });

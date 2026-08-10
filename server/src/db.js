@@ -786,6 +786,13 @@ addColumnIfMissing('phone_listings', 'stock_qty INTEGER');
 // edit. Backfilled once from updated_at (approximate, see below).
 addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 
+// "Call for price" — the supplier lists a device with no price yet (the Free
+// Zone sheet ships Apple rows with a literal ٠). asking_price stays NOT NULL
+// and positive because every query in the app sorts and filters on it; this
+// flag says "don't show that number, and don't let anyone buy it". Checkout
+// rejects these outright, so a placeholder price can never become a charge.
+addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
+
 // One-time backfill for rows that were already sold when the column landed.
 // updated_at is the closest thing to a sale date we have — it's the last
 // edit, which for a sold listing is usually the edit that marked it sold.

@@ -578,6 +578,8 @@ export interface StoreProductCard {
   max_price: number;
   image_path: string | null;
   lead_id: number;
+  // The supplier lists it without a price. Buy is replaced by "call us".
+  price_on_request?: boolean;
 }
 export interface StoreProductPage {
   total: number; limit: number; offset: number; products: StoreProductCard[];
@@ -586,12 +588,15 @@ export interface StoreVariant {
   id: number; brand: string; model: string;
   storage: string | null; color: string | null; condition: string;
   asking_price: number; description: string | null;
+  stock_qty?: number | null;
+  price_on_request?: number | boolean;
   images: Array<{ id: number; image_path: string; position: number }>;
 }
 export interface StoreProduct {
   brand: string; model: string; description: string | null;
   images: Array<{ id: number; image_path: string; position: number }>;
   min_price: number; max_price: number;
+  price_on_request?: boolean;
   storages: string[]; colors: string[];
   variants: StoreVariant[];
   shop: StoreShop;

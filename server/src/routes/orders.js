@@ -125,6 +125,17 @@ r.post('/orders', requireAuth(), (req, res) => {
     return res.status(409).json({ error: 'item_unavailable', listing_ids: unavailable.map((l) => l.id) });
   }
 
+  // "Call for price" items have a placeholder asking_price purely so the
+  // rest of the app can sort on it. Selling one at that number would charge
+  // the customer a made-up price, so checkout refuses.
+  const unpriced = rows.filter((l) => l.price_on_request);
+  if (unpriced.length) {
+    return res.status(409).json({
+      error: 'price_on_request',
+      listing_ids: unpriced.map((l) => l.id),
+    });
+  }
+
   // Stock, where the shop tracks it. NULL means untracked (a private
   // seller's one physical phone), so only a real number gates the order —
   // otherwise every marketplace listing would suddenly be unorderable.
