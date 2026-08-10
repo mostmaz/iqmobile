@@ -186,7 +186,11 @@ export default function StoreHomeScreen({ navigation, route }: any) {
             onContentSizeChange={() => typeRef.current?.scrollToEnd({ animated: false })}
             contentContainerStyle={{ paddingHorizontal: 14, gap: 7, flexDirection: 'row-reverse' }}
           >
-            <Chip active={!type} label="الكل" count={home?.product_count ?? 0} onPress={() => setType(null)} />
+            {/* Named "all TYPES", not just "all": the brand rail directly
+                below has its own all-chip, and two identical pills stacked
+                on top of each other is worse than the mismatched styling
+                this replaced. */}
+            <Chip active={!type} label="كل الأنواع" count={home?.product_count ?? 0} onPress={() => setType(null)} />
             {typeCounts.map((t) => (
               <Chip
                 key={t.type}
@@ -214,7 +218,7 @@ export default function StoreHomeScreen({ navigation, route }: any) {
             onContentSizeChange={() => catRef.current?.scrollToEnd({ animated: false })}
             contentContainerStyle={{ paddingHorizontal: 14, gap: 7, flexDirection: 'row-reverse' }}
           >
-            <Chip active={!brand} label="الكل" count={home.product_count} onPress={() => setBrand(null)} />
+            <Chip active={!brand} label="كل الماركات" count={home.product_count} onPress={() => setBrand(null)} />
             {home.categories.map((c) => (
               <Chip
                 key={c.brand}
@@ -384,12 +388,23 @@ function Chip({ active, label, count, onPress }: {
         paddingHorizontal: 13, paddingVertical: 7, borderRadius: radius.pill,
         backgroundColor: active ? theme.ink : theme.bg,
         borderWidth: 1, borderColor: active ? theme.ink : theme.line,
+        // The rail scrolls, so a chip must keep its intrinsic width instead
+        // of being squeezed to fit the viewport — squeezing is what wrapped
+        // the label in the first place.
+        flexShrink: 0,
       }}
     >
-      <Text style={{
-        fontFamily: fonts.arBold, fontSize: 12.5,
-        color: active ? theme.buttonInk : theme.ink,
-      }}>
+      {/* One line, always. Inside a horizontal rail RN will happily shrink a
+          chip and wrap its label onto a second line, which makes that one
+          pill taller than every other in the row — "كل الماركات" did exactly
+          that, and "كل الأنواع" lost its second word to clipping. */}
+      <Text
+        numberOfLines={1}
+        style={{
+          fontFamily: fonts.arBold, fontSize: 12.5,
+          color: active ? theme.buttonInk : theme.ink,
+        }}
+      >
         {label}
       </Text>
       <Text style={{
