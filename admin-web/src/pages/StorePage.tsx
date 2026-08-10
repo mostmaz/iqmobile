@@ -9,7 +9,7 @@
 // Only shops with orders enabled appear in the picker: managing "stock" for a
 // contact-only shop would imply an ordering flow the app doesn't offer there.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, API_BASE, apiForm, getToken } from '../api';
 import { compressImage, humanSize } from '../lib/imageCompress';
 
@@ -17,6 +17,7 @@ type Shop = {
   id: number; phone: string; display_name: string; shop_name: string | null;
   governorate: string; shop_hidden: number; shop_orders_enabled: number;
   shop_shipping_fee: number; listing_count: number;
+  shop_delivery_days_min: number; shop_delivery_days_max: number;
 };
 type Listing = {
   id: number; brand: string; model: string; storage: string | null;
@@ -47,6 +48,65 @@ const ERRORS: Record<string, string> = {
   bad_phone: 'رقم هاتف المتجر غير صالح.',
 };
 const friendly = (e: any) => ERRORS[e?.message] || e?.message || 'خطأ غير متوقع';
+
+// The delivery window the storefront prints beside the fee. Delivery COST
+// was stated three times across the buying flow and delivery TIME never
+// once, which is the question a cash-on-delivery buyer actually has.
+function DeliveryWindow({ shop, onSaved }: { shop: Shop; onSaved: () => void }) {
+  const [min, setMin] = useState(String(shop.shop_delivery_days_min ?? 2));
+  const [max, setMax] = useState(String(shop.shop_delivery_days_max ?? 4));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  // Re-seed when the operator switches shops, or the fields keep the
+  // previous shop's window and a blind Save would overwrite it.
+  useEffect(() => {
+    setMin(String(shop.shop_delivery_days_min ?? 2));
+    setMax(String(shop.shop_delivery_days_max ?? 4));
+    setMsg('');
+  }, [shop.id, shop.shop_delivery_days_min, shop.shop_delivery_days_max]);
+
+  const dirty = String(shop.shop_delivery_days_min) !== min
+    || String(shop.shop_delivery_days_max) !== max;
+
+  async function save() {
+    setBusy(true); setMsg('');
+    try {
+      await api(`/admin/shops/${shop.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          shop_delivery_days_min: Number(min),
+          shop_delivery_days_max: Number(max),
+        }),
+      });
+      setMsg('تم الحفظ');
+      onSaved();
+    } catch (e: any) {
+      setMsg(e?.message === 'bad_delivery_range' ? 'الحد الأدنى أكبر من الأعلى'
+        : e?.message === 'bad_delivery_days' ? 'المدة بين 1 و 60 يوماً'
+        : 'تعذّر الحفظ');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className="muted" style={{ fontSize: 12.5 }}>مدة التوصيل (أيام):</span>
+      <input
+        type="number" min={1} max={60} value={min}
+        onChange={(e) => setMin(e.target.value)}
+        style={{ width: 70 }} aria-label="أقل مدة"
+      />
+      <span className="muted">—</span>
+      <input
+        type="number" min={1} max={60} value={max}
+        onChange={(e) => setMax(e.target.value)}
+        style={{ width: 70 }} aria-label="أطول مدة"
+      />
+      <button className="btn" disabled={busy || !dirty} onClick={save}>حفظ</button>
+      {msg ? <span className="muted" style={{ fontSize: 12 }}>{msg}</span> : null}
+    </div>
+  );
+}
 
 // FormData uploads bypass the shared api() helper, which forces a JSON
 // content-type — same approach the Banners and Import pages use.
@@ -94,12 +154,19 @@ export function StorePage() {
 
   const shop = useMemo(() => shops.find((s) => s.id === shopId) || null, [shops, shopId]);
 
+  // Pulled out of the mount effect so saving a shop setting can refresh the
+  // row it just wrote, rather than leaving the header showing stale values.
+  const loadShops = useCallback(async () => {
+    const all = await api<Shop[]>('/admin/shops');
+    const storefronts = all.filter((s) => s.shop_orders_enabled);
+    setShops(storefronts);
+    return storefronts;
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
-        const [all, br] = await Promise.all([api<Shop[]>('/admin/shops'), api<Brand[]>('/admin/brands')]);
-        const storefronts = all.filter((s) => s.shop_orders_enabled);
-        setShops(storefronts);
+        const [storefronts, br] = await Promise.all([loadShops(), api<Brand[]>('/admin/brands')]);
         setBrands(br);
         if (storefronts.length && shopId == null) setShopId(storefronts[0].id);
       } catch (e: any) { setErr(friendly(e)); } finally { setLoading(false); }
@@ -253,6 +320,7 @@ export function StorePage() {
             <span>{shop.shop_hidden ? 'مخفي من دليل المتاجر' : 'ظاهر في الدليل'}</span>
           </div>
         ) : null}
+        {shop ? <DeliveryWindow shop={shop} onSaved={() => { loadShops().catch(() => {}); }} /> : null}
       </div>
 
       {/* Add product */}
