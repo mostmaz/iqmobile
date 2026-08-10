@@ -123,3 +123,12 @@ export function deviceTitle(brand?: string | null, model?: string | null): strin
   if (m.toLowerCase().startsWith(b.toLowerCase())) return m;
   return `${b} ${m}`;
 }
+
+/** "خلال ٢-٤ أيام" — the delivery window, or '' when the shop hasn't set one. */
+export function deliveryWindowAr(min?: number | null, max?: number | null): string {
+  const a = Number(min) || 0;
+  const b = Number(max) || 0;
+  if (!a && !b) return '';
+  if (!b || a === b) return `خلال ${ltrNum(a || b)} ${(a || b) <= 10 ? 'أيام' : 'يوم'}`;
+  return `خلال ${ltrNum(a)}–${ltrNum(b)} ${b <= 10 ? 'أيام' : 'يوم'}`;
+}

@@ -41,7 +41,8 @@ const productKey = (brand, model) => `${brand}|${String(model).trim().toLowerCas
 
 function loadShop(id) {
   return db.prepare(
-    `SELECT id, shop_name, display_name, shop_phone, shop_shipping_fee
+    `SELECT id, shop_name, display_name, shop_phone, shop_shipping_fee,
+            shop_delivery_days_min, shop_delivery_days_max
        FROM users
       WHERE id=? AND seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1`,
   ).get(id);
@@ -103,6 +104,8 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
       name: shop.shop_name || shop.display_name,
       phone: shop.shop_phone || null,
       shipping_fee: Number(shop.shop_shipping_fee) || 0,
+      delivery_days_min: Number(shop.shop_delivery_days_min) || null,
+      delivery_days_max: Number(shop.shop_delivery_days_max) || null,
     },
     categories,
     types,
@@ -301,6 +304,8 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
       name: shop.shop_name || shop.display_name,
       phone: shop.shop_phone || null,
       shipping_fee: Number(shop.shop_shipping_fee) || 0,
+      delivery_days_min: Number(shop.shop_delivery_days_min) || null,
+      delivery_days_max: Number(shop.shop_delivery_days_max) || null,
     },
   });
 });

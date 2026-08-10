@@ -720,6 +720,13 @@ addColumnIfMissing('users', 'shop_orders_enabled INTEGER NOT NULL DEFAULT 0');
 // size. Per-shop rather than a global setting so a second storefront can
 // price delivery differently later.
 addColumnIfMissing('users', 'shop_shipping_fee INTEGER NOT NULL DEFAULT 5000');
+// How long delivery takes, in days, as a "min-max" the storefront prints
+// next to the fee. Delivery COST was stated three times across the buying
+// flow and delivery TIME never once, which is the question a cash-on-
+// delivery buyer actually has. Two columns rather than a free-text string
+// so the dashboard can validate them and the app can format them itself.
+addColumnIfMissing('users', 'shop_delivery_days_min INTEGER NOT NULL DEFAULT 2');
+addColumnIfMissing('users', 'shop_delivery_days_max INTEGER NOT NULL DEFAULT 4');
 
 // One-time repair: early shop-gallery and logo writes stored a bare filename
 // ("lst_x.jpg") instead of the "/uploads/<file>" path the app resolves via

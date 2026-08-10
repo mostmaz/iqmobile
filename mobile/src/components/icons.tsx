@@ -68,6 +68,12 @@ export const IconBox = (p: IP) => (
     <Path d="M12 12v9" />
   </Stroke>
 );
+export const IconBag = (p: IP) => (
+  <Stroke {...p}>
+    <Path d="M5 8h14l-1 12H6L5 8z" />
+    <Path d="M9 8V6a3 3 0 0 1 6 0v2" />
+  </Stroke>
+);
 export const IconID = (p: IP) => (
   <Stroke {...p}>
     <Rect x="3" y="5" width="18" height="14" rx="2.5" />

@@ -4,9 +4,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
+import { useCart } from '../../lib/cart';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
-import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore } from '../../components/icons';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore, IconBag } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
@@ -51,6 +52,7 @@ const PAGE_SIZE = 15;
 export default function BrowseScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const tabClearance = useTabBarClearance();
+  const cartCount = useCart().count;
   const [filters, setFilters] = useState<BrowseFilters>({});
   // Search lives in its own dedicated tab now (it replaced Favorites in the
   // bottom bar). Browse is pure filtering — no inline search box here.
@@ -290,10 +292,45 @@ export default function BrowseScreen({ navigation }: any) {
               and brand rail that used to sit below were removed — search has
               its own tab, brand selection moved into the filter sheet. */}
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+            {/* Cart. The store's sticky cart bar was the ONLY route back to
+                an in-progress basket, so navigating away from the store
+                stranded the items with no way back except re-entering it.
+                Shown only when there is something in the cart, so the header
+                doesn't grow a permanent control for a feature most sessions
+                never touch. */}
+            {cartCount > 0 ? (
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Cart')}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`السلة، ${cartCount} عنصر`}
+                hitSlop={6}
+                style={{
+                  width: 38, height: 38, borderRadius: 999,
+                  backgroundColor: theme.ink,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <IconBag size={17} color={theme.buttonInk} sw={1.8} />
+                <View style={{
+                  position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17,
+                  paddingHorizontal: 4, borderRadius: 999, backgroundColor: theme.accent,
+                  alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1.5, borderColor: theme.bg,
+                }}>
+                  <Text style={{ fontFamily: fonts.ltrBold, fontSize: 9.5, color: '#fff' }}>
+                    {cartCount}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
             {/* Shops directory entry. */}
             <TouchableOpacity
               onPress={() => navigation.navigate('Shops')}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="المتاجر"
+              hitSlop={6}
               style={{
                 width: 38, height: 38, borderRadius: 999,
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
@@ -308,6 +345,10 @@ export default function BrowseScreen({ navigation }: any) {
             <TouchableOpacity
               onPress={() => setShowFilter((v) => !v)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="تصفية النتائج"
+              accessibilityState={{ expanded: showFilter }}
+              hitSlop={6}
               style={{
                 width: 38, height: 38, borderRadius: 999,
                 backgroundColor: showFilter ? theme.ink : theme.surface,
@@ -329,12 +370,15 @@ export default function BrowseScreen({ navigation }: any) {
                 users tapped it expecting Notifications and got nothing. */}
             <TouchableOpacity
               onPress={() => navigation.navigate('Notifications')}
-              style={{ padding: 4 }}
+              accessibilityRole="button"
+              accessibilityLabel="الإشعارات"
+              hitSlop={8}
+              style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }}
               activeOpacity={0.6}
             >
               <IconBell size={20} color={theme.ink} sw={1.7} />
               <View style={{
-                position: 'absolute', top: 2, right: 2,
+                position: 'absolute', top: 7, right: 7,
                 width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
               }} />
             </TouchableOpacity>

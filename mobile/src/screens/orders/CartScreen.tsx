@@ -1,4 +1,4 @@
-import { deviceTitle } from '../../lib/format';
+import { deviceTitle, deliveryWindowAr } from '../../lib/format';
 // Cart + cash-on-delivery checkout, in one screen.
 //
 // Deliberately not a multi-step wizard: the basket is short (a shop selling
@@ -17,9 +17,10 @@ import { Img } from '../../components/Img';
 import { Btn, fmtIQD } from '../../components/ui';
 import { IconChevronLeft, IconPlus, IconMinus, IconClose } from '../../components/icons';
 import { GovPicker } from '../../components/GovPicker';
+import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { Orders } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
-import { useCart } from '../../lib/cart';
+import { useCart, type CartLine } from '../../lib/cart';
 import { useAuth } from '../../auth/AuthContext';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR } from '../../lib/governorates';
 
@@ -60,8 +61,15 @@ export default function CartScreen({ navigation }: any) {
   }, [user]);
 
   const govEn = govAr ? GOV_AR_TO_EN[govAr] : '';
-  const canSubmit = cart.lines.length > 0 && name.trim().length >= 2
-    && phone.trim().length >= 10 && !!govEn && address.trim().length >= 5 && !busy;
+  // What is still missing, in the order the fields appear. The confirm
+  // button used to sit greyed out with nothing marked required and no
+  // message, leaving the buyer to guess which of five fields was at fault.
+  const missing: string[] = [];
+  if (name.trim().length < 2) missing.push('الاسم الكامل');
+  if (phone.trim().length < 10) missing.push('رقم الهاتف');
+  if (!govEn) missing.push('المحافظة');
+  if (address.trim().length < 5) missing.push('العنوان بالتفصيل');
+  const canSubmit = cart.lines.length > 0 && missing.length === 0 && !busy;
 
   async function submit() {
     if (!canSubmit) return;
@@ -85,6 +93,10 @@ export default function CartScreen({ navigation }: any) {
   }
 
   const shippingShown = cart.lines.length ? cart.shipping_fee : 0;
+  const deliveryWindow = deliveryWindowAr(cart.delivery_days_min, cart.delivery_days_max);
+  // The line pending removal, held so the confirm sheet knows what it is
+  // about to delete and can name the device in its prompt.
+  const [removing, setRemoving] = useState<CartLine | null>(null);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -96,7 +108,17 @@ export default function CartScreen({ navigation }: any) {
         <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
           السلة
         </Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 6 }}>
+        {/* Same control, same corner, same glyph as Notifications, Saved
+            Searches, My Listings and Wishlist. The cart was introducing a
+            third back pattern to an app that already had two. 44pt so it
+            clears the minimum touch target. */}
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          accessibilityRole="button"
+          accessibilityLabel="رجوع"
+          hitSlop={8}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: -10 }}
+        >
           <View style={{ transform: [{ scaleX: -1 }] }}>
             <IconChevronLeft size={20} color={theme.ink} sw={2} />
           </View>
@@ -157,16 +179,37 @@ export default function CartScreen({ navigation }: any) {
                 </View>
                 <View style={{ alignItems: 'center', gap: 4 }}>
                   <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
-                    <TouchableOpacity onPress={() => cart.setQty(l.listing_id, l.qty + 1)} style={qtyBtn}>
-                      <IconPlus size={13} color={theme.ink} sw={2} />
+                    <TouchableOpacity
+                      onPress={() => cart.setQty(l.listing_id, l.qty + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="زيادة الكمية"
+                      hitSlop={6}
+                      style={qtyBtn}
+                    >
+                      <IconPlus size={14} color={theme.ink} sw={2} />
                     </TouchableOpacity>
                     <Text style={{ fontFamily: fonts.ltrBold, fontSize: 14, color: theme.ink, minWidth: 16, textAlign: 'center' }}>{l.qty}</Text>
-                    <TouchableOpacity onPress={() => cart.setQty(l.listing_id, l.qty - 1)} style={qtyBtn}>
-                      <IconMinus size={13} color={theme.ink} sw={2} />
+                    <TouchableOpacity
+                      onPress={() => cart.setQty(l.listing_id, l.qty - 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="إنقاص الكمية"
+                      hitSlop={6}
+                      style={qtyBtn}
+                    >
+                      <IconMinus size={14} color={theme.ink} sw={2} />
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity onPress={() => cart.remove(l.listing_id)} style={{ padding: 4 }}>
-                    <IconClose size={14} color={theme.subtle} sw={2} />
+                  {/* Was a 22dp target that cleared the line with no
+                      confirmation and no undo. Now a 44dp target that asks
+                      first — the only destructive control in the flow. */}
+                  <TouchableOpacity
+                    onPress={() => setRemoving(l)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`إزالة ${deviceTitle(l.brand, l.model)} من السلة`}
+                    hitSlop={8}
+                    style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <IconClose size={16} color={theme.subtle} sw={2} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -181,7 +224,7 @@ export default function CartScreen({ navigation }: any) {
               <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 8 }} />
               <Row label="المجموع" value={`${fmtIQD(cart.subtotal + shippingShown)} د.ع`} bold />
               <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 6 }}>
-                الدفع عند الاستلام
+                الدفع عند الاستلام{deliveryWindow ? ` · التوصيل ${deliveryWindow}` : ''}
               </Text>
             </View>
 
@@ -189,10 +232,10 @@ export default function CartScreen({ navigation }: any) {
               معلومات التوصيل
             </Text>
 
-            <Field label="الاسم الكامل" value={name} onChangeText={setName} placeholder="مثال: أحمد علي" />
-            <Field label="رقم الهاتف" value={phone} onChangeText={setPhone} placeholder="07XXXXXXXXX" keyboardType="phone-pad" ltr />
+            <Field label="الاسم الكامل" value={name} onChangeText={setName} placeholder="مثال: أحمد علي" required />
+            <Field label="رقم الهاتف" value={phone} onChangeText={setPhone} placeholder="07XXXXXXXXX" keyboardType="phone-pad" ltr required />
 
-            <Text style={labelStyle}>المحافظة</Text>
+            <Text style={labelStyle}>المحافظة <Text style={{ color: theme.danger }}>*</Text></Text>
             <View style={{ marginBottom: 10 }}>
               <GovPicker valueAr={govAr} onChangeAr={setGovAr} />
             </View>
@@ -203,12 +246,23 @@ export default function CartScreen({ navigation }: any) {
               onChangeText={setAddress}
               placeholder="المنطقة، الشارع، أقرب نقطة دالة"
               multiline
+              required
             />
             <Field label="ملاحظة (اختياري)" value={note} onChangeText={setNote} placeholder="أي تفاصيل تساعد المندوب" multiline />
 
             {err ? (
               <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.danger, textAlign: 'right', marginBottom: 10 }}>
                 {err}
+              </Text>
+            ) : null}
+
+            {/* Name the blocker instead of leaving a dead grey button. */}
+            {!busy && cart.lines.length > 0 && missing.length ? (
+              <Text style={{
+                fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle,
+                textAlign: 'right', marginBottom: 8,
+              }}>
+                لإكمال الطلب أضف: {missing.join('، ')}
               </Text>
             ) : null}
 
@@ -222,12 +276,25 @@ export default function CartScreen({ navigation }: any) {
           </ScrollView>
         </KeyboardAvoidingView>
       )}
+
+      <ConfirmSheet
+        visible={!!removing}
+        title="إزالة من السلة؟"
+        body={removing ? deviceTitle(removing.brand, removing.model) : undefined}
+        confirmText="إزالة"
+        cancelText="إبقاء"
+        destructive
+        onConfirm={() => { if (removing) cart.remove(removing.listing_id); setRemoving(null); }}
+        onCancel={() => setRemoving(null)}
+      />
     </View>
   );
 }
 
 const qtyBtn = {
-  width: 26, height: 26, borderRadius: 999, alignItems: 'center' as const,
+  // 34 plus the row's own padding clears 44 with hitSlop; the old 26 was
+  // 26dp, well under the 48dp guideline and a common mis-tap.
+  width: 34, height: 34, borderRadius: 999, alignItems: 'center' as const,
   justifyContent: 'center' as const, backgroundColor: theme.chipBg,
 };
 const labelStyle = {
@@ -244,10 +311,12 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
   );
 }
 
-function Field({ label, ltr, multiline, ...rest }: any) {
+function Field({ label, ltr, multiline, required, ...rest }: any) {
   return (
     <View style={{ marginBottom: 10 }}>
-      <Text style={labelStyle}>{label}</Text>
+      <Text style={labelStyle}>
+        {label}{required ? <Text style={{ color: theme.danger }}> *</Text> : null}
+      </Text>
       <TextInput
         {...rest}
         multiline={multiline}

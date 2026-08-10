@@ -26,6 +26,7 @@ import {
 import { Storefront, type StoreVariant } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useCart } from '../../lib/cart';
+import { deliveryWindowAr } from '../../lib/format';
 import { callPhone } from '../../lib/contact';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -101,10 +102,17 @@ export default function StoreProductScreen({ navigation, route }: any) {
   // The supplier hasn't priced this one. Checkout refuses it server-side, so
   // the buy bar has to become a phone call rather than a button that 409s.
   const onRequest = !!selected?.price_on_request;
+  const deliveryWindow = deliveryWindowAr(
+    product?.shop?.delivery_days_min, product?.shop?.delivery_days_max,
+  );
 
   function addToCart(thenCheckout = false) {
     if (!product || !selected) return;
-    const shop = { id: product.shop.id, name: product.shop.name, shipping_fee: product.shop.shipping_fee };
+    const shop = {
+      id: product.shop.id, name: product.shop.name, shipping_fee: product.shop.shipping_fee,
+      delivery_days_min: product.shop.delivery_days_min,
+      delivery_days_max: product.shop.delivery_days_max,
+    };
     const line = {
       listing_id: selected.id,
       brand: selected.brand,
@@ -416,6 +424,11 @@ export default function StoreProductScreen({ navigation, route }: any) {
               ? `أجور التوصيل ${fmtIQD(product.shop.shipping_fee)} د.ع لكل الطلب`
               : 'التوصيل مجاني'}
           />
+          {/* Delivery COST was stated three times across the buying flow and
+              delivery TIME never once — the question a cash-on-delivery buyer
+              actually has. Hidden when the shop hasn't set a window rather
+              than shown as a guess. */}
+          {deliveryWindow ? <Assurance icon="check" text={`التوصيل ${deliveryWindow}`} /> : null}
         </View>
       </Animated.ScrollView>
 
@@ -491,17 +504,23 @@ export default function StoreProductScreen({ navigation, route }: any) {
           </TouchableOpacity>
         ) : (
         <>
+        {/* Add-to-cart is the SECONDARY path and now looks like it. The two
+            buttons used to be identical in size and weight, with the direct
+            purchase in accent orange — but black is the primary colour
+            everywhere else in the app, so the orange button read as the
+            lesser of the two while being the one that actually buys. */}
         <TouchableOpacity
           onPress={() => addToCart(false)}
           activeOpacity={0.85}
           style={{
-            flex: 1, backgroundColor: theme.ink, borderRadius: radius.xl,
+            flex: 1, backgroundColor: 'transparent', borderRadius: radius.xl,
+            borderWidth: 1.5, borderColor: theme.line,
             paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
             flexDirection: 'row-reverse', gap: 6,
           }}
         >
-          {inCart > 0 ? <IconCheck size={15} color={theme.buttonInk} sw={2.4} /> : null}
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.buttonInk }}>
+          {inCart > 0 ? <IconCheck size={15} color={theme.ink} sw={2.4} /> : null}
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
             {inCart > 0 ? 'في السلة' : 'إضافة للسلة'}
           </Text>
           {/* Kept out of the Arabic string on purpose — see the cart bar on
@@ -509,10 +528,10 @@ export default function StoreProductScreen({ navigation, route }: any) {
           {inCart > 0 ? (
             <View style={{
               minWidth: 20, height: 20, borderRadius: 999, paddingHorizontal: 5,
-              backgroundColor: 'rgba(245,240,230,0.25)',
+              backgroundColor: theme.chipBg,
               alignItems: 'center', justifyContent: 'center',
             }}>
-              <Text style={{ fontFamily: fonts.ltrBold, fontSize: 11.5, color: theme.buttonInk }}>
+              <Text style={{ fontFamily: fonts.ltrBold, fontSize: 11.5, color: theme.ink }}>
                 {inCart}
               </Text>
             </View>
@@ -522,11 +541,11 @@ export default function StoreProductScreen({ navigation, route }: any) {
           onPress={() => addToCart(true)}
           activeOpacity={0.85}
           style={{
-            flex: 1, backgroundColor: theme.accent, borderRadius: radius.xl,
+            flex: 1.35, backgroundColor: theme.ink, borderRadius: radius.xl,
             paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: '#fff' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.buttonInk }}>
             اشترِ الآن
           </Text>
         </TouchableOpacity>

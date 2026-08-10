@@ -8,14 +8,14 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { theme, fonts, radius } from '../theme';
 import { IconPlus, IconMinus } from './icons';
-import { useCart } from '../lib/cart';
+import { useCart, type CartShop } from '../lib/cart';
 import type { Listing } from '../api/endpoints';
 
 export function AddToCartRow({
   listing, shop,
 }: {
   listing: Listing;
-  shop: { id: number; name: string; shipping_fee: number };
+  shop: CartShop;
 }) {
   const cart = useCart();
   const qty = cart.qtyOf(listing.id);

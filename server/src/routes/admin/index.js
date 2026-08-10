@@ -1519,6 +1519,8 @@ r.get('/shops', requireAdmin, (req, res) => {
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
            COALESCE(u.shop_shipping_fee,5000) AS shop_shipping_fee,
+           COALESCE(u.shop_delivery_days_min,2) AS shop_delivery_days_min,
+           COALESCE(u.shop_delivery_days_max,4) AS shop_delivery_days_max,
            (SELECT COUNT(*) FROM phone_listings l
             WHERE l.seller_id = u.id AND l.status != 'removed') AS listing_count
     FROM users u WHERE u.seller_type='shop'`;
@@ -1627,6 +1629,19 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
     // 0 is legitimate (free delivery); negative or non-numeric is not.
     if (!Number.isFinite(fee) || fee < 0) return res.status(400).json({ error: 'bad_shipping_fee' });
     fields.push('shop_shipping_fee=?'); params.push(fee);
+  }
+  // Delivery window in days. Stated to the buyer beside the fee, because
+  // "how much" was answered three times over and "when" never once.
+  for (const [key, col] of [['shop_delivery_days_min', 'shop_delivery_days_min'],
+                            ['shop_delivery_days_max', 'shop_delivery_days_max']]) {
+    if (b[key] === undefined) continue;
+    const d = Math.round(Number(b[key]));
+    if (!Number.isFinite(d) || d < 1 || d > 60) return res.status(400).json({ error: 'bad_delivery_days' });
+    fields.push(`${col}=?`); params.push(d);
+  }
+  if (b.shop_delivery_days_min !== undefined && b.shop_delivery_days_max !== undefined
+      && Number(b.shop_delivery_days_min) > Number(b.shop_delivery_days_max)) {
+    return res.status(400).json({ error: 'bad_delivery_range' });
   }
   if (b.governorate !== undefined) {
     const g = normalizeGovernorate(b.governorate);

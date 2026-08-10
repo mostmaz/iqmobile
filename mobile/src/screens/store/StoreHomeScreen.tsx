@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { theme, fonts, radius, shadowSoft } from '../../theme';
+import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme';
 import { Img } from '../../components/Img';
 import { fmtIQD } from '../../components/ui';
 import { SkBlock } from '../../components/Skeleton';
@@ -400,16 +400,21 @@ function Chip({ active, label, count, onPress }: {
           that, and "كل الأنواع" lost its second word to clipping. */}
       <Text
         numberOfLines={1}
+        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
         style={{
           fontFamily: fonts.arBold, fontSize: 12.5,
           color: active ? theme.buttonInk : theme.ink,
+          // Without this the label is the only shrinkable thing in the row,
+          // so it gives way to the count and truncates to "أكسسوارات …".
+          flexShrink: 0,
         }}
       >
         {label}
       </Text>
-      <Text style={{
+      <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
         fontFamily: fonts.ltr, fontSize: 11,
         color: active ? 'rgba(245,240,230,0.7)' : theme.subtle,
+        flexShrink: 0,
       }}>
         {count}
       </Text>

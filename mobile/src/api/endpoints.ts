@@ -555,6 +555,10 @@ export const Orders = {
 // variant here IS a listing and checkout is unchanged.
 export interface StoreShop {
   id: number; name: string; phone: string | null; shipping_fee: number;
+  // Delivery window in days, set per shop from the dashboard. Null when the
+  // shop has not stated one; the UI then says nothing rather than guessing.
+  delivery_days_min?: number | null;
+  delivery_days_max?: number | null;
 }
 export interface StoreCategory { brand: string; count: number }
 export type StoreType = 'phone' | 'tablet' | 'accessory';
