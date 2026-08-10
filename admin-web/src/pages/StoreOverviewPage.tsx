@@ -20,6 +20,7 @@ type Stats = {
   placed: { orders: number; value: number };
   delivered: { orders: number; value: number };
   cancelled: { orders: number; value: number };
+  returned: { orders: number; value: number };
   open_orders: number;
   pending_orders: number;
   aov: number;
@@ -28,6 +29,8 @@ type Stats = {
     lines_with_cost: number; lines_total: number; covered_pct: number;
   };
   cancel_rate: number;
+  return_rate: number;
+  delivery: { orders_with_cost: number; charged: number; paid: number; net: number };
   by_status: Array<{ status: string; n: number }>;
   series: Array<{ bucket: number; placed: number; delivered: number; revenue: number }>;
   top_products: Array<{ brand: string; model: string; units: number; revenue: number }>;
@@ -117,6 +120,12 @@ export function StoreOverviewPage() {
               <Kpi label="تم التسليم — مبيعات فعلية" value={s.delivered.orders} sub={`${iqd(s.delivered.value)} د.ع`} good />
               <Kpi label="ملغاة" value={s.cancelled.orders} sub={`${iqd(s.cancelled.value)} د.ع`} bad={s.cancelled.orders > 0} />
               <Kpi label="معدل الإلغاء" value={`${s.cancel_rate}%`} bad={s.cancel_rate >= 20} />
+              <Kpi
+                label="مُرجَعة"
+                value={s.returned.orders}
+                sub={s.returned.orders ? `${iqd(s.returned.value)} د.ع · ${s.return_rate}%` : 'لا مرتجعات'}
+                bad={s.returned.orders > 0}
+              />
               <Kpi label="معدل قيمة الطلب" value={`${iqd(s.aov)} د.ع`} sub="من الطلبات المسلَّمة فقط" />
             </div>
             <p className="muted" style={{ marginTop: 8, fontSize: 12 }}>
@@ -137,6 +146,15 @@ export function StoreOverviewPage() {
                 bad={!!s.margin.lines_with_cost && s.margin.profit < 0}
               />
               <Kpi label="كلفة البضاعة المباعة" value={s.margin.lines_with_cost ? `${iqd(s.margin.cost)} د.ع` : '—'} />
+              <Kpi
+                label="ربح/خسارة التوصيل"
+                value={s.delivery.orders_with_cost ? `${iqd(s.delivery.net)} د.ع` : '—'}
+                sub={s.delivery.orders_with_cost
+                  ? `حُصّل ${iqd(s.delivery.charged)} · دُفع ${iqd(s.delivery.paid)} على ${s.delivery.orders_with_cost} طلب`
+                  : 'سجّل كلفة التوصيل الفعلية في صفحة التجهيز'}
+                good={s.delivery.orders_with_cost > 0 && s.delivery.net > 0}
+                bad={s.delivery.orders_with_cost > 0 && s.delivery.net < 0}
+              />
               <Kpi
                 label="كلفة المخزون الحالي"
                 value={s.inventory.cost_value ? `${iqd(s.inventory.cost_value)} د.ع` : '—'}

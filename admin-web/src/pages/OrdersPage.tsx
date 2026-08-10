@@ -23,6 +23,8 @@ type Order = {
   governorate: string; address: string; note: string | null;
   subtotal: number; shipping_fee: number; total: number;
   payment_method: string; status: OrderStatus; cancel_reason: string | null;
+  returned_at: number | null; return_reason: string | null;
+  courier: string | null; delivery_cost: number | null;
   created_at: number; updated_at: number;
   items: OrderItem[];
 };
@@ -47,6 +49,10 @@ const NEXT: Record<OrderStatus, OrderStatus[]> = {
 const STATUS_COLOR: Record<OrderStatus, string> = {
   pending: '#E0A33E', confirmed: '#378ADD', shipped: '#7F77DD',
   delivered: '#34C77B', cancelled: '#E05C4B',
+};
+const RETURN_AR: Record<string, string> = {
+  refused: 'رفض الاستلام', wrong_item: 'جهاز خاطئ',
+  damaged: 'تالف', changed_mind: 'غيّر رأيه', other: 'سبب آخر',
 };
 const TABS: Array<{ key: '' | OrderStatus; label: string }> = [
   { key: '', label: 'الكل' },
@@ -101,6 +107,23 @@ export function OrdersPage({ onChanged }: { onChanged?: () => void }) {
 
   // Debounced so typing in search doesn't fire a request per keystroke.
   useEffect(() => { const h = setTimeout(load, 300); return () => clearTimeout(h); }, [tab, q]);
+
+  // A delivered order that came back. Not a status (orders.status has a
+  // CHECK constraint SQLite can't alter) — a flag, so the delivery history
+  // stays true while revenue and the customer's risk score subtract it.
+  async function markReturned(o: Order) {
+    const reason = prompt(
+      `سبب الإرجاع للطلب ${o.code}؟\n\nrefused / wrong_item / damaged / changed_mind / other`,
+      'refused',
+    );
+    if (!reason) return;
+    setBusy(o.id);
+    try {
+      await api(`/admin/orders/${o.id}/return`, { method: 'POST', body: JSON.stringify({ reason }) });
+      await load();
+      onChanged?.();
+    } catch (e: any) { setErr(friendly(e)); } finally { setBusy(null); }
+  }
 
   async function move(o: Order, status: OrderStatus) {
     if (status === 'cancelled' && !confirm(
@@ -173,6 +196,14 @@ export function OrdersPage({ onChanged }: { onChanged?: () => void }) {
             }}>
               {STATUS_AR[o.status]}
             </span>
+            {o.returned_at ? (
+              <span style={{
+                background: 'rgba(224,92,75,0.18)', color: '#E05C4B', borderRadius: 999,
+                padding: '3px 10px', fontSize: 12, fontWeight: 600,
+              }}>
+                مُرجَع{o.return_reason ? ` · ${RETURN_AR[o.return_reason] || o.return_reason}` : ''}
+              </span>
+            ) : null}
             <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{o.code}</strong>
             <span className="muted" style={{ fontSize: 12 }}>{when(o.created_at)}</span>
             <span className="muted" style={{ fontSize: 12 }}>{o.shop_name}</span>
@@ -207,6 +238,17 @@ export function OrdersPage({ onChanged }: { onChanged?: () => void }) {
               البضاعة {iqd(o.subtotal)} + التوصيل {iqd(o.shipping_fee)} = <strong>{iqd(o.total)} د.ع</strong> (الدفع عند الاستلام)
             </div>
           </div>
+
+          {/* A delivered order can still come back. That's the only action
+              left on it, so it lives beside the (empty) transition row. */}
+          {o.status === 'delivered' && !o.returned_at ? (
+            <div style={{ marginTop: 10 }}>
+              <button className="secondary" disabled={busy === o.id}
+                      style={{ color: 'salmon' }} onClick={() => markReturned(o)}>
+                تسجيل إرجاع
+              </button>
+            </div>
+          ) : null}
 
           {NEXT[o.status].length ? (
             <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>

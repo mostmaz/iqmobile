@@ -37,7 +37,10 @@ export function registerStoreRoutes(requireAdmin) {
 
     const todayRow = agg('AND created_at >= ?', [today]);
     const windowAll = agg('AND created_at >= ?', [since]);
-    const delivered = agg("AND status='delivered' AND created_at >= ?", [since]);
+    // Delivered EXCLUDES returns. An order that came back is not revenue,
+    // and counting it as such is the same lie as counting a placed order.
+    const delivered = agg("AND status='delivered' AND returned_at IS NULL AND created_at >= ?", [since]);
+    const returned = agg("AND returned_at IS NOT NULL AND created_at >= ?", [since]);
     const cancelled = agg("AND status='cancelled' AND created_at >= ?", [since]);
     const open = agg(`AND status IN ${OPEN}`, []);
     const pending = agg("AND status='pending'", []);
@@ -56,13 +59,14 @@ export function registerStoreRoutes(requireAdmin) {
               COALESCE(SUM(oi.unit_cost * oi.qty),0) AS cost,
               COUNT(*) AS lines_with_cost
          FROM order_items oi JOIN orders o ON o.id = oi.order_id
-        WHERE o.shop_id=? AND o.status='delivered' AND o.created_at >= ?
-          AND oi.unit_cost IS NOT NULL`,
+        WHERE o.shop_id=? AND o.status='delivered' AND o.returned_at IS NULL
+          AND o.created_at >= ? AND oi.unit_cost IS NOT NULL`,
     ).get(shopId, since);
     const allLines = db.prepare(
       `SELECT COUNT(*) AS n, COALESCE(SUM(oi.line_total),0) AS revenue
          FROM order_items oi JOIN orders o ON o.id = oi.order_id
-        WHERE o.shop_id=? AND o.status='delivered' AND o.created_at >= ?`,
+        WHERE o.shop_id=? AND o.status='delivered' AND o.returned_at IS NULL
+          AND o.created_at >= ?`,
     ).get(shopId, since);
     const profit = marginRow.revenue - marginRow.cost;
     const margin = {
@@ -75,6 +79,23 @@ export function registerStoreRoutes(requireAdmin) {
       covered_pct: allLines.revenue ? Math.round(marginRow.revenue / allLines.revenue * 100) : 0,
     };
     const cancelRate = windowAll.n ? +(cancelled.n / windowAll.n * 100).toFixed(1) : 0;
+    const returnRate = windowAll.n ? +(returned.n / windowAll.n * 100).toFixed(1) : 0;
+
+    // The customer pays a flat fee; the courier charges by governorate. The
+    // gap is real money and invisible until both numbers sit together.
+    const deliveryRow = db.prepare(
+      `SELECT COUNT(*) AS n,
+              COALESCE(SUM(shipping_fee),0) AS charged,
+              COALESCE(SUM(delivery_cost),0) AS paid
+         FROM orders
+        WHERE shop_id=? AND created_at >= ? AND delivery_cost IS NOT NULL`,
+    ).get(shopId, since);
+    const delivery = {
+      orders_with_cost: deliveryRow.n,
+      charged: deliveryRow.charged,
+      paid: deliveryRow.paid,
+      net: deliveryRow.charged - deliveryRow.paid,
+    };
 
     const byStatus = db.prepare(
       'SELECT status, COUNT(*) AS n FROM orders WHERE shop_id=? GROUP BY status',
@@ -130,11 +151,14 @@ export function registerStoreRoutes(requireAdmin) {
       placed: { orders: windowAll.n, value: windowAll.sum },
       delivered: { orders: delivered.n, value: delivered.sum },
       cancelled: { orders: cancelled.n, value: cancelled.sum },
+      returned: { orders: returned.n, value: returned.sum },
       open_orders: open.n,
       pending_orders: pending.n,
       aov,
       margin,
       cancel_rate: cancelRate,
+      return_rate: returnRate,
+      delivery,
       by_status: byStatus,
       series,
       top_products: topProducts,
@@ -172,10 +196,11 @@ export function registerStoreRoutes(requireAdmin) {
       `SELECT o.customer_phone AS phone,
               MAX(o.customer_name) AS name,
               COUNT(*) AS orders,
-              SUM(CASE WHEN o.status='delivered' THEN 1 ELSE 0 END) AS delivered,
+              SUM(CASE WHEN o.status='delivered' AND o.returned_at IS NULL THEN 1 ELSE 0 END) AS delivered,
               SUM(CASE WHEN o.status='cancelled' THEN 1 ELSE 0 END) AS cancelled,
+              SUM(CASE WHEN o.returned_at IS NOT NULL THEN 1 ELSE 0 END) AS returned,
               SUM(CASE WHEN o.status IN ${OPEN} THEN 1 ELSE 0 END) AS open,
-              COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total ELSE 0 END),0) AS delivered_value,
+              COALESCE(SUM(CASE WHEN o.status='delivered' AND o.returned_at IS NULL THEN o.total ELSE 0 END),0) AS delivered_value,
               MAX(o.created_at) AS last_order_at,
               MIN(o.created_at) AS first_order_at,
               MAX(o.governorate) AS governorate
@@ -200,7 +225,9 @@ export function registerStoreRoutes(requireAdmin) {
         // Three or more refusals is the threshold worth acting on: below
         // that it's plausibly bad luck, above it it's a pattern, and the
         // shop should ask for prepayment before dispatching again.
-        risk: c.cancelled >= 3 ? 'high' : c.cancelled === 2 ? 'watch' : 'ok',
+        // A return costs the shop the same round trip a refusal does, so
+        // both count toward the risk signal.
+        risk: (c.cancelled + c.returned) >= 3 ? 'high' : (c.cancelled + c.returned) === 2 ? 'watch' : 'ok',
       })),
     });
   });

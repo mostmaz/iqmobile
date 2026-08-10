@@ -800,6 +800,28 @@ db.prepare(
 // snapshotted rather than read back off the listing.
 addColumnIfMissing('order_items', 'unit_cost INTEGER');
 
+// ─── fulfilment ──────────────────────────────────────────────────────
+// Who is carrying it, and what actually happened at the door.
+addColumnIfMissing('orders', 'courier TEXT');
+addColumnIfMissing('orders', 'tracking_note TEXT');
+// What the courier actually charged. shipping_fee is what the CUSTOMER was
+// quoted (flat 5,000); the real cost varies by governorate, and the gap
+// between the two is the shop's delivery margin — invisible until both
+// numbers exist side by side.
+addColumnIfMissing('orders', 'delivery_cost INTEGER');
+// WHEN it was delivered. Same lesson as phone_listings.sold_at: 'delivered'
+// is a current-state flag, and without a timestamp no report can ask how
+// much was delivered in a window — only how much was ORDERED in one.
+addColumnIfMissing('orders', 'delivered_at INTEGER');
+
+// A return is a delivered order that came back. It is deliberately NOT a
+// sixth status: orders.status carries a CHECK constraint, SQLite cannot
+// alter one, and rebuilding a live orders table to add an enum value is a
+// bad trade. Flagging it keeps the delivery history intact — the order WAS
+// delivered — while letting revenue subtract it.
+addColumnIfMissing('orders', 'returned_at INTEGER');
+addColumnIfMissing('orders', 'return_reason TEXT');
+
 // ─── revenue: shops ──────────────────────────────────────────────────
 // A "shop" is a user with seller_type='shop'. These columns hold the shop
 // profile shown in the Shops directory + shop page. shop_featured_until > now

@@ -8,7 +8,7 @@ import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
-import { applyStatusToStock } from '../../stock.js';
+import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { pushTo } from '../../push.js';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand } from '../../brands.js';
@@ -2183,6 +2183,12 @@ r.patch('/orders/:id(\\d+)', requireAdmin, (req, res) => {
   applyStatusToStock(o, next);
   db.prepare('UPDATE orders SET status=?, cancel_reason=?, updated_at=? WHERE id=?')
     .run(next, reason, t, o.id);
+  // Stamp the delivery. 'delivered' alone is a current-state flag; without a
+  // timestamp no report can ask what was DELIVERED in a window, only what
+  // was ordered in one — the same hole sold_at filled for listings.
+  if (next === 'delivered') {
+    db.prepare('UPDATE orders SET delivered_at=? WHERE id=? AND delivered_at IS NULL').run(t, o.id);
+  }
 
   // Keep the customer informed. Guest orders have user_id NULL — skip
   // rather than throwing on the notifications FK.
@@ -2198,6 +2204,58 @@ r.patch('/orders/:id(\\d+)', requireAdmin, (req, res) => {
         { title: AR[next], body: o.code });
     }
   }
+  res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
+});
+
+// Courier / tracking / real delivery cost. Separate from the status PATCH
+// because these are edited while an order sits in one state — the operator
+// types the courier name at dispatch, the real fee when the courier invoices
+// — and folding them into a transition endpoint would mean pretending a
+// status changed just to save a note.
+r.patch('/orders/:id(\\d+)/fulfilment', requireAdmin, (req, res) => {
+  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id);
+  if (!o) return res.status(404).json({ error: 'not_found' });
+  const b = req.body || {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
+  const fields = [];
+  const params = [];
+
+  for (const [key, max] of [['courier', 60], ['tracking_note', 200]]) {
+    if (!has(key)) continue;
+    const v = String(b[key] ?? '').trim().slice(0, max);
+    fields.push(`${key}=?`); params.push(v || null);
+  }
+  if (has('delivery_cost')) {
+    const raw = b.delivery_cost;
+    if (raw === null || raw === '') { fields.push('delivery_cost=?'); params.push(null); }
+    else {
+      const n = Math.round(Number(raw));
+      if (!Number.isFinite(n) || n < 0 || n > 10000000) return res.status(400).json({ error: 'bad_delivery_cost' });
+      fields.push('delivery_cost=?'); params.push(n);
+    }
+  }
+  if (!fields.length) return res.status(400).json({ error: 'no_fields' });
+  fields.push('updated_at=?'); params.push(now(), o.id);
+  db.prepare(`UPDATE orders SET ${fields.join(', ')} WHERE id=?`).run(...params);
+  res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
+});
+
+// A return: the order WAS delivered and came back. Modelled as a flag rather
+// than a sixth status because orders.status carries a CHECK constraint that
+// SQLite can't alter, and rebuilding a live orders table to add an enum
+// value is a bad trade. The delivery history stays true; revenue subtracts.
+const RETURN_REASONS = ['refused', 'wrong_item', 'damaged', 'changed_mind', 'other'];
+r.post('/orders/:id(\\d+)/return', requireAdmin, (req, res) => {
+  const o = db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id);
+  if (!o) return res.status(404).json({ error: 'not_found' });
+  if (o.status !== 'delivered') return res.status(409).json({ error: 'not_delivered' });
+  if (o.returned_at) return res.status(409).json({ error: 'already_returned' });
+  const reason = RETURN_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
+  const t = now();
+  // The devices are physically back, so the units are sellable again.
+  restoreStockForOrder(o.id);
+  db.prepare('UPDATE orders SET returned_at=?, return_reason=?, updated_at=? WHERE id=?')
+    .run(t, reason, t, o.id);
   res.json({ ok: true, order: db.prepare('SELECT * FROM orders WHERE id=?').get(o.id) });
 });
 
