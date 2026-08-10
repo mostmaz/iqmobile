@@ -24,6 +24,7 @@ type Listing = {
   stock_qty: number | null; cost_price: number | null;
   specs_json: string | null;
   status: string; description: string | null; created_at: number;
+  price_on_request?: number;
   cover_image: string | null; image_count: number;
 };
 type Brand = { id: number; name: string; display_ar: string | null };
@@ -412,7 +413,7 @@ export function StorePage() {
                 {panelId === l.id ? (
                   <tr>
                     <td colSpan={8} style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <DevicePanel listing={l} onChanged={() => loadItems(shopId!)} />
+                      <DevicePanel listing={l} brands={brands} onChanged={() => loadItems(shopId!)} />
                     </td>
                   </tr>
                 ) : null}
@@ -442,16 +443,50 @@ export function StorePage() {
 // operator to retype them for the 128 and 256 GB rows guarantees they drift.
 const SPEC_PRESETS = ['الشاشة', 'الكاميرا', 'البطارية', 'المعالج', 'الرام', 'الشبكة', 'نظام التشغيل', 'الضمان'];
 
-function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () => void }) {
+function DevicePanel({ listing, brands, onChanged }: {
+  listing: Listing; brands: Brand[]; onChanged: () => void;
+}) {
+  // Everything about the device that isn't price/stock/cost. Those three are
+  // inline on the row because they change weekly; these change when someone
+  // notices a typo, which is exactly why they need to be editable at all —
+  // before this, a wrong model name was permanent short of deleting the
+  // product and losing its photos with it.
+  const [form, setForm] = useState({
+    brand: listing.brand,
+    model: listing.model,
+    storage: listing.storage || '',
+    color: listing.color || '',
+    condition: listing.condition,
+    description: listing.description || '',
+    price_on_request: !!listing.price_on_request,
+  });
+  const [savingInfo, setSavingInfo] = useState(false);
+  const dirty = form.brand !== listing.brand
+    || form.model !== listing.model
+    || form.storage !== (listing.storage || '')
+    || form.color !== (listing.color || '')
+    || form.condition !== listing.condition
+    || form.description !== (listing.description || '')
+    || form.price_on_request !== !!listing.price_on_request;
+
   const [imgs, setImgs] = useState<Array<{ id: number; image_path: string }>>([]);
+  // The server caps a listing at MAX_LISTING_IMAGES and answers 400 past it,
+  // so the picker has to know the ceiling rather than let the upload fail.
+  const [maxImgs, setMaxImgs] = useState(10);
   const [specs, setSpecs] = useState<Array<{ label: string; value: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
 
   useEffect(() => {
-    api<Array<{ id: number; image_path: string }>>(`/admin/listings/${listing.id}/images`)
-      .then(setImgs).catch((e) => setErr(friendly(e)));
+    // Shape is { images, max } — not a bare array. Assuming an array here
+    // threw "imgs.map is not a function" and, with no error boundary above
+    // it, blanked the entire dashboard page.
+    api<{ images: Array<{ id: number; image_path: string }>; max: number }>(
+      `/admin/listings/${listing.id}/images`,
+    )
+      .then((r) => { setImgs(r.images || []); setMaxImgs(r.max || 10); })
+      .catch((e) => setErr(friendly(e)));
     try {
       const parsed = listing.specs_json ? JSON.parse(listing.specs_json) : [];
       setSpecs(Array.isArray(parsed) ? parsed : []);
@@ -463,14 +498,19 @@ function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () =
     setBusy(true); setErr('');
     try {
       const fd = new FormData();
-      for (const f of Array.from(files).slice(0, 10)) {
+      const room = Math.max(0, maxImgs - imgs.length);
+      if (!room) { setErr(`الحد الأقصى ${maxImgs} صور لكل جهاز.`); setBusy(false); return; }
+      for (const f of Array.from(files).slice(0, room)) {
         // Same client-side compression the create form uses — a 4 MB phone
         // photo becomes ~40 KB before it ever leaves the browser.
         const r = await compressImage(f, { maxDim: 1600, quality: 0.85 });
         fd.append('images', r.blob, r.filename);
       }
       await apiForm(`/admin/listings/${listing.id}/images`, fd);
-      setImgs(await api(`/admin/listings/${listing.id}/images`));
+      const r = await api<{ images: Array<{ id: number; image_path: string }> }>(
+        `/admin/listings/${listing.id}/images`,
+      );
+      setImgs(r.images || []);
       onChanged();
     } catch (e: any) { setErr(friendly(e)); } finally { setBusy(false); }
   }
@@ -497,6 +537,28 @@ function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () =
     } catch (e: any) { setErr(friendly(e)); } finally { setBusy(false); }
   }
 
+  async function saveInfo() {
+    if (!form.model.trim()) { setErr('اسم الجهاز مطلوب.'); return; }
+    setSavingInfo(true); setErr('');
+    try {
+      await api(`/admin/listings/${listing.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          brand: form.brand,
+          model: form.model.trim(),
+          storage: form.storage.trim(),
+          color: form.color.trim(),
+          condition: form.condition,
+          description: form.description.trim(),
+          price_on_request: form.price_on_request,
+        }),
+      });
+      setNote('تم حفظ بيانات الجهاز.');
+      setTimeout(() => setNote(''), 2500);
+      onChanged();
+    } catch (e: any) { setErr(friendly(e)); } finally { setSavingInfo(false); }
+  }
+
   const setSpec = (i: number, k: 'label' | 'value', v: string) =>
     setSpecs((a) => a.map((s, j) => (j === i ? { ...s, [k]: v } : s)));
 
@@ -504,6 +566,53 @@ function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () =
     <div style={{ padding: '10px 4px', display: 'grid', gap: 14 }}>
       {err ? <div style={{ color: 'salmon' }}>{err}</div> : null}
       {note ? <div style={{ color: '#34C77B' }}>{note}</div> : null}
+
+      <div>
+        <strong>بيانات الجهاز</strong>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+          <select value={form.brand} disabled={savingInfo}
+                  onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}>
+            {brands.map((b) => <option key={b.id} value={b.name}>{b.name}</option>)}
+          </select>
+          <input value={form.model} placeholder="الموديل" style={{ minWidth: 200 }}
+                 disabled={savingInfo}
+                 onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} />
+          <input value={form.storage} placeholder="الذاكرة" style={{ width: 110 }}
+                 disabled={savingInfo}
+                 onChange={(e) => setForm((f) => ({ ...f, storage: e.target.value }))} />
+          <input value={form.color} placeholder="اللون" style={{ width: 130 }}
+                 disabled={savingInfo}
+                 onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))} />
+          <select value={form.condition} disabled={savingInfo}
+                  onChange={(e) => setForm((f) => ({ ...f, condition: e.target.value }))}>
+            {CONDITIONS.map((c) => <option key={c} value={c}>{COND_AR[c] || c}</option>)}
+          </select>
+        </div>
+        <textarea
+          value={form.description}
+          placeholder="الوصف (اختياري)"
+          rows={2}
+          disabled={savingInfo}
+          style={{ width: '100%', marginTop: 8 }}
+          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+        />
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={form.price_on_request} disabled={savingInfo}
+                 onChange={(e) => setForm((f) => ({ ...f, price_on_request: e.target.checked }))} />
+          السعر عند الطلب (يخفي السعر ويمنع الشراء — يظهر زر اتصال بدله)
+        </label>
+        <div style={{ marginTop: 8 }}>
+          <button className="primary" disabled={savingInfo || !dirty} onClick={saveInfo}>
+            {dirty ? 'حفظ التعديلات' : 'لا تغييرات'}
+          </button>
+          {/* Renaming a device regroups it in the storefront: products are
+              grouped by brand+model, so a rename can split one product into
+              two or merge two into one. Worth saying out loud. */}
+          <span className="muted" style={{ fontSize: 11.5, marginRight: 8 }}>
+            تغيير الماركة أو الموديل يعيد تجميع الجهاز في المتجر.
+          </span>
+        </div>
+      </div>
 
       <div>
         <strong>الصور ({imgs.length})</strong>
@@ -522,10 +631,11 @@ function DevicePanel({ listing, onChanged }: { listing: Listing; onChanged: () =
           ))}
           {!imgs.length ? <span className="muted">لا صور بعد.</span> : null}
         </div>
-        <input type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy}
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple
+               disabled={busy || imgs.length >= maxImgs}
                onChange={(e) => { void addPhotos(e.target.files); e.target.value = ''; }} />
         <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
-          الصورة الأولى هي الغلاف. تُضغط الصور تلقائياً قبل الرفع.
+          الصورة الأولى هي الغلاف. تُضغط الصور تلقائياً قبل الرفع. الحد {maxImgs} صور.
         </div>
       </div>
 
