@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Img } from './Img';
-import { theme, fonts, radius, shadowSoft } from '../theme';
+import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT, FONT_SCALE_RELAXED } from '../theme';
 import { fmtIQD } from './ui';
 import { IconStar, IconPin, IconSpark } from './icons';
 import { ChipTag } from './marketplace';
@@ -111,6 +111,7 @@ export function ListingCard({
             location, which has room to spare. */}
         <Text
           style={{ fontFamily: fonts.arBold, fontSize: compact ? 14 : 15, color: theme.ink, textAlign: 'right' }}
+          maxFontSizeMultiplier={FONT_SCALE_RELAXED}
           numberOfLines={2}
         >
           {deviceTitle(listing.brand, listing.model)}
@@ -131,6 +132,7 @@ export function ListingCard({
               must never wrap; the location shrinks instead. */}
           <Text
             numberOfLines={1}
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
             style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3, flexShrink: 0 }}
           >
             {fmtIQD(listing.asking_price)}
@@ -138,10 +140,23 @@ export function ListingCard({
           </Text>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
             <IconPin size={12} color={theme.subtle} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flexShrink: 1 }}>
+            {/* The location wins the shrink contest and the timestamp keeps
+                its intrinsic width — at a 1.3x font scale the reverse left
+                the row reading "· … · قبل 6 دقائق", with the place name gone
+                entirely. Both are clamped so neither can grow the row past
+                what the card allows. */}
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+              style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flexShrink: 1, minWidth: 0 }}
+            >
               {arOf(listing.governorate)}{!compact && listing.city ? ` · ${listing.city}` : ''}
             </Text>
-            <Text numberOfLines={1} style={{ fontFamily: stale ? fonts.arBold : fonts.ar, fontSize: 11, color: theme.subtle }}>
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+              style={{ fontFamily: stale ? fonts.arBold : fonts.ar, fontSize: 11, color: theme.subtle, flexShrink: 0 }}
+            >
               · {stale ? 'غير متوفر حالياً' : fmtRelativeTime(listing.created_at)}
             </Text>
           </View>
