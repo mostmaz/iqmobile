@@ -22,7 +22,11 @@ const r = Router();
 const PAGE = 24;
 const MAX_PAGE = 60;
 const SORTS = {
-  newest: 'MAX(l.created_at) DESC',
+  // Photoless products sort last within "newest". A tile with no image is a
+  // grey box, and four of them across the top row is the first thing a
+  // shopper sees — it reads as a broken store, not a new arrival. Explicit
+  // price sorts below stay purely about price.
+  newest: 'has_image DESC, MAX(l.created_at) DESC',
   // Unpriced items carry a placeholder asking_price, so they'd win "cheapest
   // first" outright and lead "most expensive" backwards. Push them last in
   // both directions instead of pretending the placeholder is a price.
@@ -166,6 +170,9 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
             MAX(l.created_at) AS newest_at,
             MIN(l.id) AS lead_id,
             MIN(COALESCE(l.price_on_request,0)) AS all_on_request,
+            MAX(CASE WHEN EXISTS(
+              SELECT 1 FROM listing_images WHERE listing_id = l.id
+            ) THEN 1 ELSE 0 END) AS has_image,
             GROUP_CONCAT(l.id) AS variant_ids
        FROM phone_listings l
       ${where}
@@ -207,7 +214,7 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
       // MIN over the group: the tile only says "call for price" when EVERY
       // variant is unpriced. One priced capacity means there's a real number
       // to show, and hiding it would lose a sale.
-      const { variant_ids, model_fallback, all_on_request, ...rest } = p;
+      const { variant_ids, model_fallback, all_on_request, has_image, ...rest } = p;
       return {
         ...rest,
         model,
