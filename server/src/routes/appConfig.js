@@ -13,6 +13,7 @@
 
 import { Router } from 'express';
 import { db, getSetting } from '../db.js';
+import { resolveStorefrontCard } from '../storefrontCard.js';
 
 const r = Router();
 
@@ -77,57 +78,23 @@ r.get('/app-config', (_req, res) => {
     ).get(shop.id).n;
     if (!total) return null;
 
-    // The teaser's whole job is three real products with real prices. So it
-    // skips call-for-price items (their asking_price is a placeholder — the
-    // card would advertise a phone at 1 IQD) and prefers products that
-    // actually have a photo, since three empty boxes read worse than no card.
-    const groups = db.prepare(
-      `SELECT MIN(l.id) AS lead_id, l.brand, GROUP_CONCAT(l.id) AS ids,
-              MAX(CASE WHEN EXISTS(
-                SELECT 1 FROM listing_images WHERE listing_id = l.id
-              ) THEN 1 ELSE 0 END) AS has_image
-         FROM phone_listings l
-        WHERE l.seller_id=? AND l.status='active'
-          AND COALESCE(l.price_on_request,0) = 0
-          AND COALESCE(l.stock_qty, 1) > 0
-        GROUP BY l.brand, LOWER(TRIM(l.model))
-        ORDER BY has_image DESC, MAX(l.created_at) DESC LIMIT 3`,
-    ).all(shop.id);
-
-    const products = groups.map((g) => {
-      const ids = String(g.ids || '').split(',').filter(Boolean).map(Number);
-      const ph = ids.map(() => '?').join(',');
-      // Photos usually sit on whichever variant was added first, so look
-      // across the whole group rather than leaving a tile blank.
-      const img = ids.length ? db.prepare(
-        `SELECT image_path FROM listing_images WHERE listing_id IN (${ph})
-          ORDER BY position ASC, id ASC LIMIT 1`,
-      ).get(...ids) : null;
-      // Price and storage both come from the CHEAPEST variant — taking each
-      // from a different row would advertise the 64GB price beside the
-      // 256GB label. The name comes from the earliest-added spelling, which
-      // is the rule the store screen uses.
-      const cheapest = db.prepare(
-        `SELECT storage, asking_price FROM phone_listings WHERE id IN (${ph})
-          ORDER BY asking_price ASC, id ASC LIMIT 1`,
-      ).get(...ids);
-      const lead = db.prepare('SELECT model FROM phone_listings WHERE id=?').get(g.lead_id);
-      return {
-        id: g.lead_id,
-        brand: g.brand,
-        model: String(lead?.model || '').trim(),
-        storage: cheapest ? cheapest.storage : null,
-        asking_price: cheapest ? cheapest.asking_price : 0,
-        image_path: img ? img.image_path : null,
-      };
-    });
+    // What the card shows is now an operator choice — best sellers, most
+    // viewed, hand-picked, or a banner image instead of tiles. See
+    // src/storefrontCard.js; it also tops up thin modes so the card never
+    // renders with gaps.
+    const card = resolveStorefrontCard(shop.id);
 
     return {
       shop_id: shop.id,
       shop_name: shop.shop_name || shop.display_name,
       shipping_fee: Number(shop.shop_shipping_fee) || 0,
       product_count: total,
-      products,
+      card_mode: card.mode,
+      card_title: card.title,
+      banner_image: card.banner_image
+        ? (card.banner_image.startsWith('http') ? card.banner_image : PUBLIC_BASE + card.banner_image)
+        : null,
+      products: card.products,
     };
   })();
 

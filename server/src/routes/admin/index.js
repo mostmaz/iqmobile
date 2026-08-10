@@ -2585,6 +2585,6 @@ r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
 // Store management (KPIs, customers) lives in its own module — this file is
 // already the marketplace-wide admin surface and the storefront is a
 // different job with different questions.
-r.use('/', registerStoreRoutes(requireAdmin));
+r.use('/', registerStoreRoutes(requireAdmin, imageUpload, UPLOADS));
 
 export default r;

@@ -7,8 +7,13 @@
 // customer view is built around who refuses deliveries, because that is the
 // shop's real loss and it is invisible in an order list sorted by date.
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router } from 'express';
-import { db } from '../../db.js';
+import { db, setSettingValue } from '../../db.js';
+import {
+  CARD_MODES, CARD_SLOTS, readCardConfig, resolveStorefrontCard, cardModeCounts,
+} from '../../storefrontCard.js';
 
 const r = Router();
 
@@ -22,7 +27,68 @@ const dayStart = (ms) => {
 
 const OPEN = "('pending','confirmed','shipped')";
 
-export function registerStoreRoutes(requireAdmin) {
+export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
+  // ─── home-screen card ──────────────────────────────────────────────
+  // What the storefront card shows: newest / best sellers / most viewed /
+  // hand-picked / a banner image instead of tiles.
+  r.get('/store/:id(\\d+)/card', requireAdmin, (req, res) => {
+    const shopId = Number(req.params.id);
+    const cfg = readCardConfig();
+    const preview = resolveStorefrontCard(shopId, cfg);
+    // Counts let the operator see BEFORE choosing that "best sellers" can
+    // currently fill one slot out of three — otherwise the mode silently
+    // becomes "one best seller and two newest".
+    res.json({
+      config: cfg,
+      slots: CARD_SLOTS,
+      counts: cardModeCounts(shopId),
+      preview,
+      // Candidates for hand-picking: one row per product, newest first.
+      // No cover image here on purpose — SQLite rejects MIN() inside a
+      // correlated subquery, and the picker is a searchable text list.
+      candidates: db.prepare(
+        `SELECT MIN(l.id) AS id, l.brand, MIN(l.model) AS model,
+                MIN(l.asking_price) AS asking_price
+           FROM phone_listings l
+          WHERE l.seller_id=? AND l.status='active'
+            AND COALESCE(l.price_on_request,0)=0 AND COALESCE(l.stock_qty,1) > 0
+          GROUP BY l.brand, LOWER(TRIM(l.model))
+          ORDER BY MAX(l.created_at) DESC LIMIT 300`,
+      ).all(shopId),
+    });
+  });
+
+  r.patch('/store/:id(\\d+)/card', requireAdmin, (req, res) => {
+    const b = req.body || {};
+    if (b.mode !== undefined) {
+      if (!CARD_MODES.includes(b.mode)) return res.status(400).json({ error: 'bad_mode' });
+      setSettingValue('storefront_card_mode', b.mode);
+    }
+    if (b.ids !== undefined) {
+      const ids = (Array.isArray(b.ids) ? b.ids : [])
+        .map((n) => parseInt(n, 10)).filter((n) => Number.isInteger(n) && n > 0)
+        .slice(0, CARD_SLOTS);
+      setSettingValue('storefront_card_ids', ids.join(','));
+    }
+    if (b.title !== undefined) {
+      setSettingValue('storefront_card_title', String(b.title || '').trim().slice(0, 60));
+    }
+    const cfg = readCardConfig();
+    res.json({ ok: true, config: cfg, preview: resolveStorefrontCard(Number(req.params.id), cfg) });
+  });
+
+  r.post('/store/:id(\\d+)/card/image', requireAdmin, imageUpload.single('image'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'no_file' });
+    const prev = readCardConfig().image;
+    // Drop the previous banner so uploads don't pile up in the uploads dir.
+    if (prev && prev.startsWith('/uploads/')) {
+      try { fs.unlinkSync(path.join(UPLOADS, path.basename(prev))); } catch { /* already gone */ }
+    }
+    const p = '/uploads/' + req.file.filename;
+    setSettingValue('storefront_card_image', p);
+    res.json({ ok: true, image: p });
+  });
+
   // ─── KPI header ────────────────────────────────────────────────────
   r.get('/store/:id(\\d+)/stats', requireAdmin, (req, res) => {
     const shopId = Number(req.params.id);

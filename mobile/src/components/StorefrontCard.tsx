@@ -25,13 +25,29 @@ export interface StorefrontProduct {
   asking_price: number;
   image_path?: string | null;
 }
+export type StorefrontCardMode = 'newest' | 'best_selling' | 'most_viewed' | 'custom';
 export interface Storefront {
   shop_id: number;
   shop_name: string;
   shipping_fee: number;
   product_count: number;
+  // Dashboard-controlled: what the card shows and how it's labelled.
+  card_mode?: StorefrontCardMode;
+  card_title?: string | null;
+  // When set, a single image replaces the three product tiles entirely.
+  banner_image?: string | null;
   products: StorefrontProduct[];
 }
+
+// The heading tells the shopper WHY these three are here. A "best sellers"
+// strip that just says "new devices" wastes the only social proof the card
+// has.
+const MODE_TITLE: Record<string, string> = {
+  newest: 'أجهزة جديدة',
+  best_selling: 'الأكثر مبيعاً',
+  most_viewed: 'الأكثر مشاهدة',
+  custom: 'مختارات المتجر',
+};
 
 export function StorefrontCard({
   storefront, onOpenShop, onOpenProduct,
@@ -43,8 +59,13 @@ export function StorefrontCard({
   // capacity), and tapping a tile should open all of them as options.
   onOpenProduct: (product: StorefrontProduct) => void;
 }) {
-  const { shop_name, shipping_fee, products } = storefront;
-  if (!products?.length) return null;
+  const { shop_name, shipping_fee, products, banner_image } = storefront;
+  const heading = storefront.card_title
+    || MODE_TITLE[storefront.card_mode || 'newest']
+    || MODE_TITLE.newest;
+  // Banner mode replaces the tiles; otherwise the card still needs products
+  // to be worth rendering at all.
+  if (!banner_image && !products?.length) return null;
 
   return (
     <View style={{
@@ -68,7 +89,7 @@ export function StorefrontCard({
             fontWeight: '700', color: theme.ink, textAlign: 'right',
           }}
         >
-          {shop_name} · أجهزة جديدة
+          {shop_name} · {heading}
         </Text>
         <View style={{ transform: [{ scaleX: -1 }] }}>
           <IconChevronLeft size={15} color={theme.subtle} sw={2} />
@@ -80,8 +101,21 @@ export function StorefrontCard({
         <Badge bg={theme.chipBg} fg={theme.chipInk} label={`توصيل ${fmtIQD(shipping_fee)}`} />
       </View>
 
-      {/* Tapping a product goes straight to it — a shopper who has already
-          picked one shouldn't have to find it again inside the shop. */}
+      {/* A single banner instead of tiles, when the shop has art it would
+          rather lead with than three products. */}
+      {banner_image ? (
+        <TouchableOpacity onPress={onOpenShop} activeOpacity={0.9} style={{
+          borderRadius: radius.lg, overflow: 'hidden', backgroundColor: theme.bg,
+        }}>
+          <Img
+            source={{ uri: banner_image }}
+            contentFit="cover"
+            style={{ width: '100%', aspectRatio: 16 / 9 }}
+          />
+        </TouchableOpacity>
+      ) : (
+      /* Tapping a product goes straight to it — a shopper who has already
+         picked one shouldn't have to find it again inside the shop. */
       <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
         {products.slice(0, 3).map((p) => (
           <TouchableOpacity
@@ -113,6 +147,7 @@ export function StorefrontCard({
           </TouchableOpacity>
         ))}
       </View>
+      )}
 
       <TouchableOpacity
         onPress={onOpenShop}
