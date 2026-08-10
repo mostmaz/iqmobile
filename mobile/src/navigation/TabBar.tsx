@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { StackActions } from '@react-navigation/native';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { IconHome, IconSearch, IconPlus, IconPerson, IconChat } from '../components/icons';
 
@@ -48,7 +49,19 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
         const Icon = ICONS[route.name];
         const onPress = () => {
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-          if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+          if (event.defaultPrevented) return;
+          if (!focused) { navigation.navigate(route.name); return; }
+          // Re-tapping the ACTIVE tab pops its stack to the root — the
+          // standard bottom-nav behaviour, and previously a no-op. Without
+          // it, a tab left on a nested page (a promo screen, a shop) had no
+          // one-tap way home, and back would not pop it either.
+          const tabState: any = state.routes[idx].state;
+          if (tabState && tabState.index > 0) {
+            navigation.dispatch({
+              ...StackActions.popToTop(),
+              target: tabState.key,
+            });
+          }
         };
 
         if (isSell) {

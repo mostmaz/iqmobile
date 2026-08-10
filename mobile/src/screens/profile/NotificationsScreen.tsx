@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, SectionList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { theme, fonts, radius } from '../../theme';
 import { Header } from '../../components/ui';
 import { RowListSkeleton } from '../../components/Skeleton';
 import { Notifications, type NotificationRow } from '../../api/endpoints';
+import { timeAgoAr, dayBucketAr, deviceTitle } from '../../lib/format';
 import { navigationRef } from '../../navigation/ref';
 import { toLatinDigits } from '../../lib/format';
 import { ar } from '../../i18n/ar';
@@ -40,6 +41,16 @@ const KIND_LABEL: Record<string, string> = {
 // Falls back gracefully when the server enrichment came back empty
 // (chat deleted, listing removed, …) so the row never looks broken.
 function subline(item: NotificationRow): string | null {
+  // Order notifications carry their code in the payload but never showed it,
+  // so "تم توصيل طلبك" never said WHICH order — useless to anyone with more
+  // than one in flight.
+  if (item.kind.startsWith('order.')) {
+    const p = item.payload || {};
+    const bits: string[] = [];
+    if (p.code) bits.push(String(p.code));
+    if (p.total) bits.push(`${Number(p.total).toLocaleString('en-US')} د.ع`);
+    if (bits.length) return bits.join(' · ');
+  }
   const cs = item.chat_summary;
   if (cs && (cs.other_name || cs.listing_label)) {
     const parts: string[] = [];
@@ -48,8 +59,20 @@ function subline(item: NotificationRow): string | null {
     return parts.join(' · ');
   }
   const ls = item.listing_summary;
-  if (ls) return `${ls.brand} ${ls.model}`;
+  if (ls) return deviceTitle(ls.brand, ls.model);
   return null;
+}
+
+/** Rows split into "اليوم" / "أمس" / older, in the order the list arrives. */
+function groupByDay(rows: NotificationRow[]) {
+  const out: { day: string; rows: NotificationRow[] }[] = [];
+  for (const r of rows) {
+    const day = dayBucketAr(r.created_at);
+    const last = out[out.length - 1];
+    if (last && last.day === day) last.rows.push(r);
+    else out.push({ day, rows: [r] });
+  }
+  return out;
 }
 
 export default function NotificationsScreen({ navigation }: any) {
@@ -103,9 +126,18 @@ export default function NotificationsScreen({ navigation }: any) {
       <Header title={ar.profile.notifications} onBack={() => navigation.goBack()} right={
         <TouchableOpacity onPress={readAll}><Text style={{ fontFamily: fonts.ar, color: theme.accent }}>قراءة الكل</Text></TouchableOpacity>
       } />
-      <FlatList
-        data={data || []}
+      <SectionList
+        sections={groupByDay(data || []).map((g) => ({ title: g.day, data: g.rows }))}
         keyExtractor={(it) => String(it.id)}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section }) => (
+          <Text style={{
+            fontFamily: fonts.arBold, fontSize: 12, color: theme.subtle,
+            textAlign: 'right', marginTop: 10, marginBottom: 6,
+          }}>
+            {section.title}
+          </Text>
+        )}
         contentContainerStyle={{ padding: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
         renderItem={({ item }) => {
@@ -128,8 +160,11 @@ export default function NotificationsScreen({ navigation }: any) {
                   {sub}
                 </Text>
               ) : null}
+              {/* Was a raw absolute datetime with second precision —
+                  "10/8/2026، 4:41:36 م" — while every other surface in the
+                  app speaks in relative time. */}
               <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, marginTop: 4, textAlign: 'right' }}>
-                {toLatinDigits(new Date(item.created_at).toLocaleString('ar'))}
+                {timeAgoAr(item.created_at)}
               </Text>
             </TouchableOpacity>
           );

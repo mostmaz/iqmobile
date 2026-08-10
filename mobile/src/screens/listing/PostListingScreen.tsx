@@ -9,6 +9,7 @@ import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { districtHint } from '../../lib/governorates';
+import { CONDITIONS } from '../../lib/conditions';
 import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
@@ -29,7 +30,7 @@ import { useAuth } from '../../auth/AuthContext';
 // POCO, Honor, Oukitel…) show up without an app update — the old hardcoded
 // list is exactly what pushed those phones into "Other".
 const FALLBACK_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawei', 'OPPO', 'Vivo', 'OnePlus', 'Google', 'Nokia', 'Other'];
-const CONDITIONS: Condition[] = ['new', 'used', 'refurbished', 'repaired'];
+
 // Ascending by capacity. The old order put 1TB last after descending
 // GB values, so the largest option looked like the smallest.
 const STORAGE_CHOICES = ['64GB', '128GB', '256GB', '512GB', '1TB'];

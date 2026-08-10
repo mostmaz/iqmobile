@@ -1,10 +1,12 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useCart } from '../../lib/cart';
+import { CONDITIONS } from '../../lib/conditions';
+import { digitsOnly } from '../../lib/format';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore, IconBag } from '../../components/icons';
@@ -27,7 +29,7 @@ import { useSaveSearch } from '../../lib/useSaveSearch';
 // can add brands and the next /brands fetch picks them up.
 // 'sealed' was retired from the UI — server still accepts it on legacy
 // listings, just not surfaced as a picker option anymore.
-const CONDITIONS: Condition[] = ['new', 'used', 'refurbished'];
+
 
 // Price filter operates in 100,000 IQD steps across a 100K–2M range — the
 // band where virtually the whole Iraqi phone market lives. Both ends are
@@ -402,7 +404,7 @@ export default function BrowseScreen({ navigation }: any) {
             </Section>
             <Section label="الحالة">
               <Pill active={!filters.condition} onPress={() => patch({ condition: undefined })}>{ar.browse.allConditions}</Pill>
-              {CONDITIONS.map((c) => <Pill key={c} active={filters.condition === c} onPress={() => patch({ condition: c })}>{(ar.listing as any)[c]}</Pill>)}
+              {CONDITIONS.map((c) => <Pill key={c} active={filters.condition === c} onPress={() => patch({ condition: filters.condition === c ? undefined : c })}>{(ar.listing as any)[c]}</Pill>)}
             </Section>
             {/* Governorate — same dropdown used by the compact chip
                 above the brand rail, just rendered here in the full row
@@ -559,11 +561,13 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-// Stepper-style price input — −/+ each adjusts by 100,000 IQD. We
-// intentionally don't accept manual text input: Iraqi keyboards default
-// to Arabic numerals and there's no reasonable way to validate "is this
-// what the user meant" against a 5M-cap range. Steppers also reinforce
-// that the filter only operates at 100K granularity.
+// −/+ adjust by 100,000 IQD, and the number itself is typeable.
+//
+// It used to be steppers only, on the reasoning that Iraqi keyboards default
+// to Arabic-Indic numerals and there was no good way to validate the input.
+// That reasoning is stale — digitsOnly() has handled ٠١٢٣ for the sell price
+// and every phone field for a long time. Steppers alone meant going from
+// 100,000 to 900,000 took eight taps per bound.
 function PriceStepper({
   label, value, onChange, openEndedAtMax,
 }: {
@@ -574,9 +578,20 @@ function PriceStepper({
   openEndedAtMax?: boolean;
 }) {
   const atCap = openEndedAtMax && value >= PRICE_MAX;
-  const display = `${fmtIQD(value)}${atCap ? '+' : ''}`;
-  const dec = () => onChange(Math.max(PRICE_MIN, value - PRICE_STEP));
-  const inc = () => onChange(Math.min(PRICE_MAX, value + PRICE_STEP));
+  // While the field has focus the user's raw keystrokes win; on blur the
+  // value is clamped and snapped back to the step grid the filter uses.
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = draft ?? `${fmtIQD(value)}${atCap ? '+' : ''}`;
+  const commit = () => {
+    if (draft === null) return;
+    const n = Number(digitsOnly(draft));
+    setDraft(null);
+    if (!Number.isFinite(n)) return;
+    const snapped = Math.round(n / PRICE_STEP) * PRICE_STEP;
+    onChange(Math.min(PRICE_MAX, Math.max(PRICE_MIN, snapped)));
+  };
+  const dec = () => { setDraft(null); onChange(Math.max(PRICE_MIN, value - PRICE_STEP)); };
+  const inc = () => { setDraft(null); onChange(Math.min(PRICE_MAX, value + PRICE_STEP)); };
   const decDisabled = value <= PRICE_MIN;
   const incDisabled = value >= PRICE_MAX;
   return (

@@ -145,9 +145,7 @@ export default function ProfileScreen({ navigation }: any) {
                 سجّل دخولك للاحتفاظ بإعلاناتك ومحادثاتك.
               </Text>
             </View>
-            <View style={{ transform: [{ scaleX: -1 }] }}>
-              <IconChevronLeft size={14} color="#fff" sw={2} />
-            </View>
+            <IconChevronLeft size={14} color="#fff" sw={2} />
           </TouchableOpacity>
         ) : null}
 
@@ -165,7 +163,11 @@ export default function ProfileScreen({ navigation }: any) {
           >
             <s.Icon size={18} color={theme.subtle} sw={1.7} />
             <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right' }}>{s.label}</Text>
-            <View style={{ transform: [{ scaleX: -1 }] }}><IconChevronLeft size={14} color={theme.subtle} sw={2} /></View>
+{/* Drill-in, not back. In an RTL layout the forward direction is
+                leftward, so an unflipped left chevron points the way the next
+                screen arrives from. Back buttons keep their scaleX flip —
+                back really is rightward here. */}
+            <IconChevronLeft size={14} color={theme.subtle} sw={2} />
           </TouchableOpacity>
         ))}
 

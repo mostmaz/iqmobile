@@ -174,9 +174,8 @@ function ShopRow({ shop, onPress }: { shop: ShopCard; onPress: () => void }) {
           ) : null}
         </View>
       </View>
-      <View style={{ transform: [{ scaleX: -1 }] }}>
-        <IconChevronLeft size={16} color={theme.subtle} sw={2} />
-      </View>
+      {/* Drill-in: forward is leftward in RTL, so no flip. */}
+      <IconChevronLeft size={16} color={theme.subtle} sw={2} />
     </TouchableOpacity>
   );
 }

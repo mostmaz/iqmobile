@@ -22,6 +22,26 @@ const TYPES = new Set(['phone', 'tablet', 'watch']);
 // Falls back to 'phone' rather than 400ing: the type toggle is a convenience,
 // and an unknown value from an older client should still return something
 // useful instead of an error screen.
+// "Galaxy A10" before "Galaxy A9"? No — split each name into digit and
+// non-digit runs and compare the digit runs as numbers.
+const NUM_RUN = /(\d+)/;
+function naturalCompare(a, b) {
+  const ax = String(a).toLowerCase().split(NUM_RUN);
+  const bx = String(b).toLowerCase().split(NUM_RUN);
+  for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+    const as = ax[i] ?? '';
+    const bs = bx[i] ?? '';
+    // Odd indices are the captured digit runs.
+    if (i % 2 === 1) {
+      const d = Number(as || 0) - Number(bs || 0);
+      if (d) return d;
+    } else if (as !== bs) {
+      return as < bs ? -1 : 1;
+    }
+  }
+  return 0;
+}
+
 const asType = (v) => (TYPES.has(v) ? v : 'phone');
 
 // Brands that actually have devices of the requested type, with counts. The
@@ -60,14 +80,20 @@ r.get('/device-catalog/devices', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 200, 500);
 
   if (!q) {
+    // Sorted in JS, not SQL. A plain lexicographic ORDER BY interleaves
+    // generations — Realme came back as "1, 10, 10 5G, 10 Pro, 10 Pro+, 10s,
+    // 10T, 11", with the 10s wedged between the 1 and the 11 because "1" is
+    // a prefix of "10". Buyers scan this list by generation, so the digit
+    // runs have to compare as numbers. The list is capped at 500 rows, so
+    // sorting here costs nothing.
     const rows = db
       .prepare(
         `SELECT id, model FROM device_catalog
           WHERE brand=? AND device_type=? AND is_active=1
-          ORDER BY model COLLATE NOCASE ASC
           LIMIT ?`,
       )
       .all(brand, type, limit);
+    rows.sort((a, b) => naturalCompare(a.model, b.model));
     return res.json(rows);
   }
 

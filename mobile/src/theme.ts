@@ -3,7 +3,12 @@ export const theme = {
   bg: '#ECE6DA',
   surface: '#F5F0E6',
   ink: '#1B1A18',
-  subtle: '#6E6A62',
+  // Secondary text. One token used on three surfaces, and it failed WCAG AA
+  // on two of them: 4.33:1 on bg and 3.90:1 on the chip fill against a 4.5
+  // requirement — it only passed on the lightest surface. Darkened until it
+  // clears AA on the DARKEST surface it is used on (5.29:1 on chipBg,
+  // 5.87 on bg, 6.42 on surface) rather than tuning per-surface variants.
+  subtle: '#5A564F',
   line: 'rgba(27,26,24,0.08)',
   accent: '#D9583A',
   accentSoft: 'rgba(217,88,58,0.14)',
@@ -15,7 +20,9 @@ export const theme = {
   buttonInk: '#F5F0E6',
   success: '#1F6B5C',
   successSoft: 'rgba(31,107,92,0.14)',
-  danger: '#B43A2E',
+  // Error text sits on an 8%-tint banner of itself, which lightens the
+  // background toward the red and pulled the pair down to 4.22:1.
+  danger: '#9C3126',
   dangerSoft: 'rgba(180,58,46,0.25)',
   dangerInk: '#FFB8AC',
 } as const;
