@@ -72,8 +72,20 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
      ) GROUP BY type ORDER BY count DESC, type ASC`,
   ).all(shop.id);
 
+  // Two different questions, so two different filters. The COUNT must match
+  // what the grid actually shows — including call-for-price products, or the
+  // header disagrees with the tiles below it and reads as a bug. The price
+  // RANGE must exclude them, because their asking_price is a placeholder and
+  // would advertise the shop as starting from 1 IQD.
   const totals = db.prepare(
-    `SELECT COUNT(*) AS products, MIN(p) AS min_price, MAX(p) AS max_price FROM (
+    `SELECT COUNT(*) AS products FROM (
+       SELECT 1 FROM phone_listings
+        WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
+        GROUP BY brand, LOWER(TRIM(model))
+     )`,
+  ).get(shop.id);
+  const priceRange = db.prepare(
+    `SELECT MIN(p) AS min_price, MAX(p) AS max_price FROM (
        SELECT MIN(asking_price) AS p FROM phone_listings
         WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
           AND COALESCE(price_on_request,0) = 0
@@ -91,8 +103,8 @@ r.get('/storefront/:id(\\d+)', (req, res) => {
     categories,
     types,
     product_count: totals.products || 0,
-    min_price: totals.min_price ?? null,
-    max_price: totals.max_price ?? null,
+    min_price: priceRange.min_price ?? null,
+    max_price: priceRange.max_price ?? null,
   });
 });
 
