@@ -70,6 +70,12 @@ export function StorefrontCard({
   return (
     <View style={{
       marginTop: 10,
+      // Every other block in the feed separates itself with a BOTTOM margin
+      // (listing cards and the banner carousel both use 12). This card set
+      // only a top margin, so it pushed away from what was above it and sat
+      // flush against whatever came next — measured at ~5dp against the
+      // banner directly below, versus 12dp everywhere else in the feed.
+      marginBottom: 12,
       backgroundColor: theme.surface,
       borderRadius: radius.xxl,
       borderWidth: 2,

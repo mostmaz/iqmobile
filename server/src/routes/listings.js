@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { scalePriceIfThousands } from '../priceScale.js';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -207,8 +208,14 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   if (checkListingQuality(model, description)) {
     return res.status(400).json({ error: 'listing_quality' });
   }
-  const price = Number(asking_price);
-  if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
+  const rawPrice = Number(asking_price);
+  if (!Number.isFinite(rawPrice) || rawPrice <= 0) return res.status(400).json({ error: 'bad_price' });
+  // "500" means 500,000 — see priceScale.js. Applied here rather than in the
+  // app so it covers every write path, and because the app's own "did you
+  // mean" prompt gets ignored.
+  const { price, scaled: priceScaled } = scalePriceIfThousands(rawPrice, {
+    name: `${finalBrand} ${model}`,
+  });
 
   // Contact phone is required so buyers always have a tap-to-call path.
   // Contact phone is optional — sellers can choose to be reachable only via
@@ -254,7 +261,13 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   // Fire saved-search + wish-list alerts after the response is sent, so
   // notification fan-out never adds latency to (or can fail) listing creation.
   setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); });
-  res.json(attachImages([row])[0]);
+  // Multiplying someone's price by a thousand is a big silent edit, so say
+  // that it happened — in the log for us, and on the response so the app can
+  // tell the seller what their listing actually went up at.
+  if (priceScaled) {
+    console.log(`[price-scale] listing ${row.id}: ${rawPrice} -> ${price} (${finalBrand} ${model})`);
+  }
+  res.json({ ...attachImages([row])[0], price_corrected: priceScaled ? rawPrice : null });
 });
 
 // ─── browse listings ─────────────────────────────────────────────────
@@ -625,7 +638,14 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
     if (k === 'asking_price') {
       const n = Number(req.body.asking_price);
       if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'bad_price' });
-      fields.push('asking_price=?'); params.push(n); continue;
+      // Same correction on edit — otherwise a seller "fixes" a scaled price
+      // back down to 500 and the listing is broken again.
+      const { price: fixed } = scalePriceIfThousands(n, {
+        productType: row.product_type,
+        name: `${row.brand} ${row.model}`,
+        priceOnRequest: !!row.price_on_request,
+      });
+      fields.push('asking_price=?'); params.push(fixed); continue;
     }
     fields.push(`${k}=?`);
     // Apply length cap when this field has one. trim() also nulls out
