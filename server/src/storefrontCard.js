@@ -18,14 +18,26 @@ export const CARD_SLOTS = 3;
 
 const setting = (k, d = '') => getSetting(k) ?? d;
 
-export function readCardConfig() {
-  const raw = setting('storefront_card_mode', 'newest');
+/**
+ * Settings key for one shop's card.
+ *
+ * These used to be bare globals ('storefront_card_mode'), which was fine only
+ * while exactly one shop had ordering enabled: configuring a second shop
+ * overwrote the first's card and unlinked its banner file, with the dashboard
+ * showing the winner's settings under the loser's name. Migration v8 moved the
+ * old global values onto the shop that was actually being served.
+ */
+export const cardSettingKey = (shopId, name) => `storefront_card_${name}:${Number(shopId)}`;
+
+export function readCardConfig(shopId) {
+  const k = (name) => cardSettingKey(shopId, name);
+  const raw = setting(k('mode'), 'newest');
   return {
     mode: CARD_MODES.includes(raw) ? raw : 'newest',
-    ids: String(setting('storefront_card_ids', ''))
+    ids: String(setting(k('ids'), ''))
       .split(',').map((s) => parseInt(s, 10)).filter((n) => Number.isInteger(n) && n > 0),
-    image: setting('storefront_card_image', '') || null,
-    title: setting('storefront_card_title', '') || null,
+    image: setting(k('image'), '') || null,
+    title: setting(k('title'), '') || null,
   };
 }
 
@@ -127,7 +139,7 @@ const VIEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
  *   top-up — the dashboard shows it so "best sellers" can't quietly mean
  *   "one best seller and two newest".
  */
-export function resolveStorefrontCard(shopId, cfg = readCardConfig()) {
+export function resolveStorefrontCard(shopId, cfg = readCardConfig(shopId)) {
   if (cfg.mode === 'banner' && cfg.image) {
     return { mode: 'banner', title: cfg.title, banner_image: cfg.image, products: [], matched: 0, topped_up: 0 };
   }

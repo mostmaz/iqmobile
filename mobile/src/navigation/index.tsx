@@ -141,6 +141,14 @@ function SellStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       {/* ListingDetail's price-alert buttons need these locally too. */}
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
+      {/* Wherever ListingDetail goes its storefront CTA goes too, and that
+          CTA opens a chain: StoreProduct → Cart → OrderConfirmed → MyOrders.
+          Registering only the first link would move the dead tap rather than
+          fix it. */}
+      <BrowseStack.Screen name="StoreProduct" component={StoreProductScreen} />
+      <BrowseStack.Screen name="Cart" component={CartScreen} />
+      <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
+      <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -156,6 +164,13 @@ function ChatsStackNav() {
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       {/* ListingDetail's price-alert buttons need this locally too. */}
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
+      {/* Same storefront chain as the Sell stack: a shopper who reached a
+          storefront device through a conversation gets the same buy path as
+          one who found it in Browse. */}
+      <BrowseStack.Screen name="StoreProduct" component={StoreProductScreen} />
+      <BrowseStack.Screen name="Cart" component={CartScreen} />
+      <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
+      <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
     </BrowseStack.Navigator>
   );
 }

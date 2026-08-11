@@ -13,6 +13,7 @@ import { Router } from 'express';
 import { db, setSettingValue } from '../../db.js';
 import {
   CARD_MODES, CARD_SLOTS, readCardConfig, resolveStorefrontCard, cardModeCounts,
+  cardSettingKey,
 } from '../../storefrontCard.js';
 
 const r = Router();
@@ -33,7 +34,7 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
   // hand-picked / a banner image instead of tiles.
   r.get('/store/:id(\\d+)/card', requireAdmin, (req, res) => {
     const shopId = Number(req.params.id);
-    const cfg = readCardConfig();
+    const cfg = readCardConfig(shopId);
     const preview = resolveStorefrontCard(shopId, cfg);
     // Counts let the operator see BEFORE choosing that "best sellers" can
     // currently fill one slot out of three — otherwise the mode silently
@@ -59,33 +60,37 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
   });
 
   r.patch('/store/:id(\\d+)/card', requireAdmin, (req, res) => {
+    const shopId = Number(req.params.id);
     const b = req.body || {};
     if (b.mode !== undefined) {
       if (!CARD_MODES.includes(b.mode)) return res.status(400).json({ error: 'bad_mode' });
-      setSettingValue('storefront_card_mode', b.mode);
+      setSettingValue(cardSettingKey(shopId, 'mode'), b.mode);
     }
     if (b.ids !== undefined) {
       const ids = (Array.isArray(b.ids) ? b.ids : [])
         .map((n) => parseInt(n, 10)).filter((n) => Number.isInteger(n) && n > 0)
         .slice(0, CARD_SLOTS);
-      setSettingValue('storefront_card_ids', ids.join(','));
+      setSettingValue(cardSettingKey(shopId, 'ids'), ids.join(','));
     }
     if (b.title !== undefined) {
-      setSettingValue('storefront_card_title', String(b.title || '').trim().slice(0, 60));
+      setSettingValue(cardSettingKey(shopId, 'title'), String(b.title || '').trim().slice(0, 60));
     }
-    const cfg = readCardConfig();
-    res.json({ ok: true, config: cfg, preview: resolveStorefrontCard(Number(req.params.id), cfg) });
+    const cfg = readCardConfig(shopId);
+    res.json({ ok: true, config: cfg, preview: resolveStorefrontCard(shopId, cfg) });
   });
 
   r.post('/store/:id(\\d+)/card/image', requireAdmin, imageUpload.single('image'), (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'no_file' });
-    const prev = readCardConfig().image;
+    const shopId = Number(req.params.id);
+    const prev = readCardConfig(shopId).image;
     // Drop the previous banner so uploads don't pile up in the uploads dir.
+    // Scoped to THIS shop's banner — reading the global key here meant
+    // uploading for one shop deleted another shop's image off disk.
     if (prev && prev.startsWith('/uploads/')) {
       try { fs.unlinkSync(path.join(UPLOADS, path.basename(prev))); } catch { /* already gone */ }
     }
     const p = '/uploads/' + req.file.filename;
-    setSettingValue('storefront_card_image', p);
+    setSettingValue(cardSettingKey(shopId, 'image'), p);
     res.json({ ok: true, image: p });
   });
 

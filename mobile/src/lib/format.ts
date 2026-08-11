@@ -129,6 +129,10 @@ export function deliveryWindowAr(min?: number | null, max?: number | null): stri
   const a = Number(min) || 0;
   const b = Number(max) || 0;
   if (!a && !b) return '';
-  if (!b || a === b) return `خلال ${ltrNum(a || b)} ${(a || b) <= 10 ? 'أيام' : 'يوم'}`;
+  // A single figure inflects like any other count, so it goes through arCount
+  // rather than picking a plural by hand: a one-day window is "خلال يوم", not
+  // "خلال 1 أيام", and two days is "يومين". A RANGE keeps the bare plural —
+  // "خلال ٢–٤ أيام" is how a span is read, and the dual never applies to it.
+  if (!b || a === b) return `خلال ${arCount(a || b, AR_DAY)}`;
   return `خلال ${ltrNum(a)}–${ltrNum(b)} ${b <= 10 ? 'أيام' : 'يوم'}`;
 }

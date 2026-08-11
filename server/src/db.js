@@ -1012,6 +1012,41 @@ addColumnIfMissing('users', 'shop_instagram TEXT');
   }
 }
 
+// Migration v8: scope the storefront card config to a shop. The four
+// storefront_card_* keys were bare globals, which held up only while exactly
+// one shop had ordering enabled — a second one would have overwritten the
+// first's card and unlinked its banner. Move the existing values onto the
+// shop that was actually being served (appConfig picks the lowest-id
+// order-enabled shop) and drop the globals. No order-enabled shop means
+// nothing was ever configured, so the globals are just deleted.
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v8_card_per_shop'").get();
+  if (!done) {
+    const NAMES = ['mode', 'ids', 'image', 'title'];
+    let moved = 0;
+    db.transaction(() => {
+      const shop = db.prepare(
+        `SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
+          ORDER BY id ASC LIMIT 1`,
+      ).get();
+      for (const name of NAMES) {
+        const oldKey = `storefront_card_${name}`;
+        const row = db.prepare('SELECT value FROM app_settings WHERE key=?').get(oldKey);
+        if (!row) continue;
+        if (shop) {
+          db.prepare(
+            'INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+          ).run(`storefront_card_${name}:${shop.id}`, row.value);
+          moved++;
+        }
+        db.prepare('DELETE FROM app_settings WHERE key=?').run(oldKey);
+      }
+      db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v8_card_per_shop','done')").run();
+    })();
+    console.log(`[iqmobile] migration v8: storefront card config scoped per shop — ${moved} key(s) moved`);
+  }
+}
+
 // Seed the device catalog from the bundled GSMArena snapshot (~4k rows for
 // 20 brands, 2017→present). One transaction, flag-guarded so it runs exactly
 // once. INSERT OR IGNORE means a later re-seed (bump the flag key to
