@@ -103,6 +103,13 @@ r.post('/auth/login', authLimiter, (req, res) => {
   res.json({ token, admin: { id: row.id, username: row.username } });
 });
 
+// Cheap token check. The operator app calls this on cold start: a stored
+// token can be expired or revoked, and without verifying it the app opens
+// onto a shell of screens that each 401 separately.
+r.get('/me', requireAdmin, (req, res) => {
+  res.json({ admin: { id: req.admin.id, username: req.admin.username } });
+});
+
 // ─── Operator app: device registration ───────────────────────────────
 //
 // The app posts its Expo token after login and on every cold start (the
