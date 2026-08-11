@@ -89,21 +89,45 @@ const bestSellingGroups = (shopId, limit) => db.prepare(
     ORDER BY sold_units DESC, has_image DESC LIMIT ?`,
 ).all(shopId, limit);
 
+// Views per product, as two linear passes instead of a correlated subquery.
+//
+// This previously counted views with a scalar subquery evaluated once PER
+// PRODUCT GROUP, and inside it matched listings on LOWER(TRIM(model)) — a
+// function on both sides, so no index could serve it. That made it roughly
+// (groups x view-events x the brand's listings): measured at 259 SECONDS on
+// production, 133 groups against 28,869 view events. better-sqlite3 is
+// synchronous, so for those four minutes it held Node's only thread and
+// every other request — the whole mobile app included — queued behind it.
+// Opening the dashboard's card page was enough to trigger it, because
+// cardModeCounts() calls this for the mode counter whichever mode is active.
+//
+// Now: fold the events table down to a count per listing once, fold that up
+// to a count per brand+model once, then join. Same numbers, no nesting.
 const mostViewedGroups = (shopId, limit, sinceMs) => db.prepare(
-  `${GROUP_SELECT},
-          (SELECT COUNT(*) FROM events e
-            WHERE e.type='view' AND e.created_at >= ?
-              AND e.listing_id IN (
-                SELECT id FROM phone_listings x
-                 WHERE x.seller_id = l.seller_id AND x.brand = l.brand
-                   AND LOWER(TRIM(x.model)) = LOWER(TRIM(l.model))
-              )
-          ) AS views
-     FROM phone_listings l WHERE ${LIVE}
+  `WITH per_listing AS (
+      SELECT e.listing_id AS lid, COUNT(*) AS n
+        FROM events e
+       WHERE e.type='view' AND e.created_at >= ?
+       GROUP BY e.listing_id
+   ),
+   per_product AS (
+      -- Every listing of this shop, live or not, so a sold-out capacity's
+      -- views still count toward its product, exactly as before.
+      SELECT p.brand AS b, LOWER(TRIM(p.model)) AS m, SUM(pl.n) AS views
+        FROM phone_listings p JOIN per_listing pl ON pl.lid = p.id
+       WHERE p.seller_id = ?
+       GROUP BY p.brand, LOWER(TRIM(p.model))
+   )
+   ${GROUP_SELECT},
+          MAX(COALESCE(pp.views, 0)) AS views
+     FROM phone_listings l
+     LEFT JOIN per_product pp
+            ON pp.b = l.brand AND pp.m = LOWER(TRIM(l.model))
+    WHERE ${LIVE}
     GROUP BY l.brand, LOWER(TRIM(l.model))
     HAVING views > 0
     ORDER BY views DESC, has_image DESC LIMIT ?`,
-).all(sinceMs, shopId, limit);
+).all(sinceMs, shopId, shopId, limit);
 
 // Hand-picked. Order follows the order the operator saved, not the DB's.
 function customGroups(shopId, ids) {
