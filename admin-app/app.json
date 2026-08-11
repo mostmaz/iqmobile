@@ -7,14 +7,15 @@
     "scheme": "iqadmin",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "android": {
       "package": "org.iqmobile.admin",
       "versionCode": 1,
-      "adaptiveIcon": {
-        "backgroundColor": "#1B1A18"
-      },
-      "permissions": ["POST_NOTIFICATIONS"],
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
       "edgeToEdgeEnabled": true
     },
     "plugins": [
@@ -27,7 +28,11 @@
     ],
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
-      "apiBaseUrlDev": "http://10.0.2.2:4000"
-    }
+      "apiBaseUrlDev": "http://10.0.2.2:4000",
+      "eas": {
+        "projectId": "332fd483-d2f2-49ea-8aac-d92dc1b1509b"
+      }
+    },
+    "owner": "mostmaz73"
   }
 }
