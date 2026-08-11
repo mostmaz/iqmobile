@@ -50,11 +50,11 @@ const GROUPS: Group[] = [
   {
     label: 'النمو والإعداد',
     items: [
-      { label: 'المستخدمون', note: 'على الويب' },
+      { label: 'المستخدمون', route: 'Users' },
       { label: 'البانرات', note: 'على الويب' },
-      { label: 'الترويج', note: 'على الويب' },
+      { label: 'الترويج', route: 'Promote' },
       { label: 'التحليلات', note: 'رسوم — على الويب' },
-      { label: 'الإعدادات', note: 'على الويب' },
+      { label: 'الإعدادات', route: 'Settings' },
     ],
   },
 ];

@@ -17,6 +17,9 @@ import ListingsScreen from './src/screens/ListingsScreen';
 import ShopsScreen from './src/screens/ShopsScreen';
 import ModerationScreen from './src/screens/ModerationScreen';
 import MoreScreen from './src/screens/MoreScreen';
+import UsersScreen from './src/screens/UsersScreen';
+import PromoteScreen from './src/screens/PromoteScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -70,6 +73,7 @@ function routeFor(kind?: string): string | null {
   if (kind === 'shop.new') return 'Shops';
   if (kind === 'report.new') return 'Moderation';
   if (kind === 'device.suggested') return 'Moderation';
+  if (kind === 'feature.requested') return 'Promote';
   return null; // the rest land on the queue, which is the default screen
 }
 
@@ -133,6 +137,9 @@ function Root() {
         <Stack.Screen name="Listings" component={ListingsScreen} />
         <Stack.Screen name="Shops" component={ShopsScreen} />
         <Stack.Screen name="Moderation" component={ModerationScreen} />
+        <Stack.Screen name="Users" component={UsersScreen} />
+        <Stack.Screen name="Promote" component={PromoteScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
