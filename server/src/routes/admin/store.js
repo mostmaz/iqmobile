@@ -55,6 +55,21 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
           GROUP BY l.brand, LOWER(TRIM(l.model))
           ORDER BY MAX(l.created_at) DESC LIMIT 300`,
       ).all(shopId),
+      // Why the picker doesn't list everything the shop sells. A card slot
+      // prints a price, so a price-on-request product has nothing to show in
+      // one, and a sold-out one shouldn't be advertised — but silently
+      // dropping them just leaves the operator hunting for the iPads.
+      excluded: db.prepare(
+        `SELECT
+           SUM(CASE WHEN COALESCE(price_on_request,0)=1 THEN 1 ELSE 0 END) AS on_request,
+           SUM(CASE WHEN COALESCE(price_on_request,0)=0
+                     AND COALESCE(stock_qty,1) <= 0 THEN 1 ELSE 0 END) AS out_of_stock
+         FROM (SELECT MAX(COALESCE(price_on_request,0)) AS price_on_request,
+                      MAX(COALESCE(stock_qty,1)) AS stock_qty
+                 FROM phone_listings
+                WHERE seller_id=? AND status='active'
+                GROUP BY brand, LOWER(TRIM(model)))`,
+      ).get(shopId),
     });
   });
 

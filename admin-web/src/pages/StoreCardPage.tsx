@@ -19,6 +19,7 @@ type Product = {
 type Candidate = { id: number; brand: string; model: string; asking_price: number };
 type Payload = {
   config: { mode: Mode; ids: number[]; image: string | null; title: string | null };
+  excluded?: { on_request: number; out_of_stock: number } | null;
   slots: number;
   counts: { newest: number; best_selling: number; most_viewed: number };
   preview: { mode: Mode; title: string | null; banner_image: string | null; products: Product[]; matched: number; topped_up: number };
@@ -81,10 +82,14 @@ export function StoreCardPage() {
 
   const cfg = data?.config;
   const picked = cfg?.ids || [];
+  // Every candidate, not the first 40. The cap was invisible — with 133
+  // products in the shop the operator saw a third of them, with nothing
+  // saying so, and concluded the rest simply weren't available to pick.
+  // It's a plain scrolling grid; 133 rows costs nothing to render.
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     const list = data?.candidates || [];
-    return s ? list.filter((c) => `${c.brand} ${c.model}`.toLowerCase().includes(s)) : list.slice(0, 40);
+    return s ? list.filter((c) => `${c.brand} ${c.model}`.toLowerCase().includes(s)) : list;
   }, [data, q]);
 
   function togglePick(id: number) {
@@ -189,6 +194,15 @@ export function StoreCardPage() {
                 placeholder="ابحث في المتجر…"
                 style={{ minWidth: 260, marginBottom: 10 }}
               />
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 0, marginBottom: 10 }}>
+                {filtered.length} من {data.candidates.length} جهاز
+                {data.excluded?.on_request
+                  ? ` · ${data.excluded.on_request} غير معروضة لأن سعرها «عند الطلب» — البطاقة تعرض السعر`
+                  : ''}
+                {data.excluded?.out_of_stock
+                  ? ` · ${data.excluded.out_of_stock} نافدة من المخزون`
+                  : ''}
+              </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 6 }}>
                 {filtered.map((c) => {
                   const on = picked.includes(c.id);
