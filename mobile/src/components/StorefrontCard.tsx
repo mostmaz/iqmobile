@@ -75,7 +75,12 @@ export function StorefrontCard({
       // are both full-width framed blocks — one ringed in a 2px accent border,
       // one a full-bleed image — so at the spacing that separates two plain
       // rows they read as one run-on unit. Heavier blocks need a heavier gap.
-      marginBottom: 26,
+      //
+      // 26 was the first attempt at that and still read as run-on on a real
+      // device: the banner's own rounded corners and pale top edge eat into
+      // the gap optically, so the measured 26 lands nearer 11 to the eye.
+      // Measured on the emulator rather than guessed again.
+      marginBottom: 40,
       backgroundColor: theme.surface,
       borderRadius: radius.xxl,
       borderWidth: 2,
