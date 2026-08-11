@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, RefreshControl, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { theme } from '../theme';
+import { theme, deviceTitle } from '../theme';
 import { api } from '../api/client';
 import { ScreenHeader, ChipRow, Card, Action, ActionRow, ListState, Meta, Title } from '../components/kit';
 
@@ -111,7 +111,7 @@ export default function ModerationScreen({ navigation, route }: any) {
             </Card>
           ) : (
             <Card>
-              <Title>{item.brand} {item.model}</Title>
+              <Title>{deviceTitle(item.brand, item.model)}</Title>
               <Meta>{item.device_type === 'tablet' ? 'جهاز لوحي' : item.device_type === 'accessory' ? 'إكسسوار' : 'هاتف'}</Meta>
               <Meta>اقترحه {item.user_name || '—'}{item.user_phone ? ` · ${item.user_phone}` : ''}</Meta>
               <ActionRow>

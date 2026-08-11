@@ -39,3 +39,16 @@ export const radius = { sm: 8, md: 10, lg: 14, xl: 18, pill: 999 } as const;
 export function iqd(n: number | null | undefined): string {
   return Number(n || 0).toLocaleString('en-US');
 }
+
+/**
+ * "{brand} {model}" with the brand dropped when the model already carries it.
+ * The marketplace app hit this and got a helper; this app rendered the two
+ * fields raw and reproduced it — "Honor HONOR CHOICE T10 4G" on screen.
+ */
+export function deviceTitle(brand?: string | null, model?: string | null): string {
+  const b = String(brand || '').trim();
+  const m = String(model || '').trim();
+  if (!m) return b === 'Other' ? '' : b;
+  if (!b || b === 'Other') return m;
+  return m.toLowerCase().startsWith(b.toLowerCase()) ? m : `${b} ${m}`;
+}

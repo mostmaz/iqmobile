@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, RefreshControl, Modal, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { theme, fonts, radius, iqd } from '../theme';
+import { theme, fonts, radius, iqd, deviceTitle } from '../theme';
 import { api } from '../api/client';
 import { ScreenHeader, SearchBar, ChipRow, Card, Action, ActionRow, ListState, Meta, Title } from '../components/kit';
 
@@ -114,7 +114,7 @@ export default function ListingsScreen({ navigation }: any) {
             </View>
 
             <View style={{ marginTop: 8 }}>
-              <Title>{l.brand} {l.model}</Title>
+              <Title>{deviceTitle(l.brand, l.model)}</Title>
               <Meta>
                 {[l.storage, l.color, l.governorate, l.city].filter(Boolean).join(' · ')}
               </Meta>
