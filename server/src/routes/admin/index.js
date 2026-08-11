@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { scalePriceIfThousands } from '../../priceScale.js';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'node:path';
@@ -278,11 +277,10 @@ r.post('/listings', requireAdmin, (req, res) => {
     if (guess && guess !== 'Other' && isBrand(guess)) finalBrand = guess;
   }
   if (!Number.isFinite(askingPrice) || askingPrice <= 0) return res.status(400).json({ error: 'bad_price' });
-  // Same thousands correction as the public create path — no phone or tablet
-  // is priced under 1,000 IQD, and the operator fat-fingers it too.
-  const { price: scaledAskingPrice } = scalePriceIfThousands(askingPrice, {
-    name: `${brand} ${model}`,
-  });
+  // No thousands correction here. This endpoint stocks OUR storefronts from
+  // the dashboard and importers, where the price is a real figure typed by
+  // someone who meant it — the correction is for the seller typing on a
+  // phone. See priceScale.js.
   if (!['new', 'used', 'repaired', 'refurbished'].includes(condition)) return res.status(400).json({ error: 'bad_condition' });
   if (req.body?.contact_whatsapp && !wa) return res.status(400).json({ error: 'bad_contact_whatsapp' });
 
@@ -310,7 +308,7 @@ r.post('/listings', requireAdmin, (req, res) => {
     ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     seller.id, finalBrand, model, storage || null, color || null, condition,
-    null, null, '[]', scaledAskingPrice,
+    null, null, '[]', askingPrice,
     governorate, city || null, description || null, 'active',
     noContact ? null : phone, noContact ? null : wa,
     t, t + TTL_MS, t,
@@ -352,15 +350,9 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
   if (has('asking_price')) {
     const price = Number(b.asking_price);
     if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
-    const { price: fixed } = scalePriceIfThousands(price, {
-      productType: listing.product_type,
-      name: `${listing.brand} ${listing.model}`,
-      // A price-on-request row stores 1 as a placeholder; the operator
-      // toggling that flag off in the same PATCH sends a real price, so
-      // read the incoming value when it is present.
-      priceOnRequest: has('price_on_request') ? !!b.price_on_request : !!listing.price_on_request,
-    });
-    fields.push('asking_price=?'); params.push(fixed);
+    // Deliberately unscaled — an admin edit is the tool used to FIX a
+    // wrongly-corrected price, so it has to be able to write any value.
+    fields.push('asking_price=?'); params.push(price);
   }
   if (has('governorate')) {
     const gov = normalizeGovernorate(b.governorate);

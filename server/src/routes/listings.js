@@ -215,6 +215,7 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   // mean" prompt gets ignored.
   const { price, scaled: priceScaled } = scalePriceIfThousands(rawPrice, {
     name: `${finalBrand} ${model}`,
+    sellerId: req.user.id,
   });
 
   // Contact phone is required so buyers always have a tap-to-call path.
@@ -644,6 +645,7 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
         productType: row.product_type,
         name: `${row.brand} ${row.model}`,
         priceOnRequest: !!row.price_on_request,
+        sellerId: row.seller_id,
       });
       fields.push('asking_price=?'); params.push(fixed); continue;
     }
