@@ -41,6 +41,17 @@ const LIVE = `l.seller_id = ? AND l.status='active'
   AND COALESCE(l.price_on_request,0) = 0
   AND COALESCE(l.stock_qty, 1) > 0`;
 
+// Hand-picking is the one mode where a price-on-request product belongs.
+//
+// The automatic modes rank by a number — newest, units sold, views — and
+// top up from "newest with a photo", so an unpriced tile would arrive in
+// the card without anyone deciding it should. When the operator picks a
+// device by name they have decided, and the tile says "السعر عند الطلب"
+// with a call button rather than pretending to a price. Stock is still
+// required either way: advertising a sold-out device helps nobody.
+const LIVE_PICKABLE = `l.seller_id = ? AND l.status='active'
+  AND COALESCE(l.stock_qty, 1) > 0`;
+
 function hydrate(groups) {
   return groups.map((g) => {
     const ids = String(g.ids || '').split(',').filter(Boolean).map(Number);
@@ -50,11 +61,17 @@ function hydrate(groups) {
         ORDER BY position ASC, id ASC LIMIT 1`,
     ).get(...ids) : null;
     // Price and storage from the cheapest variant, so the label and the
-    // number describe the same device.
+    // number describe the same device. A product counts as price-on-request
+    // only when EVERY variant is — if one capacity has a real price the card
+    // can show that and say "from".
     const cheapest = db.prepare(
       `SELECT storage, asking_price FROM phone_listings WHERE id IN (${ph})
-        ORDER BY asking_price ASC, id ASC LIMIT 1`,
+        ORDER BY COALESCE(price_on_request,0) ASC, asking_price ASC, id ASC LIMIT 1`,
     ).get(...ids);
+    const onRequest = db.prepare(
+      `SELECT MIN(COALESCE(price_on_request,0)) AS all_on_request
+         FROM phone_listings WHERE id IN (${ph})`,
+    ).get(...ids)?.all_on_request === 1;
     const lead = db.prepare('SELECT model FROM phone_listings WHERE id=?').get(g.lead_id);
     return {
       id: g.lead_id,
@@ -62,6 +79,7 @@ function hydrate(groups) {
       model: String(lead?.model || '').trim(),
       storage: cheapest ? cheapest.storage : null,
       asking_price: cheapest ? cheapest.asking_price : 0,
+      price_on_request: onRequest,
       image_path: img ? img.image_path : null,
     };
   });
@@ -135,7 +153,7 @@ function customGroups(shopId, ids) {
   const ph = ids.map(() => '?').join(',');
   const rows = db.prepare(
     `${GROUP_SELECT} FROM phone_listings l
-      WHERE ${LIVE} AND l.id IN (${ph})
+      WHERE ${LIVE_PICKABLE} AND l.id IN (${ph})
       GROUP BY l.brand, LOWER(TRIM(l.model))`,
   ).all(shopId, ...ids);
   const pos = new Map(ids.map((id, i) => [id, i]));

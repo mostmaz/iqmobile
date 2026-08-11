@@ -11,10 +11,10 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { theme, fonts, radius } from '../theme';
+import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { Img } from './Img';
 import { fmtIQD } from './ui';
-import { IconStore, IconChevronLeft } from './icons';
+import { IconStore, IconChevronLeft, IconPhoneIcon } from './icons';
 import { fullImageUrl } from '../api/upload';
 
 export interface StorefrontProduct {
@@ -23,6 +23,10 @@ export interface StorefrontProduct {
   model: string;
   storage?: string | null;
   asking_price: number;
+  // True when every variant is price-on-request. The tile then says so
+  // instead of printing asking_price, which for these is 0 — the same way
+  // the card once advertised iPads at "1 د.ع".
+  price_on_request?: boolean;
   image_path?: string | null;
 }
 export type StorefrontCardMode = 'newest' | 'best_selling' | 'most_viewed' | 'custom';
@@ -147,12 +151,29 @@ export function StorefrontCard({
             >
               {p.model}
             </Text>
-            <Text
-              numberOfLines={1}
-              style={{ fontFamily: fonts.ltrBold, fontSize: 11.5, color: theme.accentDeep, textAlign: 'right' }}
-            >
-              {fmtIQD(p.asking_price)}
-            </Text>
+            {p.price_on_request ? (
+              // No number to show, so name the next step instead. Tapping
+              // the tile opens the product page, which carries the actual
+              // "اتصل للسعر والطلب" call button.
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 3 }}>
+                <IconPhoneIcon size={9} color={theme.accentDeep} sw={2} />
+                <Text
+                  numberOfLines={1}
+                  maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+                  style={{ fontFamily: fonts.arBold, fontSize: 10, color: theme.accentDeep, textAlign: 'right' }}
+                >
+                  السعر عند الطلب
+                </Text>
+              </View>
+            ) : (
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+                style={{ fontFamily: fonts.ltrBold, fontSize: 11.5, color: theme.accentDeep, textAlign: 'right' }}
+              >
+                {fmtIQD(p.asking_price)}
+              </Text>
+            )}
           </TouchableOpacity>
         ))}
       </View>

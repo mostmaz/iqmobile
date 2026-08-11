@@ -16,10 +16,10 @@ type Product = {
   id: number; brand: string; model: string;
   storage: string | null; asking_price: number; image_path: string | null;
 };
-type Candidate = { id: number; brand: string; model: string; asking_price: number };
+type Candidate = { id: number; brand: string; model: string; asking_price: number; price_on_request?: boolean };
 type Payload = {
   config: { mode: Mode; ids: number[]; image: string | null; title: string | null };
-  excluded?: { on_request: number; out_of_stock: number } | null;
+  excluded?: { out_of_stock: number } | null;
   slots: number;
   counts: { newest: number; best_selling: number; most_viewed: number };
   preview: { mode: Mode; title: string | null; banner_image: string | null; products: Product[]; matched: number; topped_up: number };
@@ -86,6 +86,13 @@ export function StoreCardPage() {
   // products in the shop the operator saw a third of them, with nothing
   // saying so, and concluded the rest simply weren't available to pick.
   // It's a plain scrolling grid; 133 rows costs nothing to render.
+  // Counted from the candidate list rather than sent separately — these are
+  // now IN the list, so a second server-side tally could only disagree with it.
+  const onRequestCount = useMemo(
+    () => (data?.candidates || []).filter((c) => c.price_on_request).length,
+    [data],
+  );
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     const list = data?.candidates || [];
@@ -196,11 +203,11 @@ export function StoreCardPage() {
               />
               <p className="muted" style={{ fontSize: 12.5, marginTop: 0, marginBottom: 10 }}>
                 {filtered.length} من {data.candidates.length} جهاز
-                {data.excluded?.on_request
-                  ? ` · ${data.excluded.on_request} غير معروضة لأن سعرها «عند الطلب» — البطاقة تعرض السعر`
+                {onRequestCount
+                  ? ` · ${onRequestCount} بسعر «عند الطلب» — تظهر في البطاقة بزر اتصال بدل السعر`
                   : ''}
                 {data.excluded?.out_of_stock
-                  ? ` · ${data.excluded.out_of_stock} نافدة من المخزون`
+                  ? ` · ${data.excluded.out_of_stock} نافدة من المخزون وغير معروضة`
                   : ''}
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 6 }}>
@@ -216,7 +223,10 @@ export function StoreCardPage() {
                       style={{ textAlign: 'right' }}
                     >
                       {on ? `${order + 1}. ` : ''}{c.brand} {c.model}
-                      <span style={{ opacity: 0.7 }}> · {iqd(c.asking_price)}</span>
+                      <span style={{ opacity: 0.7 }}>
+                        {' · '}
+                        {c.price_on_request ? 'عند الطلب ☎' : iqd(c.asking_price)}
+                      </span>
                     </button>
                   );
                 })}
