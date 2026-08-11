@@ -168,18 +168,21 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
     ).all(shopId);
 
     // Daily series for a sparkline: placed vs delivered.
+    // `returned_at IS NULL` on the delivered arms, matching the KPI header
+    // above — a returned order is money that came back, and counting it here
+    // made the chart disagree with the totals rendered right next to it.
     const series = db.prepare(
       `SELECT (created_at / 86400000) AS bucket,
               COUNT(*) AS placed,
-              SUM(CASE WHEN status='delivered' THEN 1 ELSE 0 END) AS delivered,
-              SUM(CASE WHEN status='delivered' THEN total ELSE 0 END) AS revenue
+              SUM(CASE WHEN status='delivered' AND returned_at IS NULL THEN 1 ELSE 0 END) AS delivered,
+              SUM(CASE WHEN status='delivered' AND returned_at IS NULL THEN total ELSE 0 END) AS revenue
          FROM orders WHERE shop_id=? AND created_at >= ?
         GROUP BY bucket ORDER BY bucket ASC`,
     ).all(shopId, since);
 
     const topProducts = db.prepare(
       `SELECT oi.brand, oi.model, SUM(oi.qty) AS units,
-              SUM(CASE WHEN o.status='delivered' THEN oi.line_total ELSE 0 END) AS revenue
+              SUM(CASE WHEN o.status='delivered' AND o.returned_at IS NULL THEN oi.line_total ELSE 0 END) AS revenue
          FROM order_items oi JOIN orders o ON o.id = oi.order_id
         WHERE o.shop_id=? AND o.created_at >= ? AND o.status <> 'cancelled'
         GROUP BY oi.brand, LOWER(TRIM(oi.model))

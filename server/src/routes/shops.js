@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
+import { normalizeIraqiPhone } from '../phoneNormalize.js';
 import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
 
@@ -68,17 +69,6 @@ export function shopImages(shopId) {
   return db.prepare(
     'SELECT id, image_path, position FROM shop_images WHERE shop_id=? ORDER BY position ASC, id ASC',
   ).all(shopId);
-}
-
-function normalizeIraqiPhone(input) {
-  if (!input) return null;
-  let d = String(input).replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
 }
 
 // Minimal image attach (local copy — routes/listings.js keeps its own private

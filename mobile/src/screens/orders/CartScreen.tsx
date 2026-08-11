@@ -1,4 +1,4 @@
-import { deviceTitle, deliveryWindowAr } from '../../lib/format';
+import { deviceTitle, deliveryWindowAr, digitsOnly } from '../../lib/format';
 // Cart + cash-on-delivery checkout, in one screen.
 //
 // Deliberately not a multi-step wizard: the basket is short (a shop selling
@@ -233,7 +233,10 @@ export default function CartScreen({ navigation }: any) {
             </Text>
 
             <Field label="الاسم الكامل" value={name} onChangeText={setName} placeholder="مثال: أحمد علي" required />
-            <Field label="رقم الهاتف" value={phone} onChangeText={setPhone} placeholder="07XXXXXXXXX" keyboardType="phone-pad" ltr required />
+            {/* digitsOnly folds ٠١٢ → 012 as it's typed, so the length check
+                below counts real digits and the server sees a number it can
+                parse. Without it an Arabic-keyboard number is rejected. */}
+            <Field label="رقم الهاتف" value={phone} onChangeText={(v: string) => setPhone(digitsOnly(v))} placeholder="07XXXXXXXXX" keyboardType="phone-pad" ltr required />
 
             <Text style={labelStyle}>المحافظة <Text style={{ color: theme.danger }}>*</Text></Text>
             <View style={{ marginBottom: 10 }}>

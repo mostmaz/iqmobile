@@ -7,6 +7,7 @@ import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
+import { normalizeIraqiPhone } from '../phoneNormalize.js';
 import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
@@ -151,20 +152,6 @@ function sellerCard(uid) {
     shop_lat: u.shop_lat ?? null,
     shop_lng: u.shop_lng ?? null,
   };
-}
-
-// Normalise an Iraqi mobile phone — strips separators, accepts +964/00964,
-// returns local 0XXXXXXXXXX form. Returns null if it doesn't look like a
-// real number; empty input also returns null so optional fields work.
-function normalizeIraqiPhone(input) {
-  if (!input) return null;
-  let d = String(input).replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
 }
 
 // ─── create listing ──────────────────────────────────────────────────

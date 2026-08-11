@@ -18,6 +18,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGovernorate } from '../governorates.js';
+import { normalizeIraqiPhone } from '../phoneNormalize.js';
 import { notify } from '../notify.js';
 import { pushToAdmins } from '../adminPush.js';
 import { applyStatusToStock } from '../stock.js';
@@ -26,19 +27,6 @@ const r = Router();
 
 const MAX_QTY_PER_LINE = 10;
 const MAX_LINES = 20;
-
-// Iraqi phone normaliser — same shapes the rest of the app accepts
-// (+964, 00964, spaces/dashes) collapsing to the canonical 0XXXXXXXXXX.
-function normalizeIraqiPhone(input) {
-  if (!input) return null;
-  let d = String(input).replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
-}
 
 /**
  * Short human reference the customer can quote on the phone. Sequential

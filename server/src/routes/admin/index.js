@@ -16,6 +16,7 @@ import { Expo } from 'expo-server-sdk';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand, brandNames } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
+import { normalizeIraqiPhone } from '../../phoneNormalize.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { notify } from '../../notify.js';
@@ -23,21 +24,6 @@ import { tierFor, tierTiming } from '../../featureTiers.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
 import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
-
-// Iraqi phone normaliser — duplicated from routes/listings.js so the
-// admin quick-add accepts the same input shapes (+964, 00964, with
-// spaces/dashes, etc.) and persists the canonical 0XXXXXXXXXX form.
-// Kept local rather than exported to avoid cross-router coupling.
-function normalizeIraqiPhone(input) {
-  if (!input) return null;
-  let d = String(input).replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
-}
 
 const r = Router();
 
@@ -2432,7 +2418,7 @@ const DEVICE_TYPES = ['phone', 'tablet', 'watch'];
 
 // Shared validation for create + edit so an edit can never write a value the
 // create path would have rejected — same principle as PATCH /listings/:id.
-function readDeviceFields(body, { partial }) {
+function readDeviceFields(body, { partial, current }) {
   const out = {};
   const has = (k) => Object.prototype.hasOwnProperty.call(body || {}, k);
 
@@ -2453,7 +2439,13 @@ function readDeviceFields(body, { partial }) {
     // the foreign brand leads the name — "Galaxy S24 vs iPhone" style
     // comparison text is not a model name anyone types here, but a trailing
     // brand word ("… for Samsung") is a plausible accessory name.
-    const brandForCheck = out.brand || String(body?.brand || '').trim();
+    // Fall back to the brand ALREADY on the row: a PATCH that sends only a
+    // model carries no brand in the body, so reading the body alone left
+    // brandForCheck empty and skipped the guard entirely — renaming an
+    // existing Apple row to "Infinix GT 30 Pro" sailed through.
+    const brandForCheck = out.brand
+      || String(body?.brand || '').trim()
+      || String(current?.brand || '').trim();
     const lead = model.toLowerCase().split(/[\s-]+/)[0];
     if (brandForCheck && lead && lead !== brandForCheck.toLowerCase()) {
       const clash = brandNames().find((b) => b.toLowerCase() === lead);
@@ -2535,7 +2527,7 @@ r.patch('/device-catalog/:id(\\d+)', requireAdmin, (req, res) => {
   const row = db.prepare('SELECT * FROM device_catalog WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
 
-  const { error, fields } = readDeviceFields(req.body, { partial: true });
+  const { error, fields } = readDeviceFields(req.body, { partial: true, current: row });
   if (error) return res.status(400).json({ error });
   const keys = Object.keys(fields);
   if (!keys.length) return res.status(400).json({ error: 'no_fields' });

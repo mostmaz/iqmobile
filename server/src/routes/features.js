@@ -2,22 +2,10 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
+import { normalizeIraqiPhone } from '../phoneNormalize.js';
 import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, tierFor } from '../featureTiers.js';
 
 const r = Router();
-
-// Same Iraqi-phone normaliser used across the codebase. Local copy to avoid
-// cross-router coupling (mirrors routes/listings.js).
-function normalizeIraqiPhone(input) {
-  if (!input) return null;
-  let d = String(input).replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
-}
 
 // Public — the mobile "feature this listing" sheet reads the tier catalog,
 // the per-carrier receiving numbers, and the USSD templates the app fills

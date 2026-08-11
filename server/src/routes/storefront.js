@@ -30,8 +30,11 @@ const SORTS = {
   // Unpriced items carry a placeholder asking_price, so they'd win "cheapest
   // first" outright and lead "most expensive" backwards. Push them last in
   // both directions instead of pretending the placeholder is a price.
-  price_asc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MIN(l.asking_price) ASC',
-  price_desc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MIN(l.asking_price) DESC',
+  // The inner MIN/MAX ignore on-request placeholders for the same reason the
+  // SELECT does: in a group mixing priced and on-request variants the
+  // placeholder is not the cheapest thing on offer, it isn't an offer at all.
+  price_asc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MIN(CASE WHEN COALESCE(l.price_on_request,0)=0 THEN l.asking_price END) ASC',
+  price_desc: 'MIN(COALESCE(l.price_on_request,0)) ASC, MAX(CASE WHEN COALESCE(l.price_on_request,0)=0 THEN l.asking_price END) DESC',
 };
 
 // Products are keyed on brand + case/space-insensitive model so "iPhone 16"
@@ -123,7 +126,11 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 60);
   const brand = String(req.query.brand || '').trim();
   const type = String(req.query.type || '').trim().toLowerCase();
-  const sort = SORTS[req.query.sort] ? req.query.sort : 'newest';
+  // hasOwnProperty, not a truthy lookup (same as routes/listings.js): a plain
+  // `SORTS[x] ?` test walks the prototype chain, so `?sort=constructor` passes
+  // the whitelist and interpolates a function's source text into ORDER BY.
+  const sortKey = String(req.query.sort || '');
+  const sort = Object.prototype.hasOwnProperty.call(SORTS, sortKey) ? sortKey : 'newest';
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || PAGE, 1), MAX_PAGE);
   const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
   const minPrice = Number(req.query.min_price);
@@ -168,8 +175,12 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
     `SELECT l.brand,
             MIN(l.model) AS model_fallback,
             COUNT(*) AS variant_count,
-            MIN(l.asking_price) AS min_price,
-            MAX(l.asking_price) AS max_price,
+            -- Only real prices feed the range. On-request variants carry a
+            -- placeholder asking_price, so a product mixing the two rendered
+            -- "1 – 1,700,000" and led price_asc. The ORDER BY tiebreak below
+            -- only catches groups where EVERY variant is on-request.
+            MIN(CASE WHEN COALESCE(l.price_on_request,0)=0 THEN l.asking_price END) AS min_price,
+            MAX(CASE WHEN COALESCE(l.price_on_request,0)=0 THEN l.asking_price END) AS max_price,
             MAX(l.created_at) AS newest_at,
             MIN(l.id) AS lead_id,
             MIN(COALESCE(l.price_on_request,0)) AS all_on_request,
