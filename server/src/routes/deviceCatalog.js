@@ -86,15 +86,20 @@ r.get('/device-catalog/devices', (req, res) => {
     // a prefix of "10". Buyers scan this list by generation, so the digit
     // runs have to compare as numbers. The list is capped at 500 rows, so
     // sorting here costs nothing.
+    // Fetch the brand in full, sort, THEN slice. Applying SQL's LIMIT first
+    // would hand the sorter an arbitrary subset — a brand with 261 devices
+    // would return a neatly ordered slice of whichever 200 rows SQLite
+    // happened to walk, which is worse than the lexicographic order it
+    // replaced. Brands top out in the low hundreds, so reading all of one
+    // costs nothing.
     const rows = db
       .prepare(
         `SELECT id, model FROM device_catalog
-          WHERE brand=? AND device_type=? AND is_active=1
-          LIMIT ?`,
+          WHERE brand=? AND device_type=? AND is_active=1`,
       )
-      .all(brand, type, limit);
+      .all(brand, type);
     rows.sort((a, b) => naturalCompare(a.model, b.model));
-    return res.json(rows);
+    return res.json(rows.slice(0, limit));
   }
 
   // LIKE with an escaped pattern — the raw query can contain % or _ which
