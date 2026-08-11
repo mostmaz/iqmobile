@@ -20,6 +20,7 @@ if (process.env.SENTRY_DSN) {
 }
 
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import { db } from './db.js';
 import authRoutes from './routes/auth.js';
@@ -119,6 +120,20 @@ app.use(cors({
     return cb(null, false);
   },
 }));
+
+// Compress every response before it leaves the process.
+//
+// Nothing in the chain was doing this. nginx has `gzip on` but the stock
+// Ubuntu config leaves BOTH `gzip_types` and `gzip_proxied` commented out —
+// the first means it only ever compresses text/html, the second means it
+// skips proxied responses entirely, and every route here is proxied. So the
+// dashboard's 714 KB JS bundle went over the wire raw on every cold load,
+// against 208 KB gzipped. On an Iraqi mobile connection that is the whole
+// difference between "fine" and "slow".
+//
+// Done here rather than in nginx so it ships with the app and survives a
+// server rebuild or a certbot-rewritten config.
+app.use(compression());
 
 app.use(express.json({ limit: '256kb' }));
 app.use('/uploads', express.static('./uploads', { maxAge: '7d' }));
@@ -222,10 +237,28 @@ app.use('/admin', adminRoutes);
 // server file or run the workflow manually from the Actions tab.
 const ADMIN_WEB_DIST = path.resolve('./../admin-web/dist');
 if (fs.existsSync(ADMIN_WEB_DIST)) {
-  app.use('/dashboard', express.static(ADMIN_WEB_DIST, { maxAge: '1h' }));
+  // Vite fingerprints every asset (index-__-5vRPf.js), so an asset URL can
+  // never change contents — cache it for a year. index.html is the opposite:
+  // it names the current hashes, so it must never be cached or a deploy stays
+  // invisible until the browser's copy lapses. The old blanket `maxAge: 1h`
+  // got both wrong, and had the operator re-downloading the whole bundle
+  // every hour.
+  app.use('/dashboard', express.static(ADMIN_WEB_DIST, {
+    maxAge: '1y',
+    immutable: true,
+    index: false,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+      }
+    },
+  }));
   // SPA fallback: every /dashboard/* path serves index.html so deep
   // links / browser refresh on a sub-route both work.
-  app.get('/dashboard/*', (_req, res) => res.sendFile(path.join(ADMIN_WEB_DIST, 'index.html')));
+  app.get('/dashboard/*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(ADMIN_WEB_DIST, 'index.html'));
+  });
   console.log('[iqmobile] admin dashboard mounted at /dashboard');
 } else {
   console.log('[iqmobile] admin dashboard not built (admin-web/dist missing) — /dashboard 404s until built');
