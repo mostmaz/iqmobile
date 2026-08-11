@@ -11,6 +11,8 @@ import { registerStoreRoutes } from './store.js';
 import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
+import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
+import { Expo } from 'expo-server-sdk';
 import { authLimiter } from '../../limits.js';
 import { getBrandsWithCounts, invalidateBrandsCache, isBrand, brandNames } from '../../brands.js';
 import { normalizeGovernorate } from '../../governorates.js';
@@ -99,6 +101,52 @@ r.post('/auth/login', authLimiter, (req, res) => {
     return res.status(401).json({ error: 'bad_credentials' });
   const token = issueToken({ id: row.id, kind: 'admin', username: row.username });
   res.json({ token, admin: { id: row.id, username: row.username } });
+});
+
+// ─── Operator app: device registration ───────────────────────────────
+//
+// The app posts its Expo token after login and on every cold start (the
+// token can rotate). Upsert on the TOKEN, so signing in as a different admin
+// on the same handset moves the row instead of leaving a stale one that
+// would keep buzzing for someone who logged out.
+r.post('/devices', requireAdmin, (req, res) => {
+  const token = String(req.body?.expo_push_token || '').trim();
+  if (!Expo.isExpoPushToken(token)) return res.status(400).json({ error: 'bad_token' });
+  const platform = ['ios', 'android'].includes(req.body?.platform) ? req.body.platform : null;
+  const ts = now();
+  db.prepare(
+    `INSERT INTO admin_devices(expo_push_token, admin_id, platform, created_at, seen_at)
+     VALUES(?,?,?,?,?)
+     ON CONFLICT(expo_push_token) DO UPDATE SET
+       admin_id=excluded.admin_id, platform=excluded.platform, seen_at=excluded.seen_at`,
+  ).run(token, req.admin.id, platform, ts, ts);
+  const row = db.prepare(
+    'SELECT muted_kinds FROM admin_devices WHERE expo_push_token=?',
+  ).get(token);
+  res.json({ ok: true, muted_kinds: String(row?.muted_kinds || '').split(',').filter(Boolean) });
+});
+
+// Sign-out, and the "stop buzzing me" switch. Deleting on logout matters:
+// the operator app is the only thing that can tell us the device is done.
+r.delete('/devices', requireAdmin, (req, res) => {
+  const token = String(req.body?.expo_push_token || req.query?.expo_push_token || '').trim();
+  if (!token) return res.status(400).json({ error: 'bad_token' });
+  db.prepare('DELETE FROM admin_devices WHERE expo_push_token=?').run(token);
+  res.json({ ok: true });
+});
+
+// Per-device mute list, so a second device can stay quiet without silencing
+// the phone in your pocket.
+r.patch('/devices/prefs', requireAdmin, (req, res) => {
+  const token = String(req.body?.expo_push_token || '').trim();
+  if (!token) return res.status(400).json({ error: 'bad_token' });
+  const raw = Array.isArray(req.body?.muted_kinds) ? req.body.muted_kinds : [];
+  const muted = raw.filter((k) => ADMIN_PUSH_KINDS.includes(k));
+  const info = db.prepare(
+    'UPDATE admin_devices SET muted_kinds=?, seen_at=? WHERE expo_push_token=?',
+  ).run(muted.join(','), now(), token);
+  if (!info.changes) return res.status(404).json({ error: 'not_registered' });
+  res.json({ ok: true, muted_kinds: muted });
 });
 
 // ─── settings ────────────────────────────────────────────────────────

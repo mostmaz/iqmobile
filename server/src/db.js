@@ -729,6 +729,22 @@ addColumnIfMissing('users', 'shop_shipping_fee INTEGER NOT NULL DEFAULT 5000');
 // badge. There was no read tracking at all, which is why the chat list had
 // no unread state to render — two threads from the same pseudonym looked
 // identical whether one held five new messages or none.
+// Devices signed in to the operator app. Keyed on the push token rather than
+// the admin, because one person signs in on a phone and a tablet and both
+// need waking — and because a token that re-registers under a different
+// login must MOVE rather than duplicate.
+db.exec(`
+CREATE TABLE IF NOT EXISTS admin_devices (
+  expo_push_token TEXT PRIMARY KEY,
+  admin_id INTEGER NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+  platform TEXT,
+  muted_kinds TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id);
+`);
+
 addColumnIfMissing('chats', 'buyer_last_read_at INTEGER');
 addColumnIfMissing('chats', 'seller_last_read_at INTEGER');
 

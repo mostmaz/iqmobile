@@ -12,6 +12,7 @@ import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
 import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
+import { pushToAdmins } from '../adminPush.js';
 import { alertWishlistOnListing } from './wishlist.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import { inspectListingAsync } from '../listingInspect.js';
@@ -262,6 +263,15 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   // Fire saved-search + wish-list alerts after the response is sent, so
   // notification fan-out never adds latency to (or can fail) listing creation.
   setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); });
+  // Operators watch new listings for junk names, wrong prices and worse.
+  setImmediate(() => {
+    pushToAdmins(
+      'listing.new',
+      'إعلان جديد',
+      `${row.brand} ${row.model} · ${Number(row.asking_price).toLocaleString('en-US')} د.ع · ${row.governorate}`,
+      { listing_id: row.id },
+    ).catch(() => {});
+  });
   // Multiplying someone's price by a thousand is a big silent edit, so say
   // that it happened — in the log for us, and on the response so the app can
   // tell the seller what their listing actually went up at.

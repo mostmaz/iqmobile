@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
+import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
 
 const r = Router();
@@ -253,8 +254,27 @@ r.post('/shops/register', requireAuth(), (req, res) => {
   params.push(now());
   params.push(req.user.id);
 
+  // Was this an upgrade from a personal account, or an edit to a shop that
+  // already existed? Only the first is worth waking anyone for — re-saving a
+  // bio should not read as a new shop.
+  const wasShop = db.prepare(
+    'SELECT seller_type FROM users WHERE id=?',
+  ).get(req.user.id)?.seller_type === 'shop';
+
   db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id=?`).run(...params);
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
+
+  if (!wasShop) {
+    setImmediate(() => {
+      pushToAdmins(
+        'shop.new',
+        'متجر جديد',
+        `${shop_name}${governorate ? ` · ${governorate}` : ''}${shop_phone ? ` · ${shop_phone}` : ''}`,
+        { shop_id: u.id },
+      ).catch(() => {});
+    });
+  }
+
   res.json({ ...shopCard(u, Date.now()), shop_images: shopImages(u.id) });
 });
 

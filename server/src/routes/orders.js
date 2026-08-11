@@ -19,6 +19,7 @@ import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGovernorate } from '../governorates.js';
 import { notify } from '../notify.js';
+import { pushToAdmins } from '../adminPush.js';
 import { applyStatusToStock } from '../stock.js';
 
 const r = Router();
@@ -215,6 +216,16 @@ r.post('/orders', requireAuth(), (req, res) => {
     title: 'طلب جديد',
     body: `${created.code} · ${created.total.toLocaleString('en-US')} د.ع`,
   });
+
+  // And wake the operators. This is the most time-critical event in the
+  // system — a cash-on-delivery customer is sitting by the phone waiting for
+  // a call back. Not awaited: Expo being down must not fail a real order.
+  pushToAdmins(
+    'order.new',
+    'طلب جديد',
+    `${created.code} · ${created.total.toLocaleString('en-US')} د.ع · ${created.customer_name}`,
+    { order_id: created.id, code: created.code },
+  ).catch(() => {});
 
   res.json(orderWithItems(created));
 });
