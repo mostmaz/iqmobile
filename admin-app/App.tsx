@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
@@ -12,8 +13,35 @@ import { AuthProvider, useAuth } from './src/lib/auth';
 import LoginScreen from './src/screens/LoginScreen';
 import QueueScreen from './src/screens/QueueScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
+import ListingsScreen from './src/screens/ListingsScreen';
+import ShopsScreen from './src/screens/ShopsScreen';
+import ModerationScreen from './src/screens/ModerationScreen';
+import MoreScreen from './src/screens/MoreScreen';
 
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+// Two tabs only. The queue is what a notification opens into and "كل الأقسام"
+// is where everything else lives — a five-tab bar on a tool this size just
+// makes each target smaller.
+function Tabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: { backgroundColor: theme.surface, borderTopColor: theme.line },
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.faint,
+        tabBarLabelStyle: { fontSize: 12 },
+        tabBarIcon: () => null,
+        tabBarLabel: route.name === 'QueueTab' ? 'المهام' : 'كل الأقسام',
+      })}
+    >
+      <Tab.Screen name="QueueTab" component={QueueScreen} />
+      <Tab.Screen name="MoreTab" component={MoreScreen} />
+    </Tab.Navigator>
+  );
+}
 const navRef = createNavigationContainerRef();
 
 const qc = new QueryClient({
@@ -38,7 +66,11 @@ const navTheme = {
 /** Where each push kind lands when tapped. */
 function routeFor(kind?: string): string | null {
   if (kind === 'order.new') return 'Orders';
-  return null; // everything else opens the queue, which is the default screen
+  if (kind === 'listing.new') return 'Listings';
+  if (kind === 'shop.new') return 'Shops';
+  if (kind === 'report.new') return 'Moderation';
+  if (kind === 'device.suggested') return 'Moderation';
+  return null; // the rest land on the queue, which is the default screen
 }
 
 function Root() {
@@ -96,8 +128,11 @@ function Root() {
           animation: Platform.OS === 'android' ? 'fade_from_bottom' : 'default',
         }}
       >
-        <Stack.Screen name="Queue" component={QueueScreen} />
+        <Stack.Screen name="Tabs" component={Tabs} />
         <Stack.Screen name="Orders" component={OrdersScreen} />
+        <Stack.Screen name="Listings" component={ListingsScreen} />
+        <Stack.Screen name="Shops" component={ShopsScreen} />
+        <Stack.Screen name="Moderation" component={ModerationScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
