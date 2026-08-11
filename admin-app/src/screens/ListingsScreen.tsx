@@ -41,7 +41,10 @@ export default function ListingsScreen({ navigation }: any) {
 
   const { data, isLoading, isRefetching, refetch, isError } = useQuery({
     queryKey: ['admin-listings', status, q],
-    queryFn: () => api<{ listings: Listing[] }>(
+    // GET /admin/listings answers with a BARE ARRAY, not {listings}. Guessing
+    // the wrapper cost a screen that rendered perfectly and always said "no
+    // matching listings" — the worst kind of wrong, because nothing errors.
+    queryFn: () => api<Listing[]>(
       `/admin/listings?${new URLSearchParams({
         ...(status ? { status } : {}),
         ...(q.trim() ? { q: q.trim() } : {}),
@@ -68,7 +71,7 @@ export default function ListingsScreen({ navigation }: any) {
     onError: () => Alert.alert('تعذّر الحذف', 'لم يتم حذف الإعلان.'),
   });
 
-  const rows = data?.listings || [];
+  const rows = Array.isArray(data) ? data : [];
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
