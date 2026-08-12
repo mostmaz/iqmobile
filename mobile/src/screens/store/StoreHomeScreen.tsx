@@ -130,7 +130,12 @@ export default function StoreHomeScreen({ navigation, route }: any) {
           </View>
           {shop?.phone ? (
             <TouchableOpacity
-              onPress={() => callPhone(shop.phone as string)}
+              onPress={() => {
+                // Report before dialling — once the dialler is up the app is
+                // backgrounded and anything queued after this may never run.
+                Storefront.contact(shopId);
+                callPhone(shop.phone as string);
+              }}
               activeOpacity={0.85}
               style={{
                 width: 36, height: 36, borderRadius: 999, backgroundColor: theme.accentSoft,

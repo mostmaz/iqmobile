@@ -16,6 +16,8 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { expandQuery, arabicNormalizeSql } from '../searchNormalize.js';
 import { PRODUCT_TYPES } from '../productType.js';
+import { logEvent } from '../eventLog.js';
+import { optionalAuth } from '../auth.js';
 
 const r = Router();
 
@@ -248,6 +250,19 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
   ).all(shop.id, brand, model);
   if (!variants.length) return res.status(404).json({ error: 'not_found' });
 
+  // Store traffic was never recorded. The marketplace logs a 'view' on its
+  // listing page, but a shopper who never leaves the storefront produced no
+  // signal at all — which is why the card's "most viewed" mode could only
+  // ever fill three slots. Tagged with shop_id and kept as its own type so
+  // store traffic and marketplace traffic stay tellable apart.
+  logEvent({
+    type: 'store_view',
+    listing_id: variants[0].id,
+    shop_id: shop.id,
+    brand,
+    user_id: null,
+  });
+
   const imgStmt = db.prepare(
     'SELECT id, image_path, position FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC',
   );
@@ -308,6 +323,39 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
       delivery_days_max: Number(shop.shop_delivery_days_max) || null,
     },
   });
+});
+
+// ─── call tap ─────────────────────────────────────────────────────────
+// The call button opens the dialer, so the tap is the only signal the
+// server will ever get — the client POSTs here immediately before deep
+// linking out. Shop-scoped rather than listing-scoped: the store's home
+// screen has a call button with no product behind it at all, and the
+// operator wants to know the store generated the call either way.
+//
+// optionalAuth so a guest tapping call is still counted; the shop's own
+// operator is not, for the same reason a seller viewing their own listing
+// isn't a view.
+r.post('/storefront/:id(\\d+)/contact', optionalAuth(), (req, res) => {
+  const shop = loadShop(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'not_found' });
+  if (req.user && req.user.id === shop.id) return res.json({ ok: true, counted: false });
+
+  // Optional: which product the shopper was looking at when they called.
+  // Validated against this shop so a bad id can't attribute a call to
+  // someone else's listing.
+  const rawId = Number(req.body?.listing_id);
+  const listing = Number.isInteger(rawId) && rawId > 0
+    ? db.prepare('SELECT id, brand FROM phone_listings WHERE id=? AND seller_id=?').get(rawId, shop.id)
+    : null;
+
+  logEvent({
+    type: 'store_call',
+    shop_id: shop.id,
+    listing_id: listing ? listing.id : null,
+    brand: listing ? listing.brand : null,
+    user_id: req.user?.id ?? null,
+  });
+  res.json({ ok: true, counted: true });
 });
 
 export default r;

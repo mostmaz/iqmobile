@@ -9,8 +9,8 @@
 import { db, now } from './db.js';
 
 const insEvent = db.prepare(
-  `INSERT INTO events(type, listing_id, user_id, brand, governorate, query, result_count, created_at)
-   VALUES(@type, @listing_id, @user_id, @brand, @governorate, @query, @result_count, @created_at)`,
+  `INSERT INTO events(type, listing_id, user_id, brand, governorate, query, result_count, shop_id, created_at)
+   VALUES(@type, @listing_id, @user_id, @brand, @governorate, @query, @result_count, @shop_id, @created_at)`,
 );
 
 export function logEvent(e) {
@@ -23,6 +23,7 @@ export function logEvent(e) {
       governorate: e.governorate ?? null,
       query: e.query ?? null,
       result_count: e.result_count ?? null,
+      shop_id: e.shop_id ?? null,
       created_at: e.created_at ?? now(),
     });
   } catch (err) {

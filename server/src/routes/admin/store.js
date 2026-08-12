@@ -249,6 +249,102 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
   // ─── customers ─────────────────────────────────────────────────────
   // The phone number is the identity: checkout collects one and most
   // customers order as guests, so user_id is usually null.
+  // ─── traffic: views, calls, and what they led to ───────────────────
+  //
+  // Separate from /stats on purpose. That endpoint answers "how is the shop
+  // selling" — orders, margin, stock. This one answers "how is the shop being
+  // used" — who looked, who called, which products pull attention and which
+  // pull a phone call. They share a shop but not a question, and cramming
+  // both into one payload made the page load two charts nobody read together.
+  r.get('/store/:id(\\d+)/traffic', requireAdmin, (req, res) => {
+    const shopId = Number(req.params.id);
+    const now = Date.now();
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
+    const since = now - days * 86400000;
+    const prevSince = since - days * 86400000;
+
+    // The CURRENT window is open-ended at the top — no `created_at < now`.
+    // The daily series and the per-product table below filter on `>= since`
+    // alone, and an upper bound here would let the KPI disagree with the
+    // chart drawn directly beneath it over any event that landed between the
+    // two queries. Nothing is in the future, so the bound bought nothing.
+    const countSince = (type, from) => db.prepare(
+      `SELECT COUNT(*) AS n FROM events
+        WHERE shop_id=? AND type=? AND created_at >= ?`,
+    ).get(shopId, type, from).n;
+
+    // The PREVIOUS window genuinely needs both ends.
+    const countBetween = (type, from, to) => db.prepare(
+      `SELECT COUNT(*) AS n FROM events
+        WHERE shop_id=? AND type=? AND created_at >= ? AND created_at < ?`,
+    ).get(shopId, type, from, to).n;
+
+    const views = countSince('store_view', since);
+    const calls = countSince('store_call', since);
+    // Same-length window immediately before, so "up or down" is answerable
+    // without the operator holding last month's number in their head.
+    const prevViews = countBetween('store_view', prevSince, since);
+    const prevCalls = countBetween('store_call', prevSince, since);
+
+    const orders = db.prepare(
+      `SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND created_at >= ?`,
+    ).get(shopId, since).n;
+
+    // Daily series for the chart. Bucketed in SQL by Baghdad day — the same
+    // dayStart() the orders chart uses, so the two line up on the x-axis.
+    const daily = db.prepare(
+      `SELECT
+         CAST((created_at - ?) / 86400000 AS INTEGER) AS bucket,
+         SUM(CASE WHEN type='store_view' THEN 1 ELSE 0 END) AS views,
+         SUM(CASE WHEN type='store_call' THEN 1 ELSE 0 END) AS calls
+       FROM events
+       WHERE shop_id=? AND type IN ('store_view','store_call') AND created_at >= ?
+       GROUP BY bucket ORDER BY bucket ASC`,
+    ).all(since, shopId, since);
+
+    // Per-product, joined back to the listing so a product that has since
+    // been renamed still reports under its current name.
+    const byProduct = db.prepare(
+      `SELECT l.brand, l.model,
+              SUM(CASE WHEN e.type='store_view' THEN 1 ELSE 0 END) AS views,
+              SUM(CASE WHEN e.type='store_call' THEN 1 ELSE 0 END) AS calls
+         FROM events e JOIN phone_listings l ON l.id = e.listing_id
+        WHERE e.shop_id=? AND e.type IN ('store_view','store_call')
+          AND e.created_at >= ?
+        GROUP BY l.brand, LOWER(TRIM(l.model))
+        ORDER BY calls DESC, views DESC
+        LIMIT 20`,
+    ).all(shopId, since);
+
+    // Calls with no product attached come from the store's own home screen.
+    const homeCalls = db.prepare(
+      `SELECT COUNT(*) AS n FROM events
+        WHERE shop_id=? AND type='store_call' AND listing_id IS NULL AND created_at >= ?`,
+    ).get(shopId, since).n;
+
+    const pct = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
+
+    res.json({
+      window_days: days,
+      views,
+      calls,
+      orders,
+      home_calls: homeCalls,
+      prev: { views: prevViews, calls: prevCalls },
+      // Nulls, not zeros, when the denominator is empty — "0% of nobody
+      // called" reads as a problem when it is simply no data yet.
+      call_rate: pct(calls, views),
+      order_rate: pct(orders, views),
+      daily,
+      by_product: byProduct,
+      // So the page can say WHY it is empty rather than drawing a blank
+      // chart: this data only exists from the day tracking shipped.
+      tracking_since: db.prepare(
+        `SELECT MIN(created_at) AS t FROM events WHERE shop_id=? AND type IN ('store_view','store_call')`,
+      ).get(shopId).t,
+    });
+  });
+
   r.get('/store/:id(\\d+)/customers', requireAdmin, (req, res) => {
     const shopId = Number(req.params.id);
     const q = String(req.query.q || '').trim();

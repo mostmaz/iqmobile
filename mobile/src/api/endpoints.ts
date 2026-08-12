@@ -617,6 +617,16 @@ export interface StoreProduct {
 export type StoreSort = 'newest' | 'price_asc' | 'price_desc';
 export const Storefront = {
   home: (shopId: number) => api<StoreHome>(`/storefront/${shopId}`),
+  // Report a call tap in the store. Same reasoning as Listings.contact: the
+  // tap deep-links to the dialler, so this POST is the only signal the server
+  // will ever get. listing_id is optional — the store's home screen has a
+  // call button with no product behind it. Fire-and-forget; analytics must
+  // never delay opening the dialler.
+  contact: (shopId: number, listingId?: number) =>
+    api(`/storefront/${shopId}/contact`, {
+      method: 'POST',
+      body: JSON.stringify(listingId ? { listing_id: listingId } : {}),
+    }).catch(() => { /* best-effort analytics */ }),
   products: (shopId: number, opts: {
     q?: string; brand?: string; type?: StoreType; sort?: StoreSort;
     min_price?: number; max_price?: number; limit?: number; offset?: number;

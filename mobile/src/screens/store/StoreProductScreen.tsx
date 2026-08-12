@@ -466,7 +466,10 @@ export default function StoreProductScreen({ navigation, route }: any) {
               </TouchableOpacity>
               {product.shop.phone ? (
                 <TouchableOpacity
-                  onPress={() => callPhone(product.shop.phone as string)}
+                  onPress={() => {
+                    Storefront.contact(product.shop.id, selected?.id);
+                    callPhone(product.shop.phone as string);
+                  }}
                   activeOpacity={0.8}
                   style={{
                     width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
@@ -488,7 +491,11 @@ export default function StoreProductScreen({ navigation, route }: any) {
       }}>
         {onRequest ? (
           <TouchableOpacity
-            onPress={() => product.shop.phone && callPhone(product.shop.phone)}
+            onPress={() => {
+              if (!product.shop.phone) return;
+              Storefront.contact(product.shop.id, selected?.id);
+              callPhone(product.shop.phone);
+            }}
             activeOpacity={0.85}
             disabled={!product.shop.phone}
             style={{

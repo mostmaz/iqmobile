@@ -748,6 +748,18 @@ CREATE INDEX IF NOT EXISTS idx_admin_devices_admin ON admin_devices(admin_id);
 addColumnIfMissing('chats', 'buyer_last_read_at INTEGER');
 addColumnIfMissing('chats', 'seller_last_read_at INTEGER');
 
+// Which shop an event belongs to.
+//
+// Events were listing-scoped, which cannot express "someone tapped call on
+// the storefront" — that tap happens on the shop, and on the store's home
+// screen there is no listing at all. Nullable: every marketplace event
+// keeps a NULL here and behaves exactly as before.
+addColumnIfMissing('events', 'shop_id INTEGER');
+// Created here, NOT in the schema block above: that block runs before the
+// ALTER TABLE, so indexing shop_id there fails with "no such column" on
+// every existing database.
+db.exec('CREATE INDEX IF NOT EXISTS idx_events_shop ON events(shop_id, type, created_at DESC)');
+
 addColumnIfMissing('users', 'shop_delivery_days_min INTEGER NOT NULL DEFAULT 2');
 addColumnIfMissing('users', 'shop_delivery_days_max INTEGER NOT NULL DEFAULT 4');
 

@@ -20,6 +20,7 @@ import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { StorePage } from './pages/StorePage';
 import { StoreOverviewPage } from './pages/StoreOverviewPage';
+import { StoreTrafficPage } from './pages/StoreTrafficPage';
 import { StoreCustomersPage } from './pages/StoreCustomersPage';
 import { StoreFulfilmentPage } from './pages/StoreFulfilmentPage';
 import { NameReviewPage } from './pages/NameReviewPage';
@@ -33,7 +34,8 @@ export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
-  | 'store_overview' | 'store_customers' | 'store_fulfilment' | 'name_review' | 'store_card';
+  | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment'
+  | 'name_review' | 'store_card';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -54,6 +56,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     label: 'متجر iQ Mobile',
     items: [
       { key: 'store_overview', label: 'أداء المتجر' },
+      { key: 'store_traffic', label: 'حركة المتجر' },
       { key: 'store', label: 'المخزون' },
       { key: 'store_card', label: 'بطاقة الرئيسية' },
       { key: 'orders', label: 'الطلبات', badgeKey: 'orders' },
@@ -189,6 +192,7 @@ export function App() {
       {page === 'orders' && <OrdersPage onChanged={refreshQueue} />}
       {page === 'store' && <StorePage />}
       {page === 'store_overview' && <StoreOverviewPage />}
+      {page === 'store_traffic' && <StoreTrafficPage />}
       {page === 'store_customers' && <StoreCustomersPage />}
       {page === 'store_fulfilment' && <StoreFulfilmentPage />}
       {page === 'name_review' && <NameReviewPage />}
