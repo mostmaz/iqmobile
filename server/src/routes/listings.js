@@ -569,12 +569,21 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
         ORDER BY id ASC LIMIT 1`,
     ).get();
     if (store && store.id !== row.seller_id) {
+      // Brand equality, with two deliberate loosenings. "Other" is a
+      // catch-all bucket, not a manufacturer — [Other] "Smart 20" and
+      // [Infinix] "Smart 20" are the same phone filed by two different
+      // people, and 12 live price rows were missing their store match for
+      // exactly that. And POCO/Redmi are Xiaomi lines the data files under
+      // either name; when the model text matches exactly, a family-level
+      // brand disagreement is filing noise, not a different device.
       const match = db.prepare(
-        `SELECT id FROM phone_listings
+        `SELECT id, brand FROM phone_listings
           WHERE seller_id=? AND status='active' AND COALESCE(stock_qty,1) > 0
-            AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
+            AND LOWER(TRIM(model))=LOWER(TRIM(?))
+            AND (brand=? OR brand='Other' OR ?='Other'
+                 OR (brand IN ('Xiaomi','POCO','Redmi') AND ? IN ('Xiaomi','POCO','Redmi')))
           ORDER BY asking_price ASC LIMIT 1`,
-      ).get(store.id, row.brand, row.model);
+      ).get(store.id, row.model, row.brand, row.brand, row.brand);
       if (match) {
         storeChat = {
           listing_id: match.id,
