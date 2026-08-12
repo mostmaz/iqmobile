@@ -21,9 +21,9 @@ import { fmtIQD } from '../../components/ui';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { SkBlock } from '../../components/Skeleton';
 import {
-  IconArrowLeft, IconMsgCall, IconBox, IconPlus, IconMinus, IconCheck, IconShield,
+  IconArrowLeft, IconMsgCall, IconBox, IconPlus, IconMinus, IconCheck, IconShield, IconChat,
 } from '../../components/icons';
-import { Storefront, type StoreVariant } from '../../api/endpoints';
+import { Storefront, Chats, type StoreVariant } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useCart } from '../../lib/cart';
 import { deliveryWindowAr } from '../../lib/format';
@@ -102,6 +102,23 @@ export default function StoreProductScreen({ navigation, route }: any) {
   // The supplier hasn't priced this one. Checkout refuses it server-side, so
   // the buy bar has to become a phone call rather than a button that 409s.
   const onRequest = !!selected?.price_on_request;
+  // Open a chat with the shop on the selected variant's listing. Falls back
+  // to the first variant so the button works before any chip is tapped.
+  const [chatStarting, setChatStarting] = useState(false);
+  async function startStoreChat() {
+    const target = selected?.id ?? product?.variants?.[0]?.id;
+    if (!target) return;
+    setChatStarting(true);
+    try {
+      const chat = await Chats.startForListing(target);
+      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
+    } catch (e: any) {
+      Alert.alert('خطأ', 'تعذّر فتح المحادثة، حاول مرة أخرى.');
+    } finally {
+      setChatStarting(false);
+    }
+  }
+
   const deliveryWindow = deliveryWindowAr(
     product?.shop?.delivery_days_min, product?.shop?.delivery_days_max,
   );
@@ -479,6 +496,23 @@ export default function StoreProductScreen({ navigation, route }: any) {
                   <IconMsgCall size={17} color={theme.accentDeep} sw={1.8} />
                 </TouchableOpacity>
               ) : null}
+              {/* Chat with the store about THIS device. The thread binds to
+                  the selected variant's listing, so the operators open it
+                  already knowing which capacity the buyer means. */}
+              <TouchableOpacity
+                onPress={startStoreChat}
+                disabled={chatStarting}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="محادثة المتجر"
+                style={{
+                  width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
+                  alignItems: 'center', justifyContent: 'center', ...shadowSoft,
+                  opacity: chatStarting ? 0.6 : 1,
+                }}
+              >
+                <IconChat size={16} color={theme.accentDeep} sw={1.8} />
+              </TouchableOpacity>
             </View>
           </View>
 

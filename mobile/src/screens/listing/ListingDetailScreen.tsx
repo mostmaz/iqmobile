@@ -234,6 +234,26 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     }
   }
 
+  // "Talk to the shop" on a price-book listing. The chat is opened on the
+  // STOREFRONT'S matching listing, not this aggregator row — the aggregator
+  // account answers nobody, and binding the thread to the store's own
+  // listing puts it in front of the operators with the right device name
+  // and the store's real price attached.
+  const [storeChatStarting, setStoreChatStarting] = useState(false);
+  async function startStoreChat() {
+    const target = (data as any)?.store_chat;
+    if (!target) return;
+    setStoreChatStarting(true);
+    try {
+      const chat = await Chats.startForListing(target.listing_id);
+      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally {
+      setStoreChatStarting(false);
+    }
+  }
+
   // Seller-side: jump to ChatsList filtered to this listing.
   function openBuyerChats() {
     (navigation as any).getParent()?.navigate('Chats', {
@@ -466,7 +486,38 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
-        {!isMine && !isDead ? (
+        {/* Price-book rows are no-contact by design — the numbers on them
+            belong to other shops. But when the same device is in the
+            storefront's own stock, there IS someone to talk to. One button,
+            styled like the storefront CTA above so it reads as the same
+            shop, opening a chat the operators actually answer. */}
+        {!isMine && !isDead && (data as any).store_chat ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              disabled={storeChatStarting}
+              onPress={startStoreChat}
+              style={{
+                backgroundColor: theme.ink, borderRadius: radius.xl,
+                paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+                flexDirection: 'row-reverse', gap: 8,
+                opacity: storeChatStarting ? 0.6 : 1,
+              }}
+            >
+              <IconChat size={16} color={theme.buttonInk} sw={1.8} />
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.buttonInk }}>
+                تحدث مع متجر {(data as any).store_chat.shop_name} — الجهاز متوفر
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* When the store button above is showing, ContactRow would add a
+            SECOND chat button on the same screen — bound to the aggregator
+            account, which answers nobody. One entry point, the right one.
+            Normal listings are unaffected: store_chat only exists on
+            price-book rows. */}
+        {!isMine && !isDead && !(data as any).store_chat ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
             <ContactRow
               phone={contactPhone}
@@ -888,19 +939,19 @@ function ContactRow({
           ) : null}
         </View>
       ) : null}
-      {/* No chat on storefront listings: ordering happens in the cart and
-          questions go to the shop's support line, so a per-listing thread
-          would be a third channel nobody is watching. */}
-      {!storefront ? (
-        <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
-          <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-              <IconChat size={15} color="#fff" sw={1.8} />
-              <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{ar.listing.chat}</Text>
-            </View>
-          </Btn>
-        </View>
-      ) : null}
+      {/* Chat on storefront listings used to be suppressed as "a third
+          channel nobody is watching". The operator app now watches it —
+          store chats surface there with a push, and replies go out under
+          the shop's own name — so the reason is gone and the button is
+          back for every listing. */}
+      <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
+        <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
+            <IconChat size={15} color="#fff" sw={1.8} />
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{ar.listing.chat}</Text>
+          </View>
+        </Btn>
+      </View>
     </View>
   );
 }

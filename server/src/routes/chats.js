@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { notify } from '../notify.js';
+import { pushToAdmins } from '../adminPush.js';
 
 const r = Router();
 
@@ -279,6 +280,25 @@ r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('ima
     title: 'رسالة جديدة',
     body: body ? body.slice(0, 80) : '📷 صورة',
   });
+
+  // A buyer writing to the STOREFRONT is a sales lead, and the storefront's
+  // own login is never signed in — its chats are read from the operator app.
+  // Wake the operators the same way an order does. Buyer-side only: the
+  // operator replying to himself is not news.
+  if (otherId === chat.seller_id) {
+    // The storefront AND the hidden price book — both are answered from the
+    // operator app, neither login is ever signed in.
+    const isStorefront = db.prepare(
+      `SELECT 1 FROM users WHERE id=? AND seller_type='shop'
+        AND (COALESCE(shop_orders_enabled,0)=1 OR COALESCE(shop_hidden,0)=1)`,
+    ).get(chat.seller_id);
+    if (isStorefront) {
+      pushToAdmins('store.chat', 'رسالة لمتجر iQ Mobile 💬',
+        body ? body.slice(0, 120) : '📷 صورة',
+        { screen: 'store_chats', chat_id: chat.id },
+      ).catch(() => { /* best-effort */ });
+    }
+  }
   // echo to sender's other devices via SSE
   // (no notification row for the sender itself)
   // emitTo done by notify only on otherId; sender already has the response.

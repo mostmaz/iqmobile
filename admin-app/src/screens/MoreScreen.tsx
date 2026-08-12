@@ -22,6 +22,7 @@ const GROUPS: Group[] = [
     label: 'العمل اليومي',
     items: [
       { label: 'الطلبات', route: 'Orders' },
+      { label: 'محادثات المتجر', route: 'Chats' },
       { label: 'الإعلانات', route: 'Listings' },
       { label: 'المتاجر', route: 'Shops' },
       { label: 'مراجعة المتاجر', route: 'ShopReview' },

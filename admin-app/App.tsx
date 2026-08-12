@@ -26,6 +26,7 @@ import InspectionScreen from './src/screens/InspectionScreen';
 import OverviewScreen from './src/screens/OverviewScreen';
 import GrowthScreen from './src/screens/GrowthScreen';
 import ShopReviewScreen from './src/screens/ShopReviewScreen';
+import ChatsScreen from './src/screens/ChatsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -75,6 +76,7 @@ const navTheme = {
 /** Where each push kind lands when tapped. */
 function routeFor(kind?: string): string | null {
   if (kind === 'order.new') return 'Orders';
+  if (kind === 'store.chat') return 'Chats';
   if (kind === 'listing.new') return 'Listings';
   if (kind === 'shop.new') return 'ShopReview';
   if (kind === 'report.new') return 'Moderation';
@@ -147,6 +149,7 @@ function Root() {
         <Stack.Screen name="Promote" component={PromoteScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Store" component={StoreScreen} />
+        <Stack.Screen name="Chats" component={ChatsScreen} />
         <Stack.Screen name="Catalog" component={CatalogScreen} />
         <Stack.Screen name="Inspection" component={InspectionScreen} />
         <Stack.Screen name="Overview" component={OverviewScreen} />

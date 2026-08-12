@@ -22,6 +22,7 @@ const expo = new Expo();
  */
 export const ADMIN_PUSH_KINDS = [
   'order.new',
+  'store.chat',
   'listing.new',
   'shop.new',
   'report.new',

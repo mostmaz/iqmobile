@@ -72,6 +72,11 @@ export interface Listing {
   updated_at: number;
   images: ListingImage[];
   seller?: User | null;
+  // "Talk to the shop" for price-book listings: when the same device sits
+  // in the storefront's live inventory, the server attaches the store's
+  // matching listing here so the chat can open against a seller who
+  // actually answers. Null everywhere else.
+  store_chat?: { listing_id: number; shop_id: number; shop_name: string } | null;
   // Per-listing contact info (always public). `seller_phone` is a legacy
   // alias kept for older mobile builds — server returns `contact_phone`.
   contact_phone?: string | null;

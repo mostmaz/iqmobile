@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { db, setSettingValue } from '../../db.js';
+import { notify } from '../../notify.js';
 import {
   CARD_MODES, CARD_SLOTS, readCardConfig, resolveStorefrontCard, cardModeCounts,
 } from '../../storefrontCard.js';
@@ -343,6 +344,119 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
         `SELECT MIN(created_at) AS t FROM events WHERE shop_id=? AND type IN ('store_view','store_call')`,
       ).get(shopId).t,
     });
+  });
+
+  // ─── storefront chats, read and answered from the operator app ─────
+  //
+  // The storefront's own login is never signed in — chats to it were only
+  // reachable through the manager's personal account in the customer app.
+  // These endpoints give the operator app the same thread, and replies are
+  // written AS the shop account, so the buyer sees "IQ Mobile" answering,
+  // not whichever operator happened to pick it up.
+
+  // The set of shops whose chats the operators answer: the order-taking
+  // storefront plus the hidden price book. Discovered by flags, same as
+  // app-config does, so moving either to a new account keeps working.
+  const managedShops = () => db.prepare(
+    `SELECT id, shop_name, display_name FROM users
+      WHERE seller_type='shop'
+        AND (COALESCE(shop_orders_enabled,0)=1 OR COALESCE(shop_hidden,0)=1)`,
+  ).all();
+
+  r.get('/store/chats', requireAdmin, (req, res) => {
+    const shops = managedShops();
+    if (!shops.length) return res.json({ chats: [], unread_total: 0 });
+    const ids = shops.map((x) => x.id);
+    const ph = ids.map(() => '?').join(',');
+    const nameOf = new Map(shops.map((x) => [x.id, x.shop_name || x.display_name]));
+    const rows = db.prepare(
+      `SELECT c.id, c.listing_id, c.buyer_id, c.last_message_at, c.created_at,
+              c.seller_last_read_at,
+              u.display_name AS buyer_name, u.phone AS buyer_phone,
+              l.brand, l.model, l.asking_price,
+              (SELECT body FROM chat_messages m
+                WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_body,
+              (SELECT image_path IS NOT NULL FROM chat_messages m
+                WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_is_image,
+              c.seller_id,
+              (SELECT COUNT(*) FROM chat_messages m
+                WHERE m.chat_id = c.id AND m.sender_id = c.buyer_id
+                  AND m.created_at > COALESCE(c.seller_last_read_at, 0)) AS unread
+         FROM chats c
+         JOIN users u ON u.id = c.buyer_id
+         LEFT JOIN phone_listings l ON l.id = c.listing_id
+        WHERE c.seller_id IN (${ph})
+        ORDER BY c.last_message_at DESC LIMIT 100`,
+    ).all(...ids);
+    res.json({
+      chats: rows.map((r2) => ({
+        ...r2,
+        last_is_image: !!r2.last_is_image,
+        shop_name: nameOf.get(r2.seller_id) || null,
+      })),
+      unread_total: rows.reduce((a, r2) => a + (r2.unread || 0), 0),
+    });
+  });
+
+  r.get('/store/chats/:chatId(\\d+)', requireAdmin, (req, res) => {
+    const ids = managedShops().map((x) => x.id);
+    const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.chatId);
+    if (!chat || !ids.includes(chat.seller_id)) return res.status(404).json({ error: 'not_found' });
+
+    const messages = db.prepare(
+      `SELECT m.id, m.sender_id, m.body, m.image_path, m.created_at,
+              u.display_name AS sender_name
+         FROM chat_messages m JOIN users u ON u.id = m.sender_id
+        WHERE m.chat_id=? ORDER BY m.created_at ASC LIMIT 500`,
+    ).all(chat.id);
+
+    // Reading it from the operator app IS the shop reading it — clear the
+    // unread pip everywhere, including the manager's customer app.
+    db.prepare('UPDATE chats SET seller_last_read_at=? WHERE id=?').run(Date.now(), chat.id);
+
+    const listing = chat.listing_id
+      ? db.prepare('SELECT id, brand, model, asking_price, status FROM phone_listings WHERE id=?')
+        .get(chat.listing_id)
+      : null;
+    const buyer = db.prepare(
+      'SELECT id, display_name, phone, governorate FROM users WHERE id=?',
+    ).get(chat.buyer_id);
+
+    res.json({ chat: { id: chat.id, created_at: chat.created_at }, buyer, listing, messages });
+  });
+
+  r.post('/store/chats/:chatId(\\d+)/messages', requireAdmin, (req, res) => {
+    const ids = managedShops().map((x) => x.id);
+    const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.chatId);
+    if (!chat || !ids.includes(chat.seller_id)) return res.status(404).json({ error: 'not_found' });
+
+    const body = String(req.body?.body || '').trim().slice(0, 2000);
+    if (!body) return res.status(400).json({ error: 'empty_message' });
+
+    // sender_id is the SHOP, not the admin: the buyer's thread shows the
+    // store answering under its own name, and nothing in the customer app
+    // needs to learn a new author type.
+    const t = Date.now();
+    const ins = db.prepare(
+      'INSERT INTO chat_messages(chat_id, sender_id, body, image_path, masked, created_at) VALUES(?,?,?,NULL,0,?)',
+    ).run(chat.id, chat.seller_id, body, t);
+    db.prepare('UPDATE chats SET last_message_at=?, seller_last_read_at=? WHERE id=?')
+      .run(t, t, chat.id);
+
+    const msg = db.prepare(
+      `SELECT m.id, m.chat_id, m.sender_id, m.body, m.image_path, m.masked, m.created_at,
+              u.display_name AS sender_name
+         FROM chat_messages m JOIN users u ON u.id = m.sender_id WHERE m.id=?`,
+    ).get(ins.lastInsertRowid);
+
+    // Same kind and payload shape as a normal chat message, so every
+    // existing build renders it correctly — no new KIND_LABEL needed.
+    notify(chat.buyer_id, 'chat.message', { chat_id: chat.id, message: msg }, {
+      title: 'رسالة جديدة',
+      body: body.slice(0, 80),
+    });
+
+    res.json(msg);
   });
 
   r.get('/store/:id(\\d+)/customers', requireAdmin, (req, res) => {

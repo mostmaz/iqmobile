@@ -553,9 +553,42 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
       WHERE id=? AND seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1`,
   ).get(row.seller_id);
 
+  // "Talk to the shop" on price-book listings. The aggregator's rows are
+  // no-contact by design — the numbers on them belong to OTHER shops — so
+  // buyers looking at a new-device price had nobody to ask. But when the
+  // SAME device sits in the storefront's own inventory, there is a real
+  // seller with a real support line one query away. Attach the storefront's
+  // matching listing so the app can offer a chat that lands on an account
+  // someone actually answers. Cheapest variant wins so the chat opens on
+  // the price the buyer would actually pay.
+  let storeChat = null;
+  if (!storefrontShop && noContactSellers().has(row.seller_id)) {
+    const store = db.prepare(
+      `SELECT id, shop_name, display_name FROM users
+        WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
+        ORDER BY id ASC LIMIT 1`,
+    ).get();
+    if (store && store.id !== row.seller_id) {
+      const match = db.prepare(
+        `SELECT id FROM phone_listings
+          WHERE seller_id=? AND status='active' AND COALESCE(stock_qty,1) > 0
+            AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
+          ORDER BY asking_price ASC LIMIT 1`,
+      ).get(store.id, row.brand, row.model);
+      if (match) {
+        storeChat = {
+          listing_id: match.id,
+          shop_id: store.id,
+          shop_name: store.shop_name || store.display_name,
+        };
+      }
+    }
+  }
+
   res.json({
     ...withImgs,
     orders_enabled: !!storefrontShop,
+    store_chat: storeChat,
     // Falls back to null (not the login phone) when no support line is set:
     // the shop's account phone is a placeholder nobody answers.
     storefront_phone: storefrontShop ? (storefrontShop.shop_phone || null) : null,
