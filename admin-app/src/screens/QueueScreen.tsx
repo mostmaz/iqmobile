@@ -39,11 +39,11 @@ type Card = {
 // how the web nav happens to group them.
 const CARDS: Card[] = [
   { key: 'orders', label: 'طلبات بانتظار الاتصال', hint: 'زبون ينتظر مكالمة', tone: 'urgent', route: 'Orders' },
-  { key: 'reports', label: 'بلاغات مفتوحة', hint: 'محتوى مُبلَّغ عنه', tone: 'urgent' },
-  { key: 'inspection', label: 'إعلانات للفحص', hint: 'بانتظار قرار', tone: 'warn' },
-  { key: 'new_shops', label: 'متاجر جديدة', hint: 'خلال 7 أيام', tone: 'info' },
-  { key: 'devices', label: 'أجهزة مقترحة', hint: 'لإضافتها للكتالوج', tone: 'info' },
-  { key: 'feature_requests', label: 'طلبات ترويج', hint: 'بانتظار موافقة', tone: 'info' },
+  { key: 'reports', label: 'بلاغات مفتوحة', hint: 'محتوى مُبلَّغ عنه', tone: 'urgent', route: 'Moderation' },
+  { key: 'inspection', label: 'إعلانات للفحص', hint: 'بانتظار قرار', tone: 'warn', route: 'Inspection' },
+  { key: 'new_shops', label: 'متاجر جديدة', hint: 'خلال 7 أيام', tone: 'info', route: 'Shops' },
+  { key: 'devices', label: 'أجهزة مقترحة', hint: 'لإضافتها للكتالوج', tone: 'info', route: 'Moderation' },
+  { key: 'feature_requests', label: 'طلبات ترويج', hint: 'بانتظار موافقة', tone: 'info', route: 'Promote' },
 ];
 
 export default function QueueScreen({ navigation }: any) {

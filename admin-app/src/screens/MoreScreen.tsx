@@ -26,6 +26,7 @@ const GROUPS: Group[] = [
       { label: 'المتاجر', route: 'Shops' },
       { label: 'البلاغات', route: 'Moderation', params: { tab: 'reports' } },
       { label: 'الأجهزة المقترحة', route: 'Moderation', params: { tab: 'devices' } },
+      { label: 'الفحص', route: 'Inspection' },
     ],
   },
   {
@@ -53,7 +54,7 @@ const GROUPS: Group[] = [
       { label: 'المستخدمون', route: 'Users' },
       { label: 'البانرات', note: 'على الويب' },
       { label: 'الترويج', route: 'Promote' },
-      { label: 'التحليلات', note: 'رسوم — على الويب' },
+      { label: 'التحليلات', route: 'Overview' },
       { label: 'الإعدادات', route: 'Settings' },
     ],
   },
