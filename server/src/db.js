@@ -754,6 +754,15 @@ addColumnIfMissing('chats', 'seller_last_read_at INTEGER');
 // the storefront" — that tap happens on the shop, and on the store's home
 // screen there is no listing at all. Nullable: every marketplace event
 // keeps a NULL here and behaves exactly as before.
+// When an admin last said "this name is fine, stop showing it to me".
+//
+// The name-review queue held this in React state, so it survived exactly
+// until the next refresh and the reviewer met the same rows again. Stored
+// as a TIMESTAMP rather than a flag on purpose: the queue compares it to
+// updated_at, so a listing the seller RENAMES after being skipped comes
+// back for review, while one nobody has touched stays gone.
+addColumnIfMissing('phone_listings', 'name_review_skipped_at INTEGER');
+
 addColumnIfMissing('events', 'shop_id INTEGER');
 // Created here, NOT in the schema block above: that block runs before the
 // ALTER TABLE, so indexing shop_id there fails with "no such column" on

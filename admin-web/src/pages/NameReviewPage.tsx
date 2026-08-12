@@ -32,16 +32,44 @@ export function NameReviewPage() {
   const [done, setDone] = useState<Set<number>>(new Set());
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  // How many the server is currently hiding, and whether we're asking to see
+  // them. Without this a mis-tapped "تخطي" is both permanent and invisible.
+  const [skippedCount, setSkippedCount] = useState(0);
+  const [showSkipped, setShowSkipped] = useState(false);
 
-  async function load() {
+  async function load(includeSkipped = showSkipped) {
     setLoading(true);
     try {
-      const r = await api<{ total: number; listings: Row[] }>('/admin/listings/name-review');
+      const r = await api<{ total: number; listings: Row[]; skipped: number }>(
+        `/admin/listings/name-review${includeSkipped ? '?include_skipped=1' : ''}`,
+      );
       setRows(r.listings);
+      setSkippedCount(r.skipped ?? 0);
       setErr('');
     } catch (e: any) { setErr(String(e?.message || e)); } finally { setLoading(false); }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(showSkipped); }, [showSkipped]);
+
+  // Persist the skip. This used to be React state alone, so it survived
+  // exactly until the next refresh and the reviewer met the same rows again.
+  async function skip(r: Row) {
+    setBusy(r.id);
+    // Hide it immediately — the reviewer is going down a list and shouldn't
+    // wait on a round trip — but put it back if the write fails, rather than
+    // leaving them believing it was saved.
+    setDone((p) => new Set(p).add(r.id));
+    try {
+      await api(`/admin/listings/${r.id}/name-review-skip`, {
+        method: 'PATCH',
+        body: JSON.stringify({ skip: true }),
+      });
+      setSkippedCount((n) => n + 1);
+      setErr('');
+    } catch (e: any) {
+      setDone((p) => { const next = new Set(p); next.delete(r.id); return next; });
+      setErr(`تعذّر حفظ التخطي: ${String(e?.message || e)}`);
+    } finally { setBusy(null); }
+  }
 
   async function apply(r: Row, model: string, brand?: string | null) {
     const m = model.trim();
@@ -67,6 +95,14 @@ export function NameReviewPage() {
           أسماء تحتاج مراجعة ({pending.length})
         </div>
         <button className="secondary" onClick={() => { setDone(new Set()); void load(); }}>تحديث</button>
+        {skippedCount > 0 || showSkipped ? (
+          <button
+            className={showSkipped ? 'primary' : 'secondary'}
+            onClick={() => { setDone(new Set()); setShowSkipped((v) => !v); }}
+          >
+            {showSkipped ? 'إخفاء المتخطّاة' : `عرض المتخطّاة (${skippedCount})`}
+          </button>
+        ) : null}
       </div>
 
       <div className="card" style={{ marginBottom: 12 }}>
@@ -121,7 +157,7 @@ export function NameReviewPage() {
             <button
               className="secondary"
               disabled={busy === r.id}
-              onClick={() => setDone((p) => new Set(p).add(r.id))}
+              onClick={() => void skip(r)}
             >
               تخطّي
             </button>

@@ -72,7 +72,14 @@ export default function PostListingScreen({ navigation }: any) {
   // name capture for real users now. Guest sessions are short-lived and
   // upgrade to a real account via AuthGate before they can post.)
 
-  const [brand, setBrand] = useState('Apple');
+  // NO default brand. It used to start on 'Apple', and a pre-filled dropdown
+  // is indistinguishable from a deliberate choice — to the seller who never
+  // opens it, and to the server, whose brand auto-correct deliberately only
+  // fires for 'Other' because "an explicit brand choice is always respected".
+  // That is how 10 live listings ended up as "Apple POCO X7 Pro", "Apple
+  // Infinix ZERO 40", "Apple Tecno Camon 30 Pro 5G". Empty forces a choice,
+  // and makes every brand that reaches the server a real one.
+  const [brand, setBrand] = useState('');
   const [brandPickerOpen, setBrandPickerOpen] = useState(false);
   // Brand options come from the server so the catalog stays in sync without
   // an app update. "Other" is forced last. Falls back to the hardcoded list
@@ -129,7 +136,7 @@ export default function PostListingScreen({ navigation }: any) {
   // Wipe the wizard back to a blank step 1.
   const resetForm = useCallback(() => {
     setStep(0); setErr(''); setBusy(false);
-    setBrand('Apple'); setModel('');
+    setBrand(''); setModel('');
     setCondition('used'); setStorage('128GB'); setColor(''); setBatteryHealth('');
     setWarranty('بدون ضمان');
     setAccessories([]);
@@ -382,8 +389,12 @@ export default function PostListingScreen({ navigation }: any) {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink }}>
-                {brand}
+              <Text style={{
+                fontFamily: brand ? fonts.arBold : fonts.ar,
+                fontSize: 14.5,
+                color: brand ? theme.ink : theme.subtle,
+              }}>
+                {brand || 'اختر العلامة التجارية…'}
               </Text>
               <IconChevronDown size={18} color={theme.subtle} sw={1.8} />
             </TouchableOpacity>
@@ -399,7 +410,7 @@ export default function PostListingScreen({ navigation }: any) {
                 matches what buyers search for. If it's not in the list the
                 seller can still type it (and we queue it for review). */}
             <TouchableOpacity
-              onPress={() => setDevicePickerOpen(true)}
+              onPress={() => (brand ? setDevicePickerOpen(true) : setBrandPickerOpen(true))}
               activeOpacity={0.8}
               style={{
                 flexDirection: 'row-reverse', alignItems: 'center', gap: 8,

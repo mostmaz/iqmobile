@@ -2392,13 +2392,21 @@ r.post('/orders/:id(\\d+)/return', requireAdmin, (req, res) => {
 // one) is one click to accept.
 r.get('/listings/name-review', requireAdmin, (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 300);
+  const includeSkipped = String(req.query.include_skipped || '') === '1';
   const rows = db.prepare(
     `SELECT l.id, l.brand, l.model, l.status, l.asking_price, l.created_at,
             u.display_name AS seller_name
        FROM phone_listings l JOIN users u ON u.id = l.seller_id
       WHERE l.status='active'
+        -- Skipped rows drop out, but only while nobody has touched them
+        -- since. A seller who renames a skipped listing puts it back in the
+        -- queue, which is the whole reason this is a timestamp and not a
+        -- boolean. include_skipped=1 shows them again so a mis-tap on
+        -- "تخطي" isn't permanent and invisible.
+        AND (? = 1 OR l.name_review_skipped_at IS NULL
+             OR l.name_review_skipped_at < l.updated_at)
       ORDER BY l.created_at DESC LIMIT 2000`,
-  ).all();
+  ).all(includeSkipped ? 1 : 0);
 
   const ARABIC = /[\u0600-\u06FF]/;
   const out = [];
@@ -2414,7 +2422,27 @@ r.get('/listings/name-review', requireAdmin, (req, res) => {
     });
     if (out.length >= limit) break;
   }
-  res.json({ total: out.length, listings: out });
+  // How many are hidden right now, so the page can offer to show them
+  // rather than leaving the reviewer wondering where a row went.
+  const skipped = db.prepare(
+    `SELECT COUNT(*) AS n FROM phone_listings
+      WHERE status='active' AND name_review_skipped_at IS NOT NULL
+        AND name_review_skipped_at >= updated_at`,
+  ).get().n;
+  res.json({ total: out.length, listings: out, skipped });
+});
+
+// Skip / unskip a name. Writes the timestamp the queue filters on.
+r.patch('/listings/:id(\\d+)/name-review-skip', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  const skip = req.body?.skip !== false;
+  // Deliberately does NOT touch updated_at: that column is the seller's
+  // "last edited", and bumping it here would make the row look freshly
+  // renamed and march it straight back into the queue it just left.
+  db.prepare('UPDATE phone_listings SET name_review_skipped_at=? WHERE id=?')
+    .run(skip ? Date.now() : null, row.id);
+  res.json({ ok: true, skipped: skip });
 });
 
 // ─── device catalog ───────────────────────────────────────────────────
