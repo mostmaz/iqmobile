@@ -20,6 +20,8 @@ import MoreScreen from './src/screens/MoreScreen';
 import UsersScreen from './src/screens/UsersScreen';
 import PromoteScreen from './src/screens/PromoteScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import StoreScreen from './src/screens/StoreScreen';
+import CatalogScreen from './src/screens/CatalogScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -140,6 +142,8 @@ function Root() {
         <Stack.Screen name="Users" component={UsersScreen} />
         <Stack.Screen name="Promote" component={PromoteScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Store" component={StoreScreen} />
+        <Stack.Screen name="Catalog" component={CatalogScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

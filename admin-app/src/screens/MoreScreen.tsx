@@ -31,19 +31,19 @@ const GROUPS: Group[] = [
   {
     label: 'المتجر',
     items: [
-      { label: 'المخزون', note: 'على الويب' },
-      { label: 'التجهيز', note: 'على الويب' },
-      { label: 'الزبائن', note: 'على الويب' },
-      { label: 'أداء المتجر', note: 'على الويب' },
+      { label: 'المخزون', route: 'Store' },
+      { label: 'التجهيز', route: 'Store' },
+      { label: 'الزبائن', route: 'Store' },
+      { label: 'أداء المتجر', route: 'Store' },
       { label: 'بطاقة الرئيسية', note: 'على الويب' },
     ],
   },
   {
     label: 'الكتالوج',
     items: [
-      { label: 'مراجعة الأسماء', note: 'على الويب' },
-      { label: 'الماركات', note: 'على الويب' },
-      { label: 'الأجهزة', note: 'على الويب' },
+      { label: 'مراجعة الأسماء', route: 'Catalog', params: { tab: 'names' } },
+      { label: 'الماركات', route: 'Catalog', params: { tab: 'brands' } },
+      { label: 'الأجهزة', route: 'Catalog', params: { tab: 'devices' } },
       { label: 'الاستيراد', note: 'ملفات — على الويب' },
     ],
   },
