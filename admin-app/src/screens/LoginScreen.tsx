@@ -25,6 +25,7 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -72,13 +73,31 @@ export default function LoginScreen() {
           onChangeText={(v: string) => { setUsername(v); setErr(''); }}
           autoCapitalize="none"
         />
+        {/* The admin password is 48 random characters. Typing that blind on
+            a phone keyboard is a coin flip, and five wrong tries locks the
+            account for a minute — so it has to be readable while entering. */}
         <Field
           label="كلمة المرور"
           value={password}
           onChangeText={(v: string) => { setPassword(v); setErr(''); }}
-          secureTextEntry
+          secureTextEntry={!showPw}
+          autoCapitalize="none"
+          autoComplete="off"
           onSubmitEditing={submit}
           returnKeyType="go"
+          accessory={
+            <TouchableOpacity
+              onPress={() => setShowPw((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showPw ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+              hitSlop={10}
+              style={{ paddingHorizontal: 4, paddingVertical: 6 }}
+            >
+              <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.accent }}>
+                {showPw ? 'إخفاء' : 'إظهار'}
+              </Text>
+            </TouchableOpacity>
+          }
         />
 
         {err ? (
@@ -109,19 +128,20 @@ export default function LoginScreen() {
   );
 }
 
-function Field({ label, ...rest }: any) {
+function Field({ label, accessory, ...rest }: any) {
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{
-        fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle,
-        textAlign: 'right', marginBottom: 6,
-      }}>
-        {label}
-      </Text>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 6 }}>
+        <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right' }}>
+          {label}
+        </Text>
+        {accessory}
+      </View>
       <TextInput
         {...rest}
         placeholderTextColor={theme.faint}
         autoCorrect={false}
+        spellCheck={false}
         style={{
           backgroundColor: theme.surface,
           borderWidth: 1, borderColor: theme.line,
