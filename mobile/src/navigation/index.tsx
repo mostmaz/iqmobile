@@ -34,6 +34,7 @@ import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
 import ShopsScreen from '../screens/shops/ShopsScreen';
 import ShopScreen from '../screens/shops/ShopScreen';
 import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
+import ShopReviewChatScreen from '../screens/shops/ShopReviewChatScreen';
 import StoreHomeScreen from '../screens/store/StoreHomeScreen';
 import StoreProductScreen from '../screens/store/StoreProductScreen';
 import AdvertiseScreen from '../screens/advertise/AdvertiseScreen';
@@ -75,6 +76,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
       <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
+      <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
@@ -118,6 +120,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
       <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
+      <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="Advertise" component={AdvertiseScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
@@ -152,6 +155,9 @@ function ChatsStackNav() {
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="ChatsHome" component={ChatsListScreen} />
       <BrowseStack.Screen name="Chat" component={ChatScreen} />
+      {/* The shop owner's review thread is reached from the chat list, so it
+          has to live in THIS stack as well as the profile one. */}
+      <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       {/* ListingDetail's price-alert buttons need this locally too. */}

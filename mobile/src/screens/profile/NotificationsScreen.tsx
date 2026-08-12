@@ -30,6 +30,13 @@ const KIND_LABEL: Record<string, string> = {
   // Storefront orders. Without these the inbox rendered the raw kind
   // ("order.confirmed") — the notifications were firing all along, they just
   // arrived looking like a bug.
+  // Shop review. The server only writes these rows for builds new enough to
+  // carry these labels — an older one would render the raw kind, which is
+  // the exact bug this map was extended for once already.
+  'shop.review.pending': 'متجرك قيد المراجعة',
+  'shop.review.approved': 'تم قبول متجرك ✅',
+  'shop.review.rejected': 'لم يتم قبول متجرك',
+  'shop.review.message': 'رسالة من إدارة iQ Mobile',
   'order.placed': 'طلب جديد 🛒',
   'order.confirmed': 'تم تأكيد طلبك ✅',
   'order.shipped': 'طلبك في الطريق 🚚',
@@ -100,6 +107,16 @@ export default function NotificationsScreen({ navigation }: any) {
   //   - otherwise → just mark-read silently
   function onTap(item: NotificationRow) {
     Notifications.read(item.id);
+    // Shop review has no chat_id and no listing — it's its own thread.
+    if (item.kind.startsWith('shop.review')) {
+      if (navigationRef.isReady()) {
+        navigationRef.navigate('Main', {
+          screen: 'Chats',
+          params: { screen: 'ShopReviewChat' },
+        });
+      }
+      return;
+    }
     const chatId = item.chat_summary?.chat_id || item.payload?.chat_id;
     if (chatId) {
       if (navigationRef.isReady()) {

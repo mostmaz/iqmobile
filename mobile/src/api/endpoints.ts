@@ -512,7 +512,24 @@ export interface ShopDetail extends ShopCard {
   listings: Listing[];
   shop_images?: ShopImage[];
 }
+export interface ShopReviewMessage {
+  id: number; author: 'admin' | 'shop'; body: string; created_at: number;
+}
+export interface ShopReview {
+  status: 'pending' | 'approved' | 'rejected';
+  note: string | null;
+  reviewed_at: number | null;
+  submitted_at: number | null;
+  messages: ShopReviewMessage[];
+}
+
 export const Shops = {
+  // The owner's own review state + the thread with the admins. 404s with
+  // not_a_shop for anyone who isn't a shop, so callers treat a failure as
+  // "nothing to show" rather than surfacing an error.
+  myReview: () => api<ShopReview>('/shops/me/review'),
+  sendReviewMessage: (body: string) =>
+    api('/shops/me/review/messages', { method: 'POST', body: JSON.stringify({ body }) }),
   list: (governorate?: string) =>
     api<ShopCard[]>('/shops' + (governorate ? `?governorate=${encodeURIComponent(governorate)}` : '')),
   get: (id: number) => api<ShopDetail>(`/shops/${id}`),

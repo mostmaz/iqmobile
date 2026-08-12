@@ -15,6 +15,7 @@ import { sendChatImage, fullImageUrl } from '../../api/upload';
 import { compressForChatBubble } from '../../lib/imageCompress';
 import { parsePrice } from '../../lib/format';
 import { ar } from '../../i18n/ar';
+import { useKeyboardHeight, bottomBarPadding } from '../../lib/useKeyboard';
 import { subscribeSSE } from '../../sse/client';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -28,6 +29,7 @@ const DEAL_FLOW_ENABLED = false;
 export default function ChatScreen({ route, navigation }: any) {
   const { id } = route.params as { id: number };
   const insets = useSafeAreaInsets();
+  const kbHeight = useKeyboardHeight();
   const { user } = useAuth();
   const qc = useQueryClient();
 
@@ -204,10 +206,18 @@ export default function ChatScreen({ route, navigation }: any) {
   }
 
   return (
+    // Padding on BOTH platforms. The Android branch used to be `undefined`,
+    // which makes KeyboardAvoidingView a no-op — fine back when adjustResize
+    // resized the window for us, useless now the app is edge-to-edge and
+    // Android draws the IME over the content instead. The composer sat under
+    // the keys as a result.
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       style={{ flex: 1, backgroundColor: theme.bg }}
-      keyboardVerticalOffset={insets.top}
+      // iOS measures from the top of the screen and needs the header
+      // discounted; Android's keyboard height is already relative to the
+      // visible window, so any offset here double-counts.
+      keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
     >
       {/* Custom chat header — counterparty name on top, listing brand+model
           on the subline as a TouchableOpacity that opens the listing
@@ -314,7 +324,11 @@ export default function ChatScreen({ route, navigation }: any) {
       ) : null}
 
       <View style={{
-        flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 8 + insets.bottom,
+        flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 12, paddingTop: 6,
+        // While the keyboard is up the safe-area inset is wrong: the keys
+        // already cover that strip, and adding both leaves a dead gap
+        // between the composer and the keyboard.
+        paddingBottom: bottomBarPadding(kbHeight, insets.bottom),
         backgroundColor: theme.surface, borderTopWidth: 1, borderColor: theme.line, alignItems: 'center',
       }}>
         {DEAL_FLOW_ENABLED && role === 'seller' && !deal ? (

@@ -6,9 +6,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { timeAgoAr, deviceTitle } from '../../lib/format';
+import { Shops } from '../../api/endpoints';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, fmtIQD } from '../../components/ui';
-import { IconChat } from '../../components/icons';
+import { IconChat, IconStore } from '../../components/icons';
 import { RowListSkeleton } from '../../components/Skeleton';
 import { Chats } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
@@ -31,6 +32,19 @@ export default function ChatsListScreen({ navigation, route }: any) {
   // owns any chats they start; the inbox just lists them like any other
   // user's chats. First-launch guests with no chats yet see the empty
   // state copy from ar.chat.empty.
+  // The owner's own review thread. Fetched separately because it isn't a
+  // `chats` row — that table needs a listing_id, and this conversation is
+  // about the shop itself. Fails silently for non-shop accounts (the
+  // endpoint 404s with not_a_shop), which is exactly the "show nothing" we
+  // want rather than an error banner on everyone's chat list.
+  const { data: review } = useQuery({
+    queryKey: ['shop-review'],
+    queryFn: () => Shops.myReview(),
+    enabled: user?.seller_type === 'shop',
+    retry: false,
+  });
+  const lastAdminMsg = review?.messages?.filter((m) => m.author === 'admin').slice(-1)[0] || null;
+
   const { data, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['chats', listingId ?? 'all'],
     queryFn: () => (listingId ? Chats.listForListing(listingId) : Chats.list()),
@@ -96,6 +110,45 @@ export default function ChatsListScreen({ navigation, route }: any) {
         keyExtractor={(it) => String(it.id)}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: tabClearance }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+        // Pinned above the buyer threads, not mixed into them: this is the
+        // one conversation that can stop the shop being visible at all, and
+        // it must not sink below a week of chats. Shop accounts only.
+        ListHeaderComponent={review ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ShopReviewChat')}
+            style={{
+              padding: 12, marginBottom: 8, borderRadius: radius.lg,
+              backgroundColor: theme.surface,
+              borderWidth: 1.5,
+              borderColor: review.status === 'pending' ? theme.accent
+                : review.status === 'rejected' ? theme.danger : theme.line,
+              flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+            }}
+          >
+            <View style={{
+              width: 44, height: 44, borderRadius: 999, backgroundColor: theme.accentSoft,
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <IconStore size={20} color={theme.accentDeep} sw={1.8} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
+                إدارة iQ Mobile
+              </Text>
+              <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 2, textAlign: 'right' }}>
+                {review.status === 'pending' ? 'متجرك قيد المراجعة'
+                  : review.status === 'rejected' ? 'المتجر يحتاج تعديلاً'
+                    : 'مراجعة المتجر'}
+              </Text>
+              {lastAdminMsg ? (
+                <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.ink, marginTop: 3, textAlign: 'right' }}>
+                  {lastAdminMsg.body}
+                </Text>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        ) : null}
         renderItem={({ item }) => {
           const counter = user?.id === item.buyer_id ? item.seller : item.buyer;
           // Name fallbacks, in order of preference:
