@@ -5,7 +5,8 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "tsc": "tsc --noEmit -p tsconfig.json"
+    "tsc": "tsc --noEmit -p tsconfig.json",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.15.11",

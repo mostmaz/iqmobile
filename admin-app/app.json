@@ -16,7 +16,8 @@
       "permissions": [
         "POST_NOTIFICATIONS"
       ],
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       [
