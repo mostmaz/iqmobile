@@ -51,6 +51,19 @@ const govAr = (g) => GOV_AR[g] || g || '';
 const brandAr = (b) => BRAND_AR[b] || b || '';
 const fmtPrice = (n) => Number(n || 0).toLocaleString('en-US');
 
+// "Oukitel Oukitel C62" in a marketing post is worse than in a feed card —
+// this is the most public text the system produces. Same rule as the app's
+// deviceTitle(): drop the brand when the model already names it, and never
+// print the catch-all bucket "Other" as if it were a manufacturer.
+function deviceTitle(brand, model) {
+  const b = String(brand || '').trim();
+  const mo = String(model || '').trim();
+  if (!mo) return b === 'Other' ? '' : b;
+  if (!b || b === 'Other') return mo;
+  if (mo.toLowerCase().startsWith(b.toLowerCase())) return mo;
+  return `${b} ${mo}`;
+}
+
 function conditionPhrase(l, { emoji = true } = {}) {
   const c = String(l.condition || 'used').toLowerCase();
   const bat = Number(l.battery_health);
@@ -77,7 +90,7 @@ function hashtags(l, extra = []) {
 /** The Facebook caption — a straight port of the dashboard's generator. */
 export function facebookCaption(l) {
   const lines = [];
-  lines.push(`🔥 ${l.brand} ${l.model} للبيع`);
+  lines.push(`🔥 ${deviceTitle(l.brand, l.model)} للبيع`);
   lines.push('');
   lines.push(conditionPhrase(l));
   if (l.storage) lines.push(`📦 السعة: ${l.storage}`);
@@ -163,7 +176,7 @@ export async function composeShareImage(l, photoPath) {
   const price = await textLayer(`${fmtPrice(l.asking_price)} د.ع`, { font: FONT_BOLD, size: Math.round(64 * s), color: CREAM, rtl: true });
   const subBits = [conditionPhrase(l, { emoji: false }), l.storage].filter(Boolean).join(' · ');
   const sub = await textLayer(subBits.slice(0, 46), { font: FONT_MED, size: Math.round(30 * s), color: '#ffffff', rtl: true });
-  const title = await textLayer(`${l.brand} ${l.model}`.slice(0, 34), { font: FONT_BOLD, size: Math.round(44 * s), color: '#ffffff', rtl: true });
+  const title = await textLayer(deviceTitle(l.brand, l.model).slice(0, 34), { font: FONT_BOLD, size: Math.round(44 * s), color: '#ffffff', rtl: true });
   const gov = await textLayer(govAr(l.governorate), { font: FONT_MED, size: Math.round(28 * s), color: '#ffffff', rtl: true });
 
   const RM = Math.round(44 * s);
