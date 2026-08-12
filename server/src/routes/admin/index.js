@@ -2418,7 +2418,13 @@ r.get('/shops/review', requireAdmin, (req, res) => {
             -- below 0.3.0 he cannot see the in-app banner or thread at all,
             -- so the note has to reach him by push or phone.
             (SELECT d.app_version FROM user_active_days d
-              WHERE d.user_id = u.id ORDER BY d.day DESC LIMIT 1) AS app_version
+              WHERE d.user_id = u.id ORDER BY d.day DESC LIMIT 1) AS app_version,
+            -- Whether a push would actually land. On a build with no review
+            -- screen the push IS the only delivery, so a shop with no token
+            -- receives NOTHING when the reviewer writes — and the reviewer
+            -- has to know that before typing, not after.
+            (CASE WHEN u.expo_push_token IS NOT NULL AND u.expo_push_token <> ''
+                  THEN 1 ELSE 0 END) AS has_push
        FROM users u
       WHERE u.seller_type='shop' AND COALESCE(u.shop_status,'approved')=?
       ORDER BY u.shop_created_at DESC LIMIT 200`,

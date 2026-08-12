@@ -22,7 +22,7 @@ type Shop = {
   shop_status: string; shop_review_note: string | null;
   shop_reviewed_at: number | null; shop_created_at: number | null;
   listing_count: number; message_count: number; unread_from_shop: number;
-  app_version: string | null;
+  app_version: string | null; has_push: number;
 };
 type Msg = { id: number; author: 'admin' | 'shop'; body: string; created_at: number };
 
@@ -176,9 +176,16 @@ export function ShopReviewPage() {
               نسخة التطبيق: {sh.app_version || 'غير معروفة'}
             </span>
             {tooOld(sh.app_version) ? (
-              <span style={{ color: '#E0A33E', fontSize: 11.5 }}>
-                — لا يرى الرسائل داخل التطبيق؛ سيصله إشعار فقط، والأفضل الاتصال به
-              </span>
+              sh.has_push ? (
+                <span style={{ color: '#E0A33E', fontSize: 11.5 }}>
+                  — نسخته قديمة: تصله رسالتك كإشعار فقط (بنصّها كاملاً)، لكنه لا يستطيع
+                  فتحها لاحقاً ولا الرد عليها داخل التطبيق
+                </span>
+              ) : (
+                <span style={{ color: '#E8635A', fontSize: 11.5, fontWeight: 600 }}>
+                  — لا تصله أي رسالة: نسخته قديمة ولا يوجد لديه إشعارات مفعّلة. اتصل به أو راسله واتساب
+                </span>
+              )
             ) : null}
           </div>
 
@@ -226,7 +233,27 @@ export function ShopReviewPage() {
                   style={{ flex: 1 }}
                 />
                 <button className="primary" disabled={busy || !draft.trim()} onClick={() => void send(sh.id)}>إرسال</button>
+                {/* Same text, over WhatsApp. On a build with no reply path
+                    this is the only channel where the owner can actually
+                    answer, so it sits right next to Send rather than being
+                    a separate step the reviewer has to think of. */}
+                {(sh.shop_whatsapp || sh.shop_phone || sh.phone) ? (
+                  <a
+                    className="btn secondary"
+                    href={`https://wa.me/${intl(sh.shop_whatsapp || sh.shop_phone || sh.phone || '')}?text=${encodeURIComponent(draft.trim() || note.trim())}`}
+                    target="_blank" rel="noreferrer"
+                    style={{ opacity: (draft.trim() || note.trim()) ? 1 : 0.45, pointerEvents: (draft.trim() || note.trim()) ? 'auto' : 'none' }}
+                    title="أرسل النص نفسه عبر واتساب — يستطيع الرد عليه"
+                  >
+                    واتساب ↗
+                  </a>
+                ) : null}
               </div>
+              {tooOld(sh.app_version) ? (
+                <p className="muted" style={{ fontSize: 11.5, marginTop: 8, marginBottom: 0 }}>
+                  نسخته لا تسمح بالرد داخل التطبيق. أرسل النص عبر واتساب ليتمكن من الرد عليك.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

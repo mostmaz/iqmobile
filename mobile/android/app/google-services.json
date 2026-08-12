@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "694999824434",
+    "project_id": "iqmobile-e2c5a",
+    "storage_bucket": "iqmobile-e2c5a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:694999824434:android:09028ad488f3f37ca4642b",
+        "android_client_info": {
+          "package_name": "org.iqmobile.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgCBakBs3tyvEhU9QRom7R4U7xrJtGOew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
