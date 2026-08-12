@@ -25,6 +25,7 @@ import CatalogScreen from './src/screens/CatalogScreen';
 import InspectionScreen from './src/screens/InspectionScreen';
 import OverviewScreen from './src/screens/OverviewScreen';
 import GrowthScreen from './src/screens/GrowthScreen';
+import ShopReviewScreen from './src/screens/ShopReviewScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -75,7 +76,7 @@ const navTheme = {
 function routeFor(kind?: string): string | null {
   if (kind === 'order.new') return 'Orders';
   if (kind === 'listing.new') return 'Listings';
-  if (kind === 'shop.new') return 'Shops';
+  if (kind === 'shop.new') return 'ShopReview';
   if (kind === 'report.new') return 'Moderation';
   if (kind === 'device.suggested') return 'Moderation';
   if (kind === 'feature.requested') return 'Promote';
@@ -150,6 +151,7 @@ function Root() {
         <Stack.Screen name="Inspection" component={InspectionScreen} />
         <Stack.Screen name="Overview" component={OverviewScreen} />
         <Stack.Screen name="Growth" component={GrowthScreen} />
+        <Stack.Screen name="ShopReview" component={ShopReviewScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
