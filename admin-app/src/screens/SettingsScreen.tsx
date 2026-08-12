@@ -14,7 +14,7 @@ import { theme, fonts, radius } from '../theme';
 import { api } from '../api/client';
 import { ScreenHeader } from '../components/kit';
 import { useAuth } from '../lib/auth';
-import { setMutedKinds, KIND_LABEL, type AdminPushKind } from '../lib/push';
+import { setMutedKinds, KIND_LABEL, getPushToken, lastPushError, type AdminPushKind } from '../lib/push';
 
 type Settings = {
   listing_ttl_days: number;
@@ -43,6 +43,15 @@ export default function SettingsScreen({ navigation }: any) {
   const { muted, setMuted } = useAuth();
   const [savingKind, setSavingKind] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, any>>({});
+  // Whether THIS device can actually receive a push. Without it the mute
+  // switches below look like they are doing something on a device that is
+  // not registered at all.
+  const [pushState, setPushState] = useState<{ ok: boolean; detail: string }>({ ok: false, detail: '…' });
+  useEffect(() => {
+    getPushToken().then((t) => setPushState(t
+      ? { ok: true, detail: `مُسجَّل · ${t.slice(0, 26)}…` }
+      : { ok: false, detail: lastPushError() || 'لم يتم الحصول على رمز الإشعارات' }));
+  }, []);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-settings'],
@@ -91,6 +100,25 @@ export default function SettingsScreen({ navigation }: any) {
         keyboardShouldPersistTaps="handled"
       >
         <Section label="التنبيهات على هذا الجهاز" />
+        <View style={{
+          backgroundColor: pushState.ok ? theme.surface : 'rgba(228,100,63,0.10)',
+          borderRadius: radius.lg, borderWidth: 1,
+          borderColor: pushState.ok ? theme.line : theme.accent,
+          paddingHorizontal: 14, paddingVertical: 11, marginBottom: 8,
+        }}>
+          <Text style={{
+            fontFamily: fonts.arBold, fontSize: 13,
+            color: pushState.ok ? theme.ok : theme.accent, textAlign: 'right',
+          }}>
+            {pushState.ok ? 'هذا الجهاز يستقبل الإشعارات' : 'هذا الجهاز لا يستقبل الإشعارات'}
+          </Text>
+          <Text style={{
+            fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle,
+            textAlign: 'right', marginTop: 4, lineHeight: 17,
+          }}>
+            {pushState.detail}
+          </Text>
+        </View>
         <Group>
           {(Object.keys(KIND_LABEL) as AdminPushKind[]).map((k, i) => (
             <Row key={k} first={i === 0} label={KIND_LABEL[k]} hint={muted.includes(k) ? 'مكتوم' : 'مُفعّل'}>

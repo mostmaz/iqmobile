@@ -38,6 +38,7 @@ export const KIND_LABEL: Record<AdminPushKind, string> = {
 };
 
 let cachedToken: string | null = null;
+let lastError: string | null = null;
 
 /**
  * Ask for permission and return the Expo token, or null when it can't be had
@@ -47,7 +48,10 @@ let cachedToken: string | null = null;
 export async function getPushToken(): Promise<string | null> {
   if (cachedToken) return cachedToken;
   try {
-    if (!Device.isDevice) return null;
+    if (!Device.isDevice) {
+      lastError = 'محاكي — الإشعارات تحتاج جهازاً حقيقياً';
+      return null;
+    }
 
     // Android needs the channel to exist before the first notification, or
     // the OS drops it into a default channel with no sound.
@@ -65,21 +69,38 @@ export async function getPushToken(): Promise<string | null> {
     if (status !== 'granted') {
       status = (await Notifications.requestPermissionsAsync()).status;
     }
-    if (status !== 'granted') return null;
+    if (status !== 'granted') {
+      lastError = 'إذن الإشعارات مرفوض على هذا الجهاز';
+      return null;
+    }
 
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       (Constants as any)?.easConfig?.projectId;
 
-    const res = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined,
-    );
+    if (!projectId) {
+      lastError = 'no projectId in app config — getExpoPushTokenAsync cannot mint a token';
+      console.warn('[push]', lastError);
+      return null;
+    }
+
+    const res = await Notifications.getExpoPushTokenAsync({ projectId });
     cachedToken = res.data;
+    lastError = null;
     return cachedToken;
-  } catch {
+  } catch (e: any) {
+    // Swallowing this was a mistake: registration failing silently is
+    // indistinguishable from push not being wired up at all, and it cost an
+    // afternoon of guessing which of the two it was. The message is kept so
+    // the settings screen can show it.
+    lastError = String(e?.message || e);
+    console.warn('[push] getExpoPushTokenAsync failed:', lastError);
     return null;
   }
 }
+
+/** Why the last token attempt failed, for the settings screen to surface. */
+export function lastPushError(): string | null { return lastError; }
 
 /** Register this device against the signed-in admin. Returns muted kinds. */
 export async function registerDevice(): Promise<AdminPushKind[]> {
