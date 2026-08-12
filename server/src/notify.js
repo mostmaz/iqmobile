@@ -49,3 +49,50 @@ export function notify(userId, kind, payload, push) {
   const managerId = row?.shop_manager_id;
   if (managerId && managerId !== userId) deliver(managerId, kind, payload, push);
 }
+
+// ─── shop review ──────────────────────────────────────────────────────
+//
+// Tell a shop owner where his review stands, on whatever build he happens
+// to be running.
+//
+// The inbox row is VERSION GATED. The notifications screen renders
+// `KIND_LABEL[kind] || kind`, so a build that predates these kinds shows the
+// literal string "shop.review.approved" in the user's inbox — precisely the
+// bug the UI audit caught with order.placed. Every shop owner is on 0.2.1
+// today, so without this gate the first thing the review system would ship
+// is a screenful of raw keys.
+//
+// The PUSH always goes, because its title and body are server text and
+// render correctly on any build. For the current population it is the only
+// channel that works, which is why callers put the whole message in it
+// rather than a "open the app to see" teaser.
+const REVIEW_UI_MIN_VERSION = '0.3.0';
+
+/** "0.2.1" <= "0.3.0". Missing/unparseable sorts as oldest. */
+function versionAtLeast(v, min) {
+  if (!v) return false;
+  const a = String(v).split('.').map((x) => parseInt(x, 10) || 0);
+  const b = String(min).split('.').map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] || 0) - (b[i] || 0);
+    if (d) return d > 0;
+  }
+  return true;
+}
+
+export function notifyShopReview(shopId, status, title, body) {
+  const seen = db.prepare(
+    `SELECT app_version FROM user_active_days
+      WHERE user_id=? ORDER BY day DESC LIMIT 1`,
+  ).get(shopId)?.app_version;
+
+  if (versionAtLeast(seen, REVIEW_UI_MIN_VERSION)) {
+    // New enough to label the row and open the thread.
+    notify(shopId, `shop.review.${status}`, { status }, { title, body });
+    return;
+  }
+  // Older build: push only. deliver() would also write the inbox row, so go
+  // straight to the push layer instead.
+  pushTo([shopId], title, body, { kind: `shop.review.${status}` })
+    .catch(() => { /* best-effort */ });
+}

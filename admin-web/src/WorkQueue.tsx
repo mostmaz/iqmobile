@@ -28,7 +28,7 @@ const TILES: Tile[] = [
   { key: 'devices', label: 'أجهزة مقترحة', page: 'devices', icon: '📱' },
   { key: 'reports', label: 'بلاغات مفتوحة', page: 'reports', icon: '🚩' },
   { key: 'feature_requests', label: 'طلبات ترويج', page: 'featured', icon: '⭐' },
-  { key: 'new_shops', label: 'متاجر جديدة (٧ أيام)', page: 'shops', icon: '🏪' },
+  { key: 'new_shops', label: 'متاجر بانتظار المراجعة', page: 'shop_review', icon: '🏪' },
 ];
 
 export function WorkQueue({ queue, onGo }: { queue: Queue; onGo: (p: Page) => void }) {

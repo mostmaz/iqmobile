@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
-import { requireAuth } from '../auth.js';
+import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
@@ -151,7 +151,10 @@ function shopCard(u, nowTs) {
 // shops first, then by rating, then by inventory size.
 r.get('/shops', (req, res) => {
   const nowTs = Date.now();
-  let sql = "SELECT * FROM users WHERE seller_type='shop' AND COALESCE(shop_hidden,0)=0";
+  // Approved only. shop_hidden stays a separate, admin-only lever — the
+  // aggregator shop is hidden but approved, and a pending shop is neither.
+  let sql = `SELECT * FROM users WHERE seller_type='shop'
+    AND COALESCE(shop_hidden,0)=0 AND COALESCE(shop_status,'approved')='approved'`;
   const params = [];
   const gov = req.query.governorate ? normalizeGovernorate(String(req.query.governorate)) : null;
   if (req.query.governorate && gov && isGovernorate(gov)) { sql += ' AND governorate=?'; params.push(gov); }
@@ -166,10 +169,18 @@ r.get('/shops', (req, res) => {
 });
 
 // ─── shop detail (+ their listings) ──────────────────────────────────
-r.get('/shops/:id(\\d+)', (req, res) => {
+r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
   const nowTs = Date.now();
   const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
   if (!u) return res.status(404).json({ error: 'not_found' });
+  // A shop awaiting review is visible to its owner only — he can preview
+  // exactly what buyers will get, which is the whole point of letting him
+  // keep working while we look. To everyone else it does not exist yet.
+  // 404 rather than 403: a stranger has no business learning the shop is
+  // merely pending as opposed to absent.
+  if ((u.shop_status || 'approved') !== 'approved' && req.user?.id !== u.id) {
+    return res.status(404).json({ error: 'not_found' });
+  }
   // Matches the browse feed's default view: sold (مباع) and expired (منتهي)
   // stay visible with badges. The "never expire" toggle (default on)
   // controls the TTL window.
@@ -242,6 +253,14 @@ r.post('/shops/register', requireAuth(), (req, res) => {
     return res.status(400).json({ error: 'bad_governorate' });
   }
 
+  // A FIRST registration enters review. An edit by an already-approved shop
+  // does not — re-saving a bio must not delist a working shop, and this
+  // route is deliberately idempotent (it doubles as "edit my shop").
+  const existing = db.prepare(
+    'SELECT seller_type, shop_status FROM users WHERE id=?',
+  ).get(req.user.id);
+  const isFirstRegistration = existing?.seller_type !== 'shop';
+
   const fields = [
     'seller_type=?', 'shop_name=?', 'shop_bio=?', 'shop_phone=?',
     'shop_whatsapp=?', 'shop_address=?', 'shop_phones=?', 'shop_facebook=?', 'shop_instagram=?',
@@ -249,6 +268,10 @@ r.post('/shops/register', requireAuth(), (req, res) => {
   const params = ['shop', shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address,
     JSON.stringify(shop_phones), shop_facebook, shop_instagram];
   if (governorate) { fields.push('governorate=?'); params.push(governorate); }
+  if (isFirstRegistration) {
+    fields.push('shop_status=?');
+    params.push('pending');
+  }
   // Stamp shop_created_at once (first time they register).
   fields.push('shop_created_at=COALESCE(shop_created_at, ?)');
   params.push(now());
@@ -303,6 +326,59 @@ r.delete('/shops/me/images/:id(\\d+)', requireAuth(), (req, res) => {
   db.prepare('DELETE FROM shop_images WHERE id=?').run(row.id);
   try { fs.unlinkSync(path.join(UP, path.basename(row.image_path))); } catch {}
   res.json({ ok: true, images: shopImages(req.user.id) });
+});
+
+// ─── my shop's review status + thread ─────────────────────────────────
+// What the owner sees while he waits. Old app builds ignore this endpoint
+// entirely and learn the same facts by push, which is why the review note is
+// also pushed rather than left to be discovered here.
+r.get('/shops/me/review', requireAuth(), (req, res) => {
+  const me = db.prepare(
+    `SELECT id, seller_type, shop_status, shop_review_note, shop_reviewed_at, shop_created_at
+       FROM users WHERE id=?`,
+  ).get(req.user.id);
+  if (!me || me.seller_type !== 'shop') return res.status(404).json({ error: 'not_a_shop' });
+
+  const messages = db.prepare(
+    `SELECT id, author, body, created_at FROM shop_review_messages
+      WHERE shop_id=? ORDER BY created_at ASC LIMIT 200`,
+  ).all(me.id);
+
+  // Mark the admin side read the moment he opens the thread.
+  db.prepare(
+    `UPDATE shop_review_messages SET read_by_shop_at=?
+      WHERE shop_id=? AND author='admin' AND read_by_shop_at IS NULL`,
+  ).run(Date.now(), me.id);
+
+  res.json({
+    status: me.shop_status || 'approved',
+    note: me.shop_review_note || null,
+    reviewed_at: me.shop_reviewed_at || null,
+    submitted_at: me.shop_created_at || null,
+    messages,
+  });
+});
+
+// The owner replying to a change request.
+r.post('/shops/me/review/messages', requireAuth(), (req, res) => {
+  const me = db.prepare("SELECT id, seller_type, shop_name FROM users WHERE id=?").get(req.user.id);
+  if (!me || me.seller_type !== 'shop') return res.status(404).json({ error: 'not_a_shop' });
+  const body = String(req.body?.body || '').trim().slice(0, 1000);
+  if (!body) return res.status(400).json({ error: 'empty' });
+
+  db.prepare(
+    `INSERT INTO shop_review_messages(shop_id, author, body, created_at)
+     VALUES(?, 'shop', ?, ?)`,
+  ).run(me.id, body, Date.now());
+
+  // Wake the reviewers on the operator app. Reuses the existing 'shop.new'
+  // kind rather than inventing one: reviewers who muted new-shop alerts have
+  // said they don't want shop traffic, and a reply is the same conversation.
+  pushToAdmins('shop.new', `رد من ${me.shop_name || 'متجر'}`, body.slice(0, 120), {
+    screen: 'shop_review', shop_id: me.id,
+  }).catch(() => { /* best-effort */ });
+
+  res.json({ ok: true });
 });
 
 export default r;

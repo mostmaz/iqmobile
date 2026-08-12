@@ -761,6 +761,41 @@ addColumnIfMissing('chats', 'seller_last_read_at INTEGER');
 // as a TIMESTAMP rather than a flag on purpose: the queue compares it to
 // updated_at, so a listing the seller RENAMES after being skipped comes
 // back for review, while one nobody has touched stays gone.
+// ─── shop review ─────────────────────────────────────────────────────
+// New shops are no longer public the instant they submit. 'pending' hides
+// the shop's PUBLIC IDENTITY — the directory entry, the متجر badge, the shop
+// page to anyone but its owner — while leaving the owner's listings live, so
+// review gates promotion rather than trade. Shops are 54% of active
+// inventory; holding that on a manual queue would punish honest sellers for
+// our response time.
+//
+// DEFAULT 'approved', not 'pending': this column arrives on a database with
+// 51 live shops, and defaulting to pending would silently delist every one
+// of them on deploy. New registrations set 'pending' explicitly in the route.
+addColumnIfMissing('users', "shop_status TEXT NOT NULL DEFAULT 'approved'");
+addColumnIfMissing('users', 'shop_reviewed_at INTEGER');
+addColumnIfMissing('users', 'shop_review_note TEXT');
+
+// The review conversation. Not reusing `chats`: that table requires a
+// listing_id and is keyed UNIQUE(listing_id, buyer_id), so an admin talking
+// to a shop about the shop itself has nowhere to sit.
+db.exec(`
+CREATE TABLE IF NOT EXISTS shop_review_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- 'admin' | 'shop'. Not a user_id for the admin side: reviewers are an
+  -- account today and could be several tomorrow, and the shop owner should
+  -- see "الإدارة" either way.
+  author TEXT NOT NULL,
+  admin_id INTEGER,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  read_by_shop_at INTEGER,
+  read_by_admin_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shop_review_msgs ON shop_review_messages(shop_id, created_at DESC);
+`);
+
 addColumnIfMissing('phone_listings', 'name_review_skipped_at INTEGER');
 
 addColumnIfMissing('events', 'shop_id INTEGER');

@@ -21,6 +21,7 @@ import { OrdersPage } from './pages/OrdersPage';
 import { StorePage } from './pages/StorePage';
 import { StoreOverviewPage } from './pages/StoreOverviewPage';
 import { StoreTrafficPage } from './pages/StoreTrafficPage';
+import { ShopReviewPage } from './pages/ShopReviewPage';
 import { StoreCustomersPage } from './pages/StoreCustomersPage';
 import { StoreFulfilmentPage } from './pages/StoreFulfilmentPage';
 import { NameReviewPage } from './pages/NameReviewPage';
@@ -34,7 +35,7 @@ export type Page =
   | 'overview' | 'users_daily' | 'analytics' | 'brands' | 'banners' | 'featured' | 'shops'
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
-  | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment'
+  | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
   | 'name_review' | 'store_card';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
@@ -87,6 +88,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     label: 'النمو',
     items: [
       { key: 'shops', label: 'المتاجر' },
+      { key: 'shop_review', label: 'مراجعة المتاجر', badgeKey: 'new_shops' },
       { key: 'banners', label: 'البانرات' },
       { key: 'featured', label: 'الترويج', badgeKey: 'feature_requests' },
       { key: 'users', label: 'المستخدمون' },
@@ -193,6 +195,7 @@ export function App() {
       {page === 'store' && <StorePage />}
       {page === 'store_overview' && <StoreOverviewPage />}
       {page === 'store_traffic' && <StoreTrafficPage />}
+      {page === 'shop_review' && <ShopReviewPage />}
       {page === 'store_customers' && <StoreCustomersPage />}
       {page === 'store_fulfilment' && <StoreFulfilmentPage />}
       {page === 'name_review' && <NameReviewPage />}

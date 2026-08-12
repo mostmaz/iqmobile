@@ -18,7 +18,7 @@ import { getBrandsWithCounts, invalidateBrandsCache, isBrand, brandNames } from 
 import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
-import { notify } from '../../notify.js';
+import { notify, notifyShopReview } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
@@ -2025,11 +2025,13 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     // Orders nobody has acted on yet. The most time-critical queue here —
     // a COD customer is waiting on a phone call.
     orders: count("SELECT COUNT(*) AS n FROM orders WHERE status='pending'"),
-    // Shops that registered in the last 7 days — not a queue exactly, but the
-    // thing an operator most often wants to greet or verify.
+    // Shops waiting on a review decision. This used to be "registered in the
+    // last 7 days", which was a soft signal that decayed on its own whether
+    // or not anyone acted. Now that registration actually blocks on review,
+    // the number means work outstanding — it only goes down when someone
+    // decides something.
     new_shops: count(
-      "SELECT COUNT(*) AS n FROM users WHERE seller_type='shop' AND created_at >= ?",
-      Date.now() - 7 * 86400000,
+      "SELECT COUNT(*) AS n FROM users WHERE seller_type='shop' AND COALESCE(shop_status,'approved')='pending'",
     ),
   });
 });
@@ -2390,6 +2392,129 @@ r.post('/orders/:id(\\d+)/return', requireAdmin, (req, res) => {
 // doesn't know yet. Each row arrives with its transliteration so the
 // operator can see WHY it wasn't matched, and the suggestion (when there is
 // one) is one click to accept.
+// ─── shop review ──────────────────────────────────────────────────────
+//
+// Shops used to be public the moment they registered. Now a first
+// registration lands here. Approving publishes the shop's identity — the
+// directory entry, the متجر badge, the shop page. It does NOT touch the
+// owner's listings, which were live all along.
+
+/** The queue, newest first, with enough to judge without opening each one. */
+r.get('/shops/review', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(String(req.query.status))
+    ? String(req.query.status) : 'pending';
+  const rows = db.prepare(
+    `SELECT u.id, u.shop_name, u.display_name, u.phone, u.shop_phone, u.shop_whatsapp,
+            u.shop_bio, u.shop_address, u.governorate, u.shop_image_path,
+            u.shop_status, u.shop_review_note, u.shop_reviewed_at, u.shop_created_at,
+            (SELECT COUNT(*) FROM phone_listings l
+              WHERE l.seller_id = u.id AND l.status='active') AS listing_count,
+            (SELECT COUNT(*) FROM shop_review_messages m
+              WHERE m.shop_id = u.id) AS message_count,
+            (SELECT COUNT(*) FROM shop_review_messages m
+              WHERE m.shop_id = u.id AND m.author='shop' AND m.read_by_admin_at IS NULL)
+              AS unread_from_shop,
+            -- What build the owner was last seen on. A reviewer needs this:
+            -- below 0.3.0 he cannot see the in-app banner or thread at all,
+            -- so the note has to reach him by push or phone.
+            (SELECT d.app_version FROM user_active_days d
+              WHERE d.user_id = u.id ORDER BY d.day DESC LIMIT 1) AS app_version
+       FROM users u
+      WHERE u.seller_type='shop' AND COALESCE(u.shop_status,'approved')=?
+      ORDER BY u.shop_created_at DESC LIMIT 200`,
+  ).all(status);
+
+  const counts = db.prepare(
+    `SELECT COALESCE(shop_status,'approved') AS s, COUNT(*) AS n
+       FROM users WHERE seller_type='shop' GROUP BY s`,
+  ).all().reduce((a, r2) => ({ ...a, [r2.s]: r2.n }), {});
+
+  res.json({ status, shops: rows, counts });
+});
+
+/** One shop's full review thread. */
+r.get('/shops/:id(\\d+)/review', requireAdmin, (req, res) => {
+  const shop = db.prepare(
+    `SELECT id, shop_name, shop_status, shop_review_note, shop_reviewed_at
+       FROM users WHERE id=? AND seller_type='shop'`,
+  ).get(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'not_found' });
+
+  const messages = db.prepare(
+    `SELECT id, author, body, created_at FROM shop_review_messages
+      WHERE shop_id=? ORDER BY created_at ASC LIMIT 200`,
+  ).all(shop.id);
+
+  db.prepare(
+    `UPDATE shop_review_messages SET read_by_admin_at=?
+      WHERE shop_id=? AND author='shop' AND read_by_admin_at IS NULL`,
+  ).run(Date.now(), shop.id);
+
+  res.json({ shop, messages });
+});
+
+/** Approve / reject / send back for changes. */
+r.patch('/shops/:id(\\d+)/review', requireAdmin, (req, res) => {
+  const shop = db.prepare(
+    "SELECT id, shop_name, shop_status FROM users WHERE id=? AND seller_type='shop'",
+  ).get(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'not_found' });
+
+  const status = String(req.body?.status || '');
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'bad_status' });
+  }
+  const note = req.body?.note ? String(req.body.note).trim().slice(0, 1000) : null;
+
+  db.prepare(
+    'UPDATE users SET shop_status=?, shop_review_note=?, shop_reviewed_at=? WHERE id=?',
+  ).run(status, note, Date.now(), shop.id);
+
+  // The note is also a message, so the owner sees one conversation rather
+  // than a banner saying one thing and a thread saying another.
+  if (note) {
+    db.prepare(
+      `INSERT INTO shop_review_messages(shop_id, author, admin_id, body, created_at)
+       VALUES(?, 'admin', ?, ?, ?)`,
+    ).run(shop.id, req.user?.id ?? null, note, Date.now());
+  }
+
+  const TITLE = {
+    approved: 'تم قبول متجرك ✅',
+    rejected: 'لم يتم قبول متجرك',
+    pending: 'متجرك قيد المراجعة',
+  };
+  const BODY = {
+    approved: 'متجرك ظاهر الآن في دليل المتاجر.',
+    rejected: note || 'راجع التفاصيل داخل التطبيق.',
+    pending: note || 'سنراجع متجرك ونعلمك قريباً.',
+  };
+  // Push carries the whole message on purpose. Every shop owner is currently
+  // on a build with no review screen, so the push IS the product for them —
+  // the in-app thread only starts mattering once they update.
+  notifyShopReview(shop.id, status, TITLE[status], BODY[status]);
+
+  res.json({ ok: true, status });
+});
+
+/** Reviewer writes to the owner without changing the decision. */
+r.post('/shops/:id(\\d+)/review/messages', requireAdmin, (req, res) => {
+  const shop = db.prepare(
+    "SELECT id, shop_name FROM users WHERE id=? AND seller_type='shop'",
+  ).get(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'not_found' });
+  const body = String(req.body?.body || '').trim().slice(0, 1000);
+  if (!body) return res.status(400).json({ error: 'empty' });
+
+  db.prepare(
+    `INSERT INTO shop_review_messages(shop_id, author, admin_id, body, created_at)
+     VALUES(?, 'admin', ?, ?, ?)`,
+  ).run(shop.id, req.user?.id ?? null, body, Date.now());
+
+  notifyShopReview(shop.id, 'message', 'رسالة من إدارة iQ Mobile', body.slice(0, 140));
+  res.json({ ok: true });
+});
+
 r.get('/listings/name-review', requireAdmin, (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 300);
   const includeSkipped = String(req.query.include_skipped || '') === '1';
