@@ -12,14 +12,49 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, iqd, deviceTitle } from '../theme';
 import { api } from '../api/client';
 import { ScreenHeader, SearchBar, ChipRow, Card, Action, ActionRow, ListState, Meta, Title } from '../components/kit';
+import { RecordEditor, type FieldSpec } from '../components/editor';
+import { GOVERNORATES, CONDITIONS, LISTING_STATUSES, STORAGES } from '../lib/constants';
 
 type Listing = {
   id: number; brand: string; model: string; asking_price: number;
   status: string; governorate: string; city: string | null;
-  storage: string | null; color: string | null;
-  seller_name?: string | null; contact_phone?: string | null;
+  storage: string | null; color: string | null; condition?: string;
+  description?: string | null;
+  contact_phone?: string | null; contact_whatsapp?: string | null;
+  cost_price?: number | null; stock_qty?: number | null;
+  price_on_request?: number | null;
+  seller_name?: string | null;
   created_at: number;
 };
+
+// Every field PATCH /admin/listings/:id accepts. Kept in one list so the app
+// cannot silently support a subset of what the web dashboard can edit.
+const LISTING_FIELDS: FieldSpec[] = [
+  { key: 'brand', label: 'الماركة', type: 'text' },
+  { key: 'model', label: 'الموديل', type: 'text' },
+  { key: 'condition', label: 'الحالة', type: 'select', options: CONDITIONS },
+  { key: 'storage', label: 'الذاكرة', type: 'select', options: STORAGES },
+  { key: 'color', label: 'اللون', type: 'text' },
+  { key: 'asking_price', label: 'السعر المطلوب (د.ع)', type: 'money' },
+  {
+    key: 'price_on_request', label: 'السعر عند الطلب', type: 'bool',
+    hint: 'يخفي السعر ويطلب من الزبون الاتصال.',
+  },
+  {
+    key: 'cost_price', label: 'كلفة الشراء (د.ع)', type: 'money',
+    hint: 'لا تظهر للزبون أبداً — تُستخدم لحساب الهامش فقط.',
+  },
+  {
+    key: 'stock_qty', label: 'الكمية', type: 'number',
+    hint: 'اتركه فارغاً لغير محدود. صفر يعني نفد المخزون.',
+  },
+  { key: 'status', label: 'الحالة في السوق', type: 'select', options: LISTING_STATUSES },
+  { key: 'governorate', label: 'المحافظة', type: 'select', options: GOVERNORATES },
+  { key: 'city', label: 'القضاء / المنطقة', type: 'text' },
+  { key: 'description', label: 'الوصف', type: 'multiline' },
+  { key: 'contact_phone', label: 'هاتف التواصل', type: 'phone' },
+  { key: 'contact_whatsapp', label: 'واتساب', type: 'phone' },
+];
 
 const STATUS_AR: Record<string, string> = {
   active: 'نشط', reserved: 'محجوز', sold: 'مباع', expired: 'منتهي', removed: 'محذوف',
@@ -122,7 +157,7 @@ export default function ListingsScreen({ navigation }: any) {
             </View>
 
             <ActionRow>
-              <Action label="السعر" tone="primary" onPress={() => setEditing(l)} busy={patch.isPending} />
+              <Action label="تعديل" tone="primary" onPress={() => setEditing(l)} busy={patch.isPending} />
               {l.status !== 'sold' ? (
                 <Action
                   label="مباع"
@@ -148,72 +183,21 @@ export default function ListingsScreen({ navigation }: any) {
         )}
       />
 
-      <PriceEditor
-        listing={editing}
+      <RecordEditor
+        visible={!!editing}
+        title="تعديل الإعلان"
+        subtitle={editing ? `${deviceTitle(editing.brand, editing.model)} · #${editing.id}` : undefined}
+        specs={LISTING_FIELDS}
+        initial={(editing || {}) as any}
         busy={patch.isPending}
         onClose={() => setEditing(null)}
-        onSave={(price) => {
-          if (editing) patch.mutate({ id: editing.id, body: { asking_price: price } });
+        onSave={(body) => {
+          // Nothing changed — skip the round-trip rather than PATCHing an
+          // empty object, which the server answers with `no_fields`.
+          if (editing && Object.keys(body).length) patch.mutate({ id: editing.id, body });
           setEditing(null);
         }}
       />
     </View>
-  );
-}
-
-function PriceEditor({ listing, busy, onClose, onSave }: {
-  listing: Listing | null; busy: boolean; onClose: () => void; onSave: (price: number) => void;
-}) {
-  const [v, setV] = useState('');
-  React.useEffect(() => { setV(listing ? String(listing.asking_price) : ''); }, [listing?.id]);
-  const n = Number(String(v).replace(/\D/g, ''));
-  const valid = Number.isFinite(n) && n > 0;
-
-  return (
-    <Modal visible={!!listing} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 28 }}>
-        <View style={{ backgroundColor: theme.surface, borderRadius: radius.xl, padding: 20 }}>
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.ink, textAlign: 'right' }}>
-            تعديل السعر
-          </Text>
-          <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 4 }}>
-            {listing?.brand} {listing?.model}
-          </Text>
-          <TextInput
-            value={v ? Number(String(v).replace(/\D/g, '')).toLocaleString('en-US') : ''}
-            onChangeText={(t) => setV(t.replace(/\D/g, ''))}
-            keyboardType="phone-pad"
-            autoFocus
-            style={{
-              marginTop: 14, backgroundColor: theme.bg, borderRadius: radius.lg,
-              borderWidth: 1, borderColor: theme.line,
-              paddingHorizontal: 14, paddingVertical: 14,
-              fontSize: 20, fontWeight: '700', color: theme.ink, textAlign: 'center',
-            }}
-          />
-          <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 16 }}>
-            <TouchableOpacity
-              disabled={!valid || busy}
-              onPress={() => onSave(n)}
-              style={{
-                flex: 1, paddingVertical: 13, borderRadius: radius.lg,
-                backgroundColor: theme.accent, alignItems: 'center', opacity: valid && !busy ? 1 : 0.45,
-              }}
-            >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: '#fff' }}>حفظ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onClose}
-              style={{
-                flex: 1, paddingVertical: 13, borderRadius: radius.lg,
-                borderWidth: 1.5, borderColor: theme.line, alignItems: 'center',
-              }}
-            >
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.subtle }}>إلغاء</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
   );
 }

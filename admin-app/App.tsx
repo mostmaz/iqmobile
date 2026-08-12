@@ -24,6 +24,7 @@ import StoreScreen from './src/screens/StoreScreen';
 import CatalogScreen from './src/screens/CatalogScreen';
 import InspectionScreen from './src/screens/InspectionScreen';
 import OverviewScreen from './src/screens/OverviewScreen';
+import GrowthScreen from './src/screens/GrowthScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -148,6 +149,7 @@ function Root() {
         <Stack.Screen name="Catalog" component={CatalogScreen} />
         <Stack.Screen name="Inspection" component={InspectionScreen} />
         <Stack.Screen name="Overview" component={OverviewScreen} />
+        <Stack.Screen name="Growth" component={GrowthScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

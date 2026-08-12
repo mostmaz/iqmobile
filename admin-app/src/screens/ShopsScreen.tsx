@@ -11,18 +11,63 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, radius } from '../theme';
 import { api } from '../api/client';
 import { ScreenHeader, SearchBar, Card, Action, ActionRow, ListState, Meta, Title } from '../components/kit';
+import { RecordEditor, type FieldSpec } from '../components/editor';
+import { GOVERNORATES } from '../lib/constants';
 
 type Shop = {
   id: number; phone: string; display_name: string; shop_name: string | null;
   governorate: string; city: string | null;
-  shop_phone: string | null; verified: number | boolean;
+  shop_phone: string | null; shop_whatsapp?: string | null;
+  shop_bio?: string | null; shop_address?: string | null;
+  shop_facebook?: string | null; shop_instagram?: string | null;
+  shop_manager_phone?: string | null;
+  shop_orders_enabled?: number; shop_no_contact?: number;
+  shop_shipping_fee?: number;
+  shop_delivery_days_min?: number; shop_delivery_days_max?: number;
+  verified: number | boolean;
   shop_hidden: number; listing_count: number; created_at: number;
 };
+
+// Every field PATCH /admin/shops/:id accepts.
+const SHOP_FIELDS: FieldSpec[] = [
+  { key: 'shop_name', label: 'اسم المتجر', type: 'text' },
+  { key: 'shop_bio', label: 'نبذة', type: 'multiline' },
+  { key: 'governorate', label: 'المحافظة', type: 'select', options: GOVERNORATES },
+  { key: 'shop_address', label: 'العنوان', type: 'text' },
+  { key: 'shop_phone', label: 'هاتف المتجر', type: 'phone' },
+  { key: 'shop_whatsapp', label: 'واتساب', type: 'phone' },
+  {
+    key: 'shop_manager_phone', label: 'هاتف المدير', type: 'phone',
+    hint: 'يمنح صاحبه صلاحية إدارة محادثات هذا المتجر.',
+  },
+  { key: 'shop_facebook', label: 'فيسبوك', type: 'text' },
+  { key: 'shop_instagram', label: 'إنستغرام', type: 'text' },
+  {
+    key: 'shop_orders_enabled', label: 'الطلبات مفعّلة', type: 'bool',
+    hint: 'يحوّل المتجر إلى واجهة بيع مع سلة ودفع عند الاستلام.',
+  },
+  { key: 'shop_shipping_fee', label: 'أجور التوصيل (د.ع)', type: 'money' },
+  { key: 'shop_delivery_days_min', label: 'أقل مدة توصيل (أيام)', type: 'number' },
+  { key: 'shop_delivery_days_max', label: 'أطول مدة توصيل (أيام)', type: 'number' },
+  {
+    key: 'shop_hidden', label: 'مخفي من الدليل', type: 'bool',
+    hint: 'لا يظهر في قائمة المتاجر، لكن إعلاناته تبقى في السوق.',
+  },
+  {
+    key: 'shop_no_contact', label: 'إخفاء أرقام التواصل', type: 'bool',
+    hint: 'يمنع ظهور أرقام هذا البائع على إعلاناته.',
+  },
+  {
+    key: 'featured_days', label: 'أيام الترويج', type: 'number',
+    hint: 'عدد الأيام من الآن. صفر يلغي الترويج.',
+  },
+];
 
 export default function ShopsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
+  const [editing, setEditing] = useState<Shop | null>(null);
 
   const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-shops', q],
@@ -99,19 +144,24 @@ export default function ShopsScreen({ navigation }: any) {
                   busy={verify.isPending}
                   onPress={() => verify.mutate({ id: s.id, on: !s.verified })}
                 />
-                <Action
-                  label={s.shop_hidden ? 'إظهار' : 'إخفاء'}
-                  tone={s.shop_hidden ? 'neutral' : 'danger'}
-                  busy={patch.isPending}
-                  confirm={s.shop_hidden ? undefined : {
-                    title: 'إخفاء المتجر؟',
-                    body: 'لن يظهر في دليل المتاجر.',
-                  }}
-                  onPress={() => patch.mutate({ id: s.id, body: { shop_hidden: !s.shop_hidden } })}
-                />
+                <Action label="تعديل" tone="primary" onPress={() => setEditing(s)} busy={patch.isPending} />
               </ActionRow>
             </Card>
           );
+        }}
+      />
+
+      <RecordEditor
+        visible={!!editing}
+        title="تعديل المتجر"
+        subtitle={editing ? (editing.shop_name || editing.display_name) : undefined}
+        specs={SHOP_FIELDS}
+        initial={(editing || {}) as any}
+        busy={patch.isPending}
+        onClose={() => setEditing(null)}
+        onSave={(body) => {
+          if (editing && Object.keys(body).length) patch.mutate({ id: editing.id, body });
+          setEditing(null);
         }}
       />
     </View>
