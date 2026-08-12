@@ -18,6 +18,10 @@ type Item = {
   id: number; brand: string; model: string; asking_price: number;
   stock_qty: number | null; cost_price: number | null; status: string;
   storage: string | null; color: string | null;
+  // Price-on-request rows carry a PLACEHOLDER asking_price of 1. Rendering
+  // that as "1 د.ع" tells the operator every iPad is priced at one dinar,
+  // which is how it looked on the emulator before this was handled.
+  price_on_request?: number | null;
 };
 type Order = {
   id: number; code: string; status: string; customer_name: string; customer_phone: string;
@@ -122,9 +126,15 @@ function Stock({ shopId, bottom }: { shopId: number; bottom: number }) {
           <Card>
             <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
               <StockPill qty={it.stock_qty} />
-              <Text style={{ flex: 1, textAlign: 'left', fontSize: 14.5, fontWeight: '700', color: theme.accent }}>
-                {iqd(it.asking_price)} <Text style={{ fontSize: 10.5, color: theme.subtle }}>د.ع</Text>
-              </Text>
+              {it.price_on_request ? (
+                <Text style={{ flex: 1, textAlign: 'left', fontFamily: fonts.arBold, fontSize: 12.5, color: theme.subtle }}>
+                  السعر عند الطلب
+                </Text>
+              ) : (
+                <Text style={{ flex: 1, textAlign: 'left', fontSize: 14.5, fontWeight: '700', color: theme.accent }}>
+                  {iqd(it.asking_price)} <Text style={{ fontSize: 10.5, color: theme.subtle }}>د.ع</Text>
+                </Text>
+              )}
             </View>
             <View style={{ marginTop: 8 }}>
               <Title>{deviceTitle(it.brand, it.model)}</Title>
@@ -188,6 +198,11 @@ function StockEditor({ item, busy, onClose, onSave }: {
           <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.ink, textAlign: 'right' }}>
             {item ? deviceTitle(item.brand, item.model) : ''}
           </Text>
+          {item?.price_on_request ? (
+            <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.warn, textAlign: 'right', marginTop: 4, lineHeight: 18 }}>
+              هذا الصنف «السعر عند الطلب». حفظ سعر هنا سيجعله سعراً معلناً.
+            </Text>
+          ) : null}
           <Num label="سعر البيع (د.ع)" value={price} onChange={setPrice} />
           <Num label="الكمية — اتركه فارغاً لغير محدود" value={qty} onChange={setQty} />
           <Num label="كلفة الشراء (د.ع) — لا تظهر للزبون" value={cost} onChange={setCost} />
@@ -196,6 +211,10 @@ function StockEditor({ item, busy, onClose, onSave }: {
               disabled={!valid || busy}
               onPress={() => onSave({
                 asking_price: p,
+                // Saving a real price on a price-on-request row has to clear
+                // the flag too, or the storefront keeps hiding the number the
+                // operator just set and the edit looks like it did nothing.
+                ...(item?.price_on_request ? { price_on_request: 0 } : {}),
                 // '' means "untracked", which is different from 0 ("none
                 // left"). Sending 0 for a blank field would silently take
                 // every unlimited item out of stock.
