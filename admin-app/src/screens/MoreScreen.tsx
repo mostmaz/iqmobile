@@ -23,6 +23,7 @@ const GROUPS: Group[] = [
     items: [
       { label: 'الطلبات', route: 'Orders' },
       { label: 'محادثات المتجر', route: 'Chats' },
+      { label: 'النشر على السوشيال', route: 'Social' },
       { label: 'الإعلانات', route: 'Listings' },
       { label: 'المتاجر', route: 'Shops' },
       { label: 'مراجعة المتاجر', route: 'ShopReview' },

@@ -18,6 +18,7 @@ import { getBrandsWithCounts, invalidateBrandsCache, isBrand, brandNames } from 
 import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
+import { composeShareImage, facebookCaption } from '../../social.js';
 import { notify, notifyShopReview } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
@@ -2181,6 +2182,112 @@ r.get('/social/status', requireAdmin, (_req, res) => {
     used_today: used,
     remaining: Math.max(0, cap - used),
   });
+});
+
+// ─── operator-app publishing ─────────────────────────────────────────
+//
+// The dashboard composes its branded share image on an HTML canvas. The
+// operator app has no canvas, so these two endpoints move the composition
+// server-side: preview asks for the finished image + caption, publish sends
+// the previewed image out through the same Buffer flow as the dashboard.
+
+// Compose a branded preview from one of the listing's own photos.
+r.post('/listings/:id(\\d+)/social-preview', requireAdmin, async (req, res) => {
+  const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+
+  // The photo must be THIS listing's — a bare path from the client could
+  // otherwise point the composer at any file the server can read.
+  const imagePath = String(req.body?.image_path || '');
+  const owned = db.prepare(
+    'SELECT 1 FROM listing_images WHERE listing_id=? AND image_path=?',
+  ).get(listing.id, imagePath);
+  if (!owned) return res.status(400).json({ error: 'not_this_listings_image' });
+
+  const abs = path.join(UPLOADS, path.basename(imagePath));
+  if (!fs.existsSync(abs)) return res.status(404).json({ error: 'image_file_missing' });
+
+  // Sweep stale previews while we're here — event-driven, so no timer to
+  // maintain, and a preview that led nowhere disappears within a day of
+  // the next one being made. Published images are renamed social_*, which
+  // this glob deliberately does not touch.
+  try {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    for (const f of fs.readdirSync(UPLOADS)) {
+      if (!f.startsWith('social_tmp_')) continue;
+      const st = fs.statSync(path.join(UPLOADS, f));
+      if (st.mtimeMs < cutoff) fs.unlinkSync(path.join(UPLOADS, f));
+    }
+  } catch { /* best-effort */ }
+
+  try {
+    const buf = await composeShareImage(listing, abs);
+    const name = `social_tmp_${listing.id}_${Date.now()}.jpg`;
+    fs.writeFileSync(path.join(UPLOADS, name), buf);
+    const base = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+    const cap = socialDailyCap();
+    res.json({
+      image_path: `/uploads/${name}`,
+      image_url: `${base}/uploads/${name}`,
+      caption: facebookCaption(listing),
+      status: {
+        configured: bufferConfigured(),
+        cap,
+        used_today: socialUsedToday(),
+        remaining: Math.max(0, cap - socialUsedToday()),
+      },
+    });
+  } catch (e) {
+    console.warn(`[social] compose failed listing=${listing.id}: ${e?.message}`);
+    res.status(500).json({ error: 'compose_failed' });
+  }
+});
+
+// Publish a previously previewed image. Same cap, same slots, same Buffer
+// flow and same audit row as the dashboard's multipart route — the only
+// difference is the image is already on disk.
+r.post('/listings/:id(\\d+)/publish-hosted', requireAdmin, async (req, res) => {
+  if (!bufferConfigured()) return res.status(400).json({ error: 'buffer_not_configured' });
+
+  const cap = socialDailyCap();
+  if (socialUsedToday() >= cap) return res.status(429).json({ error: 'daily_cap_reached', cap });
+
+  const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+
+  const caption = String(req.body?.caption || '').slice(0, 5000);
+  if (!caption.trim()) return res.status(400).json({ error: 'no_caption' });
+
+  // Only a preview THIS flow produced is publishable — the filename shape
+  // is the proof, and basename() strips any path games.
+  const name = path.basename(String(req.body?.image_path || ''));
+  if (!/^social_tmp_\d+_\d+\.jpg$/.test(name)) return res.status(400).json({ error: 'bad_image_path' });
+  const tmpAbs = path.join(UPLOADS, name);
+  if (!fs.existsSync(tmpAbs)) return res.status(404).json({ error: 'preview_expired' });
+
+  // Rename out of the tmp namespace FIRST, so the stale-preview sweep can
+  // never delete an image Buffer has been told to fetch.
+  const finalName = name.replace(/^social_tmp_/, 'social_');
+  fs.renameSync(tmpAbs, path.join(UPLOADS, finalName));
+  const imagePath = `/uploads/${finalName}`;
+  const base = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+  const imageUrl = `${base}${imagePath}`;
+
+  const slot = nextSocialSlot();
+  const dueAt = new Date(slot).toISOString();
+  const { any, results } = await publishToChannels(caption, imageUrl, dueAt);
+  if (!any) {
+    console.warn(`[social] publish-hosted failed listing=${listing.id} img=${imageUrl} :: ${JSON.stringify(results)}`);
+    try { fs.unlinkSync(path.join(UPLOADS, finalName)); } catch {}
+    return res.status(502).json({ error: 'publish_failed', results });
+  }
+  console.log(`[social] published(app) listing=${listing.id} due=${dueAt} :: ${results.map((r2) => `${r2.channel}:${r2.ok ? 'ok' : r2.error}`).join(', ')}`);
+
+  db.prepare(
+    'INSERT INTO social_posts(listing_id, image_path, caption, channels, scheduled_for, created_at) VALUES(?,?,?,?,?,?)',
+  ).run(listing.id, imagePath, caption, JSON.stringify(results), slot, now());
+
+  res.json({ ok: true, results, scheduled_for: dueAt, remaining: Math.max(0, cap - socialUsedToday()) });
 });
 
 // One-click publish: the dashboard sends the composed branded image + the

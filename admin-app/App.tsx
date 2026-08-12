@@ -27,6 +27,7 @@ import OverviewScreen from './src/screens/OverviewScreen';
 import GrowthScreen from './src/screens/GrowthScreen';
 import ShopReviewScreen from './src/screens/ShopReviewScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
+import SocialScreen from './src/screens/SocialScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -150,6 +151,7 @@ function Root() {
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Store" component={StoreScreen} />
         <Stack.Screen name="Chats" component={ChatsScreen} />
+        <Stack.Screen name="Social" component={SocialScreen} />
         <Stack.Screen name="Catalog" component={CatalogScreen} />
         <Stack.Screen name="Inspection" component={InspectionScreen} />
         <Stack.Screen name="Overview" component={OverviewScreen} />
