@@ -48,10 +48,12 @@ let lastError: string | null = null;
 export async function getPushToken(): Promise<string | null> {
   if (cachedToken) return cachedToken;
   try {
-    if (!Device.isDevice) {
-      lastError = 'محاكي — الإشعارات تحتاج جهازاً حقيقياً';
-      return null;
-    }
+    // NOT gated on Device.isDevice. An emulator built from a
+    // google_apis_playstore image has Play Services and registers with FCM
+    // exactly like hardware — refusing to try there blocks the only clean
+    // way to test push when the physical phone has hit Android's
+    // registration cap. If Play Services really is absent, the call below
+    // fails on its own and says so.
 
     // Android needs the channel to exist before the first notification, or
     // the OS drops it into a default channel with no sound.
@@ -94,6 +96,7 @@ export async function getPushToken(): Promise<string | null> {
     // afternoon of guessing which of the two it was. The message is kept so
     // the settings screen can show it.
     lastError = String(e?.message || e);
+    if (!Device.isDevice) lastError += ' (محاكي بدون Play Services؟)';
     console.warn('[push] getExpoPushTokenAsync failed:', lastError);
     return null;
   }
