@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme, fonts, radius } from '../theme';
+import { errorMessage } from '../api/client';
 
 export function ScreenHeader({
   title, subtitle, onBack, right,
@@ -170,7 +171,12 @@ export function ActionRow({ children }: { children: React.ReactNode }) {
 }
 
 export function ListState({ loading, error, empty, emptyText, onRetry }: {
-  loading?: boolean; error?: boolean; empty?: boolean; emptyText: string; onRetry?: () => void;
+  loading?: boolean;
+  // Pass the actual error, not just a boolean — "تعذّر التحميل" for a DNS
+  // failure on the device sends the operator to check the server, which is
+  // the wrong place entirely.
+  error?: boolean | unknown;
+  empty?: boolean; emptyText: string; onRetry?: () => void;
 }) {
   if (loading) {
     return (
@@ -182,8 +188,11 @@ export function ListState({ loading, error, empty, emptyText, onRetry }: {
   if (error) {
     return (
       <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-        <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, textAlign: 'center' }}>
-          تعذّر التحميل. تحقّق من الاتصال.
+        <Text style={{
+          fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle,
+          textAlign: 'center', lineHeight: 21, paddingHorizontal: 8,
+        }}>
+          {typeof error === 'boolean' ? 'تعذّر التحميل. تحقّق من الاتصال.' : errorMessage(error)}
         </Text>
         {onRetry ? (
           <TouchableOpacity

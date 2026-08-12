@@ -22,7 +22,7 @@ export default function PromoteScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
 
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-feature-requests'],
     queryFn: () => api<Req[]>('/admin/feature-requests?status=pending'),
   });
@@ -52,7 +52,7 @@ export default function PromoteScreen({ navigation }: any) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: insets.bottom + 90 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.subtle} />}
         ListEmptyComponent={
-          <ListState loading={isLoading} error={isError} empty={!isLoading && !isError}
+          <ListState loading={isLoading} error={isError ? error : false} empty={!isLoading && !isError}
             emptyText="لا طلبات ترويج معلّقة." onRetry={refetch} />
         }
         renderItem={({ item: r }) => (

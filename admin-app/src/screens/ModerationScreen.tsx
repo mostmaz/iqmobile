@@ -80,7 +80,7 @@ export default function ModerationScreen({ navigation, route }: any) {
         ListEmptyComponent={
           <ListState
             loading={active.isLoading}
-            error={active.isError}
+            error={active.isError ? active.error : false}
             empty={!active.isLoading && !active.isError}
             emptyText={tab === 'reports' ? 'لا بلاغات مفتوحة.' : 'لا أجهزة مقترحة.'}
             onRetry={active.refetch}

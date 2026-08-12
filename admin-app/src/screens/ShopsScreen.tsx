@@ -24,7 +24,7 @@ export default function ShopsScreen({ navigation }: any) {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
 
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-shops', q],
     queryFn: () => api<Shop[]>(`/admin/shops${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
   });
@@ -66,7 +66,7 @@ export default function ShopsScreen({ navigation }: any) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 90 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.subtle} />}
         ListEmptyComponent={
-          <ListState loading={isLoading} error={isError} empty={!isLoading && !isError}
+          <ListState loading={isLoading} error={isError ? error : false} empty={!isLoading && !isError}
             emptyText="لا متاجر مطابقة." onRetry={refetch} />
         }
         renderItem={({ item: s }) => {

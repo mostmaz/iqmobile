@@ -14,7 +14,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity, ActivityIndic
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../theme';
-import { api } from '../api/client';
+import { api, errorMessage } from '../api/client';
 import { useAuth } from '../lib/auth';
 
 export type Queue = {
@@ -50,7 +50,7 @@ export default function QueueScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const { admin, logout } = useAuth();
 
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['work-queue'],
     queryFn: () => api<Queue>('/admin/work-queue'),
     // Short, because this is the screen someone leaves open while working.
@@ -102,7 +102,7 @@ export default function QueueScreen({ navigation }: any) {
             <ActivityIndicator color={theme.accent} />
           </View>
         ) : isError ? (
-          <ErrorBlock onRetry={onRefresh} />
+          <ErrorBlock error={error} onRetry={onRefresh} />
         ) : total === 0 ? (
           <View style={{ paddingVertical: 52, alignItems: 'center', paddingHorizontal: 24 }}>
             <Text style={{ fontSize: 34, marginBottom: 10 }}>✓</Text>
@@ -178,14 +178,17 @@ function QueueCard({ card, count, onPress }: { card: Card; count: number; onPres
   );
 }
 
-function ErrorBlock({ onRetry }: { onRetry: () => void }) {
+function ErrorBlock({ error, onRetry }: { error?: unknown; onRetry: () => void }) {
   return (
     <View style={{ paddingVertical: 48, alignItems: 'center', paddingHorizontal: 24 }}>
       <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center' }}>
         تعذّر تحميل قائمة العمل
       </Text>
-      <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', marginTop: 6 }}>
-        تحقّق من الاتصال بالإنترنت.
+      <Text style={{
+        fontFamily: fonts.ar, fontSize: 13, color: theme.subtle,
+        textAlign: 'center', marginTop: 6, lineHeight: 20,
+      }}>
+        {errorMessage(error)}
       </Text>
       <TouchableOpacity
         onPress={onRetry}

@@ -39,7 +39,7 @@ export default function ListingsScreen({ navigation }: any) {
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<Listing | null>(null);
 
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-listings', status, q],
     // GET /admin/listings answers with a BARE ARRAY, not {listings}. Guessing
     // the wrapper cost a screen that rendered perfectly and always said "no
@@ -91,7 +91,7 @@ export default function ListingsScreen({ navigation }: any) {
         ListEmptyComponent={
           <ListState
             loading={isLoading}
-            error={isError}
+            error={isError ? error : false}
             empty={!isLoading && !isError}
             emptyText="لا إعلانات مطابقة."
             onRetry={refetch}

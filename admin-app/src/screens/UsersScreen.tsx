@@ -25,7 +25,7 @@ export default function UsersScreen({ navigation }: any) {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
 
-  const { data, isLoading, isRefetching, refetch, isError } = useQuery({
+  const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-users', q],
     queryFn: () => api<User[]>(`/admin/users${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`),
   });
@@ -58,7 +58,7 @@ export default function UsersScreen({ navigation }: any) {
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 90 }}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.subtle} />}
         ListEmptyComponent={
-          <ListState loading={isLoading} error={isError} empty={!isLoading && !isError}
+          <ListState loading={isLoading} error={isError ? error : false} empty={!isLoading && !isError}
             emptyText="لا مستخدمين مطابقين." onRetry={refetch} />
         }
         renderItem={({ item: u }) => (

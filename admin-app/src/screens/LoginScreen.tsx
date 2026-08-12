@@ -6,19 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme, fonts, radius } from '../theme';
 import { useAuth } from '../lib/auth';
-import { ApiError } from '../api/client';
-
-// Login errors are named, not generic. "تعذّر تسجيل الدخول" for a wrong
-// password sends the operator to check their connection; for a real network
-// failure it sends them to re-type a password that was fine.
-function messageFor(e: unknown): string {
-  const code = e instanceof ApiError ? e.code : 'network';
-  if (code === 'bad_credentials') return 'اسم المستخدم أو كلمة المرور غير صحيحة.';
-  if (code === 'missing_fields') return 'أدخل اسم المستخدم وكلمة المرور.';
-  if (code === 'timeout') return 'انتهت مهلة الاتصال. تحقّق من الشبكة وحاول مجدداً.';
-  if (code === 'rate_limited') return 'محاولات كثيرة. انتظر دقيقة ثم حاول مجدداً.';
-  return 'تعذّر الاتصال بالخادم.';
-}
+import { errorMessage } from '../api/client';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -37,7 +25,7 @@ export default function LoginScreen() {
     try {
       await login(username.trim(), password);
     } catch (e) {
-      setErr(messageFor(e));
+      setErr(errorMessage(e));
     } finally {
       setBusy(false);
     }
