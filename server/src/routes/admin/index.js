@@ -2845,6 +2845,10 @@ r.get('/device-suggestions', requireAdmin, (req, res) => {
   // answering it used to mean hunting the listing down by id.
   const rows = db.prepare(
     `SELECT s.*, u.display_name AS user_name, u.phone AS user_phone,
+            -- Named after s.* so it wins the duplicate-column race: callers
+            -- get the RESOLVED listing id (stored or recovered), never the
+            -- stored null — the app PATCHes whatever id this row carries.
+            l.id AS listing_id,
             l.brand AS listing_brand, l.model AS listing_model,
             l.asking_price AS listing_price, l.status AS listing_status,
             (SELECT image_path FROM listing_images
