@@ -260,6 +260,15 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       created, expires, created,
     );
   const row = loadListing(ins.lastInsertRowid);
+  // A device suggestion filed from the picker predates the listing, so it
+  // was born with listing_id NULL. Now that the listing exists, claim any
+  // of this seller's pending suggestions with the same model text — the
+  // reviewer then sees the ad behind the name instead of a bare string.
+  db.prepare(
+    `UPDATE device_suggestions SET listing_id=?
+      WHERE user_id=? AND listing_id IS NULL AND status='pending'
+        AND model=? COLLATE NOCASE`,
+  ).run(row.id, req.user.id, row.model);
   // Fire saved-search + wish-list alerts after the response is sent, so
   // notification fan-out never adds latency to (or can fail) listing creation.
   setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); });

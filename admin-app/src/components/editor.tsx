@@ -6,9 +6,10 @@
 // support a subset, and nobody would notice which until a shop needed a
 // field that only exists on the desktop.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Modal, ScrollView, Switch, ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme, fonts, radius } from '../theme';
@@ -21,6 +22,18 @@ export type FieldSpec = {
   hint?: string;
   /** Shown but not editable — context the operator needs while deciding. */
   readOnly?: boolean;
+  /**
+   * Attach a searchable list to a text field: the field stays free text
+   * (the catalogue can always be missing a device) but gains an "اختر"
+   * button opening a search-and-pick sheet. `load` receives the query AND
+   * the form's current values, so one field's choices can depend on
+   * another — the device list follows whichever brand is selected right
+   * now, not the brand the record was opened with.
+   */
+  picker?: {
+    title?: string;
+    load: (q: string, vals: Record<string, any>) => Promise<{ value: string; label?: string }[]>;
+  };
 };
 
 export function RecordEditor({
@@ -105,7 +118,7 @@ export function RecordEditor({
           keyboardShouldPersistTaps="handled"
         >
           {specs.map((s) => (
-            <Field key={s.key} spec={s} value={vals[s.key]} onChange={(v) => set(s.key, v)} />
+            <Field key={s.key} spec={s} value={vals[s.key]} allValues={vals} onChange={(v) => set(s.key, v)} />
           ))}
           {extra}
         </ScrollView>
@@ -141,9 +154,10 @@ export function RecordEditor({
   );
 }
 
-function Field({ spec, value, onChange }: {
-  spec: FieldSpec; value: any; onChange: (v: any) => void;
+function Field({ spec, value, allValues, onChange }: {
+  spec: FieldSpec; value: any; allValues: Record<string, any>; onChange: (v: any) => void;
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const label = (
     <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginBottom: 6 }}>
       {spec.label}
@@ -221,27 +235,148 @@ function Field({ spec, value, onChange }: {
   return (
     <View style={{ marginBottom: 12 }}>
       {label}
-      <TextInput
-        value={display}
-        editable={!spec.readOnly}
-        onChangeText={(t) => onChange(numeric && spec.type !== 'phone' ? t.replace(/\D/g, '') : t)}
-        keyboardType={numeric ? 'phone-pad' : 'default'}
-        multiline={spec.type === 'multiline'}
-        autoCapitalize="none"
-        autoCorrect={false}
-        placeholderTextColor={theme.faint}
-        placeholder="—"
-        style={{
-          backgroundColor: spec.readOnly ? theme.surfaceAlt : theme.surface,
-          borderRadius: radius.lg, borderWidth: 1, borderColor: theme.line,
-          paddingHorizontal: 14, paddingVertical: 12,
-          minHeight: spec.type === 'multiline' ? 90 : undefined,
-          textAlignVertical: spec.type === 'multiline' ? 'top' : 'center',
-          fontSize: 14.5, color: spec.readOnly ? theme.subtle : theme.ink,
-          textAlign: spec.type === 'phone' || spec.type === 'money' ? 'left' : 'right',
-        }}
-      />
+      <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+        <TextInput
+          value={display}
+          editable={!spec.readOnly}
+          onChangeText={(t) => onChange(numeric && spec.type !== 'phone' ? t.replace(/\D/g, '') : t)}
+          keyboardType={numeric ? 'phone-pad' : 'default'}
+          multiline={spec.type === 'multiline'}
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholderTextColor={theme.faint}
+          placeholder="—"
+          style={{
+            flex: 1,
+            backgroundColor: spec.readOnly ? theme.surfaceAlt : theme.surface,
+            borderRadius: radius.lg, borderWidth: 1, borderColor: theme.line,
+            paddingHorizontal: 14, paddingVertical: 12,
+            minHeight: spec.type === 'multiline' ? 90 : undefined,
+            textAlignVertical: spec.type === 'multiline' ? 'top' : 'center',
+            fontSize: 14.5, color: spec.readOnly ? theme.subtle : theme.ink,
+            textAlign: spec.type === 'phone' || spec.type === 'money' ? 'left' : 'right',
+          }}
+        />
+        {spec.picker && !spec.readOnly ? (
+          <TouchableOpacity
+            onPress={() => setPickerOpen(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={spec.picker.title || 'اختر'}
+            style={{
+              paddingHorizontal: 14, borderRadius: radius.lg, justifyContent: 'center',
+              backgroundColor: theme.surfaceAlt, borderWidth: 1, borderColor: theme.line,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.accent }}>اختر</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       {hint}
+      {spec.picker ? (
+        <PickerSheet
+          visible={pickerOpen}
+          title={spec.picker.title || spec.label}
+          load={(q) => spec.picker!.load(q, allValues)}
+          onPick={(v) => { onChange(v); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      ) : null}
     </View>
+  );
+}
+
+// Search-and-pick sheet for picker-enabled fields. Fetches on open and on
+// every keystroke — the catalogue endpoints answer from an in-memory list,
+// so there is nothing worth debouncing.
+export function PickerSheet({ visible, title, load, onPick, onClose }: {
+  visible: boolean; title: string;
+  load: (q: string) => Promise<{ value: string; label?: string }[]>;
+  onPick: (v: string) => void;
+  onClose: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState<{ value: string; label?: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const seq = useRef(0);
+
+  useEffect(() => {
+    if (!visible) { setQ(''); setRows([]); return; }
+    const mine = ++seq.current;
+    setLoading(true);
+    load(q)
+      .then((r) => { if (seq.current === mine) setRows(r); })
+      .catch(() => { if (seq.current === mine) setRows([]); })
+      .finally(() => { if (seq.current === mine) setLoading(false); });
+  }, [visible, q]);
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+        <View style={{
+          backgroundColor: theme.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18,
+          maxHeight: '75%', paddingBottom: Math.max(insets.bottom, 12),
+        }}>
+          <View style={{
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+            paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8,
+          }}>
+            <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'right' }}>
+              {title}
+            </Text>
+            <TouchableOpacity onPress={onClose} hitSlop={10}>
+              <Text style={{ fontSize: 20, color: theme.subtle }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="ابحث…"
+              placeholderTextColor={theme.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                backgroundColor: theme.surface, borderRadius: radius.lg,
+                borderWidth: 1, borderColor: theme.line,
+                paddingHorizontal: 14, paddingVertical: 10,
+                fontSize: 14, color: theme.ink, textAlign: 'right',
+              }}
+            />
+          </View>
+          {loading ? (
+            <View style={{ padding: 24, alignItems: 'center' }}>
+              <ActivityIndicator color={theme.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={rows}
+              keyExtractor={(r, i) => r.value + i}
+              keyboardShouldPersistTaps="handled"
+              ListEmptyComponent={(
+                <Text style={{ textAlign: 'center', padding: 24, color: theme.subtle, fontFamily: fonts.ar, fontSize: 13 }}>
+                  لا نتائج — يمكنك الإبقاء على النص المكتوب.
+                </Text>
+              )}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => onPick(item.value)}
+                  activeOpacity={0.7}
+                  style={{
+                    paddingHorizontal: 18, paddingVertical: 13,
+                    borderBottomWidth: 1, borderBottomColor: theme.line,
+                  }}
+                >
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
+                    {item.label || item.value}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
+      </View>
+    </Modal>
   );
 }

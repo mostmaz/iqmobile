@@ -6,11 +6,11 @@
 // is room to see what you are changing.
 
 import React, { useState } from 'react';
-import { View, Text, FlatList, RefreshControl, Modal, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, Image, FlatList, RefreshControl, Modal, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, iqd, deviceTitle } from '../theme';
-import { api } from '../api/client';
+import { api, API_BASE } from '../api/client';
 import { ScreenHeader, SearchBar, ChipRow, Card, Action, ActionRow, ListState, Meta, Title } from '../components/kit';
 import { RecordEditor, type FieldSpec } from '../components/editor';
 import { GOVERNORATES, CONDITIONS, LISTING_STATUSES, STORAGES } from '../lib/constants';
@@ -24,14 +24,16 @@ type Listing = {
   cost_price?: number | null; stock_qty?: number | null;
   price_on_request?: number | null;
   seller_name?: string | null;
+  cover_image?: string | null; image_count?: number;
   created_at: number;
 };
+
+// Upload paths come back relative ("/uploads/…"); the <Image> needs a URL.
+const abs = (p: string) => (p.startsWith('http') ? p : `${API_BASE}${p}`);
 
 // Every field PATCH /admin/listings/:id accepts. Kept in one list so the app
 // cannot silently support a subset of what the web dashboard can edit.
 const LISTING_FIELDS: FieldSpec[] = [
-  { key: 'brand', label: 'الماركة', type: 'text' },
-  { key: 'model', label: 'الموديل', type: 'text' },
   { key: 'condition', label: 'الحالة', type: 'select', options: CONDITIONS },
   { key: 'storage', label: 'الذاكرة', type: 'select', options: STORAGES },
   { key: 'color', label: 'اللون', type: 'text' },
@@ -73,6 +75,45 @@ export default function ListingsScreen({ navigation }: any) {
   const [status, setStatus] = useState<string>('active');
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<Listing | null>(null);
+
+  // Real brands, so the editor offers a choice instead of a text box — a
+  // free-text brand is exactly how "Apple POCO X7 Pro" reached the feed.
+  const brands = useQuery({
+    queryKey: ['brands'],
+    queryFn: () => api<{ name: string }[]>('/brands'),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // brand: chips from the live brand list. model: free text PLUS a picker
+  // over the device catalogue, filtered by whatever brand is currently
+  // selected in the form (not the brand the record was opened with).
+  const fields: FieldSpec[] = React.useMemo(() => [
+    {
+      key: 'brand', label: 'الماركة', type: 'select',
+      options: (brands.data || []).map((b) => ({ value: b.name, label: b.name })),
+    },
+    {
+      key: 'model', label: 'الموديل', type: 'text',
+      picker: {
+        title: 'اختر الجهاز من الكتالوج',
+        load: async (query, vals) => {
+          const brand = String(vals.brand || editing?.brand || '');
+          if (!brand) return [];
+          const rows = await api<{ id: number; model: string }[]>(
+            `/device-catalog/devices?${new URLSearchParams({
+              brand,
+              type: (editing as any)?.product_type || 'phone',
+              ...(query.trim() ? { q: query.trim() } : {}),
+              limit: '60',
+            })}`,
+          );
+          return rows.map((r) => ({ value: r.model }));
+        },
+      },
+      hint: 'اكتب بحرّية أو اختر من الكتالوج — القائمة تتبع الماركة المحددة أعلاه.',
+    },
+    ...LISTING_FIELDS,
+  ], [brands.data, editing]);
 
   const { data, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ['admin-listings', status, q],
@@ -148,12 +189,23 @@ export default function ListingsScreen({ navigation }: any) {
               </Text>
             </View>
 
-            <View style={{ marginTop: 8 }}>
-              <Title>{deviceTitle(l.brand, l.model)}</Title>
-              <Meta>
-                {[l.storage, l.color, l.governorate, l.city].filter(Boolean).join(' · ')}
-              </Meta>
-              <Meta>#{l.id}{l.contact_phone ? ` · ${l.contact_phone}` : ''}</Meta>
+            <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 8, alignItems: 'center' }}>
+              {l.cover_image ? (
+                <Image
+                  source={{ uri: abs(l.cover_image) }}
+                  style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.surfaceAlt }}
+                />
+              ) : null}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Title>{deviceTitle(l.brand, l.model)}</Title>
+                <Meta>
+                  {[l.storage, l.color, l.governorate, l.city].filter(Boolean).join(' · ')}
+                </Meta>
+                <Meta>
+                  #{l.id}{l.contact_phone ? ` · ${l.contact_phone}` : ''}
+                  {l.image_count ? ` · ${l.image_count} صور` : ' · بلا صور'}
+                </Meta>
+              </View>
             </View>
 
             <ActionRow>
@@ -187,7 +239,7 @@ export default function ListingsScreen({ navigation }: any) {
         visible={!!editing}
         title="تعديل الإعلان"
         subtitle={editing ? `${deviceTitle(editing.brand, editing.model)} · #${editing.id}` : undefined}
-        specs={LISTING_FIELDS}
+        specs={fields}
         initial={(editing || {}) as any}
         busy={patch.isPending}
         onClose={() => setEditing(null)}

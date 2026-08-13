@@ -2840,10 +2840,27 @@ r.get('/device-suggestions', requireAdmin, (req, res) => {
     ? req.query.status : 'pending';
   // LEFT JOIN on users: suggestions are FK-free and outlive the account that
   // filed them, so a deleted user must not drop the row from the queue.
+  // The listing that prompted the suggestion rides along: the reviewer's
+  // real question is usually "what is this ad actually selling", and
+  // answering it used to mean hunting the listing down by id.
   const rows = db.prepare(
-    `SELECT s.*, u.display_name AS user_name, u.phone AS user_phone
+    `SELECT s.*, u.display_name AS user_name, u.phone AS user_phone,
+            l.brand AS listing_brand, l.model AS listing_model,
+            l.asking_price AS listing_price, l.status AS listing_status,
+            (SELECT image_path FROM listing_images
+              WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS listing_cover
      FROM device_suggestions s
      LEFT JOIN users u ON u.id = s.user_id
+     LEFT JOIN phone_listings l ON l.id = COALESCE(
+       s.listing_id,
+       -- Suggestions are filed from the device picker BEFORE the listing
+       -- exists, so listing_id is almost always null. The listing is still
+       -- findable: it is the same user's ad carrying the same free-text
+       -- model. Newest wins if they posted the device twice.
+       (SELECT id FROM phone_listings
+         WHERE seller_id = s.user_id AND model = s.model COLLATE NOCASE
+         ORDER BY created_at DESC LIMIT 1)
+     )
      WHERE s.status=? ORDER BY s.created_at DESC LIMIT 300`,
   ).all(status);
   res.json(rows);
