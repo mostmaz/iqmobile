@@ -293,8 +293,14 @@ r.get('/listings', requireAdmin, (req, res) => {
            (SELECT COUNT(*) FROM listing_images WHERE listing_id = l.id) AS image_count,
            (SELECT cost_price FROM listing_costs WHERE listing_id = l.id) AS cost_price
     FROM phone_listings l JOIN users u ON u.id = l.seller_id${where}
-    ORDER BY l.created_at DESC LIMIT 200`;
-  res.json(db.prepare(sql).all(...params));
+    ORDER BY l.created_at DESC LIMIT ? OFFSET ?`;
+  // Paged, because the operator app browses this list rather than only
+  // searching it. Same response shape as before — a bare array — so the
+  // dashboard and every existing caller keep working; page callers just
+  // pass offset and keep going until a short page comes back.
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 200);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+  res.json(db.prepare(sql).all(...params, limit, offset));
 });
 
 // Quick-add: create a listing from the admin dashboard. Find-or-create

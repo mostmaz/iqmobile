@@ -14,7 +14,7 @@ import {
   ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, iqd } from '../theme';
 import { api, API_BASE } from '../api/client';
 import { ScreenHeader, SearchBar } from '../components/kit';
@@ -47,18 +47,29 @@ export default function SocialScreen({ navigation }: any) {
     queryFn: () => api<SocialStatus>('/admin/social/status'),
   });
 
-  const search = useQuery({
+  // Browse-first, not search-first: the list opens on the newest active
+  // listings and keeps loading as the operator scrolls. The server pages
+  // with a bare-array response, so "last page was short" is the only end
+  // signal there is.
+  const PAGE = 30;
+  const search = useInfiniteQuery({
     queryKey: ['social-listings', q],
-    queryFn: () => api<Listing[]>(`/admin/listings?${new URLSearchParams({ q, status: 'active' })}`),
-    enabled: q.trim().length >= 2,
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => api<Listing[]>(
+      `/admin/listings?${new URLSearchParams({
+        q, status: 'active', limit: String(PAGE), offset: String(pageParam),
+      })}`,
+    ),
+    getNextPageParam: (last, all) => (last.length < PAGE ? undefined : all.length * PAGE),
   });
+  const listings = search.data?.pages.flat() ?? [];
 
   // The listing's photos, for the picker. NOTE the shape: {images, max},
   // not a bare array — assuming an array here once blanked a whole
   // dashboard page.
   const photos = useQuery({
     queryKey: ['social-photos', picked?.id],
-    queryFn: () => api<{ images: { id: number; image_path: string }[] }>(`/listings/${picked!.id}/images`),
+    queryFn: () => api<{ images: { id: number; image_path: string }[] }>(`/admin/listings/${picked!.id}/images`),
     enabled: !!picked,
   });
 
@@ -238,14 +249,23 @@ export default function SocialScreen({ navigation }: any) {
         <SearchBar value={q} onChangeText={setQ} placeholder="ابحث عن إعلان — ماركة، موديل، رقم…" />
       </View>
       <FlatList
-        data={search.data || []}
+        data={listings}
         keyExtractor={(l) => String(l.id)}
         contentContainerStyle={{ padding: 12, paddingBottom: insets.bottom + 20 }}
+        onEndReached={() => {
+          if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={search.isFetchingNextPage ? (
+          <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+            <ActivityIndicator color={theme.accent} />
+          </View>
+        ) : null}
         ListEmptyComponent={search.isLoading ? (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
         ) : (
           <Text style={{ textAlign: 'center', padding: 30, color: theme.subtle, fontFamily: fonts.ar, fontSize: 13 }}>
-            {q.trim().length >= 2 ? 'لا نتائج.' : 'اكتب حرفين على الأقل للبحث عن إعلان.'}
+            لا نتائج.
           </Text>
         )}
         renderItem={({ item }) => (
