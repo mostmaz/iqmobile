@@ -804,6 +804,12 @@ addColumnIfMissing('events', 'shop_id INTEGER');
 // every existing database.
 db.exec('CREATE INDEX IF NOT EXISTS idx_events_shop ON events(shop_id, type, created_at DESC)');
 
+// Banner analytics ride the same events table (types banner_impression /
+// banner_click) rather than a table of their own — same querying, same
+// retention story, and logEvent() already never breaks a request.
+addColumnIfMissing('events', 'banner_id INTEGER');
+db.exec('CREATE INDEX IF NOT EXISTS idx_events_banner ON events(banner_id, type, created_at DESC)');
+
 addColumnIfMissing('users', 'shop_delivery_days_min INTEGER NOT NULL DEFAULT 2');
 addColumnIfMissing('users', 'shop_delivery_days_max INTEGER NOT NULL DEFAULT 4');
 

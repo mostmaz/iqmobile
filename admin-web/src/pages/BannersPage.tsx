@@ -26,6 +26,7 @@ type Banner = {
   created_at: number;
 };
 type Brand = { id: number; name: string; display_ar: string | null; position: number; count: number };
+type BannerStats = { banner_id: number; impressions: number; clicks: number; first_impression_at: number | null };
 type Shop = { id: number; shop_name: string | null; display_name: string; shop_hidden: number; listing_count: number };
 
 // A shop banner is stored as an ordinary `external` link whose URL the app
@@ -67,6 +68,7 @@ export function BannersPage() {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
+  const [stats, setStats] = useState<Record<number, BannerStats>>({});
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -110,14 +112,16 @@ export function BannersPage() {
   async function load() {
     setLoading(true);
     try {
-      const [b, br, sh] = await Promise.all([
+      const [b, br, sh, st] = await Promise.all([
         api<Banner[]>('/admin/banners'),
         api<Brand[]>('/admin/brands'),
         api<Shop[]>('/admin/shops'),
+        api<{ banners: BannerStats[] }>('/admin/banners/analytics?days=30'),
       ]);
       setBanners(b);
       setBrands(br);
       setShops(sh);
+      setStats(Object.fromEntries(st.banners.map((s) => [s.banner_id, s])));
       setErr('');
     } catch (e: any) {
       setErr(e.message);
@@ -234,6 +238,7 @@ export function BannersPage() {
                 <th>Image</th>
                 <th>Placement</th>
                 <th>Link</th>
+                <th>30d traffic</th>
                 <th>Pos</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -268,6 +273,22 @@ export function BannersPage() {
                       return <a href={b.link_value} target="_blank" rel="noreferrer">{b.link_value}</a>;
                     })()}
                   </td>
+                  <td>
+                    {(() => {
+                      // Impressions and clicks both come from the in-app
+                      // beacon, which ships with 0.3.3 — a dash here means
+                      // "no beacon data yet", not "nobody saw it".
+                      const s = stats[b.id];
+                      if (!s || (!s.impressions && !s.clicks)) return <span className="muted">—</span>;
+                      const ctr = s.impressions ? `${Math.round((s.clicks / s.impressions) * 1000) / 10}%` : null;
+                      return (
+                        <span>
+                          👁 {s.impressions.toLocaleString('en-US')} · 👆 {s.clicks.toLocaleString('en-US')}
+                          {ctr ? <span className="muted"> ({ctr})</span> : null}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td>{b.position}</td>
                   <td>
                     <button className={b.enabled ? 'primary' : 'secondary'} disabled={busy} onClick={() => toggle(b)}>
@@ -281,7 +302,7 @@ export function BannersPage() {
                 </tr>
               ))}
               {sortedBanners.length === 0 ? (
-                <tr><td colSpan={6} className="muted">No banners yet.</td></tr>
+                <tr><td colSpan={7} className="muted">No banners yet.</td></tr>
               ) : null}
             </tbody>
           </table>

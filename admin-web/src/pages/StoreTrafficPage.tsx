@@ -20,14 +20,17 @@ type Traffic = {
   calls: number;
   orders: number;
   home_calls: number;
-  prev: { views: number; calls: number };
+  browses: number;
+  unique_viewers: number;
+  guest_browses: number;
+  prev: { views: number; calls: number; browses: number };
   call_rate: number | null;
   order_rate: number | null;
-  daily: { bucket: number; views: number; calls: number }[];
+  daily: { bucket: number; views: number; calls: number; browses: number }[];
   by_product: { brand: string; model: string; views: number; calls: number }[];
   tracking_since: number | null;
 };
-type Shop = { id: number; shop_name: string | null; display_name: string; shop_orders_enabled: number };
+type Shop = { id: number; shop_name: string | null; display_name: string; shop_orders_enabled: number; shop_hidden: number };
 
 const WINDOWS = [7, 30, 90];
 const n = (v: number) => Number(v || 0).toLocaleString('en-US');
@@ -51,7 +54,10 @@ export function StoreTrafficPage() {
   useEffect(() => {
     api<Shop[]>('/admin/shops')
       .then((all) => {
-        const list = all.filter((x) => x.shop_orders_enabled);
+        // Orders-enabled storefronts AND the hidden price-book shop: both
+        // log traffic now (store_browse vs shop_view), and the price shop is
+        // exactly where the home banner sends people.
+        const list = all.filter((x) => x.shop_orders_enabled || x.shop_hidden);
         setShops(list);
         setShopId((cur) => cur ?? list[0]?.id ?? null);
         if (!list.length) setLoading(false);
@@ -112,6 +118,17 @@ export function StoreTrafficPage() {
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="chart-title">آخر {t.window_days} يوم</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, marginTop: 10 }}>
+              {/* People first, then what they did. Unique = signed-in accounts
+                  only; guests have no id to deduplicate on, so their browsing
+                  is shown as raw opens rather than folded into a fake
+                  "visitors" figure. */}
+              <Kpi label="زوّار مسجّلون" value={n(t.unique_viewers)} sub="حسابات فريدة فتحت المتجر" />
+              <Kpi
+                label="تصفّح المتجر"
+                value={n(t.browses)}
+                delta={delta(t.browses, t.prev.browses)}
+                sub={t.guest_browses ? `منها ${n(t.guest_browses)} بدون تسجيل` : undefined}
+              />
               <Kpi label="مشاهدات المنتجات" value={n(t.views)} delta={viewDelta} />
               <Kpi label="اتصالات" value={n(t.calls)} delta={callDelta} accent={t.calls > 0} />
               <Kpi

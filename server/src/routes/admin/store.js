@@ -287,6 +287,35 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
     const prevViews = countBetween('store_view', prevSince, since);
     const prevCalls = countBetween('store_call', prevSince, since);
 
+    // "Browse" = someone opened the shop itself, product or no product.
+    // Two event types because the shop has two front doors: store_browse is
+    // the storefront home (IQ Mobile store), shop_view the classic shop page
+    // (how the hidden price-book shop is entered from the home banner).
+    const browseCount = (from, to) => db.prepare(
+      `SELECT COUNT(*) AS n FROM events
+        WHERE shop_id=? AND type IN ('store_browse','shop_view')
+          AND created_at >= ? ${to ? 'AND created_at < ?' : ''}`,
+    ).get(...(to ? [shopId, from, to] : [shopId, from])).n;
+    const browses = browseCount(since, null);
+    const prevBrowses = browseCount(prevSince, since);
+
+    // People, not requests: distinct signed-in accounts that touched the
+    // shop this window. Guests can't be deduplicated (no id to dedupe on),
+    // so they're reported as raw browse events alongside — two honest
+    // numbers instead of one inflated "visitors".
+    const uniqueViewers = db.prepare(
+      `SELECT COUNT(DISTINCT user_id) AS n FROM events
+        WHERE shop_id=? AND user_id IS NOT NULL
+          AND type IN ('store_browse','shop_view','store_view','store_call')
+          AND created_at >= ?`,
+    ).get(shopId, since).n;
+    const guestBrowses = db.prepare(
+      `SELECT COUNT(*) AS n FROM events
+        WHERE shop_id=? AND user_id IS NULL
+          AND type IN ('store_browse','shop_view')
+          AND created_at >= ?`,
+    ).get(shopId, since).n;
+
     const orders = db.prepare(
       `SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND created_at >= ?`,
     ).get(shopId, since).n;
@@ -297,9 +326,11 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
       `SELECT
          CAST((created_at - ?) / 86400000 AS INTEGER) AS bucket,
          SUM(CASE WHEN type='store_view' THEN 1 ELSE 0 END) AS views,
-         SUM(CASE WHEN type='store_call' THEN 1 ELSE 0 END) AS calls
+         SUM(CASE WHEN type='store_call' THEN 1 ELSE 0 END) AS calls,
+         SUM(CASE WHEN type IN ('store_browse','shop_view') THEN 1 ELSE 0 END) AS browses
        FROM events
-       WHERE shop_id=? AND type IN ('store_view','store_call') AND created_at >= ?
+       WHERE shop_id=? AND type IN ('store_view','store_call','store_browse','shop_view')
+         AND created_at >= ?
        GROUP BY bucket ORDER BY bucket ASC`,
     ).all(since, shopId, since);
 
@@ -331,7 +362,10 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
       calls,
       orders,
       home_calls: homeCalls,
-      prev: { views: prevViews, calls: prevCalls },
+      browses,
+      unique_viewers: uniqueViewers,
+      guest_browses: guestBrowses,
+      prev: { views: prevViews, calls: prevCalls, browses: prevBrowses },
       // Nulls, not zeros, when the denominator is empty — "0% of nobody
       // called" reads as a problem when it is simply no data yet.
       call_rate: pct(calls, views),
@@ -341,7 +375,8 @@ export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
       // So the page can say WHY it is empty rather than drawing a blank
       // chart: this data only exists from the day tracking shipped.
       tracking_since: db.prepare(
-        `SELECT MIN(created_at) AS t FROM events WHERE shop_id=? AND type IN ('store_view','store_call')`,
+        `SELECT MIN(created_at) AS t FROM events
+          WHERE shop_id=? AND type IN ('store_view','store_call','store_browse','shop_view')`,
       ).get(shopId).t,
     });
   });

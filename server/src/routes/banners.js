@@ -16,6 +16,8 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { normalizeGovernorate } from '../governorates.js';
+import { optionalAuth } from '../auth.js';
+import { logEvent } from '../eventLog.js';
 
 const r = Router();
 
@@ -51,6 +53,22 @@ r.get('/', (req, res) => {
   }
 
   return res.status(400).json({ error: 'bad_placement' });
+});
+
+// ─── banner analytics beacon ──────────────────────────────────────────
+// The app POSTs one `impression` per banner per carousel mount (the slide
+// was actually on screen, not merely fetched) and one `click` per tap,
+// right before navigating. Fire-and-forget on the client and best-effort
+// here: the response is always {ok:true} for a real banner, because a
+// failed beacon must never surface in the shopping flow. The banner must
+// exist — otherwise a bad id would grow the events table with rows no
+// report can join back to anything.
+r.post('/:id(\\d+)/event', optionalAuth(), (req, res) => {
+  const banner = db.prepare('SELECT id FROM banners WHERE id=?').get(req.params.id);
+  if (!banner) return res.status(404).json({ error: 'not_found' });
+  const kind = req.body?.kind === 'click' ? 'banner_click' : 'banner_impression';
+  logEvent({ type: kind, banner_id: banner.id, user_id: req.user?.id ?? null });
+  res.json({ ok: true });
 });
 
 export default r;

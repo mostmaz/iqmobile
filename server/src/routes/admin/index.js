@@ -1399,6 +1399,28 @@ r.get('/banners', requireAdmin, (_req, res) => {
   res.json(db.prepare('SELECT * FROM banners ORDER BY placement ASC, position ASC, id ASC').all());
 });
 
+// Per-banner impressions / clicks over a window, keyed by banner id so the
+// dashboard can decorate its existing list rather than render a second one.
+// Impressions arrive only from app builds that carry the beacon (0.3.3+),
+// so first_impression_at is returned per banner — it is the honest "counting
+// since" line, and before any beacon lands the whole map is simply empty.
+r.get('/banners/analytics', requireAdmin, (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 365);
+  const since = Date.now() - days * 86400000;
+  const rows = db.prepare(
+    `SELECT banner_id,
+            SUM(CASE WHEN type='banner_impression' THEN 1 ELSE 0 END) AS impressions,
+            SUM(CASE WHEN type='banner_click' THEN 1 ELSE 0 END) AS clicks,
+            MIN(CASE WHEN type='banner_impression' THEN created_at END) AS first_impression_at
+       FROM events
+      WHERE banner_id IS NOT NULL
+        AND type IN ('banner_impression','banner_click')
+        AND created_at >= ?
+      GROUP BY banner_id`,
+  ).all(since);
+  res.json({ window_days: days, banners: rows });
+});
+
 r.post('/banners', requireAdmin, imageUpload.single('image'), (req, res) => {
   const b = req.body || {};
   const fail = (code) => { dropUpload(req.file); return res.status(400).json({ error: code }); };

@@ -51,9 +51,18 @@ function loadShop(id) {
 }
 
 // ─── storefront home: shop + categories ───────────────────────────────
-r.get('/storefront/:id(\\d+)', (req, res) => {
+r.get('/storefront/:id(\\d+)', optionalAuth(), (req, res) => {
   const shop = loadShop(req.params.id);
   if (!shop) return res.status(404).json({ error: 'not_found' });
+
+  // One browse = one storefront open. The home payload is fetched exactly
+  // once per visit (the grid pages through /products separately), which
+  // makes it the session marker; optionalAuth so signed-in visitors can be
+  // counted as UNIQUE people, not just requests. The shop looking at its
+  // own storefront is not a visit.
+  if (req.user?.id !== shop.id) {
+    logEvent({ type: 'store_browse', shop_id: shop.id, user_id: req.user?.id ?? null });
+  }
 
   // Categories are brands, counted by PRODUCT not listing — a model stocked
   // in three capacities is one thing to browse, and a count that disagrees
@@ -232,7 +241,7 @@ r.get('/storefront/:id(\\d+)/products', (req, res) => {
 });
 
 // ─── product detail: every variant of one model ───────────────────────
-r.get('/storefront/:id(\\d+)/product', (req, res) => {
+r.get('/storefront/:id(\\d+)/product', optionalAuth(), (req, res) => {
   const shop = loadShop(req.params.id);
   if (!shop) return res.status(404).json({ error: 'not_found' });
 
@@ -255,13 +264,15 @@ r.get('/storefront/:id(\\d+)/product', (req, res) => {
   // signal at all — which is why the card's "most viewed" mode could only
   // ever fill three slots. Tagged with shop_id and kept as its own type so
   // store traffic and marketplace traffic stay tellable apart.
-  logEvent({
-    type: 'store_view',
-    listing_id: variants[0].id,
-    shop_id: shop.id,
-    brand,
-    user_id: null,
-  });
+  if (req.user?.id !== shop.id) {
+    logEvent({
+      type: 'store_view',
+      listing_id: variants[0].id,
+      shop_id: shop.id,
+      brand,
+      user_id: req.user?.id ?? null,
+    });
+  }
 
   const imgStmt = db.prepare(
     'SELECT id, image_path, position FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC',

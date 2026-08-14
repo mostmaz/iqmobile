@@ -8,6 +8,7 @@ import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
+import { logEvent } from '../eventLog.js';
 
 const r = Router();
 
@@ -180,6 +181,13 @@ r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
   // merely pending as opposed to absent.
   if ((u.shop_status || 'approved') !== 'approved' && req.user?.id !== u.id) {
     return res.status(404).json({ error: 'not_found' });
+  }
+  // A shop-page open is the classic-shop twin of the storefront's
+  // store_browse — it is how the hidden price-book shop gets browsed (the
+  // home banner deep-links straight here), so without this row that whole
+  // shop is invisible to the traffic page. Owner previews don't count.
+  if (req.user?.id !== u.id) {
+    logEvent({ type: 'shop_view', shop_id: u.id, user_id: req.user?.id ?? null });
   }
   // Matches the browse feed's default view: sold (مباع) and expired (منتهي)
   // stay visible with badges. The "never expire" toggle (default on)

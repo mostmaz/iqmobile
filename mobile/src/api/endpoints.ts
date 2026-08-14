@@ -429,6 +429,15 @@ export const Banners = {
       `${brand ? `&brand=${encodeURIComponent(brand)}` : ''}` +
       `${gov ? `&gov=${encodeURIComponent(gov)}` : ''}`,
     ),
+  // Analytics beacon: an impression when a slide actually shows, a click on
+  // tap. Fire-and-forget — never awaited by UI code and a failure is
+  // swallowed, because no shopper should ever wait on (or see) analytics.
+  track: (id: number, kind: 'impression' | 'click') => {
+    api(`/banners/${id}/event`, {
+      method: 'POST',
+      body: JSON.stringify({ kind }),
+    }).catch(() => { /* beacon lost — fine */ });
+  },
 };
 
 export const Notifications = {

@@ -3,7 +3,7 @@ import { View, TouchableOpacity, Linking, FlatList, Animated } from 'react-nativ
 import { Img } from './Img';
 import { theme, radius, shadowSoft } from '../theme';
 import { fullImageUrl } from '../api/upload';
-import type { BannerRow } from '../api/endpoints';
+import { Banners, type BannerRow } from '../api/endpoints';
 
 // Auto-rotating promo banner strip pinned to the top of the feed. Flips
 // through every eligible banner every ROTATE_MS with no page refresh needed;
@@ -27,6 +27,9 @@ function openBanner(
   onOpenListing: (id: number) => void,
   onOpenShop?: (id: number) => void,
 ) {
+  // Every tap is a click, wherever it leads — logged before navigation so
+  // an external link that kills the app state can't lose the beacon.
+  Banners.track(banner.id, 'click');
   if (banner.link_type === 'listing') {
     const id = Number(banner.link_value);
     if (Number.isFinite(id) && id > 0) onOpenListing(id);
@@ -75,6 +78,20 @@ export function BannerCarousel({
   const listRef = useRef<FlatList<BannerRow>>(null);
 
   const height = width > 0 ? width / RATIO : undefined;
+
+  // One impression per banner per carousel mount, fired when its slide is
+  // actually the visible one (auto-advance, swipe, or being the lead). NOT
+  // reset when the banner array refreshes — the person is still on the same
+  // screen, and re-counting the lead on every pull-to-refresh would inflate
+  // exactly the number the dashboard uses to judge a banner.
+  const seen = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const b = banners[index];
+    if (b && !seen.current.has(b.id)) {
+      seen.current.add(b.id);
+      Banners.track(b.id, 'impression');
+    }
+  }, [index, banners]);
 
   // Drives the "time until flip" fill on the active dot: animates 0 → 1 over
   // one ROTATE_MS window, restarting whenever the shown slide changes (auto-
