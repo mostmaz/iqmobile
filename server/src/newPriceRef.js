@@ -83,6 +83,12 @@ export function modelKey(brand, model) {
   const cands = expandQuery(String(model || ''));
   let s = (cands.length ? cands[cands.length - 1] : String(model || '')).toLowerCase();
 
+  // "+" is part of the model name, not punctuation: Spark 40 Pro+ and
+  // Spark 40 Pro are different phones at different prices. Spell it out
+  // before the separator strip below deletes it — this also makes the
+  // written form converge ("Pro Plus" ≡ "Pro+").
+  s = s.replace(/\+/g, ' plus ');
+
   // Capacity written into the model line, in the two forms sellers use:
   // a number carrying a unit ("128gb"), and a number introduced by a memory
   // word ("ذاكره 128", "رام 8").
