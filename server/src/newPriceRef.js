@@ -33,6 +33,37 @@ function priceShopIds() {
   ).all().map((r) => r.id);
 }
 
+// Shops a buyer can actually ORDER from (the IQ Mobile storefront). The
+// price book quotes numbers; these take money — different flag, different
+// role, and the "buy a new one" button only makes sense against the latter.
+function orderShopIds() {
+  return db.prepare(
+    "SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1",
+  ).all().map((r) => r.id);
+}
+
+/**
+ * Where to BUY this device new, if an orderable storefront stocks it.
+ * Returns {shop_id, brand, model} — exactly the params the app's store
+ * product page takes — or null. Same-capacity match preferred, but any
+ * capacity qualifies: the product page lists every variant anyway.
+ */
+function storeRefFor(brand, wantModel, wantStorage) {
+  const shops = orderShopIds();
+  if (!shops.length) return null;
+  const ph = shops.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT seller_id, brand, model, storage, asking_price FROM phone_listings
+      WHERE seller_id IN (${ph}) AND condition='new' AND status='active'
+        AND COALESCE(stock_qty, 1) > 0 AND brand = ?`,
+  ).all(...shops, brand);
+  const matches = rows.filter((r) => modelKey(r.brand, r.model) === wantModel);
+  if (!matches.length) return null;
+  const exact = matches.find((r) => storageKey(r.storage) === wantStorage);
+  const pick = exact || matches.slice().sort((a, b) => a.asking_price - b.asking_price)[0];
+  return { shop_id: pick.seller_id, brand: pick.brand, model: pick.model };
+}
+
 // Words sellers add that carry no model information. Stripped from both sides
 // so "ايفون 11 للبيع" and "iPhone 11" converge.
 const NOISE = [
@@ -135,6 +166,14 @@ export function newPriceFor(listing) {
   // optimistic sellers). Report the reference but omit the saving rather than
   // rendering a negative "discount".
   const saving = newPrice - used;
+
+  // "Buy a new one" target. Suppressed on the storefront's own listings —
+  // those already carry the full-width buy button, and a second button
+  // pointing at the page the buyer is effectively on would just be noise.
+  const store = orderShopIds().includes(listing.seller_id)
+    ? null
+    : storeRefFor(listing.brand, wantModel, wantStorage);
+
   return {
     new_price: newPrice,
     storage: hit.storage,
@@ -142,5 +181,6 @@ export function newPriceFor(listing) {
     shop_id: shops[0],
     saving: saving > 0 ? saving : null,
     saving_pct: saving > 0 ? Math.round((saving / newPrice) * 100) : null,
+    store,
   };
 }

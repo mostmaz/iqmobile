@@ -416,6 +416,28 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                       </Text>
                     </View>
                   ) : null}
+                  {/* The same device, boxed, one tap away. Server sends
+                      `store` only when an orderable storefront stocks the
+                      model (and never on the storefront's own listings, which
+                      already carry the big buy button). */}
+                  {(data as any).new_price_ref.store ? (
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={() => navigation.navigate('StoreProduct', {
+                        shopId: (data as any).new_price_ref.store.shop_id,
+                        brand: (data as any).new_price_ref.store.brand,
+                        model: (data as any).new_price_ref.store.model,
+                      })}
+                      style={{
+                        backgroundColor: theme.accent, paddingHorizontal: 10,
+                        paddingVertical: 4, borderRadius: radius.pill,
+                      }}
+                    >
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: '#fff' }}>
+                        اشترِ واحداً جديداً ←
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : null}
             </View>
