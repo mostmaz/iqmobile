@@ -2161,10 +2161,11 @@ r.get('/analytics/daily', requireAdmin, (req, res) => {
 // ─── Social publishing (Buffer → Facebook + Instagram) ───────────────
 // Daily cap: number of publish actions allowed per calendar day. One action
 // = one listing pushed to all connected channels. Tunable via the
-// SOCIAL_DAILY_CAP env (default 3) so it can change without a deploy.
+// SOCIAL_DAILY_CAP env (default 7 — one per slot below) so it can change
+// without a deploy.
 function socialDailyCap() {
   const n = Number(process.env.SOCIAL_DAILY_CAP);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 7;
 }
 function socialStartOfDay() {
   const d = new Date();
@@ -2178,9 +2179,9 @@ function socialUsedToday() {
 
 // Daily posting slots, in Baghdad local time. Iraq is UTC+3 year-round (no
 // DST), so a Baghdad hour H maps to UTC hour H-3. Each publish is scheduled
-// at the earliest upcoming slot not already claimed by a pending post, so
-// three publishes a day land at 10:00, 15:00, 18:00 exactly.
-const SOCIAL_SLOTS_BAGHDAD = [10, 15, 18];
+// at the earliest upcoming slot not already claimed by a pending post, so a
+// full day of publishes lands every two hours from 10:00 to 22:00 exactly.
+const SOCIAL_SLOTS_BAGHDAD = [10, 12, 14, 16, 18, 20, 22];
 const BAGHDAD_OFFSET_MS = 3 * 60 * 60 * 1000;
 function nextSocialSlot() {
   const now = Date.now();
