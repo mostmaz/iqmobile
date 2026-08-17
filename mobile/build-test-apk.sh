@@ -14,6 +14,16 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Toolchain pins so the script works from ANY shell, not just one whose
+# profile happens to export these: gradle needs a JDK (Homebrew openjdk@17)
+# and the RN bundle step needs node (nvm's v22 — the repo default).
+if [ -z "${JAVA_HOME:-}" ] && [ -d "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home" ]; then
+  export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+fi
+if [ -d "$HOME/.nvm/versions/node/v22.22.3/bin" ]; then
+  export PATH="$HOME/.nvm/versions/node/v22.22.3/bin:$PATH"
+fi
+
 API_URL="${1:-}"
 if [ -z "$API_URL" ]; then
   echo "usage: $0 <api-base-url>   e.g. $0 http://192.168.3.72:4400"
