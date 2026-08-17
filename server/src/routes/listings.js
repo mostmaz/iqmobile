@@ -67,6 +67,31 @@ const imgUpload = multer({
   },
 });
 
+// Listing videos — same trust model as images (client mimes are hearsay,
+// so extension + mime are both whitelisted and the stored name is ours),
+// but bigger: the app compresses to ~720p H.264 before uploading, which
+// lands most 30–60s clips between 5 and 20MB. The 50MB ceiling is the
+// "client compression failed" backstop, not the expectation.
+const ALLOWED_VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v']);
+const ALLOWED_VIDEO_MIME = new Set(['video/mp4', 'video/quicktime', 'video/x-m4v']);
+const vidStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UP),
+  filename: (_req, file, cb) => {
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    cb(null, 'vid_' + crypto.randomBytes(12).toString('hex') + (ALLOWED_VIDEO_EXT.has(ext) ? ext : '.mp4'));
+  },
+});
+const vidUpload = multer({
+  storage: vidStorage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_VIDEO_MIME.has(file.mimetype)) return cb(new Error('not_video'));
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    if (ext && !ALLOWED_VIDEO_EXT.has(ext)) return cb(new Error('not_video'));
+    cb(null, true);
+  },
+});
+
 // Length caps for free-text fields. Cap is express.json({limit:'256kb'})
 // at the top, but individual columns shouldn't be allowed to balloon
 // inside that budget — a 200KB description blows up every browse-page
@@ -103,7 +128,18 @@ function attachImages(rows) {
   const imgs = db
     .prepare(`SELECT id, listing_id, image_path, position FROM listing_images WHERE listing_id IN (${placeholders}) ORDER BY position ASC, id ASC`)
     .all(...ids);
-  const byId = new Map(rows.map((r) => [r.id, { ...r, images: [], accessories: JSON.parse(r.accessories_json || '[]') }]));
+  const byId = new Map(rows.map((r) => {
+    // Raw video columns never leave through a list response: an unapproved
+    // clip's path must not be discoverable. Rows keep a has_video flag for
+    // the card badge; the detail endpoint alone decides who sees the file.
+    const { video_path, video_status, video_uploaded_at, ...pub } = r;
+    return [r.id, {
+      ...pub,
+      has_video: video_status === 'approved',
+      images: [],
+      accessories: JSON.parse(r.accessories_json || '[]'),
+    }];
+  }));
   for (const im of imgs) byId.get(im.listing_id)?.images.push(im);
   return Array.from(byId.values());
 }
@@ -603,8 +639,17 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     }
   }
 
+  // Review-gated video. An approved clip is public; a pending or rejected
+  // one exists only for its owner (with its status, so the app can show
+  // the "awaiting approval" notice). Everyone else gets null — and the raw
+  // columns are stripped below so the SELECT * spread can't leak the path.
+  const isOwner = !!req.user && req.user.id === row.seller_id;
+  const video = row.video_path && (row.video_status === 'approved' || isOwner)
+    ? { path: row.video_path, status: row.video_status }
+    : null;
   res.json({
     ...withImgs,
+    video,
     orders_enabled: !!storefrontShop,
     store_chat: storeChat,
     // Falls back to null (not the login phone) when no support line is set:
@@ -804,6 +849,45 @@ r.delete('/:id(\\d+)/images/:imageId(\\d+)', requireAuth(), (req, res) => {
   if (!img) return res.status(404).json({ error: 'not_found' });
   try { fs.unlinkSync(path.join(UP, path.basename(img.image_path))); } catch {}
   db.prepare('DELETE FROM listing_images WHERE id=?').run(img.id);
+  res.json({ ok: true });
+});
+
+// ─── listing video (optional, one, review-gated) ─────────────────────
+// The upload succeeds instantly for the seller but the clip stays private
+// until an operator approves it — the wizard shows that notice up front.
+// Re-uploading replaces the old clip and re-enters review.
+r.post('/:id(\\d+)/video', requireAuth(), uploadLimiter, vidUpload.single('video'), (req, res) => {
+  const row = loadListing(req.params.id);
+  if (!row) { if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} } return res.status(404).json({ error: 'not_found' }); }
+  if (row.seller_id !== req.user.id) {
+    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  if (!req.file || req.file.size <= 0) return res.status(400).json({ error: 'no_file' });
+
+  // Replace, not accumulate — one video per listing keeps review humane.
+  if (row.video_path) { try { fs.unlinkSync(path.join(UP, path.basename(row.video_path))); } catch {} }
+  const p = `/uploads/${req.file.filename}`;
+  const t = now();
+  db.prepare("UPDATE phone_listings SET video_path=?, video_status='pending', video_uploaded_at=?, updated_at=? WHERE id=?")
+    .run(p, t, t, row.id);
+  // Operators review from the dashboard queue; the push is the doorbell.
+  pushToAdmins(
+    'video.new',
+    'فيديو بانتظار الموافقة',
+    `${row.brand} ${row.model} · إعلان #${row.id}`,
+    { listing_id: row.id },
+  ).catch(() => {});
+  res.json({ ok: true, video: { path: p, status: 'pending' } });
+});
+
+r.delete('/:id(\\d+)/video', requireAuth(), (req, res) => {
+  const row = loadListing(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+  if (row.video_path) { try { fs.unlinkSync(path.join(UP, path.basename(row.video_path))); } catch {} }
+  db.prepare('UPDATE phone_listings SET video_path=NULL, video_status=NULL, video_uploaded_at=NULL, updated_at=? WHERE id=?')
+    .run(now(), row.id);
   res.json({ ok: true });
 });
 

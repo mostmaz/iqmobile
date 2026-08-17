@@ -83,6 +83,11 @@ export interface Listing {
   contact_whatsapp?: string | null;
   seller_phone?: string | null;
   phone_visible?: boolean;
+  // Review-gated listing video. Detail endpoint only: approved clips are
+  // public, a pending one is visible to its owner (status says so). Feed
+  // rows carry has_video instead of the path.
+  video?: { path: string; status: 'pending' | 'approved' | 'rejected' } | null;
+  has_video?: boolean;
   // Featured-listing revenue fields. `is_featured` is the server-computed
   // (clock-safe) flag the card badges off; the rest describe the window.
   is_featured?: boolean;

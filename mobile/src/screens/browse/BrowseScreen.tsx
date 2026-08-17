@@ -642,7 +642,7 @@ function PriceStepper({
       </Text>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <TouchableOpacity onPress={dec} disabled={decDisabled} activeOpacity={0.7} style={{
-          width: 32, height: 32, borderRadius: 999,
+          width: 28, height: 28, borderRadius: 999,
           backgroundColor: theme.chipBg,
           alignItems: 'center', justifyContent: 'center',
           opacity: decDisabled ? 0.35 : 1,
@@ -659,14 +659,18 @@ function PriceStepper({
           returnKeyType="done"
           selectTextOnFocus
           accessibilityLabel={label}
+          // "3,000,000+" between two stepper buttons overflowed at the old
+          // 15pt bold and read as a wall of digits. 12.5pt plus slimmer
+          // buttons (28pt, below) gives the full number room on every
+          // device width without truncation.
           style={{
             flex: 1, textAlign: 'center', padding: 0,
-            fontFamily: fonts.ltrBold, fontSize: 15, fontWeight: '700', color: theme.ink,
+            fontFamily: fonts.ltrBold, fontSize: 12.5, fontWeight: '700', color: theme.ink,
             writingDirection: 'ltr',
           }}
         />
         <TouchableOpacity onPress={inc} disabled={incDisabled} activeOpacity={0.7} style={{
-          width: 32, height: 32, borderRadius: 999,
+          width: 28, height: 28, borderRadius: 999,
           backgroundColor: theme.chipBg,
           alignItems: 'center', justifyContent: 'center',
           opacity: incDisabled ? 0.35 : 1,

@@ -1395,6 +1395,51 @@ function validateBannerLink(link_type, link_value) {
   return /^https?:\/\/.+/i.test(link_value) ? null : 'bad_link';
 }
 
+// ─── listing videos: the review queue ────────────────────────────────
+// A pending clip is invisible to buyers until someone here watches it and
+// decides. Approve publishes it on the listing; reject deletes the file
+// and clears the slot so the seller can try a different clip.
+r.get('/videos', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved'].includes(req.query.status) ? req.query.status : 'pending';
+  res.json(db.prepare(
+    `SELECT l.id, l.brand, l.model, l.storage, l.asking_price, l.governorate,
+            l.video_path, l.video_status, l.video_uploaded_at,
+            u.display_name AS seller_name, u.phone AS seller_phone,
+            (SELECT image_path FROM listing_images
+              WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS cover_image
+       FROM phone_listings l
+       LEFT JOIN users u ON u.id = l.seller_id
+      WHERE l.video_status = ?
+      ORDER BY l.video_uploaded_at DESC LIMIT 200`,
+  ).all(status));
+});
+
+r.post('/videos/:listingId(\\d+)/approve', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.listingId);
+  if (!row || !row.video_path) return res.status(404).json({ error: 'not_found' });
+  db.prepare("UPDATE phone_listings SET video_status='approved', updated_at=? WHERE id=?").run(now(), row.id);
+  if (row.seller_id && db.prepare('SELECT 1 FROM users WHERE id=?').get(row.seller_id)) {
+    notify(row.seller_id, 'video.approved', { listing_id: row.id },
+      { title: 'تمت الموافقة على الفيديو ✅', body: `${row.brand} ${row.model} — الفيديو ظاهر الآن على إعلانك` });
+  }
+  res.json({ ok: true });
+});
+
+r.post('/videos/:listingId(\\d+)/reject', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.listingId);
+  if (!row || !row.video_path) return res.status(404).json({ error: 'not_found' });
+  // Delete the file, not just the flag — a rejected clip has no business
+  // occupying droplet disk, and clearing the slot lets the seller retry.
+  try { fs.unlinkSync(path.join(UPLOADS, path.basename(row.video_path))); } catch {}
+  db.prepare('UPDATE phone_listings SET video_path=NULL, video_status=NULL, video_uploaded_at=NULL, updated_at=? WHERE id=?')
+    .run(now(), row.id);
+  if (row.seller_id && db.prepare('SELECT 1 FROM users WHERE id=?').get(row.seller_id)) {
+    notify(row.seller_id, 'video.rejected', { listing_id: row.id },
+      { title: 'لم تتم الموافقة على الفيديو', body: `${row.brand} ${row.model} — يمكنك رفع فيديو آخر من تعديل الإعلان` });
+  }
+  res.json({ ok: true });
+});
+
 r.get('/banners', requireAdmin, (_req, res) => {
   res.json(db.prepare('SELECT * FROM banners ORDER BY placement ASC, position ASC, id ASC').all());
 });
@@ -2054,6 +2099,10 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     // Orders nobody has acted on yet. The most time-critical queue here —
     // a COD customer is waiting on a phone call.
     orders: count("SELECT COUNT(*) AS n FROM orders WHERE status='pending'"),
+    // Seller-uploaded listing videos awaiting a watch-and-decide. Held
+    // clips are invisible to buyers, so every hour here is seller goodwill
+    // burning.
+    videos: count("SELECT COUNT(*) AS n FROM phone_listings WHERE video_status='pending'"),
     // Shops waiting on a review decision. This used to be "registered in the
     // last 7 days", which was a soft signal that decayed on its own whether
     // or not anyone acted. Now that registration actually blocks on review,

@@ -885,6 +885,15 @@ addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 // rejects these outright, so a placeholder price can never become a charge.
 addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
 
+// Optional seller-uploaded video, ONE per listing. Held for review: the
+// public listing shows it only once an operator approves (video_status
+// 'pending' → 'approved'), because moderating a 30-second video after it
+// went live is too late. Path cleared on rejection so the seller can try
+// again with a different clip.
+addColumnIfMissing('phone_listings', 'video_path TEXT');
+addColumnIfMissing('phone_listings', 'video_status TEXT');
+addColumnIfMissing('phone_listings', 'video_uploaded_at INTEGER');
+
 // Key specs shown on the storefront product page: [{label, value}, …].
 // A JSON column rather than a table because specs are always read as a whole
 // list for one product, never queried or aggregated across products — a

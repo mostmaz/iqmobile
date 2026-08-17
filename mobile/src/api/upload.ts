@@ -32,6 +32,20 @@ export function fullImageUrl(rel?: string | null): string {
   return `${getBaseUrl()}${rel}`;
 }
 
+// Optional listing video. The clip should already be compressed (see
+// lib/videoCompress); this just ships it. The server answers pending —
+// the wizard has already told the seller the clip waits for approval.
+export async function uploadListingVideo(listingId: number, localUri: string): Promise<{ ok: boolean }> {
+  const raw = localUri.split('/').pop() || 'video.mp4';
+  const ext = (raw.split('.').pop() || '').toLowerCase();
+  const ok = ['mp4', 'mov', 'm4v'].includes(ext);
+  const filename = ok ? raw : 'video.mp4';
+  const type = ext === 'mov' ? 'video/quicktime' : ext === 'm4v' ? 'video/x-m4v' : 'video/mp4';
+  const fd = new FormData();
+  fd.append('video', { uri: localUri, name: filename, type } as any);
+  return postForm(`${getBaseUrl()}/listings/${listingId}/video`, fd);
+}
+
 export async function sendChatImage(chatId: number, localUri: string, body?: string): Promise<ChatMessage & { blocked?: boolean }> {
   const filename = localUri.split('/').pop() || 'image.jpg';
   const fd = new FormData();

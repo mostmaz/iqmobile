@@ -487,6 +487,40 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
+        {/* Review-gated listing video. Approved → everyone sees the play
+            card; the owner also sees their pending clip plus the amber
+            "not public yet" note. Playback hands the mp4 URL to the OS
+            player — no native video dependency needed. */}
+        {(data as any).video ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => require('react-native').Linking.openURL(fullImageUrl((data as any).video.path)).catch(() => {})}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+                backgroundColor: theme.surface, borderRadius: radius.xxl,
+                borderWidth: 1, borderColor: theme.line, padding: 14,
+              }}
+            >
+              <Text style={{ fontSize: 22 }}>▶️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
+                  فيديو الإعلان
+                </Text>
+                {isMine && (data as any).video.status === 'pending' ? (
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: '#B07A28', textAlign: 'right', marginTop: 2 }}>
+                    بانتظار موافقة الإدارة — لا يظهر للمشترين بعد
+                  </Text>
+                ) : (
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                    اضغط للمشاهدة
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* A finished listing must not offer a way to contact the seller.
             The feed keeps sold and expired ads visible because they're a
             useful price record, but a 60-day-dead listing that renders call,

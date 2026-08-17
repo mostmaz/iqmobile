@@ -18,7 +18,8 @@ import { Listings, Brands, DeviceCatalog, type Condition } from '../../api/endpo
 import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { BrandListModal } from '../../components/BrandListModal';
 import { useTrack } from '../../analytics/track';
-import { uploadListingImages } from '../../api/upload';
+import { uploadListingImages, uploadListingVideo } from '../../api/upload';
+import { compressVideo } from '../../lib/videoCompress';
 import { ar } from '../../i18n/ar';
 import { compressForListing } from '../../lib/imageCompress';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
@@ -117,6 +118,10 @@ export default function PostListingScreen({ navigation }: any) {
   const [city, setCity] = useState('');
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  // Optional video: local uri after compression, plus a busy flag while the
+  // compressor runs (it can take a few seconds on a long clip).
+  const [video, setVideo] = useState<{ uri: string; sizeMB: number | null; compressed: boolean } | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
 
   // Contact step — public on the listing. WhatsApp is optional and can
   // mirror the contact phone via the "same number" toggle.
@@ -142,6 +147,7 @@ export default function PostListingScreen({ navigation }: any) {
     setAccessories([]);
     setAskingPrice(''); setCity(''); setDescription('');
     setImages([]);
+    setVideo(null); setVideoBusy(false);
     setContactPhone(user?.phone || ''); setContactWhatsapp(''); setWaSameAsPhone(false);
   }, [user?.phone]);
 
@@ -180,6 +186,38 @@ export default function PostListingScreen({ navigation }: any) {
 
   function toggleAcc(a: string) {
     setAccessories((s) => s.includes(a) ? s.filter((x) => x !== a) : [...s, a]);
+  }
+
+  async function pickVideo() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('الفيديو', 'فعّل إذن الوصول للوسائط من إعدادات الجهاز.'); return;
+    }
+    const r = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsMultipleSelection: false,
+      // A minute is plenty to show a phone working; longer clips balloon
+      // upload sizes past what mobile data here tolerates.
+      videoMaxDuration: 60,
+    });
+    if (r.canceled || !r.assets?.length) return;
+    const asset = r.assets[0];
+    setVideoBusy(true);
+    try {
+      // Compress BEFORE upload (≈720p H.264). On builds without the native
+      // compressor the original file is used and the server cap applies.
+      const out = await compressVideo(asset.uri);
+      let sizeMB: number | null = null;
+      try {
+        const info = await fetch(out.uri, { method: 'HEAD' }).catch(() => null);
+        const len = info?.headers?.get?.('content-length');
+        sizeMB = len ? Math.round((Number(len) / 1048576) * 10) / 10
+          : asset.fileSize ? Math.round((asset.fileSize / 1048576) * 10) / 10 : null;
+      } catch {}
+      setVideo({ uri: out.uri, sizeMB, compressed: out.compressed });
+    } finally {
+      setVideoBusy(false);
+    }
   }
 
   async function pickImages() {
@@ -259,6 +297,15 @@ export default function PostListingScreen({ navigation }: any) {
         } catch (uploadErr) {
           try { await Listings.remove(listing.id); } catch {}
           throw uploadErr;
+        }
+      }
+      // Video is OPTIONAL and review-gated — its failure must never cost
+      // the seller a five-step listing. Post without it and say so.
+      if (video) {
+        try {
+          await uploadListingVideo(listing.id, video.uri);
+        } catch {
+          Alert.alert('الفيديو لم يُرفع', 'إعلانك منشور بدون الفيديو. يمكنك المحاولة لاحقاً.');
         }
       }
       return listing;
@@ -685,6 +732,51 @@ export default function PostListingScreen({ navigation }: any) {
                 </TouchableOpacity>
               ) : null}
             </View>
+
+            {/* Optional video. One clip, compressed on-device, and held for
+                review — the notice sets that expectation BEFORE upload so
+                "why isn't my video showing" support calls never start. */}
+            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', marginTop: 18, marginBottom: 8 }}>
+              فيديو للجهاز (اختياري)
+            </Text>
+            {video ? (
+              <View style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+                backgroundColor: theme.surface, borderRadius: radius.lg,
+                borderWidth: 1, borderColor: theme.line, padding: 12,
+              }}>
+                <Text style={{ fontSize: 22 }}>🎬</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
+                    فيديو جاهز للرفع
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                    {video.sizeMB ? `${video.sizeMB} MB` : ''}{video.sizeMB && video.compressed ? ' · ' : ''}{video.compressed ? 'مضغوط' : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setVideo(null)} hitSlop={8} style={{ width: 26, height: 26, borderRadius: 999, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ color: '#fff' }}>×</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={pickVideo}
+                disabled={videoBusy}
+                style={{
+                  borderRadius: radius.lg, borderWidth: 2, borderColor: theme.line,
+                  borderStyle: 'dashed', paddingVertical: 16, alignItems: 'center',
+                  opacity: videoBusy ? 0.6 : 1,
+                }}
+              >
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle }}>
+                  {videoBusy ? 'جارٍ ضغط الفيديو…' : '+ أضف فيديو (حتى ٦٠ ثانية)'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {/* The small notice the review gate promises. */}
+            <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: '#B07A28', textAlign: 'right', marginTop: 6, lineHeight: 17 }}>
+              ملاحظة: الفيديو لا يُنشر مباشرة — يظهر على إعلانك بعد موافقة الإدارة.
+            </Text>
           </>
         )}
         {step === 5 && (

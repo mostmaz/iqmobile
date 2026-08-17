@@ -43,6 +43,8 @@ const KIND_LABEL: Record<string, string> = {
   'order.delivered': 'تم تسليم طلبك 🎉',
   'order.cancelled': 'أُلغي طلبك',
   'order.returned': 'تم تسجيل إرجاع طلبك',
+  'video.approved': 'تمت الموافقة على الفيديو ✅',
+  'video.rejected': 'لم تتم الموافقة على الفيديو',
 };
 
 // Compose the secondary line under the kind label: "<sender> · <listing>".
