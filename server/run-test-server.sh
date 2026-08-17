@@ -11,6 +11,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# better-sqlite3 is compiled for Node 22; a shell whose default node is v20
+# dies with ERR_DLOPEN_FAILED. Prefer the nvm v22 install when it exists.
+if [ -d "$HOME/.nvm/versions/node/v22.22.3/bin" ]; then
+  export PATH="$HOME/.nvm/versions/node/v22.22.3/bin:$PATH"
+fi
+
 TEST_DB="./data/iqmobile-test.db"
 SOURCE_DB="./data/iqmobile2.db"
 
