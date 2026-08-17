@@ -885,6 +885,56 @@ addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 // rejects these outright, so a placeholder price can never become a charge.
 addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
 
+// Seller pre-agreement to the "بيع بضمان iQ Mobile" service, ticked on the
+// post wizard's review page for used devices. The guarantee BUTTON shows on
+// every eligible used listing regardless — this flag only tells operators
+// the seller already agreed to cooperate (and earns the listing a badge).
+addColumnIfMissing('phone_listings', 'iq_guarantee_optin INTEGER NOT NULL DEFAULT 0');
+
+// ─── ضمان iQ Mobile: escrow-style guarantee orders ───────────────────
+// A buyer asks us to buy a USED device on their behalf: we call them, call
+// the seller, pick the device up, inspect it, send the report, collect a
+// deposit, deliver, and charge a tiered service fee on top of the price.
+// Its own table — orders.status carries a CHECK that SQLite cannot extend,
+// and this pipeline shares no states with COD fulfilment anyway.
+//
+// status is deliberately UNCHECKED (the phone_listings.condition precedent):
+// GUARANTEE_NEXT in src/guarantee.js is the source of truth, enforced at the
+// route. listing_id has no FK — the snapshot columns are the truth, and a
+// deleted listing must not erase order history.
+db.exec(`
+CREATE TABLE IF NOT EXISTS guarantee_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  listing_id INTEGER,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
+  storage TEXT,
+  color TEXT,
+  image_path TEXT,
+  governorate TEXT,
+  asking_price INTEGER NOT NULL,
+  fee_pct INTEGER NOT NULL,
+  fee INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  buyer_phone TEXT NOT NULL,
+  seller_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  seller_phone TEXT,
+  seller_opted_in INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'new',
+  front_payment INTEGER,
+  inspection_report TEXT,
+  cancel_reason TEXT,
+  cancelled_stage TEXT,
+  delivered_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_guarantee_status ON guarantee_orders(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_guarantee_buyer ON guarantee_orders(buyer_id, created_at DESC);
+`);
+
 // Key specs shown on the storefront product page: [{label, value}, …].
 // A JSON column rather than a table because specs are always read as a whole
 // list for one product, never queried or aggregated across products — a

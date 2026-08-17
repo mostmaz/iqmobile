@@ -17,6 +17,7 @@ import { alertWishlistOnListing } from './wishlist.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import { inspectListingAsync } from '../listingInspect.js';
 import { newPriceFor } from '../newPriceRef.js';
+import { quoteFor } from '../guarantee.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -239,8 +240,8 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         seller_id, brand, model, storage, color, condition, battery_health,
         warranty_status, accessories_json, asking_price, governorate, city,
         description, status, contact_phone, contact_whatsapp,
-        created_at, expires_at, updated_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        created_at, expires_at, updated_at, iq_guarantee_optin
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       req.user.id, finalBrand, model, storage || null, color || null, condition,
@@ -258,6 +259,10 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       price, governorate, city || null, description || null,
       'active', phone, wa,
       created, expires, created,
+      // Seller's ضمان iQ pre-agreement from the wizard's review page. Only
+      // meaningful for used devices — the service doesn't cover new ones, so
+      // a stray true on a new listing is forced back to 0.
+      condition !== 'new' && (req.body?.iq_guarantee_optin === true || req.body?.iq_guarantee_optin === 1) ? 1 : 0,
     );
   const row = loadListing(ins.lastInsertRowid);
   // A device suggestion filed from the picker predates the listing, so it
@@ -621,6 +626,10 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     // at the same capacity. Null unless the match is confident — see
     // newPriceRef.js for why every ambiguity resolves to showing nothing.
     new_price_ref: newPriceFor(row),
+    // ضمان iQ quote — {pct, fee, total, seller_opted_in} on eligible USED
+    // listings, null otherwise. Computed here so the app never owns the
+    // tier math; the create endpoint recomputes it again regardless.
+    guarantee: quoteFor(row),
   });
 });
 

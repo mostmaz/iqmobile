@@ -8,6 +8,7 @@ import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
+import { registerGuaranteeRoutes } from './guarantee.js';
 import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
@@ -2054,6 +2055,9 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     // Orders nobody has acted on yet. The most time-critical queue here —
     // a COD customer is waiting on a phone call.
     orders: count("SELECT COUNT(*) AS n FROM orders WHERE status='pending'"),
+    // ضمان iQ requests nobody has called back yet — same urgency as orders:
+    // a buyer tapped the button and is waiting for the confirmation call.
+    guarantee: count("SELECT COUNT(*) AS n FROM guarantee_orders WHERE status='new'"),
     // Shops waiting on a review decision. This used to be "registered in the
     // last 7 days", which was a soft signal that decayed on its own whether
     // or not anyone acted. Now that registration actually blocks on review,
@@ -3034,5 +3038,6 @@ r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
 // already the marketplace-wide admin surface and the storefront is a
 // different job with different questions.
 r.use('/', registerStoreRoutes(requireAdmin, imageUpload, UPLOADS));
+r.use('/', registerGuaranteeRoutes(requireAdmin));
 
 export default r;
