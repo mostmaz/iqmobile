@@ -124,6 +124,13 @@ export default function PostListingScreen({ navigation }: any) {
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [waSameAsPhone, setWaSameAsPhone] = useState(false);
 
+  // بيع بضمان iQ — the seller's pre-agreement that iQ may buy this device
+  // after inspection. Off by default; shown only for used devices on the
+  // review page. It does NOT gate the buyer-side button (that shows on all
+  // eligible used listings) — it earns a badge and saves the operators a
+  // colder call.
+  const [guaranteeOptin, setGuaranteeOptin] = useState(false);
+
   // Android hardware-back: if the user has typed anything (any field
   // dirty) confirm before nuking the wizard. Without this, an accidental
   // back tap at step 4 (after compressing 10 photos) destroys their work
@@ -143,6 +150,7 @@ export default function PostListingScreen({ navigation }: any) {
     setAskingPrice(''); setCity(''); setDescription('');
     setImages([]);
     setContactPhone(user?.phone || ''); setContactWhatsapp(''); setWaSameAsPhone(false);
+    setGuaranteeOptin(false);
   }, [user?.phone]);
 
   // useFocusEffect, NOT useEffect. BackHandler is app-global and this screen
@@ -247,6 +255,8 @@ export default function PostListingScreen({ navigation }: any) {
         description: description || null,
         contact_phone: contactPhone,
         contact_whatsapp: wa,
+        // The server forces this back to 0 for new-condition devices.
+        iq_guarantee_optin: guaranteeOptin,
       });
       // Roll back the listing if image upload fails — otherwise we leave
       // a phantom no-image listing on the server, the user sees an error
@@ -831,6 +841,51 @@ export default function PostListingScreen({ navigation }: any) {
                 ) : null}
               </View>
             </View>
+
+            {/* بيع بضمان iQ — opt-in with the rules, used devices only. */}
+            {condition !== 'new' ? (
+              <View style={{
+                marginTop: 14, padding: 14,
+                backgroundColor: theme.surface, borderRadius: radius.xxl,
+                borderWidth: 1.5, borderColor: guaranteeOptin ? theme.success : theme.line,
+              }}>
+                <TouchableOpacity
+                  onPress={() => setGuaranteeOptin((s) => !s)}
+                  activeOpacity={0.75}
+                  style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}
+                >
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 6,
+                    backgroundColor: guaranteeOptin ? theme.success : 'transparent',
+                    borderWidth: guaranteeOptin ? 0 : 2, borderColor: theme.subtle,
+                    alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {guaranteeOptin ? <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>✓</Text> : null}
+                  </View>
+                  <Text style={{
+                    flex: 1, fontFamily: fonts.arBold, fontSize: 13.5,
+                    color: guaranteeOptin ? theme.success : theme.ink, textAlign: 'right',
+                  }}>
+                    🛡️ أوافق على بيع جهازي عبر ضمان iQ Mobile
+                  </Text>
+                </TouchableOpacity>
+                <View style={{ marginTop: 10, gap: 6 }}>
+                  {[
+                    'iQ Mobile قد تشتري جهازك مباشرة لصالح مشترٍ بعد فحصه',
+                    'نتصل بك للاتفاق قبل أي خطوة — الموافقة هنا ليست بيعاً',
+                    'الفحص لا يُلزمك بالبيع، والجهاز يبقى معك حتى الاتفاق',
+                    'رسوم الخدمة يدفعها المشتري، وتستلم سعرك كاملاً',
+                  ].map((b, i) => (
+                    <View key={i} style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: theme.accent }} />
+                      <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 18 }}>
+                        {b}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             {/* Ready-to-publish hint below the card */}
             <View style={{

@@ -43,6 +43,16 @@ const KIND_LABEL: Record<string, string> = {
   'order.delivered': 'تم تسليم طلبك 🎉',
   'order.cancelled': 'أُلغي طلبك',
   'order.returned': 'تم تسجيل إرجاع طلبك',
+  // ضمان iQ — one kind per pipeline stage; the push carries server-written
+  // Arabic, these labels are for the inbox list.
+  'guarantee.buyer_confirmed': 'تم تأكيد طلب الضمان ✅',
+  'guarantee.seller_confirmed': 'البائع وافق — سنستلم الجهاز',
+  'guarantee.picked_up': 'استلمنا الجهاز للفحص 🔍',
+  'guarantee.inspected': 'تقرير الفحص جاهز 📋',
+  'guarantee.front_paid': 'تم استلام العربون',
+  'guarantee.shipped': 'جهازك في الطريق 🚚',
+  'guarantee.delivered': 'تم تسليم جهازك 🎉',
+  'guarantee.cancelled': 'أُلغي طلب الضمان',
 };
 
 // Compose the secondary line under the kind label: "<sender> · <listing>".
@@ -52,11 +62,13 @@ function subline(item: NotificationRow): string | null {
   // Order notifications carry their code in the payload but never showed it,
   // so "تم توصيل طلبك" never said WHICH order — useless to anyone with more
   // than one in flight.
-  if (item.kind.startsWith('order.')) {
+  if (item.kind.startsWith('order.') || item.kind.startsWith('guarantee.')) {
     const p = item.payload || {};
     const bits: string[] = [];
     if (p.code) bits.push(String(p.code));
-    if (p.total) bits.push(`${Number(p.total).toLocaleString('en-US')} د.ع`);
+    if (p.front_payment) bits.push(`العربون ${Number(p.front_payment).toLocaleString('en-US')} د.ع`);
+    else if (p.remaining) bits.push(`المتبقي ${Number(p.remaining).toLocaleString('en-US')} د.ع`);
+    else if (p.total) bits.push(`${Number(p.total).toLocaleString('en-US')} د.ع`);
     if (bits.length) return bits.join(' · ');
   }
   const cs = item.chat_summary;
@@ -129,8 +141,12 @@ export default function NotificationsScreen({ navigation }: any) {
     }
     // An order notification carries an order_id, not a listing — send the
     // customer to their orders list, which is the only screen that can
-    // actually answer "where is my order".
-    if (item.payload?.order_id || String(item.kind).startsWith('order.')) {
+    // actually answer "where is my order". Guarantee orders live on the
+    // same screen, in their own section.
+    if (
+      item.payload?.order_id || item.payload?.guarantee_id
+      || String(item.kind).startsWith('order.') || String(item.kind).startsWith('guarantee.')
+    ) {
       navigation.navigate('MyOrders');
       return;
     }

@@ -584,6 +584,33 @@ export const Orders = {
   cancel: (id: number) => api<Order>(`/orders/${id}/cancel`, { method: 'POST' }),
 };
 
+// ─── ضمان iQ Mobile (guarantee-backed purchase of a used device) ──────
+// The buyer taps once; everything after is operators on the phone. The
+// listing detail carries a `guarantee` quote ({pct, fee, total}) computed
+// server-side — these helpers never send money, only ids.
+export type GuaranteeStatus =
+  | 'new' | 'buyer_confirmed' | 'seller_confirmed' | 'picked_up'
+  | 'inspected' | 'front_paid' | 'shipped' | 'delivered' | 'cancelled';
+export interface GuaranteeQuote {
+  pct: number; fee: number; total: number; seller_opted_in: boolean;
+}
+export interface GuaranteeOrder {
+  id: number; code: string; listing_id: number | null;
+  brand: string; model: string; storage: string | null; color: string | null;
+  image_path: string | null; governorate: string | null;
+  asking_price: number; fee_pct: number; fee: number; total: number;
+  buyer_phone: string; status: GuaranteeStatus;
+  front_payment: number | null; inspection_report: string | null;
+  cancel_reason: string | null; cancelled_stage: string | null;
+  created_at: number; updated_at: number;
+}
+export const Guarantee = {
+  create: (body: { listing_id: number; buyer_phone: string }) =>
+    api<GuaranteeOrder>('/guarantee/orders', { method: 'POST', body: JSON.stringify(body) }),
+  mine: () => api<GuaranteeOrder[]>('/guarantee/mine'),
+  cancel: (id: number) => api<GuaranteeOrder>(`/guarantee/${id}/cancel`, { method: 'POST' }),
+};
+
 // ─── Storefront (shop browsed as a shop, not as a listings feed) ──────
 //
 // The marketplace's unit is a listing — one device, one price. A storefront's

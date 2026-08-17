@@ -15,6 +15,7 @@ import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
+import { GuaranteeSheet } from '../../components/GuaranteeSheet';
 import { ar } from '../../i18n/ar';
 import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
@@ -37,6 +38,8 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const [imgIdx, setImgIdx] = useState(0);
   // Full-screen image viewer: holds the tapped image index, or null when closed.
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
+  // ضمان iQ purchase sheet.
+  const [guaranteeOpen, setGuaranteeOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['listing', id],
@@ -487,6 +490,46 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
+        {/* اشترِ بضمان iQ — used listings only, quote computed server-side
+            (null hides the card entirely: new devices, storefront stock, the
+            price book, dead listings). The math is shown BEFORE the tap; the
+            sheet re-states it and takes a callback phone. */}
+        {!isMine && data.status === 'active' && (data as any).guarantee ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setGuaranteeOpen(true)}
+              style={{
+                backgroundColor: theme.surface, borderRadius: radius.xxl,
+                borderWidth: 1.5, borderColor: theme.accent, padding: 14,
+                ...shadowSoft,
+              }}
+            >
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
+                <Text style={{ fontSize: 22 }}>🛡️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink, textAlign: 'right' }}>
+                    اشترِ بضمان iQ Mobile
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                    نفحص الجهاز ونوصله لك — {fmtIQD(data.asking_price)} + {fmtIQD((data as any).guarantee.fee)} رسوم
+                    {' = '}
+                    <Text style={{ fontFamily: fonts.ltrBold, color: theme.accentDeep }}>
+                      {fmtIQD((data as any).guarantee.total)}
+                    </Text> د.ع
+                  </Text>
+                  {(data as any).guarantee.seller_opted_in ? (
+                    <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.success, textAlign: 'right', marginTop: 2 }}>
+                      ✓ البائع موافق على ضمان iQ مسبقاً
+                    </Text>
+                  ) : null}
+                </View>
+                <IconChevronLeft size={16} color={theme.subtle} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* A finished listing must not offer a way to contact the seller.
             The feed keeps sold and expired ads visible because they're a
             useful price record, but a 60-day-dead listing that renders call,
@@ -867,6 +910,23 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           images={data.images!}
           startIndex={viewerIdx}
           onClose={() => setViewerIdx(null)}
+        />
+      ) : null}
+
+      {/* ضمان iQ sheet — success stays inside it (no extra nav screens);
+          "متابعة طلباتي" jumps to the Profile tab where MyOrders always
+          exists, because THIS screen lives in five different stacks and
+          only three of them register MyOrders. */}
+      {(data as any).guarantee ? (
+        <GuaranteeSheet
+          visible={guaranteeOpen}
+          listingId={id}
+          deviceTitle={deviceTitle(data.brand, data.model) + (data.storage ? ` · ${data.storage}` : '')}
+          price={data.asking_price}
+          quote={(data as any).guarantee}
+          initialPhone={user?.phone}
+          onClose={() => setGuaranteeOpen(false)}
+          onViewOrders={() => (navigation as any).getParent()?.navigate('Profile', { screen: 'MyOrders' })}
         />
       ) : null}
     </View>
