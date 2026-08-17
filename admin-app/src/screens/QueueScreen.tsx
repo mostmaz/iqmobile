@@ -19,6 +19,7 @@ import { useAuth } from '../lib/auth';
 
 export type Queue = {
   orders: number;
+  guarantee: number;
   inspection: number;
   inspection_errors: number;
   devices: number;
@@ -39,6 +40,7 @@ type Card = {
 // how the web nav happens to group them.
 const CARDS: Card[] = [
   { key: 'orders', label: 'طلبات بانتظار الاتصال', hint: 'زبون ينتظر مكالمة', tone: 'urgent', route: 'Orders' },
+  { key: 'guarantee', label: 'طلبات ضمان iQ', hint: 'مشترٍ ينتظر مكالمة التأكيد', tone: 'urgent', route: 'Guarantee' },
   { key: 'reports', label: 'بلاغات مفتوحة', hint: 'محتوى مُبلَّغ عنه', tone: 'urgent', route: 'Moderation' },
   { key: 'inspection', label: 'إعلانات للفحص', hint: 'بانتظار قرار', tone: 'warn', route: 'Inspection' },
   { key: 'new_shops', label: 'متاجر بانتظار المراجعة', hint: 'قبول أو رفض التسجيل', tone: 'urgent', route: 'ShopReview' },

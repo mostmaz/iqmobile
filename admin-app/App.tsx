@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from './src/lib/auth';
 import LoginScreen from './src/screens/LoginScreen';
 import QueueScreen from './src/screens/QueueScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
+import GuaranteeScreen from './src/screens/GuaranteeScreen';
 import ListingsScreen from './src/screens/ListingsScreen';
 import ShopsScreen from './src/screens/ShopsScreen';
 import ModerationScreen from './src/screens/ModerationScreen';
@@ -77,6 +78,7 @@ const navTheme = {
 /** Where each push kind lands when tapped. */
 function routeFor(kind?: string): string | null {
   if (kind === 'order.new') return 'Orders';
+  if (kind === 'guarantee.new') return 'Guarantee';
   if (kind === 'store.chat') return 'Chats';
   if (kind === 'listing.new') return 'Listings';
   if (kind === 'shop.new') return 'ShopReview';
@@ -143,6 +145,7 @@ function Root() {
       >
         <Stack.Screen name="Tabs" component={Tabs} />
         <Stack.Screen name="Orders" component={OrdersScreen} />
+        <Stack.Screen name="Guarantee" component={GuaranteeScreen} />
         <Stack.Screen name="Listings" component={ListingsScreen} />
         <Stack.Screen name="Shops" component={ShopsScreen} />
         <Stack.Screen name="Moderation" component={ModerationScreen} />
