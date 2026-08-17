@@ -12,9 +12,19 @@ export function setStoredToken(t: string | null) {
 // iqmobile.org/dashboard/, but the API lives at api.iqmobile.org — so we
 // switch to the absolute URL there. import.meta.env.PROD is true during
 // `npm run build` output and false for `npm run dev`.
+//
+// The prod URL is gated on the page's own hostname, not just on PROD:
+// the same built bundle is also served by the LOCAL test server
+// (http://<mac-ip>:4400/dashboard) for testing unreleased features, and a
+// hardcoded prod base there silently sent logins to the production API —
+// wrong server, wrong password, blocked by CORS. Off the iqmobile.org
+// domains the API is always the origin that served the page.
 // Exported because the Import page needs it for the FormData upload
 // (which can't go through api() — that helper sets a JSON content-type).
-export const API_BASE = import.meta.env.PROD ? 'https://api.iqmobile.org' : '';
+export const API_BASE =
+  import.meta.env.PROD && window.location.hostname.endsWith('iqmobile.org')
+    ? 'https://api.iqmobile.org'
+    : '';
 
 // Multipart helper for file uploads. Unlike api() it must NOT set a JSON
 // content-type — the browser sets the multipart boundary itself.
