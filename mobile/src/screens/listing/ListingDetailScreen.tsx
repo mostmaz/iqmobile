@@ -159,6 +159,11 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // more hooks than during the previous render"). All hooks-using state
   // belongs in the unconditional prefix of the component.
   const [chatStarting, setChatStarting] = useState(false);
+  // Store-chat spinner — same rule as chatStarting directly above: this was
+  // declared BELOW the early-return, which crashed the screen with
+  // "Rendered more hooks than during the previous render" the moment data
+  // arrived on a cold open (deep link, push tap — anything uncached).
+  const [storeChatStarting, setStoreChatStarting] = useState(false);
   // Drives the status-bar scrim below: transparent over the hero photo, solid
   // once the page has scrolled far enough that text is passing under the
   // clock. Native-driven so it never lags the finger.
@@ -239,7 +244,6 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // account answers nobody, and binding the thread to the store's own
   // listing puts it in front of the operators with the right device name
   // and the store's real price attached.
-  const [storeChatStarting, setStoreChatStarting] = useState(false);
   async function startStoreChat() {
     const target = (data as any)?.store_chat;
     if (!target) return;
