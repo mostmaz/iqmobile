@@ -18,6 +18,7 @@ import { DailyUsersPage } from './pages/DailyUsersPage';
 import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
 import { OrdersPage } from './pages/OrdersPage';
+import { GuaranteePage } from './pages/GuaranteePage';
 import { StorePage } from './pages/StorePage';
 import { StoreOverviewPage } from './pages/StoreOverviewPage';
 import { StoreTrafficPage } from './pages/StoreTrafficPage';
@@ -36,6 +37,7 @@ export type Page =
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
   | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
+  | 'guarantee'
   | 'name_review' | 'store_card';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
@@ -61,6 +63,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
       { key: 'store', label: 'المخزون' },
       { key: 'store_card', label: 'بطاقة الرئيسية' },
       { key: 'orders', label: 'الطلبات', badgeKey: 'orders' },
+      { key: 'guarantee', label: 'ضمان iQ', badgeKey: 'guarantee' },
       { key: 'store_fulfilment', label: 'التجهيز' },
       { key: 'store_customers', label: 'الزبائن' },
     ],
@@ -105,7 +108,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
 ];
 
 const EMPTY_QUEUE: Queue = {
-  orders: 0, inspection: 0, inspection_errors: 0, devices: 0,
+  orders: 0, guarantee: 0, inspection: 0, inspection_errors: 0, devices: 0,
   reports: 0, feature_requests: 0, new_shops: 0,
 };
 
@@ -192,6 +195,7 @@ export function App() {
       {page === 'devices' && <DeviceSuggestionsPage onChanged={refreshQueue} />}
       {page === 'device_catalog' && <DeviceCatalogPage />}
       {page === 'orders' && <OrdersPage onChanged={refreshQueue} />}
+      {page === 'guarantee' && <GuaranteePage onChanged={refreshQueue} />}
       {page === 'store' && <StorePage />}
       {page === 'store_overview' && <StoreOverviewPage />}
       {page === 'store_traffic' && <StoreTrafficPage />}
