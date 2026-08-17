@@ -7,9 +7,10 @@
 // lives in five different stacks and every screen reachable from it would
 // need registering in all of them.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, Modal, Pressable, TouchableOpacity, TextInput, ActivityIndicator,
+  Keyboard, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme, fonts, radius } from '../theme';
@@ -51,6 +52,20 @@ export function GuaranteeSheet({
   const [err, setErr] = useState('');
   const [code, setCode] = useState<string | null>(null); // set = success state
 
+  // The phone input sits at the very bottom of the sheet — exactly where
+  // the keyboard lands. adjustResize does not apply inside a transparent
+  // Modal and KeyboardAvoidingView is unreliable there (see
+  // DevicePickerModal for the long version), so measure the keyboard and
+  // lift the whole sheet by its height.
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvt, (e: any) => setKbHeight(e?.endCoordinates?.height ?? 0));
+    const hide = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
   async function submit() {
     if (busy) return;
     setBusy(true);
@@ -86,6 +101,8 @@ export function GuaranteeSheet({
             borderTopLeftRadius: 22, borderTopRightRadius: 22,
             paddingHorizontal: 20, paddingTop: 10,
             paddingBottom: Math.max(insets.bottom, 16) + 8,
+            // Rides above the keyboard; 0 when it's closed.
+            marginBottom: kbHeight,
           }}
         >
           <View style={{

@@ -612,13 +612,25 @@ function PriceStepper({
   const atCap = openEndedAtMax && value >= PRICE_MAX;
   // While the field has focus the user's raw keystrokes win; on blur the
   // value is clamped and snapped back to the step grid the filter uses.
+  //
+  // Focus EMPTIES the field rather than preloading the current value. The
+  // old select-to-replace approach swapped "3,000,000" for a raw "3000000"
+  // on focus, which dropped the Android select-all — the first keystroke
+  // APPENDED, and typing 500000 produced "3000000500000" on screen. An
+  // empty field can't be appended to, and leaving it empty keeps the value.
   const [draft, setDraft] = useState<string | null>(null);
-  const display = draft ?? `${fmtIQD(value)}${atCap ? '+' : ''}`;
+  const display = draft === null
+    ? `${fmtIQD(value)}${atCap ? '+' : ''}`
+    // Live thousands separators while typing — a bare "1500000" reads as
+    // a mistake even when it isn't.
+    : (draft === '' ? '' : fmtIQD(Number(draft)));
   const commit = () => {
     if (draft === null) return;
-    const n = Number(digitsOnly(draft));
+    const raw = draft;
     setDraft(null);
-    if (!Number.isFinite(n)) return;
+    if (!raw) return; // left empty → keep the previous value
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return;
     // Clamped, NOT snapped to the stepper's 100,000 grid. Typing 450,000 and
     // watching it become 500,000 is a worse failure than the taps this
     // replaced — nothing about a min/max price query needs that granularity.
@@ -652,13 +664,14 @@ function PriceStepper({
         <TextInput
           value={display}
           onChangeText={(v) => setDraft(digitsOnly(v))}
-          onFocus={() => setDraft(String(value))}
+          onFocus={() => setDraft('')}
           onBlur={commit}
           onSubmitEditing={commit}
           keyboardType="phone-pad"
           returnKeyType="done"
-          selectTextOnFocus
           accessibilityLabel={label}
+          placeholder={`${fmtIQD(value)}${atCap ? '+' : ''}`}
+          placeholderTextColor={theme.subtle}
           style={{
             flex: 1, textAlign: 'center', padding: 0,
             fontFamily: fonts.ltrBold, fontSize: 15, fontWeight: '700', color: theme.ink,

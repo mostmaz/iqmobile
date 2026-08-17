@@ -120,9 +120,16 @@ export default function PostListingScreen({ navigation }: any) {
 
   // Contact step — public on the listing. WhatsApp is optional and can
   // mirror the contact phone via the "same number" toggle.
-  const [contactPhone, setContactPhone] = useState(user?.phone || '');
+  //
+  // The login number is a PLACEHOLDER, not a prefilled value: prefilled it
+  // rendered in full ink and read as something the seller typed. Shown as
+  // the light hint it actually is, with the empty field falling back to it
+  // at every point of use (validation, payload, the WhatsApp mirror, the
+  // review page) — so the default behaviour is unchanged.
+  const [contactPhone, setContactPhone] = useState('');
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [waSameAsPhone, setWaSameAsPhone] = useState(false);
+  const effectivePhone = contactPhone.trim() || user?.phone || '';
 
   // بيع بضمان iQ — the seller's pre-agreement that iQ may buy this device
   // after inspection. Off by default; shown only for used devices on the
@@ -149,9 +156,9 @@ export default function PostListingScreen({ navigation }: any) {
     setAccessories([]);
     setAskingPrice(''); setCity(''); setDescription('');
     setImages([]);
-    setContactPhone(user?.phone || ''); setContactWhatsapp(''); setWaSameAsPhone(false);
+    setContactPhone(''); setContactWhatsapp(''); setWaSameAsPhone(false);
     setGuaranteeOptin(false);
-  }, [user?.phone]);
+  }, []);
 
   // useFocusEffect, NOT useEffect. BackHandler is app-global and this screen
   // is the Sell TAB ROOT, so it never unmounts — a plain useEffect leaves the
@@ -241,7 +248,7 @@ export default function PostListingScreen({ navigation }: any) {
 
   const create = useMutation({
     mutationFn: async () => {
-      const wa = waSameAsPhone ? contactPhone : (contactWhatsapp || null);
+      const wa = waSameAsPhone ? effectivePhone : (contactWhatsapp || null);
       const listing = await Listings.create({
         brand, model, storage: storage || null, color: canonicalColor(color) || null,
         condition,
@@ -253,7 +260,7 @@ export default function PostListingScreen({ navigation }: any) {
         governorate: GOV_AR_TO_EN[govAr],
         city: city || null,
         description: description || null,
-        contact_phone: contactPhone,
+        contact_phone: effectivePhone,
         contact_whatsapp: wa,
         // The server forces this back to 0 for new-condition devices.
         iq_guarantee_optin: guaranteeOptin,
@@ -326,7 +333,7 @@ export default function PostListingScreen({ navigation }: any) {
       // Accept Arabic-Indic digits (٠١٢…) in phone fields. Iraqi keyboards
       // default to them, so a raw /\D/g filter would silently empty the
       // field and block the wizard at step 3 for many real users.
-      const digits = digitsOnly(contactPhone);
+      const digits = digitsOnly(effectivePhone);
       if (digits.length < 10) { setFieldErr('phone'); return setErr('أدخل رقم هاتف صحيح للتواصل'); }
       if (!waSameAsPhone && contactWhatsapp) {
         const waDigits = digitsOnly(contactWhatsapp);
@@ -621,9 +628,11 @@ export default function PostListingScreen({ navigation }: any) {
         {step === 3 && (
           <>
             <FieldLabel>رقم الهاتف للتواصل</FieldLabel>
-            <Input value={contactPhone} onChangeText={setContactPhone} placeholder="07700001234" numeric ltr />
+            <Input value={contactPhone} onChangeText={setContactPhone} placeholder={user?.phone || '07700001234'} numeric ltr />
             <Text style={{ marginTop: 6, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', lineHeight: 18 }}>
-              يظهر للمشترين على صفحة الإعلان — يمكنهم الاتصال أو فتح واتساب مباشرة.
+              {user?.phone
+                ? 'يظهر للمشترين على صفحة الإعلان. اتركه فارغاً لاستخدام رقمك المسجّل.'
+                : 'يظهر للمشترين على صفحة الإعلان — يمكنهم الاتصال أو فتح واتساب مباشرة.'}
             </Text>
 
             <View style={{ marginTop: 14, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -658,7 +667,7 @@ export default function PostListingScreen({ navigation }: any) {
               </View>
             ) : (
               <Text style={{ marginTop: 6, fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textAlign: 'right', writingDirection: 'ltr' }}>
-                واتساب: {contactPhone || '—'}
+                واتساب: {effectivePhone || '—'}
               </Text>
             )}
           </>
@@ -805,7 +814,7 @@ export default function PostListingScreen({ navigation }: any) {
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 8 }}>
                   <IconPhoneIcon size={15} color={theme.subtle} sw={1.7} />
                   <Text style={{ flex: 1, fontFamily: fonts.mono, fontSize: 13, color: theme.ink, textAlign: 'right', writingDirection: 'ltr' }}>
-                    {contactPhone}
+                    {effectivePhone}
                     {(waSameAsPhone || contactWhatsapp) ? (
                       <Text style={{ color: theme.success }}>
                         {'  ·  '}واتساب
