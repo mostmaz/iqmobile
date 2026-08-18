@@ -259,6 +259,9 @@ export const Listings = {
   browse: (f: BrowseFilters = {}) => api<Listing[]>('/listings' + qs(f)),
   mine: (status: 'all' | ListingStatus = 'all') => api<Listing[]>(`/listings/mine?status=${status}`),
   get: (id: number) => api<Listing>(`/listings/${id}`),
+  // Other active listings of the same brand within ±10% of this price —
+  // the detail page's "أجهزة مشابهة" rail. Cross-seller by design.
+  similar: (id: number) => api<Listing[]>(`/listings/${id}/similar`),
   patch: (id: number, body: any) => api<Listing>(`/listings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   remove: (id: number) => api(`/listings/${id}`, { method: 'DELETE' }),
   renew: (id: number) => api<Listing>(`/listings/${id}/renew`, { method: 'POST' }),

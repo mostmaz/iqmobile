@@ -712,7 +712,13 @@ r.get('/:id(\\d+)/similar', optionalAuth(), (req, res) => {
      ORDER BY ABS(l.asking_price - ?) ASC, l.created_at DESC
      LIMIT 12`,
   ).all(row.brand, row.id, lo, hi, row.asking_price);
-  const out = attachImages(rows).map((r2) => ({ ...r2, seller: sellerCard(r2.seller_id) }));
+  // Same shaping rules as the feed: suppressed sellers' numbers stay
+  // suppressed here too — this endpoint used to skip stripContact, which
+  // quietly republished no-contact numbers on every detail page's rail.
+  const out = attachImages(rows).map((r2) => ({
+    ...stripContact(r2),
+    seller: sellerCard(r2.seller_id),
+  }));
   res.json(out);
 });
 

@@ -43,6 +43,17 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     queryFn: () => Listings.get(id),
   });
 
+  // "أجهزة مشابهة" rail — same brand, ±10% price, other sellers. Lives up
+  // here with the other hooks (NOT below the loading early-return — see the
+  // hooks-order note further down). Enabled only once the listing is in so
+  // the two requests don't race on a cold open.
+  const { data: similar } = useQuery({
+    queryKey: ['similar', id],
+    queryFn: () => Listings.similar(id),
+    enabled: !!data,
+    staleTime: 60_000,
+  });
+
   // Fire `listing.viewed` once per detail-page visit. Keyed on the
   // listing id so re-renders don't double-count, but a fresh navigation
   // to the same listing later (different mount) does count — that's
@@ -773,6 +784,66 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.ink, lineHeight: 22, textAlign: 'right' }}>
               {data.description}
             </Text>
+          </View>
+        ) : null}
+
+        {/* أجهزة مشابهة — the market around this phone: same brand, ±10%
+            price, other sellers. push (not navigate) so back returns here.
+            Hidden entirely when the server finds nothing comparable. */}
+        {similar && similar.length > 0 ? (
+          <View style={{ marginTop: 18 }}>
+            <Text style={{
+              fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase',
+              color: theme.subtle, textAlign: 'right', paddingHorizontal: 16, marginBottom: 8,
+            }}>
+              أجهزة مشابهة
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, gap: 10, flexDirection: 'row-reverse' }}
+            >
+              {similar.slice(0, 8).map((s2) => (
+                <TouchableOpacity
+                  key={s2.id}
+                  activeOpacity={0.85}
+                  onPress={() => (navigation as any).push('ListingDetail', { id: s2.id })}
+                  style={{
+                    width: 148, backgroundColor: theme.surface,
+                    borderRadius: radius.xl, borderWidth: 1, borderColor: theme.line,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {s2.images?.[0] ? (
+                    <Img
+                      source={{ uri: fullImageUrl(s2.images[0].image_path) }}
+                      contentFit="cover"
+                      style={{ width: 148, height: 110, backgroundColor: theme.chipBg }}
+                    />
+                  ) : (
+                    <View style={{ width: 148, height: 110, backgroundColor: theme.chipBg }} />
+                  )}
+                  <View style={{ padding: 9 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                      {deviceTitle(s2.brand, s2.model)}
+                    </Text>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                      {[(ar.listing as any)[s2.condition], s2.storage].filter(Boolean).join(' · ')}
+                    </Text>
+                    <Text style={{ fontFamily: fonts.ltrBold, fontSize: 13.5, color: theme.accentDeep, textAlign: 'right', marginTop: 4 }}>
+                      {(s2 as any).price_on_request ? (
+                        <Text style={{ fontFamily: fonts.ar, fontSize: 11.5 }}>السعر عند الطلب</Text>
+                      ) : (
+                        <>
+                          {fmtIQD(s2.asking_price)}
+                          <Text style={{ fontFamily: fonts.ar, fontSize: 9.5, color: theme.subtle }}> د.ع</Text>
+                        </>
+                      )}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         ) : null}
 
