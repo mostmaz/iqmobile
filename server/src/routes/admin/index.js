@@ -1367,6 +1367,11 @@ r.post('/import/:id(\\d+)/approve', requireAdmin, (req, res) => {
 // /uploads through the same multer pipeline as listing images. Public read
 // surface is routes/banners.js (enabled rows only).
 const BANNER_PLACEMENTS = new Set(['home', 'brand']);
+// 'feed' is a VIRTUAL placement (in-feed slot every 5 listings): the table's
+// CHECK only allows home|brand and SQLite can't extend one without a rebuild,
+// so feed banners are stored as home + in_feed=1 and translated at the edges.
+const bannerIn = (p) => (p === 'feed' ? { placement: 'home', in_feed: 1 } : { placement: p, in_feed: 0 });
+const bannerOut = (row) => (row && Number(row.in_feed) === 1 ? { ...row, placement: 'feed' } : row);
 const BANNER_LINK_TYPES = new Set(['listing', 'external']);
 
 // Best-effort cleanup of a just-uploaded file when validation rejects the
@@ -1441,7 +1446,7 @@ r.post('/videos/:listingId(\\d+)/reject', requireAdmin, (req, res) => {
 });
 
 r.get('/banners', requireAdmin, (_req, res) => {
-  res.json(db.prepare('SELECT * FROM banners ORDER BY placement ASC, position ASC, id ASC').all());
+  res.json(db.prepare('SELECT * FROM banners ORDER BY placement ASC, position ASC, id ASC').all().map(bannerOut));
 });
 
 // Per-banner impressions / clicks over a window, keyed by banner id so the
@@ -1472,7 +1477,8 @@ r.post('/banners', requireAdmin, imageUpload.single('image'), (req, res) => {
 
   if (!req.file) return res.status(400).json({ error: 'image_required' });
 
-  const placement = String(b.placement || '').trim();
+  const reqPlacement = String(b.placement || '').trim();
+  const { placement, in_feed } = bannerIn(reqPlacement);
   if (!BANNER_PLACEMENTS.has(placement)) return fail('bad_placement');
 
   // brand only applies to brand placement; blank = "every brand" (NULL).
@@ -1498,11 +1504,11 @@ r.post('/banners', requireAdmin, imageUpload.single('image'), (req, res) => {
   const image_path = `/uploads/${req.file.filename}`;
 
   const id = db.prepare(
-    `INSERT INTO banners(placement, brand, governorate, image_path, link_type, link_value, enabled, position, created_at)
-     VALUES(?,?,?,?,?,?,?,?,?)`,
-  ).run(placement, brand, governorate, image_path, link_type, link_value, enabled, position, now()).lastInsertRowid;
+    `INSERT INTO banners(placement, brand, governorate, image_path, link_type, link_value, enabled, position, created_at, in_feed)
+     VALUES(?,?,?,?,?,?,?,?,?,?)`,
+  ).run(placement, brand, governorate, image_path, link_type, link_value, enabled, position, now(), in_feed).lastInsertRowid;
 
-  res.json(db.prepare('SELECT * FROM banners WHERE id=?').get(id));
+  res.json(bannerOut(db.prepare('SELECT * FROM banners WHERE id=?').get(id)));
 });
 
 r.patch('/banners/:id(\\d+)', requireAdmin, imageUpload.single('image'), (req, res) => {
@@ -1515,10 +1521,13 @@ r.patch('/banners/:id(\\d+)', requireAdmin, imageUpload.single('image'), (req, r
   const fields = [];
   const params = [];
 
-  const placement = b.placement !== undefined ? String(b.placement).trim() : row.placement;
+  const reqPlacement = b.placement !== undefined ? String(b.placement).trim()
+    : (Number(row.in_feed) === 1 ? 'feed' : row.placement);
+  const { placement, in_feed } = bannerIn(reqPlacement);
   if (b.placement !== undefined) {
     if (!BANNER_PLACEMENTS.has(placement)) return fail('bad_placement');
     fields.push('placement=?'); params.push(placement);
+    fields.push('in_feed=?'); params.push(in_feed);
   }
   if (b.brand !== undefined) {
     const brand = b.brand ? String(b.brand).trim() : null;
@@ -1565,7 +1574,7 @@ r.patch('/banners/:id(\\d+)', requireAdmin, imageUpload.single('image'), (req, r
   if (fields.length === 0) return res.json(row);
   db.prepare(`UPDATE banners SET ${fields.join(', ')} WHERE id=?`).run(...params, id);
   if (oldImage) { try { fs.unlinkSync(path.join(UPLOADS, path.basename(oldImage))); } catch { /* ignore */ } }
-  res.json(db.prepare('SELECT * FROM banners WHERE id=?').get(id));
+  res.json(bannerOut(db.prepare('SELECT * FROM banners WHERE id=?').get(id)));
 });
 
 r.delete('/banners/:id(\\d+)', requireAdmin, (req, res) => {

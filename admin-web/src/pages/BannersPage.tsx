@@ -15,7 +15,7 @@ import { compressImage, humanSize } from '../lib/imageCompress';
 
 type Banner = {
   id: number;
-  placement: 'home' | 'brand';
+  placement: 'home' | 'brand' | 'feed';
   brand: string | null;
   governorate: string | null;
   image_path: string;
@@ -215,6 +215,7 @@ export function BannersPage() {
 
   const placementLabel = (b: Banner) => {
     const base = b.placement === 'home' ? 'Home feed'
+      : b.placement === 'feed' ? 'In-feed · every 5'
       : b.brand ? `Brand · ${b.brand}` : 'Brand · Every brand';
     return `${base}  ·  ${b.governorate || 'All Iraq'}`;
   };
@@ -316,6 +317,7 @@ export function BannersPage() {
           <label>Placement</label>
           <select value={placement} onChange={(e) => setPlacement(e.target.value as any)}>
             <option value="home">Home feed (slot 2)</option>
+            <option value="feed">In-feed — every 5 listings</option>
             <option value="brand">Brand view</option>
           </select>
 

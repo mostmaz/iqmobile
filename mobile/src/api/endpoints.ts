@@ -417,7 +417,7 @@ export const Brands = {
 // "every brand" banners (brand === null).
 export interface BannerRow {
   id: number;
-  placement: 'home' | 'brand';
+  placement: 'home' | 'brand' | 'feed';
   brand: string | null;
   governorate: string | null;
   image_path: string;
@@ -428,6 +428,10 @@ export interface BannerRow {
 export const Banners = {
   home: (gov?: string) =>
     api<BannerRow[]>(`/banners?placement=home${gov ? `&gov=${encodeURIComponent(gov)}` : ''}`),
+  // In-feed slots: the pool the browse list cycles through, one banner
+  // after every 5 listings. Managed from the dashboard like home banners.
+  feed: (gov?: string) =>
+    api<BannerRow[]>(`/banners?placement=feed${gov ? `&gov=${encodeURIComponent(gov)}` : ''}`),
   brand: (brand?: string, gov?: string) =>
     api<BannerRow[]>(
       `/banners?placement=brand` +

@@ -31,7 +31,23 @@ r.get('/', (req, res) => {
       db.prepare(
         `SELECT id, placement, brand, governorate, image_path, link_type, link_value, position
            FROM banners
-          WHERE placement='home' AND enabled=1
+          WHERE placement='home' AND enabled=1 AND COALESCE(in_feed,0)=0
+            AND (governorate IS NULL OR governorate = ?)
+          ORDER BY (governorate IS NULL) ASC, position ASC, id ASC`,
+      ).all(gov),
+    );
+  }
+
+  // In-feed slots — the pool the app cycles through, injecting one banner
+  // after every 5 listings. 'feed' is virtual: stored as home+in_feed (the
+  // table's CHECK predates the placement), served here as its own pool so
+  // the carousel and the feed never show the same banner twice at once.
+  if (placement === 'feed') {
+    return res.json(
+      db.prepare(
+        `SELECT id, 'feed' AS placement, brand, governorate, image_path, link_type, link_value, position
+           FROM banners
+          WHERE placement='home' AND enabled=1 AND COALESCE(in_feed,0)=1
             AND (governorate IS NULL OR governorate = ?)
           ORDER BY (governorate IS NULL) ASC, position ASC, id ASC`,
       ).all(gov),

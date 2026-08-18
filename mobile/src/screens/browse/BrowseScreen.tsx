@@ -13,7 +13,7 @@ import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStor
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
-import { BannerCarousel } from '../../components/BannerCarousel';
+import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
 import { StorefrontCard, type Storefront } from '../../components/StorefrontCard';
 import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
@@ -203,6 +203,13 @@ export default function BrowseScreen({ navigation }: any) {
     enabled: !!filters.brand,
     staleTime: 5 * 60 * 1000,
   });
+  // In-feed slots — a separate dashboard-managed pool, injected one banner
+  // after every 5 listings. Empty pool = the feed renders exactly as before.
+  const { data: feedBanners } = useQuery({
+    queryKey: ['banners', 'feed', bannerGov ?? '__all__'],
+    queryFn: () => Banners.feed(bannerGov),
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Build the ordered pool of DISTINCT banners for the top carousel. The
   // carousel auto-flips through every eligible banner; this memo only decides
@@ -248,9 +255,25 @@ export default function BrowseScreen({ navigation }: any) {
   // above the first listing). The carousel item carries a __bannerPool tag so
   // renderItem and keyExtractor can tell it apart from listings.
   const feedData = useMemo(() => {
-    if (bannerPool.length === 0) return items as any[];
-    return [{ __bannerPool: bannerPool }, ...items];
-  }, [items, bannerPool]);
+    const pool = feedBanners ?? [];
+    let out: any[] = items as any[];
+    if (pool.length > 0) {
+      // One banner after every 5th listing, cycling the pool in server
+      // priority order. Positions are stable across pagination because they
+      // derive from the listing's index, not from render order.
+      out = [];
+      let slot = 0;
+      (items as any[]).forEach((it, i) => {
+        out.push(it);
+        if ((i + 1) % 5 === 0) {
+          out.push({ __feedBanner: pool[slot % pool.length], __slot: slot });
+          slot++;
+        }
+      });
+    }
+    if (bannerPool.length === 0) return out;
+    return [{ __bannerPool: bannerPool }, ...out];
+  }, [items, bannerPool, feedBanners]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -509,7 +532,11 @@ export default function BrowseScreen({ navigation }: any) {
 
       <FlatList
         data={feedData}
-        keyExtractor={(item) => (item.__bannerPool ? 'banner-carousel' : String(item.id))}
+        keyExtractor={(item) => (
+          item.__bannerPool ? 'banner-carousel'
+            : item.__feedBanner ? `feed-banner-${item.__slot}`
+              : String(item.id)
+        )}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: tabClearance }}
         // The filter panel lives in this list's header and now holds text
         // inputs. Without this the first tap on a field is swallowed
@@ -521,6 +548,12 @@ export default function BrowseScreen({ navigation }: any) {
           item.__bannerPool ? (
             <BannerCarousel
               banners={item.__bannerPool}
+              onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
+              onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
+            />
+          ) : item.__feedBanner ? (
+            <FeedBanner
+              banner={item.__feedBanner}
               onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
               onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
             />

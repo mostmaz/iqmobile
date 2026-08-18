@@ -65,6 +65,27 @@ function BannerImage({ banner, width, height, onPress }: {
   );
 }
 
+// A single banner card for the in-feed slots (one after every 5 listings).
+// Same art, same tap handling and click beacon as the carousel; its own
+// impression fires once per mount — which, inside a FlatList, is once per
+// time the slot actually scrolls into the render window.
+export function FeedBanner({
+  banner, onOpenListing, onOpenShop,
+}: {
+  banner: BannerRow;
+  onOpenListing: (id: number) => void;
+  onOpenShop?: (id: number) => void;
+}) {
+  useEffect(() => {
+    Banners.track(banner.id, 'impression');
+  }, [banner.id]);
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <BannerImage banner={banner} onPress={() => openBanner(banner, onOpenListing, onOpenShop)} />
+    </View>
+  );
+}
+
 export function BannerCarousel({
   banners, onOpenListing, onOpenShop,
 }: {

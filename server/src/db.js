@@ -885,6 +885,14 @@ addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 // rejects these outright, so a placeholder price can never become a charge.
 addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
 
+// In-feed promo slots: a banner with in_feed=1 appears INSIDE the browse
+// list (one every 5 listings) instead of the top carousel. Stored as
+// placement='home' purely because the banners CHECK predates the idea and
+// SQLite cannot extend a CHECK without rebuilding the table — the routes
+// translate it to/from a virtual 'feed' placement so the dashboard and the
+// app never see the workaround.
+addColumnIfMissing('banners', 'in_feed INTEGER NOT NULL DEFAULT 0');
+
 // Optional seller-uploaded video, ONE per listing. Held for review: the
 // public listing shows it only once an operator approves (video_status
 // 'pending' → 'approved'), because moderating a 30-second video after it
