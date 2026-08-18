@@ -757,7 +757,22 @@ r.get('/reports', requireAdmin, (req, res) => {
      FROM reports r JOIN users u ON u.id = r.reporter_id
      WHERE r.status=? ORDER BY r.created_at DESC LIMIT 200`,
   ).all(status);
-  res.json(rows);
+  // Attach the reported LISTING so the operator can judge and act (delete)
+  // without hunting for it. reports store target_kind/target_id, not a
+  // listing_id column — surface listing_id + a thin listing card for the
+  // 'listing' reports, null for user/chat reports.
+  const listStmt = db.prepare(
+    `SELECT l.id, l.brand, l.model, l.storage, l.asking_price, l.status,
+            (SELECT image_path FROM listing_images
+              WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS cover_image
+       FROM phone_listings l WHERE l.id=?`,
+  );
+  const out = rows.map((r2) => ({
+    ...r2,
+    listing_id: r2.target_kind === 'listing' ? r2.target_id : null,
+    listing: r2.target_kind === 'listing' ? (listStmt.get(r2.target_id) || null) : null,
+  }));
+  res.json(out);
 });
 
 r.patch('/reports/:id(\\d+)', requireAdmin, (req, res) => {

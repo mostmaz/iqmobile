@@ -14,8 +14,23 @@ import { ScreenHeader, ChipRow, Card, Action, ActionRow, ListState, Meta, Title 
 import { PickerSheet } from '../components/editor';
 
 type Report = {
-  id: number; listing_id: number | null; reason: string; note: string | null;
+  id: number; listing_id: number | null; reason: string; detail: string | null;
+  target_kind: string;
   reporter_name: string | null; reporter_phone: string | null; created_at: number;
+  listing: {
+    id: number; brand: string; model: string; storage: string | null;
+    asking_price: number; status: string; cover_image: string | null;
+  } | null;
+};
+
+// Report reason codes → Arabic (the server stores the code).
+const REASON_AR: Record<string, string> = {
+  fake_listing: 'إعلان وهمي',
+  wrong_specs: 'مواصفات خاطئة',
+  scam_attempt: 'محاولة احتيال',
+  inappropriate_chat: 'محادثة غير لائقة',
+  bypass_attempt: 'محاولة تجاوز',
+  other: 'أخرى',
 };
 type Suggestion = {
   id: number; brand: string; model: string; device_type: string;
@@ -58,6 +73,19 @@ export default function ModerationScreen({ navigation, route }: any) {
       api(`/admin/reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     onSuccess: invalidate,
     onError: () => Alert.alert('تعذّر التحديث', 'لم يتم تحديث البلاغ.'),
+  });
+
+  // Delete the reported listing AND close the report in one tap. Order:
+  // remove the listing first (the actual action), then mark the report
+  // reviewed — a failed report-close leaves an open report, which is
+  // recoverable; a closed report over a live listing is not.
+  const deleteReported = useMutation({
+    mutationFn: async ({ reportId, listingId }: { reportId: number; listingId: number }) => {
+      await api(`/admin/listings/${listingId}/remove`, { method: 'PATCH' });
+      await api(`/admin/reports/${reportId}`, { method: 'PATCH', body: JSON.stringify({ status: 'reviewed' }) });
+    },
+    onSuccess: invalidate,
+    onError: () => Alert.alert('تعذّر الحذف', 'لم يتم حذف الإعلان.'),
   });
 
   const decideDevice = useMutation({
@@ -131,13 +159,48 @@ export default function ModerationScreen({ navigation, route }: any) {
         renderItem={({ item }) =>
           tab === 'reports' ? (
             <Card>
-              <Title>{item.reason || 'بلاغ'}</Title>
-              {item.note ? <Meta>{item.note}</Meta> : null}
+              <Title>{REASON_AR[item.reason] || item.reason || 'بلاغ'}</Title>
+              {item.detail ? <Meta>{item.detail}</Meta> : null}
               <Meta>
-                {item.listing_id ? `إعلان #${item.listing_id} · ` : ''}
-                من {item.reporter_name || '—'}{item.reporter_phone ? ` · ${item.reporter_phone}` : ''}
+                بلاغ عن {item.target_kind === 'user' ? 'مستخدم' : item.target_kind === 'chat' ? 'محادثة' : 'إعلان'}
+                {' · '}من {item.reporter_name || '—'}{item.reporter_phone ? ` · ${item.reporter_phone}` : ''}
               </Meta>
+
+              {/* The reported ad itself — what the operator is judging. */}
+              {item.listing ? (
+                <View style={{
+                  flexDirection: 'row-reverse', gap: 10, alignItems: 'center',
+                  marginTop: 8, padding: 8, borderRadius: radius.md, backgroundColor: theme.surfaceAlt,
+                }}>
+                  {item.listing.cover_image ? (
+                    <Image
+                      source={{ uri: item.listing.cover_image.startsWith('http') ? item.listing.cover_image : `${API_BASE}${item.listing.cover_image}` }}
+                      style={{ width: 46, height: 46, borderRadius: 6 }}
+                    />
+                  ) : null}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                      إعلان #{item.listing.id} · {deviceTitle(item.listing.brand, item.listing.model)}
+                    </Text>
+                    <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                      {iqd(item.listing.asking_price)} د.ع{item.listing.status !== 'active' ? ` · ${item.listing.status}` : ''}
+                    </Text>
+                  </View>
+                </View>
+              ) : item.listing_id ? (
+                <Meta>الإعلان #{item.listing_id} غير موجود (ربما حُذف).</Meta>
+              ) : null}
+
               <ActionRow>
+                {item.listing && item.listing.status !== 'removed' ? (
+                  <Action
+                    label="حذف الإعلان"
+                    tone="danger"
+                    busy={deleteReported.isPending}
+                    confirm={{ title: 'حذف الإعلان؟', body: `${item.listing.brand} ${item.listing.model} — يُحذف ويُغلق البلاغ.` }}
+                    onPress={() => deleteReported.mutate({ reportId: item.id, listingId: item.listing!.id })}
+                  />
+                ) : null}
                 <Action
                   label="تمت المراجعة"
                   tone="primary"
