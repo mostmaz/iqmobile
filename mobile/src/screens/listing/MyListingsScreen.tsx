@@ -81,6 +81,25 @@ export default function MyListingsScreen({ navigation }: any) {
           return (
             <View>
               <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+              {/* Engagement at a glance — views lead (the headline metric),
+                  then contacts and saves. Only shown once the server has
+                  attached stats (GET /listings/mine). */}
+              {item.stats ? (
+                <View style={{
+                  marginTop: -6, marginBottom: 12, flexDirection: 'row-reverse',
+                  alignItems: 'center', gap: 14, paddingHorizontal: 6,
+                }}>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>
+                    👁 {item.stats.views.toLocaleString('en-US')} مشاهدة
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>
+                    📞 {item.stats.contacts.toLocaleString('en-US')} تواصل
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>
+                    🔖 {item.stats.saves.toLocaleString('en-US')} حفظ
+                  </Text>
+                </View>
+              ) : null}
               {SHOW_PROMOTE && featured ? (
                 <View style={{ marginTop: -4, marginBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
                   <IconSpark size={12} color={theme.accent} />

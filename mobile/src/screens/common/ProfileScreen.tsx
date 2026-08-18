@@ -8,13 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
 import { Header, FieldLabel, Btn } from '../../components/ui';
-import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag, IconBookmark, IconStore, IconSpark, IconSearch, IconBox } from '../../components/icons';
+import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag, IconBookmark, IconStore, IconSpark, IconSearch, IconBox, IconChat } from '../../components/icons';
 import { Auth, Listings } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
-import { ar } from '../../i18n/ar';
+import { ar, setLang, getLang } from '../../i18n/ar';
 
 export default function ProfileScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -78,6 +78,13 @@ export default function ProfileScreen({ navigation }: any) {
     { Icon: IconBell, label: ar.profile.notifications, onPress: () => navigation.navigate('Notifications') },
     { Icon: IconID, label: ar.profile.edit, onPress: () => navigation.navigate('EditProfile') },
     { Icon: IconShield, label: 'كيف يعمل التطبيق', onPress: () => navigation.navigate('HowItWorks') },
+    { Icon: IconChat, label: 'اللغة / زمان', onPress: () => {
+      Alert.alert('اللغة / زمان', undefined, [
+        { text: 'العربية', onPress: () => { setLang('ar'); } },
+        { text: 'کوردی', onPress: () => { setLang('ku'); } },
+        { text: ar.chat.cancel, style: 'cancel' },
+      ]);
+    } },
   ];
 
   return (

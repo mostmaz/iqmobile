@@ -21,6 +21,7 @@ import { normalizeGovernorate } from '../governorates.js';
 import { notify } from '../notify.js';
 import { pushToAdmins } from '../adminPush.js';
 import { applyStatusToStock } from '../stock.js';
+import { orderLimiter } from '../limits.js';
 
 const r = Router();
 
@@ -65,7 +66,7 @@ export function orderWithItems(row) {
 // Auth required: an order needs someone to notify about status changes, and
 // guests already have a real user row (auto-provisioned at app launch), so
 // this costs a guest nothing.
-r.post('/orders', requireAuth(), (req, res) => {
+r.post('/orders', requireAuth(), orderLimiter, (req, res) => {
   const b = req.body || {};
 
   const rawItems = Array.isArray(b.items) ? b.items : [];

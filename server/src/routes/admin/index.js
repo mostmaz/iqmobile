@@ -1400,6 +1400,40 @@ function validateBannerLink(link_type, link_value) {
   return /^https?:\/\/.+/i.test(link_value) ? null : 'bad_link';
 }
 
+// ─── duplicate-photo fraud guard ─────────────────────────────────────
+// The same image file (same SHA-256) uploaded by TWO DIFFERENT sellers is
+// the classic stolen-photo scam. This groups such hashes and returns the
+// clashing listings so an operator can judge which is the copy. Only
+// active/reserved listings — a sold original legitimately sharing a photo
+// with its own relist isn't fraud, and cross-SELLER is the real signal
+// (one seller reusing a photo across their own ads is fine).
+r.get('/duplicate-photos', requireAdmin, (_req, res) => {
+  const clashes = db.prepare(
+    `SELECT li.image_hash AS hash, COUNT(DISTINCT l.seller_id) AS sellers, COUNT(*) AS uses
+       FROM listing_images li
+       JOIN phone_listings l ON l.id = li.listing_id
+      WHERE li.image_hash IS NOT NULL AND l.status IN ('active','reserved')
+      GROUP BY li.image_hash
+      HAVING sellers > 1
+      ORDER BY sellers DESC, uses DESC
+      LIMIT 100`,
+  ).all();
+  const out = clashes.map((c) => ({
+    hash: c.hash,
+    sellers: c.sellers,
+    listings: db.prepare(
+      `SELECT DISTINCT l.id, l.brand, l.model, l.asking_price, l.status, l.created_at,
+              li.image_path, u.id AS seller_id, u.display_name AS seller_name, u.phone AS seller_phone
+         FROM listing_images li
+         JOIN phone_listings l ON l.id = li.listing_id
+         LEFT JOIN users u ON u.id = l.seller_id
+        WHERE li.image_hash = ? AND l.status IN ('active','reserved')
+        ORDER BY l.created_at ASC`,
+    ).all(c.hash),
+  }));
+  res.json(out);
+});
+
 // ─── listing videos: the review queue ────────────────────────────────
 // A pending clip is invisible to buyers until someone here watches it and
 // decides. Approve publishes it on the listing; reject deletes the file
@@ -2112,6 +2146,13 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     // clips are invisible to buyers, so every hour here is seller goodwill
     // burning.
     videos: count("SELECT COUNT(*) AS n FROM phone_listings WHERE video_status='pending'"),
+    // Distinct image hashes shared across >1 seller among live listings —
+    // the stolen-photo queue. Each is a pair (or more) for a human to judge.
+    dup_photos: count(`SELECT COUNT(*) AS n FROM (
+      SELECT li.image_hash FROM listing_images li
+      JOIN phone_listings l ON l.id = li.listing_id
+      WHERE li.image_hash IS NOT NULL AND l.status IN ('active','reserved')
+      GROUP BY li.image_hash HAVING COUNT(DISTINCT l.seller_id) > 1)`),
     // Shops waiting on a review decision. This used to be "registered in the
     // last 7 days", which was a soft signal that decayed on its own whether
     // or not anyone acted. Now that registration actually blocks on review,

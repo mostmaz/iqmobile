@@ -73,6 +73,8 @@ const isShopAccount = (req) => {
   if (!uid) return false;
   if (getSetting('shops_unlimited_listings') === '0') return false;
   try {
+    // Self-promotion to shop is blocked in PATCH /me, so seller_type='shop'
+    // now means the account really went through shop registration.
     const u = db.prepare('SELECT seller_type FROM users WHERE id=?').get(uid);
     return u?.seller_type === 'shop';
   } catch {
@@ -85,4 +87,13 @@ export const createLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 8,
   skip: isShopAccount,
+});
+
+// Order creation. Each call inserts an order + items and pushes to every
+// operator device, so an unthrottled loop both bloats the table and spams
+// staff. 12/min per IP is far above a real shopper's pace.
+export const orderLimiter = rateLimit({
+  ...baseOpts,
+  windowMs: 60 * 1000,
+  max: 12,
 });

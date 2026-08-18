@@ -313,8 +313,13 @@ r.patch('/me', requireAuth(), (req, res) => {
   if (city !== undefined && (city || null) !== (me.city || null)) {
     fields.push('city=?'); params.push(city || null);
   }
-  if ((seller_type === 'individual' || seller_type === 'shop') && seller_type !== me.seller_type) {
-    fields.push('seller_type=?'); params.push(seller_type);
+  // Becoming a SHOP must go through the shop-registration flow (which sets
+  // up the shop profile and enters review) — not a free-form profile edit.
+  // Allowing seller_type='shop' here let any user self-promote and inherit
+  // the shop rate-limit exemptions (unlimited listings). Downgrading a shop
+  // back to individual is harmless and still allowed.
+  if (seller_type === 'individual' && me.seller_type !== 'individual') {
+    fields.push('seller_type=?'); params.push('individual');
   }
   if (shop_years !== undefined) {
     const n = Number(shop_years);

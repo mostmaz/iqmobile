@@ -1,9 +1,14 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import 'dotenv/config';
 import { db } from './db.js';
 
-const SECRET = process.env.JWT_SECRET || 'dev-secret';
+// No public fallback constant: a committed default is a signing-key leak.
+// Production requires JWT_SECRET (enforced at boot in index.js); when it is
+// genuinely absent (local dev) we mint a random per-process secret — tokens
+// simply don't survive a restart, which is the correct dev behaviour.
+const SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 const TTL = process.env.JWT_TTL || '30d';
 
 export function hashPassword(pw) {

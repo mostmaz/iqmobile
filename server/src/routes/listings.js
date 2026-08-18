@@ -210,6 +210,30 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     accessories, asking_price,
     contact_phone, contact_whatsapp,
   } = req.body || {};
+
+  // Per-ACCOUNT throttle: at most one new listing per hour. The IP-based
+  // createLimiter above catches burst scripting, but a single spammer on
+  // one account posting a listing every few minutes stays under it; this
+  // closes that. Shops are exempt while shops_unlimited_listings is on
+  // (default) — they post catalogues in bulk, same carve-out the IP
+  // limiter uses. Returns retry_after_ms so the app can say "try again
+  // in N minutes"; older builds just show the generic rate message.
+  const shopsUnlimited = getSetting('shops_unlimited_listings') !== '0';
+  let isShop = false;
+  try {
+    // Self-promotion to shop is blocked in PATCH /me (auth.js), so this flag
+    // now reflects a real registered shop.
+    isShop = shopsUnlimited && db.prepare('SELECT seller_type FROM users WHERE id=?').get(req.user.id)?.seller_type === 'shop';
+  } catch {}
+  if (!isShop) {
+    const HOUR = 60 * 60 * 1000;
+    const last = db.prepare(
+      "SELECT created_at FROM phone_listings WHERE seller_id=? AND status != 'removed' ORDER BY created_at DESC LIMIT 1",
+    ).get(req.user.id);
+    if (last && Date.now() - last.created_at < HOUR) {
+      return res.status(429).json({ error: 'listing_hourly_limit', retry_after_ms: HOUR - (Date.now() - last.created_at) });
+    }
+  }
   // Trim every free-text field client-side data could blow up. A 1MB
   // description in a phone listing isn't a feature.
   const model = trim(req.body?.model, MAX_MODEL);
@@ -516,6 +540,11 @@ r.get('/', optionalAuth(), (req, res) => {
 });
 
 // ─── my listings (seller dashboard) ──────────────────────────────────
+// Each row carries its own engagement counts (views / calls+whatsapp /
+// saves) so a seller sees which listings pull interest and which are dead —
+// the nudge to drop a price. Counts come from the same events table the
+// demand dashboard reads; saves from saved_listings. All scoped to this
+// seller's own listings, so there's no cross-user leak.
 r.get('/mine', requireAuth(), (req, res) => {
   const status = req.query.status || 'all';
   let rows;
@@ -524,7 +553,30 @@ r.get('/mine', requireAuth(), (req, res) => {
   } else {
     rows = db.prepare('SELECT * FROM phone_listings WHERE seller_id=? AND status=? ORDER BY created_at DESC').all(req.user.id, status);
   }
-  res.json(attachImages(rows));
+  const withImgs = attachImages(rows);
+  if (withImgs.length) {
+    const ids = withImgs.map((r2) => r2.id);
+    const ph = ids.map(() => '?').join(',');
+    const ev = new Map();
+    for (const e of db.prepare(
+      `SELECT listing_id,
+              SUM(CASE WHEN type='view' THEN 1 ELSE 0 END) AS views,
+              SUM(CASE WHEN type IN ('contact_call','contact_whatsapp') THEN 1 ELSE 0 END) AS contacts
+         FROM events WHERE listing_id IN (${ph}) GROUP BY listing_id`,
+    ).all(...ids)) ev.set(e.listing_id, e);
+    const sv = new Map();
+    for (const e of db.prepare(
+      `SELECT listing_id, COUNT(*) AS saves FROM saved_listings WHERE listing_id IN (${ph}) GROUP BY listing_id`,
+    ).all(...ids)) sv.set(e.listing_id, e.saves);
+    for (const r2 of withImgs) {
+      r2.stats = {
+        views: ev.get(r2.id)?.views || 0,
+        contacts: ev.get(r2.id)?.contacts || 0,
+        saves: sv.get(r2.id) || 0,
+      };
+    }
+  }
+  res.json(withImgs);
 });
 
 // ─── listing detail ──────────────────────────────────────────────────
@@ -830,13 +882,17 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
     return res.status(400).json({ error: 'too_many_images' });
   }
   const t = now();
-  const ins = db.prepare('INSERT INTO listing_images(listing_id, image_path, position, created_at) VALUES(?,?,?,?)');
+  const insWithHash = db.prepare('INSERT INTO listing_images(listing_id, image_path, position, created_at, image_hash) VALUES(?,?,?,?,?)');
   let pos = existing;
   const out = [];
   for (const f of files) {
     if (f.size <= 0) { try { fs.unlinkSync(f.path); } catch {} continue; }
     const p = `/uploads/${f.filename}`;
-    const id = ins.run(row.id, p, pos++, t).lastInsertRowid;
+    // Hash the bytes for stolen-photo detection. Best-effort — a hash
+    // failure must never break the upload, so it degrades to null.
+    let hash = null;
+    try { hash = crypto.createHash('sha256').update(fs.readFileSync(f.path)).digest('hex'); } catch {}
+    const id = insWithHash.run(row.id, p, pos++, t, hash).lastInsertRowid;
     out.push({ id, listing_id: row.id, image_path: p, position: pos - 1 });
   }
   db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(t, row.id);

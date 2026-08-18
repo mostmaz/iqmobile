@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { I18nManager, View, ActivityIndicator, Text } from 'react-native';
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
@@ -50,6 +50,7 @@ import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { AuthProvider } from './src/auth/AuthContext';
 import { CartProvider } from './src/lib/cart';
 import RootNav from './src/navigation';
+import { loadLang, onLangChange } from './src/i18n/ar';
 import { theme } from './src/theme';
 
 const queryClient = new QueryClient();
@@ -74,6 +75,14 @@ function AppInner() {
   // Meta uses for install attribution. No-ops until a real Meta App ID is
   // set in app.json (see src/analytics/meta.ts).
   useEffect(() => { initMeta(); }, []);
+
+  // Language: restore the saved choice on launch, and bump a key whenever it
+  // changes so the tree remounts with the new strings.
+  const [langKey, setLangKey] = useState(0);
+  useEffect(() => {
+    loadLang().then(() => setLangKey((k) => k + 1));
+    return onLangChange(() => setLangKey((k) => k + 1));
+  }, []);
 
   // Notification-tap routing. Server attaches a `kind` (and any extras
   // it needs) to the data payload of every push. We translate that into
@@ -110,7 +119,10 @@ function AppInner() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <CartProvider>
-            <RootNav />
+            {/* key={langKey} remounts the whole nav tree when the language
+                changes, so every screen re-reads the (in-place swapped)
+                string dictionary in the new language. */}
+            <RootNav key={langKey} />
             <StatusBar style="dark" />
           </CartProvider>
         </AuthProvider>

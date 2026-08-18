@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  Alert, Dimensions, Modal, Animated,
+  Alert, Dimensions, Modal, Animated, Share,
 } from 'react-native';
 import { Img } from '../../components/Img';
 import { deviceTitle, ltrNum } from '../../lib/format';
@@ -337,7 +337,17 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               <FloatBtn onPress={onSaveTap} active={isSaved}>
                 <IconBookmark size={16} color={isSaved ? theme.accent : '#fff'} sw={1.7} filled={isSaved} />
               </FloatBtn>
-              <FloatBtn><IconShare size={16} color="#fff" sw={1.7} /></FloatBtn>
+              <FloatBtn onPress={() => {
+                // Share the public web page (OG preview + deep-link back
+                // into the app if installed). WhatsApp/FB groups are where
+                // Iraqi phone trading actually happens, so this is free reach.
+                const url = `https://iqmobile.org/l/${id}`;
+                Share.share({
+                  message: `${deviceTitle(data.brand, data.model)} · ${fmtIQD(data.asking_price)} د.ع\n${url}`,
+                }).catch(() => {});
+              }}>
+                <IconShare size={16} color="#fff" sw={1.7} />
+              </FloatBtn>
             </View>
           </View>
 

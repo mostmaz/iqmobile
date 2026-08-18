@@ -19,6 +19,7 @@ import { DeviceSuggestionsPage } from './pages/DeviceSuggestionsPage';
 import { DeviceCatalogPage } from './pages/DeviceCatalogPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { VideosPage } from './pages/VideosPage';
+import { DuplicatePhotosPage } from './pages/DuplicatePhotosPage';
 import { StorePage } from './pages/StorePage';
 import { StoreOverviewPage } from './pages/StoreOverviewPage';
 import { StoreTrafficPage } from './pages/StoreTrafficPage';
@@ -37,7 +38,7 @@ export type Page =
   | 'listings' | 'users' | 'reports' | 'deals' | 'bypass' | 'settings' | 'import'
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
   | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
-  | 'name_review' | 'store_card' | 'videos';
+  | 'name_review' | 'store_card' | 'videos' | 'dup_photos';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -71,6 +72,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     items: [
       { key: 'inspection', label: 'الفحص', badgeKey: 'inspection' },
       { key: 'videos', label: 'الفيديوهات', badgeKey: 'videos' },
+      { key: 'dup_photos', label: 'صور مكررة', badgeKey: 'dup_photos' },
       { key: 'devices', label: 'الأجهزة المقترحة', badgeKey: 'devices' },
       { key: 'reports', label: 'البلاغات', badgeKey: 'reports' },
       { key: 'bypass', label: 'التحايل' },
@@ -107,7 +109,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
 ];
 
 const EMPTY_QUEUE: Queue = {
-  orders: 0, videos: 0, inspection: 0, inspection_errors: 0, devices: 0,
+  orders: 0, videos: 0, dup_photos: 0, inspection: 0, inspection_errors: 0, devices: 0,
   reports: 0, feature_requests: 0, new_shops: 0,
 };
 
@@ -195,6 +197,7 @@ export function App() {
       {page === 'device_catalog' && <DeviceCatalogPage />}
       {page === 'orders' && <OrdersPage onChanged={refreshQueue} />}
       {page === 'videos' && <VideosPage onChanged={refreshQueue} />}
+      {page === 'dup_photos' && <DuplicatePhotosPage />}
       {page === 'store' && <StorePage />}
       {page === 'store_overview' && <StoreOverviewPage />}
       {page === 'store_traffic' && <StoreTrafficPage />}

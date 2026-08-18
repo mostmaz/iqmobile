@@ -136,7 +136,13 @@ app.use(cors({
 app.use(compression());
 
 app.use(express.json({ limit: '256kb' }));
-app.use('/uploads', express.static('./uploads', { maxAge: '7d' }));
+app.use('/uploads', express.static('./uploads', {
+  maxAge: '7d',
+  // Uploaded files are served from our origin; stop the browser sniffing a
+  // different content-type than we set. The extension allowlist already
+  // blocks SVG/HTML, so this is defense in depth.
+  setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+}));
 
 // Public static pages (privacy policy, etc.). Nginx fronts both
 // api.iqmobile.org and iqmobile.org with the same upstream, so this

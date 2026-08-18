@@ -12,6 +12,7 @@ import type { Page } from './App';
 export type Queue = {
   orders: number;
   videos: number;
+  dup_photos: number;
   inspection: number;
   inspection_errors: number;
   devices: number;
@@ -26,6 +27,7 @@ const TILES: Tile[] = [
   // Orders lead: a COD customer is waiting on a phone call.
   { key: 'orders', label: 'طلبات جديدة', page: 'orders', icon: '🛒' },
   { key: 'videos', label: 'فيديوهات بانتظار الموافقة', page: 'videos', icon: '🎬' },
+  { key: 'dup_photos', label: 'صور مكررة عبر بائعين', page: 'dup_photos', icon: '🕵️' },
   { key: 'inspection', label: 'إعلانات بانتظار الفحص', page: 'inspection', icon: '🔍' },
   { key: 'devices', label: 'أجهزة مقترحة', page: 'devices', icon: '📱' },
   { key: 'reports', label: 'بلاغات مفتوحة', page: 'reports', icon: '🚩' },

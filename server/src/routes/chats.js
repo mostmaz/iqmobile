@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { uploadLimiter } from '../limits.js';
 import { notify } from '../notify.js';
 import { pushToAdmins } from '../adminPush.js';
 
@@ -242,7 +243,7 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
 // chatGuard runs BEFORE multer so unauthorized callers never write a file.
 // (Guest-block middleware removed — guests can now send chat messages;
 // see the rationale on POST /listings/:id/chat above.)
-r.post('/chats/:id(\\d+)/messages', requireAuth(), chatGuard, upload.single('image'), (req, res) => {
+r.post('/chats/:id(\\d+)/messages', requireAuth(), uploadLimiter, chatGuard, upload.single('image'), (req, res) => {
   const chat = req.chat;
 
   // Trim THEN cap so a 2000-char run of spaces doesn't sneak past the

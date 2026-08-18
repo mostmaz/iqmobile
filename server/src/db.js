@@ -885,6 +885,14 @@ addColumnIfMissing('phone_listings', 'sold_at INTEGER');
 // rejects these outright, so a placeholder price can never become a charge.
 addColumnIfMissing('phone_listings', 'price_on_request INTEGER NOT NULL DEFAULT 0');
 
+// SHA-256 of the uploaded image bytes. Exact-match duplicate detection:
+// scammers overwhelmingly re-post the SAME file they downloaded from the
+// original ad, so identical hashes across DIFFERENT sellers is a strong
+// stolen-photo signal (it won't catch re-compressed copies — that needs a
+// perceptual hash and a dependency; this is the zero-cost first line).
+addColumnIfMissing('listing_images', 'image_hash TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS idx_listing_images_hash ON listing_images(image_hash)');
+
 // In-feed promo slots: a banner with in_feed=1 appears INSIDE the browse
 // list (one every 5 listings) instead of the top carousel. Stored as
 // placement='home' purely because the banners CHECK predates the idea and

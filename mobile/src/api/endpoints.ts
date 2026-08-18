@@ -88,6 +88,8 @@ export interface Listing {
   // rows carry has_video instead of the path.
   video?: { path: string; status: 'pending' | 'approved' | 'rejected' } | null;
   has_video?: boolean;
+  // Seller-facing engagement counts, attached only by GET /listings/mine.
+  stats?: { views: number; contacts: number; saves: number } | null;
   // Featured-listing revenue fields. `is_featured` is the server-computed
   // (clock-safe) flag the card badges off; the rest describe the window.
   is_featured?: boolean;

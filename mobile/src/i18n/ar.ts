@@ -1,5 +1,8 @@
-// Arabic strings — RTL only build.
-export const ar = {
+// Arabic strings — RTL only build. This is the source dictionary; the
+// exported `ar` below is a LIVE object whose contents are swapped in
+// place when the user picks a language (Kurdish), so every screen that
+// reads `ar.section.key` at render time sees the active language.
+const AR = {
   app: { name: 'IQ Mobile', tagline: 'سوق الموبايل المستعمل والجديد' },
   auth: {
     login: 'تسجيل الدخول',
@@ -174,6 +177,7 @@ export const ar = {
     listing_not_active: 'الإعلان غير نشط',
     listing_expired: 'انتهت صلاحية الإعلان',
     cannot_renew: 'لا يمكن تجديد هذا الإعلان حالياً',
+    listing_hourly_limit: 'يمكنك نشر إعلان واحد كل ساعة. حاول لاحقاً.',
     // Images
     too_many_images: 'الحد الأقصى 10 صور',
     not_image: 'الملف ليس صورة',
@@ -196,9 +200,60 @@ export const ar = {
     internal: 'حدث خطأ غير متوقع. حاول مرة أخرى.',
     network: 'خطأ في الاتصال',
   },
-} as const;
+};
 
-export type Strings = typeof ar;
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ku } from './ku';
+
+export type Lang = 'ar' | 'ku';
+export type Strings = typeof AR;
+
+// The LIVE dictionary. A stable object reference (so no import breaks) whose
+// contents are replaced in place by setLang. Starts as Arabic.
+export const ar: Strings = JSON.parse(JSON.stringify(AR));
+
+const DICTS: Record<Lang, any> = { ar: AR, ku };
+let currentLang: Lang = 'ar';
+const listeners = new Set<(l: Lang) => void>();
+
+// Deep in-place replace: for identical shapes this keeps `ar`'s reference
+// stable while every leaf becomes the new language's string.
+function applyInto(target: any, src: any) {
+  for (const k of Object.keys(target)) {
+    if (!(k in src)) continue;
+    if (typeof target[k] === 'object' && target[k] !== null) applyInto(target[k], src[k]);
+    else target[k] = src[k];
+  }
+}
+
+export function getLang(): Lang { return currentLang; }
+export function onLangChange(fn: (l: Lang) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+// Swap the active language, persist it, and notify subscribers (the root
+// remounts the tree so all strings refresh).
+export async function setLang(lang: Lang) {
+  if (!DICTS[lang]) return;
+  applyInto(ar, DICTS[lang]);
+  currentLang = lang;
+  listeners.forEach((fn) => fn(lang));
+  try { await AsyncStorage.setItem('app_lang', lang); } catch {}
+}
+
+// Restore the saved language on launch. Call once before rendering the tree.
+export async function loadLang(): Promise<Lang> {
+  try {
+    const saved = (await AsyncStorage.getItem('app_lang')) as Lang | null;
+    if (saved && DICTS[saved] && saved !== currentLang) {
+      applyInto(ar, DICTS[saved]);
+      currentLang = saved;
+    }
+  } catch {}
+  return currentLang;
+}
+
 export const t = (path: string): string => {
   const parts = path.split('.');
   let cur: any = ar;
