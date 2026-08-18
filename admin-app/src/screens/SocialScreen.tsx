@@ -34,10 +34,13 @@ type SocialStatus = {
 
 const abs = (p: string) => (p.startsWith('http') ? p : `${API_BASE}${p}`);
 
-export default function SocialScreen({ navigation }: any) {
+export default function SocialScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
-  const [picked, setPicked] = useState<Listing | null>(null);
+  // When opened from a specific listing (ListingsScreen "post to social"),
+  // route.params.listing pre-selects it so the operator lands straight on the
+  // photo picker — no need to hunt for the listing in the browse list.
+  const [picked, setPicked] = useState<Listing | null>(route?.params?.listing ?? null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [caption, setCaption] = useState('');
   const [done, setDone] = useState<string | null>(null);

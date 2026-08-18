@@ -191,10 +191,18 @@ export default function ListingsScreen({ navigation }: any) {
 
             <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 8, alignItems: 'center' }}>
               {l.cover_image ? (
-                <Image
-                  source={{ uri: abs(l.cover_image) }}
-                  style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.surfaceAlt }}
-                />
+                // Tap the photo to jump straight to this listing's images and
+                // the social composer — no detour through the Social tab's
+                // browse list.
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate('Social', { listing: l })}
+                >
+                  <Image
+                    source={{ uri: abs(l.cover_image) }}
+                    style={{ width: 56, height: 56, borderRadius: radius.md, backgroundColor: theme.surfaceAlt }}
+                  />
+                </TouchableOpacity>
               ) : null}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Title>{deviceTitle(l.brand, l.model)}</Title>
@@ -210,6 +218,9 @@ export default function ListingsScreen({ navigation }: any) {
 
             <ActionRow>
               <Action label="تعديل" tone="primary" onPress={() => setEditing(l)} busy={patch.isPending} />
+              {l.image_count ? (
+                <Action label="نشر" onPress={() => navigation.navigate('Social', { listing: l })} />
+              ) : null}
               {l.status !== 'sold' ? (
                 <Action
                   label="مباع"

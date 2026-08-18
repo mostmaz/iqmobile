@@ -2,7 +2,7 @@
   "expo": {
     "name": "IQ Mobile",
     "slug": "iqmobile",
-    "version": "0.3.3",
+    "version": "0.3.5",
     "scheme": "iqmobile",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 48,
+      "versionCode": 50,
       "intentFilters": [
         {
           "action": "VIEW",
