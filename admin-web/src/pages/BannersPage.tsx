@@ -75,7 +75,7 @@ export function BannersPage() {
 
   // Form state (doubles as add + edit; editingId null = adding).
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [placement, setPlacement] = useState<'home' | 'brand'>('home');
+  const [placement, setPlacement] = useState<'home' | 'brand' | 'feed'>('home');
   const [brand, setBrand] = useState<string>(EVERY_BRAND);
   const [gov, setGov] = useState<string>(ALL_GOV);
   // UI-level mode. 'shop' is a presentation of external+shopUrl, not a
