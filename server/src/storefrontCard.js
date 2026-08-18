@@ -121,7 +121,10 @@ const bestSellingGroups = (shopId, limit) => db.prepare(
 //
 // Now: fold the events table down to a count per listing once, fold that up
 // to a count per brand+model once, then join. Same numbers, no nesting.
-const mostViewedGroups = (shopId, limit, sinceMs) => db.prepare(
+// `skip` drops the leading N products so the card can feature the NEXT most
+// viewed rather than the obvious top few (the operator's choice — the top
+// sellers are already visible everywhere else, this surfaces the runners-up).
+const mostViewedGroups = (shopId, limit, sinceMs, skip = 0) => db.prepare(
   `WITH per_listing AS (
       SELECT e.listing_id AS lid, COUNT(*) AS n
         FROM events e
@@ -144,8 +147,8 @@ const mostViewedGroups = (shopId, limit, sinceMs) => db.prepare(
     WHERE ${LIVE}
     GROUP BY l.brand, LOWER(TRIM(l.model))
     HAVING views > 0
-    ORDER BY views DESC, has_image DESC LIMIT ?`,
-).all(sinceMs, shopId, shopId, limit);
+    ORDER BY views DESC, has_image DESC LIMIT ? OFFSET ?`,
+).all(sinceMs, shopId, shopId, limit, skip);
 
 // Hand-picked. Order follows the order the operator saved, not the DB's.
 function customGroups(shopId, ids) {
@@ -176,7 +179,7 @@ export function resolveStorefrontCard(shopId, cfg = readCardConfig()) {
 
   let groups = [];
   if (cfg.mode === 'best_selling') groups = bestSellingGroups(shopId, CARD_SLOTS);
-  else if (cfg.mode === 'most_viewed') groups = mostViewedGroups(shopId, CARD_SLOTS, Date.now() - VIEW_WINDOW_MS);
+  else if (cfg.mode === 'most_viewed') groups = mostViewedGroups(shopId, CARD_SLOTS, Date.now() - VIEW_WINDOW_MS, CARD_SLOTS);
   else if (cfg.mode === 'custom') groups = customGroups(shopId, cfg.ids).slice(0, CARD_SLOTS);
   // 'newest' IS the fallback, so its own picks are matches, not top-ups —
   // otherwise the dashboard would report "0 matched, 3 topped up" for the
@@ -212,6 +215,6 @@ export function cardModeCounts(shopId) {
   return {
     newest: defaultGroups(shopId, 99).length,
     best_selling: bestSellingGroups(shopId, 99).length,
-    most_viewed: mostViewedGroups(shopId, 99, Date.now() - VIEW_WINDOW_MS).length,
+    most_viewed: mostViewedGroups(shopId, 99, Date.now() - VIEW_WINDOW_MS, CARD_SLOTS).length,
   };
 }
