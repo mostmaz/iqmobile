@@ -42,8 +42,9 @@ function openBanner(
   }
 }
 
-function BannerImage({ banner, width, height, onPress }: {
+function BannerImage({ banner, width, height, onPress, onError }: {
   banner: BannerRow; width?: number; height?: number; onPress: () => void;
+  onError?: () => void;
 }) {
   return (
     <TouchableOpacity
@@ -59,6 +60,7 @@ function BannerImage({ banner, width, height, onPress }: {
       <Img
         source={{ uri: fullImageUrl(banner.image_path) }}
         contentFit="cover"
+        onError={onError}
         style={height ? { width: '100%', height: '100%' } : { width: '100%', aspectRatio: RATIO }}
       />
     </TouchableOpacity>
@@ -76,23 +78,38 @@ export function FeedBanner({
   onOpenListing: (id: number) => void;
   onOpenShop?: (id: number) => void;
 }) {
+  // A banner whose art fails to load must vanish, not sit in the feed as a
+  // full-width empty box.
+  const [broken, setBroken] = useState(false);
   useEffect(() => {
-    Banners.track(banner.id, 'impression');
-  }, [banner.id]);
+    if (!broken) Banners.track(banner.id, 'impression');
+  }, [banner.id, broken]);
+  if (broken) return null;
   return (
     <View style={{ marginBottom: 8 }}>
-      <BannerImage banner={banner} onPress={() => openBanner(banner, onOpenListing, onOpenShop)} />
+      <BannerImage
+        banner={banner}
+        onError={() => setBroken(true)}
+        onPress={() => openBanner(banner, onOpenListing, onOpenShop)}
+      />
     </View>
   );
 }
 
 export function BannerCarousel({
-  banners, onOpenListing, onOpenShop,
+  banners: bannersProp, onOpenListing, onOpenShop,
 }: {
   banners: BannerRow[];
   onOpenListing: (id: number) => void;
   onOpenShop?: (id: number) => void;
 }) {
+  // Banners whose image failed to load are dropped from the rotation — a
+  // broken URL used to render as a full-width empty card (and, with one
+  // banner, a big dead block at the top of the feed).
+  const [failedIds, setFailedIds] = useState<Set<number>>(new Set());
+  const banners = bannersProp.filter((b) => !failedIds.has(b.id));
+  const markFailed = (id: number) =>
+    setFailedIds((s) => { const n = new Set(s); n.add(id); return n; });
   const [width, setWidth] = useState(0);
   const [index, setIndex] = useState(0);
   const indexRef = useRef(0);
@@ -158,11 +175,14 @@ export function BannerCarousel({
     setIndex(i);
   }
 
+  // Every banner failed → nothing to show, take no space at all.
+  if (banners.length === 0) return null;
+
   // Single banner — no carousel, no dots.
   if (banners.length === 1) {
     return (
       <View style={{ marginBottom: 8 }}>
-        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
+        <BannerImage banner={banners[0]} onError={() => markFailed(banners[0].id)} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
       </View>
     );
   }
@@ -184,6 +204,7 @@ export function BannerCarousel({
               banner={item}
               width={width}
               height={height}
+              onError={() => markFailed(item.id)}
               onPress={() => openBanner(item, onOpenListing, onOpenShop)}
             />
           )}
@@ -191,7 +212,7 @@ export function BannerCarousel({
       ) : (
         // First render (width not yet measured) — show the lead banner so
         // there's no empty gap; the carousel takes over once measured.
-        <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
+        <BannerImage banner={banners[0]} onError={() => markFailed(banners[0].id)} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
       )}
 
       {/* Pagination dots — the active one widens into a pill that fills up

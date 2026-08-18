@@ -684,14 +684,14 @@ function PriceStepper({
       backgroundColor: theme.surface,
       borderWidth: 1, borderColor: theme.line,
       borderRadius: radius.lg,
-      padding: 10,
+      padding: 8,
     }}>
-      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right', marginBottom: 6 }}>
+      <Text style={{ fontFamily: fonts.ar, fontSize: 10, color: theme.subtle, textAlign: 'right', marginBottom: 3 }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <TouchableOpacity onPress={dec} disabled={decDisabled} activeOpacity={0.7} style={{
-          width: 28, height: 28, borderRadius: 999,
+          width: 24, height: 24, borderRadius: 999,
           backgroundColor: theme.chipBg,
           alignItems: 'center', justifyContent: 'center',
           opacity: decDisabled ? 0.35 : 1,
@@ -719,7 +719,7 @@ function PriceStepper({
           }}
         />
         <TouchableOpacity onPress={inc} disabled={incDisabled} activeOpacity={0.7} style={{
-          width: 28, height: 28, borderRadius: 999,
+          width: 24, height: 24, borderRadius: 999,
           backgroundColor: theme.chipBg,
           alignItems: 'center', justifyContent: 'center',
           opacity: incDisabled ? 0.35 : 1,

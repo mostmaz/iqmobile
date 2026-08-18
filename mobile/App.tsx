@@ -1,6 +1,12 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
-import { I18nManager, View, ActivityIndicator, Text } from 'react-native';
+import { I18nManager, View, ActivityIndicator, Text, LogBox } from 'react-native';
+
+// Dev-only noise: without a PostHog key (every local run) the provider is
+// deliberately not mounted, and posthog-react-native warns on each mount.
+// The warning teaches nothing and its toast sits exactly where the tab bar
+// is, stealing taps during testing. Release builds have no LogBox.
+LogBox.ignoreLogs(['usePostHog was called without a PostHog client']);
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { setupPushTapHandler } from './src/push/register';
