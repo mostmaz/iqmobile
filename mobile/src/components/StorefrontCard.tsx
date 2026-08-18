@@ -74,17 +74,11 @@ export function StorefrontCard({
   return (
     <View style={{
       marginTop: 10,
-      // 12dp is the feed's rhythm between listing cards, and matching it here
-      // was still too tight: this card and the promo banner directly below it
-      // are both full-width framed blocks — one ringed in a 2px accent border,
-      // one a full-bleed image — so at the spacing that separates two plain
-      // rows they read as one run-on unit. Heavier blocks need a heavier gap.
-      //
-      // 26 was the first attempt at that and still read as run-on on a real
-      // device: the banner's own rounded corners and pale top edge eat into
-      // the gap optically, so the measured 26 lands nearer 11 to the eye.
-      // Measured on the emulator rather than guessed again.
-      marginBottom: 40,
+      // This card and the promo banner below it are both full-width framed
+      // blocks, so they need a touch more air than the 12dp feed rhythm to
+      // not read as one unit — but 40 was too much (a visible dead band).
+      // 18 separates them cleanly without the gap.
+      marginBottom: 18,
       backgroundColor: theme.surface,
       borderRadius: radius.xxl,
       borderWidth: 2,

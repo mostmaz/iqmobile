@@ -148,14 +148,14 @@ export function ListingCard({
             <Text
               numberOfLines={1}
               maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flexShrink: 1, minWidth: 0 }}
+              style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle, flexShrink: 1, minWidth: 0 }}
             >
               {arOf(listing.governorate)}{!compact && listing.city ? ` · ${listing.city}` : ''}
             </Text>
             <Text
               numberOfLines={1}
               maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              style={{ fontFamily: stale ? fonts.arBold : fonts.ar, fontSize: 11, color: theme.subtle, flexShrink: 0 }}
+              style={{ fontFamily: stale ? fonts.arBold : fonts.ar, fontSize: 10.5, color: theme.subtle, flexShrink: 0 }}
             >
               · {stale ? 'غير متوفر حالياً' : fmtRelativeTime(listing.created_at)}
             </Text>
