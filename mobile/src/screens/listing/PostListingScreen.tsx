@@ -783,8 +783,8 @@ export default function PostListingScreen({ navigation }: any) {
           <>
             {/* Eyebrow — explains what they're looking at without yelling. */}
             <Text style={{
-              fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.4,
-              color: theme.subtle, textTransform: 'uppercase',
+              fontFamily: fonts.arBold, fontSize: 11.5,
+              color: theme.subtle,
               textAlign: 'right', marginBottom: 8,
             }}>
               معاينة الإعلان قبل النشر
@@ -856,8 +856,8 @@ export default function PostListingScreen({ navigation }: any) {
                 {/* Price block — accent deep, matching the live detail page */}
                 <View style={{ marginTop: 10, alignItems: 'flex-end' }}>
                   <Text style={{
-                    fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4,
-                    color: theme.subtle, textTransform: 'uppercase',
+                    fontFamily: fonts.arBold, fontSize: 11,
+                    color: theme.subtle,
                   }}>
                     السعر المطلوب
                   </Text>
@@ -900,7 +900,7 @@ export default function PostListingScreen({ navigation }: any) {
                 {description ? (
                   <>
                     <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 14 }} />
-                    <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, color: theme.subtle, textTransform: 'uppercase', textAlign: 'right', marginBottom: 4 }}>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: theme.subtle, textAlign: 'right', marginBottom: 4 }}>
                       الوصف
                     </Text>
                     <Text numberOfLines={4} style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink, textAlign: 'right', lineHeight: 22 }}>
@@ -913,7 +913,7 @@ export default function PostListingScreen({ navigation }: any) {
                 {accessories.length > 0 ? (
                   <>
                     <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 14 }} />
-                    <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, color: theme.subtle, textTransform: 'uppercase', textAlign: 'right', marginBottom: 6 }}>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: theme.subtle, textAlign: 'right', marginBottom: 6 }}>
                       الملحقات
                     </Text>
                     <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 }}>

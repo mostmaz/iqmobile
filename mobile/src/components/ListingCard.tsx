@@ -71,7 +71,7 @@ export function ListingCard({
             backgroundColor: statusBg,
             paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
           }}>
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, letterSpacing: 0.4 }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10 }}>
               {(ar.listing as any)[listing.status]}
             </Text>
           </View>
@@ -81,7 +81,7 @@ export function ListingCard({
             backgroundColor: theme.subtle,
             paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999,
           }}>
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10, letterSpacing: 0.4 }}>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 10 }}>
               آخر سعر معروف
             </Text>
           </View>

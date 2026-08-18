@@ -97,7 +97,7 @@ export function GovPicker({
         </View>
         <View style={{ flex: 1 }}>
           {label ? (
-            <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', color: theme.subtle, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle, textAlign: 'right' }}>
               {label}
             </Text>
           ) : null}

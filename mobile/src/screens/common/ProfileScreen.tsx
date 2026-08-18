@@ -68,16 +68,16 @@ export default function ProfileScreen({ navigation }: any) {
 
   const items: { Icon: any; label: string; onPress: () => void }[] = [
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
-    { Icon: IconBox, label: 'طلباتي', onPress: () => navigation.navigate('MyOrders') },
-    { Icon: IconBookmark, label: 'المفضلة', onPress: () => navigation.navigate('Saved') },
-    { Icon: IconSearch, label: 'عمليات البحث المحفوظة', onPress: () => navigation.navigate('SavedSearches') },
-    { Icon: IconSpark, label: 'قائمة الرغبات', onPress: () => navigation.navigate('Wishlist') },
-    { Icon: IconStore, label: 'المتاجر', onPress: () => navigation.navigate('Shops') },
-    { Icon: IconStore, label: user.seller_type === 'shop' ? 'إدارة متجري' : 'سجّل متجرك', onPress: () => navigation.navigate('ShopRegister') },
-    { Icon: IconSpark, label: 'أعلن معنا', onPress: () => navigation.navigate('Advertise') },
+    { Icon: IconBox, label: ar.profile.orders, onPress: () => navigation.navigate('MyOrders') },
+    { Icon: IconBookmark, label: ar.profile.saved, onPress: () => navigation.navigate('Saved') },
+    { Icon: IconSearch, label: ar.profile.savedSearches, onPress: () => navigation.navigate('SavedSearches') },
+    { Icon: IconSpark, label: ar.profile.wishlist, onPress: () => navigation.navigate('Wishlist') },
+    { Icon: IconStore, label: ar.profile.shops, onPress: () => navigation.navigate('Shops') },
+    { Icon: IconStore, label: user.seller_type === 'shop' ? ar.profile.shopManage : ar.profile.shopRegister, onPress: () => navigation.navigate('ShopRegister') },
+    { Icon: IconSpark, label: ar.profile.advertise, onPress: () => navigation.navigate('Advertise') },
     { Icon: IconBell, label: ar.profile.notifications, onPress: () => navigation.navigate('Notifications') },
     { Icon: IconID, label: ar.profile.edit, onPress: () => navigation.navigate('EditProfile') },
-    { Icon: IconShield, label: 'كيف يعمل التطبيق', onPress: () => navigation.navigate('HowItWorks') },
+    { Icon: IconShield, label: ar.profile.how, onPress: () => navigation.navigate('HowItWorks') },
     { Icon: IconChat, label: 'اللغة / زمان', onPress: () => {
       Alert.alert('اللغة / زمان', undefined, [
         { text: 'العربية', onPress: () => { setLang('ar'); } },
@@ -116,7 +116,7 @@ export default function ProfileScreen({ navigation }: any) {
         </View>
 
         <View style={{ flexDirection: 'row-reverse', gap: 8, marginBottom: 14 }}>
-          <StatTile value={String(stats.listings)} label="إعلان" />
+          <StatTile value={String(stats.listings)} label={ar.profile.statListings} />
           <StatTile
             // Guard against legacy/malformed user rows where rating_count>0
             // but rating_avg is null — that combo previously crashed the
@@ -124,7 +124,7 @@ export default function ProfileScreen({ navigation }: any) {
             value={user.rating_count > 0 && Number.isFinite(user.rating_avg as any)
               ? Number(user.rating_avg).toFixed(1)
               : '—'}
-            label={`${user.rating_count} تقييم`}
+            label={`${user.rating_count} ${ar.profile.statRatings}`}
           />
         </View>
 
@@ -156,7 +156,7 @@ export default function ProfileScreen({ navigation }: any) {
           </TouchableOpacity>
         ) : null}
 
-        <FieldLabel>القوائم</FieldLabel>
+        <FieldLabel>{ar.profile.lists}</FieldLabel>
         {items.map((s, i) => (
           <TouchableOpacity
             key={i}
@@ -260,7 +260,7 @@ export default function ProfileScreen({ navigation }: any) {
         >
           <IconClose size={18} color={theme.danger} sw={1.7} />
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.danger }}>
-            حذف الحساب
+            {ar.profile.deleteAccount}
           </Text>
         </TouchableOpacity>
       </ScrollView>

@@ -287,7 +287,10 @@ export function Input({ value, onChangeText, placeholder, secure, numeric, multi
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
-      placeholderTextColor={theme.subtle}
+      // Placeholders must read as hints, not as entered values — at full
+      // theme.subtle they were dark enough that an empty phone field looked
+      // filled, and users tapped "continue" on nothing.
+      placeholderTextColor="rgba(90,86,79,0.45)"
       secureTextEntry={secure === true}
       keyboardType={kbType}
       multiline={multiline}
@@ -344,7 +347,6 @@ export function Eyebrow({ children, style }: { children: React.ReactNode; style?
     <Text maxFontSizeMultiplier={FONT_SCALE_RELAXED} style={[{
       fontFamily: fonts.arBold,
       fontSize: 11,
-      letterSpacing: 0.4,
       color: theme.subtle,
       textAlign: 'right' }, style]}>{children}</Text>
   );

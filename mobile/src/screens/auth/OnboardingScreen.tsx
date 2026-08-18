@@ -151,8 +151,8 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
           <View>
             <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>IQ Mobile</Text>
             <Text style={{
-              marginTop: 2, fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.4,
-              textTransform: 'uppercase', color: theme.subtle,
+              marginTop: 2, fontFamily: fonts.arBold, fontSize: 10.5,
+              color: theme.subtle,
             }}>
               بثقة · محلي
             </Text>

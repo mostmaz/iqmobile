@@ -302,7 +302,7 @@ export default function BrowseScreen({ navigation }: any) {
               <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
                 {ar.app.name}
               </Text>
-              <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.6, color: theme.subtle, textTransform: 'uppercase' }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle }}>
                 العراق
               </Text>
             </View>
@@ -477,7 +477,7 @@ export default function BrowseScreen({ navigation }: any) {
                 variant so the filter sheet has its own self-contained
                 "current location" surface. Two triggers, one source of
                 truth (filters.governorate). */}
-            <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, textAlign: 'right' }}>
+            <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
               المحافظة
             </Text>
             <GovPicker
@@ -486,7 +486,7 @@ export default function BrowseScreen({ navigation }: any) {
               allowAll
               allLabel={ar.browse.allGovs}
             />
-            <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle, textAlign: 'right' }}>
+            <Text style={{ marginTop: 8, marginBottom: 6, fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
               السعر (د.ع)
             </Text>
             <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
@@ -629,7 +629,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   const ref = useRef<ScrollView>(null);
   return (
     <View style={{ marginBottom: 8 }}>
-      <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6, textAlign: 'right' }}>{label}</Text>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginBottom: 6, textAlign: 'right' }}>{label}</Text>
       <ScrollView
         ref={ref}
         horizontal showsHorizontalScrollIndicator={false}

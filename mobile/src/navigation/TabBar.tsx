@@ -10,14 +10,17 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { StackActions } from '@react-navigation/native';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { IconHome, IconSearch, IconPlus, IconPerson, IconChat } from '../components/icons';
+import { ar } from '../i18n/ar';
 
-const LABELS: Record<string, string> = {
-  Browse: 'تصفح',
-  Search: 'بحث',
-  Sell: 'بيع',
-  Chats: 'المحادثات',
-  Profile: 'حسابي',
-};
+// Labels come from the live i18n dictionary — read per render, not at
+// module scope, so the Arabic/Kurdish switch reaches the tab bar too.
+const LABELS = (): Record<string, string> => ({
+  Browse: ar.tabs.browse,
+  Search: ar.tabs.search,
+  Sell: ar.tabs.sell,
+  Chats: ar.tabs.chats,
+  Profile: ar.tabs.profile,
+});
 
 const ICONS: Record<string, (p: { size?: number; color?: string; sw?: number; filled?: boolean }) => React.ReactElement> = {
   Browse: IconHome,
@@ -91,7 +94,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
             >
               <Icon size={22} color={theme.buttonInk} sw={2} />
               <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ color: theme.buttonInk, fontFamily: fonts.arBold, fontSize: 10.5 }}>
-                {LABELS[route.name]}
+                {LABELS()[route.name]}
               </Text>
             </TouchableOpacity>
           );
@@ -116,7 +119,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
               fontWeight: focused ? '600' : '500',
               color: focused ? theme.ink : theme.subtle,
             }}>
-              {LABELS[route.name] || route.name}
+              {LABELS()[route.name] || route.name}
             </Text>
           </TouchableOpacity>
         );

@@ -121,7 +121,7 @@ export default function WishlistScreen({ navigation, route }: any) {
             padding: 14, marginBottom: 12, borderRadius: radius.xxl,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
           }}>
-            <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginBottom: 6, textAlign: 'right' }}>
               الماركة
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}
@@ -134,7 +134,7 @@ export default function WishlistScreen({ navigation, route }: any) {
               ))}
             </ScrollView>
 
-            <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 12, marginBottom: 6, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginTop: 12, marginBottom: 6, textAlign: 'right' }}>
               الجهاز
             </Text>
             <TouchableOpacity
@@ -158,7 +158,7 @@ export default function WishlistScreen({ navigation, route }: any) {
               <IconChevronDown size={16} color={theme.subtle} sw={2} />
             </TouchableOpacity>
 
-            <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 12, marginBottom: 6, textAlign: 'right' }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginTop: 12, marginBottom: 6, textAlign: 'right' }}>
               أريده بسعر (د.ع) أو أقل
             </Text>
             <View style={{

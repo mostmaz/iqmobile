@@ -94,7 +94,7 @@ export function LockedCard({ message, style }: { message: string; style?: StyleP
     }, style]}>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
         <IconLock size={15} color={theme.accentDeep} sw={1.7} />
-        <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.accentDeep, fontWeight: '600' }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.accentDeep }}>
           الرقم مقفل
         </Text>
       </View>
@@ -137,7 +137,7 @@ export function UnlockedCard({ phone, eyebrow, style }: { phone: string; eyebrow
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
           <IconUnlock size={16} color={theme.success} sw={1.8} />
-          <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.success, fontWeight: '700' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.success }}>
             {eyebrow || 'صفقة مؤكدة'}
           </Text>
         </View>
@@ -195,7 +195,7 @@ export function DealBanner({
       backgroundColor: theme.accentSoft, borderColor: theme.accent, borderWidth: 1.5,
       borderRadius: radius.xl, overflow: 'hidden',
     }}>
-      <Text style={{ fontFamily: fonts.mono, fontSize: 10, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.accentDeep, fontWeight: '600', textAlign: 'right' }}>
+      <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.accentDeep, textAlign: 'right' }}>
         {eyebrow}
       </Text>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 10, marginTop: 6 }}>

@@ -371,7 +371,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
               backgroundColor: statusBg,
             }}>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: '#fff', letterSpacing: 0.4 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: '#fff' }}>
                 {statusLabel}
               </Text>
             </View>
@@ -406,7 +406,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 
           <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
             <View>
-              <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle }}>
                 {stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
               </Text>
               <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: stale ? theme.subtle : theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
@@ -788,7 +788,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {/* description */}
         {data.description ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
-            <Text style={{ fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase', color: theme.subtle, textAlign: 'right', marginBottom: 6 }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginBottom: 6 }}>
               {ar.listing.description}
             </Text>
             <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.ink, lineHeight: 22, textAlign: 'right' }}>
@@ -803,7 +803,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {similar && similar.length > 0 ? (
           <View style={{ marginTop: 18 }}>
             <Text style={{
-              fontFamily: fonts.mono, fontSize: 10.5, letterSpacing: 1.6, textTransform: 'uppercase',
+              fontFamily: fonts.arBold, fontSize: 11.5,
               color: theme.subtle, textAlign: 'right', paddingHorizontal: 16, marginBottom: 8,
             }}>
               أجهزة مشابهة
