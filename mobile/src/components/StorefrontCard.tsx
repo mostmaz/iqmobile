@@ -74,11 +74,9 @@ export function StorefrontCard({
   return (
     <View style={{
       marginTop: 10,
-      // This card and the promo banner below it are both full-width framed
-      // blocks, so they need a touch more air than the 12dp feed rhythm to
-      // not read as one unit — but 40 was too much (a visible dead band).
-      // 18 separates them cleanly without the gap.
-      marginBottom: 18,
+      // Tight gap to the promo banner below — just enough to read as two
+      // blocks, not the wide dead band it used to have.
+      marginBottom: 10,
       backgroundColor: theme.surface,
       borderRadius: radius.xxl,
       borderWidth: 2,

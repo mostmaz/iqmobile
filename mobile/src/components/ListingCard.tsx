@@ -34,7 +34,7 @@ export function ListingCard({
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
-      ...shadowSoft, overflow: 'hidden', marginBottom: 12, opacity: stale ? 0.62 : 1,
+      ...shadowSoft, overflow: 'hidden', marginBottom: 8, opacity: stale ? 0.62 : 1,
       // Heights trimmed 10% from the previous 152 / 116 baseline. Inner
       // padding + chip margins trimmed proportionally below so the
       // content density stays the same — the card is just shorter.

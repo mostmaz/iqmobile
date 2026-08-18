@@ -80,7 +80,7 @@ export function FeedBanner({
     Banners.track(banner.id, 'impression');
   }, [banner.id]);
   return (
-    <View style={{ marginBottom: 12 }}>
+    <View style={{ marginBottom: 8 }}>
       <BannerImage banner={banner} onPress={() => openBanner(banner, onOpenListing, onOpenShop)} />
     </View>
   );
@@ -161,14 +161,14 @@ export function BannerCarousel({
   // Single banner — no carousel, no dots.
   if (banners.length === 1) {
     return (
-      <View style={{ marginBottom: 12 }}>
+      <View style={{ marginBottom: 8 }}>
         <BannerImage banner={banners[0]} onPress={() => openBanner(banners[0], onOpenListing, onOpenShop)} />
       </View>
     );
   }
 
   return (
-    <View style={{ marginBottom: 12 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View style={{ marginBottom: 8 }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
         <FlatList
           ref={listRef}
