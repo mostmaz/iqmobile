@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -170,6 +170,17 @@ export default function BrowseScreen({ navigation }: any) {
 
   function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); setBannerTick((t) => t + 1); }
   function clear() { setFilters({}); }
+
+  // Swipe up on the open filter panel to dismiss it — the panel has no
+  // scroll of its own, so a clear upward drag can't be confused with
+  // scrolling. Only claims the gesture on a decisive vertical up-move, so
+  // taps on the steppers/buttons inside still work.
+  const filterPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => g.dy < -12 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderRelease: (_e, g) => { if (g.dy < -40) setShowFilter(false); },
+    }),
+  ).current;
 
   // Translate the picker's Arabic value ↔ filters.governorate's English
   // canonical name. Empty string = "all governorates" (filter cleared).
@@ -411,10 +422,15 @@ export default function BrowseScreen({ navigation }: any) {
         </View>
 
         {showFilter ? (
-          <View style={{
-            marginTop: 2, padding: 14, backgroundColor: theme.surface,
-            borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
-          }}>
+          <View
+            {...filterPan.panHandlers}
+            style={{
+              marginTop: 2, padding: 14, backgroundColor: theme.surface,
+              borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
+            }}
+          >
+            {/* Small grab handle — hints the panel is swipe-up dismissable. */}
+            <View style={{ alignSelf: 'center', width: 34, height: 4, borderRadius: 999, backgroundColor: theme.line, marginBottom: 10 }} />
             {/* The feed deliberately carries sold and expired rows so it
                 reads as a live market. A shopper who only wants what they can
                 actually buy had no way to say so — the seller's own My
