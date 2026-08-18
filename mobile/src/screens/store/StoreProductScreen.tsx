@@ -140,6 +140,10 @@ export default function StoreProductScreen({ navigation, route }: any) {
       unit_price: selected.asking_price,
     };
     const go = () => { if (thenCheckout) navigation.navigate('Cart'); };
+    // Buy-now on a product that's already in the cart must not silently
+    // add more units — the user tapped "buy", not "one more". Jump to the
+    // cart as-is; quantity is adjustable there.
+    if (thenCheckout && cart.qtyOf(selected.id) > 0) { go(); return; }
     if (cart.add(shop, line, qty)) { go(); return; }
     // A cart is one shop's delivery with one shipping fee — the server
     // rejects mixed shops outright, so ask before discarding the old one.
