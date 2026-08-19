@@ -1815,7 +1815,7 @@ r.get('/feature-requests', requireAdmin, (req, res) => {
     `SELECT f.*, l.brand, l.model, l.asking_price, l.governorate, l.featured_until,
             u.display_name AS user_name, u.phone AS user_phone,
             (SELECT i.image_path FROM listing_images i
-              WHERE i.listing_id = l.id ORDER BY i.sort, i.id LIMIT 1) AS cover_image
+              WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS cover_image
      FROM feature_requests f
      JOIN phone_listings l ON l.id = f.listing_id
      JOIN users u ON u.id = f.user_id
