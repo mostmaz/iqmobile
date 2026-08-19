@@ -198,6 +198,64 @@ function QuietListingsCard() {
   );
 }
 
+// ─── Weekly top-deals push ───────────────────────────────────────────
+// One button: preview (exact text + how many phones it reaches), then
+// send. The server enforces a 5-day cooldown so this can't spam.
+function WeeklyDealsCard() {
+  const [preview, setPreview] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function dryRun() {
+    setBusy(true); setMsg('');
+    try {
+      setPreview(await api('/admin/push/weekly-deals?dry=1', { method: 'POST', body: '{}' }));
+    } catch (e: any) { setMsg(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function send() {
+    if (!preview) return;
+    if (!window.confirm(`إرسال الإشعار إلى ${preview.recipients} جهاز؟`)) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await api('/admin/push/weekly-deals?confirm=1', { method: 'POST', body: '{}' });
+      setMsg(`أُرسل إلى ${r.sent} جهاز ✅`);
+      setPreview(null);
+    } catch (e: any) {
+      if (e.data?.error === 'too_soon') {
+        setMsg(`أُرسل مؤخراً — التالي بعد ${new Date(e.data.next_allowed_at).toLocaleString()}`);
+      } else setMsg(e.message);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <h2>إشعار أفضل أسعار الأسبوع</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        يرسل إشعاراً لكل الأجهزة بأكثر جهازين مشاهدةً هذا الأسبوع مع أسعارهما.
+        مرة واحدة كل ٥ أيام كحد أقصى.
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="secondary" onClick={dryRun} disabled={busy}>معاينة</button>
+        {preview ? (
+          <>
+            <span style={{ background: 'var(--surface2, #222)', borderRadius: 8, padding: '6px 10px' }}>
+              <strong>{preview.title}</strong><br />
+              <span className="muted">{preview.body}</span>
+            </span>
+            <span className="muted">سيصل إلى {preview.recipients} جهاز</span>
+            <button onClick={send} disabled={busy || preview.recipients === 0}>
+              إرسال الآن
+            </button>
+          </>
+        ) : null}
+        {msg ? <span className="muted">{msg}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 export function ListingsPage() {
   const [rows, setRows] = useState<Listing[]>([]);
   const [status, setStatus] = useState<string>('');
@@ -323,6 +381,7 @@ export function ListingsPage() {
   return (
     <div>
       <QuickAddCard onCreated={load} />
+      <WeeklyDealsCard />
       <QuietListingsCard />
       <div className="card">
         <h2>Listings</h2>

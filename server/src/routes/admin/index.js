@@ -864,6 +864,83 @@ r.post('/push/broadcast', requireAdmin, async (req, res) => {
   res.json({ ok: true, recipients: ids.length });
 });
 
+// ─── weekly top-deals push ───────────────────────────────────────────
+// Marketing push: the week's most-viewed listings, prices in the text,
+// tap opens the app. Same dry-run + ?confirm=1 ritual as the broadcast,
+// plus a HARD 5-day cooldown enforced here — a weekly deals push is
+// useful, a daily one gets the app uninstalled, so the cap lives in
+// code rather than in habit.
+//
+// Recipients include guests (unlike /push/broadcast): guests ARE the
+// browse audience this push exists to bring back.
+const WEEKLY_DEALS_COOLDOWN_MS = 5 * 24 * 3600 * 1000;
+r.post('/push/weekly-deals', requireAdmin, async (req, res) => {
+  const isDry = req.query.dry === '1' || req.body?.dry === true;
+  const isConfirmed = req.query.confirm === '1';
+
+  const last = Number(db.prepare(
+    "SELECT value FROM app_settings WHERE key='weekly_deals_last_sent'",
+  ).get()?.value || 0);
+  const nextAllowed = last + WEEKLY_DEALS_COOLDOWN_MS;
+  if (!isDry && Date.now() < nextAllowed) {
+    return res.status(429).json({ error: 'too_soon', next_allowed_at: nextAllowed });
+  }
+
+  // Top-viewed active listings of the last 7 days from real sellers,
+  // with light sanity filters so a junk-named or junk-priced listing
+  // never headlines a push (model has letters+substance, price >= the
+  // marketplace floor, not price-on-request).
+  const picks = db.prepare(`
+    SELECT l.id, l.brand, l.model, l.asking_price, COUNT(*) AS views
+    FROM events e JOIN phone_listings l ON l.id = e.listing_id
+    JOIN users u ON u.id = l.seller_id
+    WHERE e.type = 'view' AND e.created_at > ?
+      AND l.status = 'active' AND l.condition != 'new'
+      AND l.price_on_request = 0 AND l.asking_price >= 100000
+      AND LENGTH(TRIM(l.model)) >= 3
+      AND u.seller_type != 'shop' AND u.phone NOT LIKE 'seed:%'
+    GROUP BY l.id ORDER BY views DESC LIMIT 6`).all(Date.now() - 7 * 86400000);
+  if (picks.length < 2) return res.status(409).json({ error: 'not_enough_deals' });
+
+  // Two headliners with distinct model names.
+  const seen = new Set();
+  const head = [];
+  for (const p of picks) {
+    const key = p.model.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    head.push(p);
+    if (head.length === 2) break;
+  }
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+  const name = (p) => (p.brand.toLowerCase() === 'apple' && !/iphone/i.test(p.model))
+    ? `iPhone ${p.model}` : p.model;
+  const title = req.body?.title?.trim() || 'أفضل أسعار الأسبوع 📱';
+  const body = req.body?.body?.trim()
+    || `${name(head[0])} بـ ${fmt(head[0].asking_price)} · ${name(head[1] || head[0])} بـ ${fmt((head[1] || head[0]).asking_price)} د.ع — شوف باقي العروض 👀`;
+
+  const ids = db.prepare(
+    `SELECT id FROM users
+     WHERE expo_push_token IS NOT NULL AND expo_push_token <> ''`,
+  ).all().map((r2) => r2.id);
+
+  const preview = { recipients: ids.length, title, body,
+    picks: head.map((p) => ({ id: p.id, model: p.model, price: p.asking_price, views: p.views })) };
+  if (isDry) return res.json({ ok: true, dry: true, ...preview, next_allowed_at: nextAllowed });
+  if (!isConfirmed) {
+    return res.status(400).json({
+      error: 'confirm_required',
+      hint: 'add ?confirm=1 to actually send, or ?dry=1 for a preview',
+      ...preview,
+    });
+  }
+
+  db.prepare(`INSERT INTO app_settings(key, value) VALUES('weekly_deals_last_sent', ?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(String(Date.now()));
+  await pushTo(ids, title, body, { kind: 'weekly.deals' });
+  res.json({ ok: true, sent: ids.length, ...preview });
+});
+
 // ─── quiet-listings outreach ─────────────────────────────────────────
 // Nudge sellers whose RECENT listings drew no contact at all — no call
 // tap, no WhatsApp tap, no chat thread. One notification per seller
