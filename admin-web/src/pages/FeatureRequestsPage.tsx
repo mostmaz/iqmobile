@@ -96,17 +96,20 @@ export function FeatureRequestsPage() {
                 <tr key={f.id}>
                   <td>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <a href={`https://iqmobile.org/l/${f.listing_id}`} target="_blank" rel="noreferrer"
+                        style={{ display: 'contents', color: 'inherit', textDecoration: 'none' }}>
                       {f.cover_image ? (
                         <img src={`${API_BASE}${f.cover_image}`} alt=""
                           style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
                       ) : null}
                       <div>
-                    <strong>#{f.listing_id} · {f.brand} {f.model}</strong>
+                    <strong style={{ textDecoration: 'underline', textUnderlineOffset: 3 }}>#{f.listing_id} · {f.brand} {f.model}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>{fmtIQD(f.asking_price)} · {f.governorate}</div>
                     {f.note ? <div className="muted" style={{ fontSize: 12 }}>“{f.note}”</div> : null}
                     {f.featured_until && f.featured_until > Date.now()
                       ? <div style={{ color: '#7bd88f', fontSize: 12 }}>featured until {fmtDate(f.featured_until)}</div> : null}
                       </div>
+                      </a>
                     </div>
                   </td>
                   <td>{tierLabel(f)}</td>
