@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { api, API_BASE, getToken } from '../api';
+import {api, API_BASE, getToken, listingUrl, listingLinkStyle} from '../api';
 import { facebookPost, instagramPost, composeListingImage } from '../lib/marketing';
 
 // Client-side image compressor. Downscales to max 1600px on the long
@@ -394,7 +394,7 @@ export function ListingsPage() {
                   ) : null}
                 </td>
                 <td>{r.id}</td>
-                <td>{r.model}</td>
+                <td><a href={listingUrl(r.id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>{r.model}</a></td>
                 <td>{r.seller_name}<br/><small style={{ color: '#9ca3af' }}>{r.seller_phone}</small></td>
                 <td>{r.asking_price.toLocaleString()}</td>
                 <td>{r.governorate}{r.city ? ` · ${r.city}` : ''}</td>

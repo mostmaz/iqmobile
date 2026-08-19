@@ -7,7 +7,7 @@
 // seller to upload a different clip.
 
 import React, { useEffect, useState } from 'react';
-import { api, API_BASE } from '../api';
+import {api, API_BASE, listingUrl, listingLinkStyle} from '../api';
 
 type VideoRow = {
   id: number; brand: string; model: string; storage: string | null;
@@ -81,7 +81,7 @@ export function VideosPage({ onChanged }: { onChanged?: () => void }) {
                 <img src={API_BASE + row.cover_image} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }} />
               ) : null}
               <div style={{ flex: 1, fontSize: 13.5 }}>
-                <div><strong>{row.brand} {row.model}</strong>{row.storage ? ` · ${row.storage}` : ''}</div>
+                <div><a href={listingUrl(row.id)} target="_blank" rel="noreferrer" style={listingLinkStyle}><strong>{row.brand} {row.model}</strong></a>{row.storage ? ` · ${row.storage}` : ''}</div>
                 <div className="muted" style={{ fontSize: 12 }}>
                   إعلان #{row.id} · {iqd(row.asking_price)} د.ع · {row.seller_name || '—'}
                   {row.seller_phone ? <> · <a href={`tel:${row.seller_phone}`}>{row.seller_phone}</a></> : null}

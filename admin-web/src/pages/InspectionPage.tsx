@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { api, API_BASE } from '../api';
+import {api, API_BASE, listingUrl, listingLinkStyle} from '../api';
 
 // Review queue for the AI listing inspection (server/src/listingInspect.js).
 // The model flags; a human decides. Every row shows the photos and the exact
@@ -101,7 +101,7 @@ export function InspectionPage() {
           <div className="card" key={r.id}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <strong style={{ fontSize: 15 }}>{r.brand} {r.model}</strong>
+                <a href={listingUrl(r.listing_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}><strong style={{ fontSize: 15 }}>{r.brand} {r.model}</strong></a>
                 <span style={{ color: '#9ca3af', marginInlineStart: 10, fontSize: 13 }}>
                   #{r.listing_id} · {Number(r.asking_price).toLocaleString('en-US')} د.ع · {r.seller_name}
                 </span>

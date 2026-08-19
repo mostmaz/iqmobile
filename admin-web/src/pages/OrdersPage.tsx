@@ -10,7 +10,7 @@
 // from delivered back to shipped.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { api, API_BASE } from '../api';
+import {api, API_BASE, listingUrl, listingLinkStyle} from '../api';
 
 type OrderItem = {
   id: number; listing_id: number | null; brand: string; model: string;
@@ -227,7 +227,9 @@ export function OrdersPage({ onChanged }: { onChanged?: () => void }) {
                   <img src={API_BASE + it.image_path} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6 }} />
                 ) : <div style={{ width: 40, height: 40, borderRadius: 6, background: '#2a2a2a' }} />}
                 <div style={{ flex: 1, fontSize: 13 }}>
-                  {it.brand} {it.model}
+                  {it.listing_id
+                    ? <a href={listingUrl(it.listing_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>{it.brand} {it.model}</a>
+                    : <>{it.brand} {it.model}</>}
                   {it.storage ? ` · ${it.storage}` : ''}{it.color ? ` · ${it.color}` : ''}
                   {it.qty > 1 ? <strong> × {it.qty}</strong> : null}
                 </div>

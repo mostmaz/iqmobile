@@ -14,7 +14,7 @@
 
 import React, { useEffect, useState } from 'react';
 
-import { api } from '../api';
+import {api, listingUrl, listingLinkStyle} from '../api';
 
 type Row = {
   id: number; brand: string; model: string; status: string;
@@ -119,8 +119,11 @@ export function NameReviewPage() {
       ) : pending.map((r) => (
         <div className="card" key={r.id} style={{ marginBottom: 10 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-            <strong>{r.brand}</strong>
-            <span style={{ fontSize: 15 }}>{r.model}</span>
+            <a href={listingUrl(r.id)} target="_blank" rel="noreferrer"
+              style={{ ...listingLinkStyle, display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <strong>{r.brand}</strong>
+              <span style={{ fontSize: 15 }}>{r.model}</span>
+            </a>
             <span className="muted" style={{ fontSize: 12, marginRight: 'auto' }}>
               #{r.id} · {r.seller_name} · {iqd(r.asking_price)} د.ع
             </span>

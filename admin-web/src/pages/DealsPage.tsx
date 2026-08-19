@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import {api, listingUrl, listingLinkStyle} from '../api';
 
 interface Deal {
   id: number;
@@ -36,7 +36,7 @@ export function DealsPage() {
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.id}</td>
-                <td>{r.brand} {r.model}</td>
+                <td><a href={listingUrl((r as any).listing_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>{r.brand} {r.model}</a></td>
                 <td>{r.buyer_name}</td>
                 <td>{r.seller_name}</td>
                 <td>{r.final_price.toLocaleString()}</td>

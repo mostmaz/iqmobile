@@ -8,7 +8,7 @@
 // because a shared stock photo is occasionally innocent.
 
 import React, { useEffect, useState } from 'react';
-import { api, API_BASE } from '../api';
+import {api, API_BASE, listingUrl, listingLinkStyle} from '../api';
 
 type DupListing = {
   id: number; brand: string; model: string; asking_price: number; status: string;
@@ -65,7 +65,7 @@ export function DuplicatePhotosPage() {
                 ) : null}
                 <img src={API_BASE + l.image_path} alt="" style={{ width: '100%', height: 150, objectFit: 'cover', background: '#222' }} />
                 <div style={{ padding: 9, fontSize: 13 }}>
-                  <div><strong>{l.brand} {l.model}</strong></div>
+                  <div><a href={listingUrl(l.id)} target="_blank" rel="noreferrer" style={listingLinkStyle}><strong>{l.brand} {l.model}</strong></a></div>
                   <div className="muted" style={{ fontSize: 12 }}>إعلان #{l.id} · {iqd(l.asking_price)} د.ع · {when(l.created_at)}</div>
                   <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>
                     {l.seller_name || '—'}

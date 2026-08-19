@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import {api, listingUrl, listingLinkStyle} from '../api';
 
 interface Report {
   id: number;
@@ -47,7 +47,9 @@ export function ReportsPage() {
               <tr key={r.id}>
                 <td>{r.id}</td>
                 <td>{r.reporter_name}<br/><small style={{ color: '#9ca3af' }}>{r.reporter_phone}</small></td>
-                <td>{r.target_kind} #{r.target_id}</td>
+                <td>{r.target_kind === 'listing'
+                  ? <a href={listingUrl(r.target_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>listing #{r.target_id}</a>
+                  : <>{r.target_kind} #{r.target_id}</>}</td>
                 <td>{r.reason}</td>
                 <td><small>{r.detail || '—'}</small></td>
                 <td><small>{new Date(r.created_at).toLocaleString()}</small></td>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import {api, listingUrl, listingLinkStyle} from '../api';
 
 // Mirrors server/src/governorates.js — a fixed list, so inline is fine.
 const GOVERNORATES = [
@@ -128,7 +128,7 @@ export function AnalyticsPage() {
                     {data!.contact_per_listing.map((r) => (
                       <tr key={r.id}>
                         <td>{r.id}</td>
-                        <td>{r.brand} {r.model}</td>
+                        <td><a href={listingUrl(r.id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>{r.brand} {r.model}</a></td>
                         <td>{r.governorate}</td>
                         <td>{r.calls}</td><td>{r.whatsapps}</td><td>{r.chats}</td>
                         <td style={{ fontWeight: 700 }}>{r.total}</td>
@@ -173,7 +173,7 @@ export function AnalyticsPage() {
                     {data!.listings_without_contact.map((r) => (
                       <tr key={r.id}>
                         <td>{r.id}</td>
-                        <td>{r.brand} {r.model}</td>
+                        <td><a href={listingUrl(r.id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>{r.brand} {r.model}</a></td>
                         <td>{r.governorate}</td>
                         <td>{r.seller_name}<br /><small style={{ color: '#9ca3af' }} dir="ltr">{r.seller_phone}</small></td>
                         <td><small>{daysAgo(r.created_at)}</small></td>

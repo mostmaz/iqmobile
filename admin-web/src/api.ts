@@ -52,3 +52,10 @@ export async function api<T = any>(path: string, init: RequestInit = {}): Promis
   }
   return data;
 }
+
+// Public listing page — the canonical "show me this listing" target
+// everywhere a listing appears in the dashboard.
+export const listingUrl = (id: number | string) => `https://iqmobile.org/l/${id}`;
+export const listingLinkStyle = {
+  color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer',
+} as const;
