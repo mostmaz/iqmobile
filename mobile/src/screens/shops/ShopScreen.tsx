@@ -119,7 +119,7 @@ export default function ShopScreen({ navigation, route }: any) {
 
       {storefront && cart.count > 0 && cart.shop_id === shop.id ? (
         <View style={{
-          position: 'absolute', left: 16, right: 16, bottom: insets.bottom + 16, zIndex: 20,
+          position: 'absolute', left: 16, right: 16, bottom: 12, zIndex: 20,
         }}>
           <TouchableOpacity
             activeOpacity={0.9}
@@ -131,9 +131,20 @@ export default function ShopScreen({ navigation, route }: any) {
               ...shadowSoft,
             }}
           >
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
-              عرض السلة ({cart.count})
-            </Text>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
+                عرض السلة
+              </Text>
+              <View style={{
+                minWidth: 22, height: 22, borderRadius: 999, paddingHorizontal: 6,
+                backgroundColor: 'rgba(255,255,255,0.25)',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ fontFamily: fonts.ltrBold, fontSize: 12.5, color: '#fff' }}>
+                  {cart.count}
+                </Text>
+              </View>
+            </View>
             <Text style={{ fontFamily: fonts.ltrBold, fontSize: 15, color: '#fff' }}>
               {fmtIQD(cart.total)} د.ع
             </Text>

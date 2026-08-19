@@ -278,6 +278,11 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     name: `${finalBrand} ${model}`,
     sellerId: req.user.id,
   });
+  // Marketplace floor: nothing under 100,000 IQD. Checked AFTER the
+  // thousands correction — "150" means 150,000 and must not be refused.
+  // The app words the refusal in two stages; this is the backstop for
+  // every other write path.
+  if (price < 100000) return res.status(400).json({ error: 'price_too_low' });
 
   // Contact phone is required so buyers always have a tap-to-call path.
   // Contact phone is optional — sellers can choose to be reachable only via
@@ -811,6 +816,9 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
         priceOnRequest: !!row.price_on_request,
         sellerId: row.seller_id,
       });
+      if (!row.price_on_request && fixed < 100000) {
+        return res.status(400).json({ error: 'price_too_low' });
+      }
       fields.push('asking_price=?'); params.push(fixed); continue;
     }
     fields.push(`${k}=?`);

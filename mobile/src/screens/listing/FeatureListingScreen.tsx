@@ -13,14 +13,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, Input, FieldLabel, fmtIQD } from '../../components/ui';
-import { IconSpark, IconCheck, IconPhoneIcon } from '../../components/icons';
+import { IconSpark, IconCheck, IconPhoneIcon, IconQiCard } from '../../components/icons';
 import { Features, type FeatureCarrier } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 
 const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
   asiacell: { label: 'آسياسيل', color: '#ED1C24' },
   korek: { label: 'كورك', color: '#F7A800' },
+  // Qi brand: yellow mark on a dark navy roundel (see IconQiCard).
+  qicard: { label: 'كي كارد', color: '#141433' },
 };
+
+// Sender-number prefixes per airtime network — fallback if the server
+// config predates carrier_prefixes. Qi Card has no phone prefix; its
+// sender is identified by account name.
+const FALLBACK_PREFIXES: Partial<Record<FeatureCarrier, string>> = { asiacell: '077', korek: '075' };
+
+// Mirror of the server's normalizeIraqiPhone, for prefix checks only.
+function normalizePhone(input: string): string {
+  let d = input.replace(/\D/g, '');
+  if (d.startsWith('00964')) d = d.slice(5);
+  else if (d.startsWith('964')) d = d.slice(3);
+  if (d && !d.startsWith('0')) d = '0' + d;
+  return d;
+}
 
 export default function FeatureListingScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -34,6 +50,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
 
   const [carrier, setCarrier] = useState<FeatureCarrier | null>(null);
   const [sender, setSender] = useState(user?.phone || '');
+  const [senderName, setSenderName] = useState('');
   const [tier, setTier] = useState<string | null>(null);
 
   // Existing request for THIS listing (so we show status instead of the form
@@ -66,7 +83,9 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   }
 
   const submit = useMutation({
-    mutationFn: () => Features.request(listingId, { tier: tier!, carrier: carrier!, sender_phone: sender.trim() }),
+    mutationFn: () => Features.request(listingId, carrier === 'qicard'
+      ? { tier: tier!, carrier: carrier!, sender_name: senderName.trim() }
+      : { tier: tier!, carrier: carrier!, sender_phone: sender.trim() }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['features-mine'] });
       // Straight to the dialer — the pending card renders when they return.
@@ -79,6 +98,8 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         bad_tier: 'اختر باقة صحيحة.',
         bad_carrier: 'اختر شركة الاتصال.',
         bad_sender_phone: 'أدخل رقم الهاتف الذي ستحوّل منه.',
+        bad_sender_prefix: 'الرقم لا يطابق شركة الاتصال المختارة.',
+        bad_sender_name: 'أدخل اسم صاحب حساب Qi الذي ستحوّل منه.',
         forbidden: 'هذا الإعلان ليس لك.',
         not_found: 'الإعلان غير موجود.',
       };
@@ -87,8 +108,24 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   });
 
   function onSubmit() {
-    if (!carrier) { Alert.alert('اختر شركة الاتصال', 'حدّد آسياسيل أو كورك أولاً.'); return; }
-    if (sender.replace(/\D/g, '').length < 10) { Alert.alert('رقم غير صحيح', 'أدخل الرقم الذي ستحوّل منه الرصيد.'); return; }
+    if (!carrier) { Alert.alert('اختر طريقة الدفع', 'حدّد آسياسيل أو كورك أو كي كارد أولاً.'); return; }
+    if (carrier === 'qicard') {
+      if (senderName.trim().length < 2) {
+        Alert.alert('اسم صاحب الحساب', 'اكتب اسم صاحب حساب Qi الذي ستحوّل منه الأموال.');
+        return;
+      }
+    } else {
+      const digits = normalizePhone(sender);
+      if (digits.length < 10) { Alert.alert('رقم غير صحيح', 'أدخل الرقم الذي ستحوّل منه الرصيد.'); return; }
+      // The transfer must come from a SIM of the chosen network —
+      // Asiacell numbers start 077, Korek 075.
+      const pfx = data?.carrier_prefixes?.[carrier] || FALLBACK_PREFIXES[carrier];
+      if (pfx && !digits.startsWith(pfx)) {
+        const meta = CARRIER_META[carrier];
+        Alert.alert('الرقم لا يطابق الشبكة', `رقم ${meta.label} يجب أن يبدأ بـ ${pfx}0.`);
+        return;
+      }
+    }
     if (!tier) { Alert.alert('اختر الباقة', 'حدّد إحدى باقات التمييز.'); return; }
     submit.mutate();
   }
@@ -141,7 +178,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         ) : hasPending ? null : (
           <>
             {/* 1 — carrier */}
-            <FieldLabel>١ · اختر شركة الاتصال</FieldLabel>
+            <FieldLabel>١ · اختر طريقة الدفع</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 6 }}>
               {(data?.carriers || (['asiacell', 'korek'] as FeatureCarrier[])).map((c) => {
                 const meta = CARRIER_META[c as FeatureCarrier] || { label: c, color: theme.accent };
@@ -157,7 +194,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                       width: 44, height: 44, borderRadius: 999, backgroundColor: meta.color,
                       alignItems: 'center', justifyContent: 'center',
                     }}>
-                      <IconPhoneIcon size={20} color="#fff" sw={1.8} />
+                      {c === 'qicard' ? <IconQiCard size={26} /> : <IconPhoneIcon size={20} color="#fff" sw={1.8} />}
                     </View>
                     <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>{meta.label}</Text>
                     {active ? <IconCheck size={16} color={theme.accent} /> : null}
@@ -166,10 +203,22 @@ export default function FeatureListingScreen({ navigation, route }: any) {
               })}
             </View>
 
-            {/* 2 — sender number */}
+            {/* 2 — sender identity: SIM number for airtime carriers, the
+                Qi account-holder name for Qi Card (that's what shows on
+                the incoming transfer). */}
             <View style={{ height: 16 }} />
-            <FieldLabel>٢ · الرقم الذي ستحوّل منه</FieldLabel>
-            <Input value={sender} onChangeText={setSender} placeholder="07XXXXXXXXX" numeric ltr />
+            {carrier === 'qicard' ? (
+              <>
+                <FieldLabel>٢ · اسم صاحب الحساب الذي ستحوّل منه</FieldLabel>
+                <Input value={senderName} onChangeText={setSenderName} placeholder="الاسم الكامل كما في حساب Qi" />
+              </>
+            ) : (
+              <>
+                <FieldLabel>٢ · الرقم الذي ستحوّل منه</FieldLabel>
+                <Input value={sender} onChangeText={setSender}
+                  placeholder={carrier === 'korek' ? '0750XXXXXXX' : '0770XXXXXXX'} numeric ltr />
+              </>
+            )}
 
             {/* 3 — tier */}
             <View style={{ height: 16 }} />
@@ -229,10 +278,35 @@ export default function FeatureListingScreen({ navigation, route }: any) {
               </View>
             ) : null}
 
+            {/* Qi Card destination — appears once Qi + tier are chosen. */}
+            {carrier === 'qicard' && tier && data?.qi_card ? (
+              <View style={{
+                marginTop: 18, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+                borderRadius: radius.xxl, padding: 16,
+              }}>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
+                  حوّل مبلغ {fmtIQD(data.tiers.find((x) => x.key === tier)?.amount || 0)} د.ع من تطبيق Qi إلى الحساب التالي ثم اضغط «إرسال الطلب»:
+                </Text>
+                <View style={{
+                  marginTop: 10, backgroundColor: theme.chipBg, borderRadius: radius.lg,
+                  paddingVertical: 12, alignItems: 'center', gap: 4,
+                }}>
+                  <Text selectable style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 22, color: theme.ink, letterSpacing: 1, writingDirection: 'ltr' }}>
+                    {data.qi_card.account}
+                  </Text>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.subtle }}>
+                    باسم: {data.qi_card.name}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
             <View style={{ height: 22 }} />
-            <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>تحويل الرصيد وإرسال الطلب</Btn>
+            <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>
+              {carrier === 'qicard' ? 'حوّلت المبلغ — إرسال الطلب' : 'تحويل الرصيد وإرسال الطلب'}
+            </Btn>
             <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 12, textAlign: 'center', lineHeight: 20 }}>
-              بعد وصول الرصيد وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.
+              بعد وصول المبلغ وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.
             </Text>
           </>
         )}

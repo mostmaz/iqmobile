@@ -15,7 +15,16 @@ export const FEATURE_TIERS = [
 export const TIERS_BY_KEY = Object.fromEntries(FEATURE_TIERS.map((t) => [t.key, t]));
 
 // Carriers users transfer airtime from. Lowercase canonical keys.
-export const CARRIERS = ['asiacell', 'korek'];
+export const CARRIERS = ['asiacell', 'korek', 'qicard'];
+
+// Qi Card transfers land on this account — shown in-app once a tier is
+// chosen (qicard has no USSD template; the user transfers from their Qi
+// app and we match the incoming transfer by the sender's account name).
+export const QI_CARD = { account: '7117114582', name: 'مصطفى مازن' };
+
+// Airtime transfers must come from a SIM of the receiving network —
+// Asiacell numbers are 077x, Korek 075x. Validated on both ends.
+export const CARRIER_PREFIXES = { asiacell: '077', korek: '075' };
 
 // Owner contact. OWNER_PHONE is the primary (Asiacell) line; OWNER_WHATSAPP is
 // the wa.me number the banner "contact us" form opens. Digits only for

@@ -264,6 +264,48 @@ export default function StoreProductScreen({ navigation, route }: any) {
             </View>
           ) : null}
 
+          {/* Contact the shop — labeled pills pinned to the image's lower-left
+              corner (moved out of the top header row, where two anonymous
+              circles were easy to miss). Solid fills so they read on any
+              product photo. */}
+          <View style={{ position: 'absolute', bottom: 34, left: 12, flexDirection: 'row', gap: 8 }}>
+            {product.shop.phone ? (
+              <TouchableOpacity
+                onPress={() => {
+                  Storefront.contact(product.shop.id, selected?.id);
+                  callPhone(product.shop.phone as string);
+                }}
+                activeOpacity={0.85}
+                style={{
+                  flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+                  paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                  backgroundColor: theme.accent, ...shadowSoft,
+                }}
+              >
+                <IconMsgCall size={15} color="#fff" sw={1.9} />
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: '#fff' }}>اتصال</Text>
+              </TouchableOpacity>
+            ) : null}
+            {/* Chat binds to the selected variant's listing, so operators
+                open it already knowing which capacity the buyer means. */}
+            <TouchableOpacity
+              onPress={startStoreChat}
+              disabled={chatStarting}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="محادثة المتجر"
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+                paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
+                backgroundColor: 'rgba(28,26,23,0.88)', ...shadowSoft,
+                opacity: chatStarting ? 0.6 : 1,
+              }}
+            >
+              <IconChat size={15} color="#fff" sw={1.9} />
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: '#fff' }}>محادثة</Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
 
         {/* ── Title + price ───────────────────────────────────────── */}
@@ -313,7 +355,7 @@ export default function StoreProductScreen({ navigation, route }: any) {
               label="الذاكرة"
               options={product.storages}
               value={selStorage}
-              available={storageAvailable}
+              available={(st) => variants.some((v) => v.storage === st)}
               onPick={pickStorage}
               priceOf={(s) => {
                 const m = variants.filter((v) => v.storage === s);
@@ -339,6 +381,27 @@ export default function StoreProductScreen({ navigation, route }: any) {
             </View>
           ) : null}
         </View>
+
+        {/* ── Description ─────────────────────────────────────────────
+            The selected variant's own text wins: shop descriptions often
+            name the capacity, and the pooled fallback would describe the
+            256GB while the shopper is looking at the 64GB. */}
+        {(selected.description || product.description) ? (
+          <View style={{ paddingHorizontal: 16, marginTop: 18 }}>
+            <Text style={{
+              fontFamily: fonts.arBold, fontSize: 14,
+              color: theme.ink, textAlign: 'right', marginBottom: 6,
+            }}>
+              التفاصيل
+            </Text>
+            <Text style={{
+              fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle,
+              textAlign: 'right', lineHeight: 22,
+            }}>
+              {selected.description || product.description}
+            </Text>
+          </View>
+        ) : null}
 
         {/* ── Quantity ────────────────────────────────────────────── */}
         <View style={{
@@ -366,27 +429,6 @@ export default function StoreProductScreen({ navigation, route }: any) {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* ── Description ─────────────────────────────────────────────
-            The selected variant's own text wins: shop descriptions often
-            name the capacity, and the pooled fallback would describe the
-            256GB while the shopper is looking at the 64GB. */}
-        {(selected.description || product.description) ? (
-          <View style={{ paddingHorizontal: 16, marginTop: 18 }}>
-            <Text style={{
-              fontFamily: fonts.arBold, fontSize: 14,
-              color: theme.ink, textAlign: 'right', marginBottom: 6,
-            }}>
-              التفاصيل
-            </Text>
-            <Text style={{
-              fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle,
-              textAlign: 'right', lineHeight: 22,
-            }}>
-              {selected.description || product.description}
-            </Text>
-          </View>
-        ) : null}
 
         {/* ── Key specs ───────────────────────────────────────────────
             Sits above the reassurance block and below the description,
@@ -484,38 +526,6 @@ export default function StoreProductScreen({ navigation, route }: any) {
                 <View style={{ transform: [{ scaleX: -1 }] }}>
                   <IconArrowLeft size={20} color={theme.ink} sw={1.8} />
                 </View>
-              </TouchableOpacity>
-              {product.shop.phone ? (
-                <TouchableOpacity
-                  onPress={() => {
-                    Storefront.contact(product.shop.id, selected?.id);
-                    callPhone(product.shop.phone as string);
-                  }}
-                  activeOpacity={0.8}
-                  style={{
-                    width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
-                    alignItems: 'center', justifyContent: 'center', ...shadowSoft,
-                  }}
-                >
-                  <IconMsgCall size={17} color={theme.accentDeep} sw={1.8} />
-                </TouchableOpacity>
-              ) : null}
-              {/* Chat with the store about THIS device. The thread binds to
-                  the selected variant's listing, so the operators open it
-                  already knowing which capacity the buyer means. */}
-              <TouchableOpacity
-                onPress={startStoreChat}
-                disabled={chatStarting}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="محادثة المتجر"
-                style={{
-                  width: 36, height: 36, borderRadius: 999, backgroundColor: 'rgba(245,240,230,0.92)',
-                  alignItems: 'center', justifyContent: 'center', ...shadowSoft,
-                  opacity: chatStarting ? 0.6 : 1,
-                }}
-              >
-                <IconChat size={16} color={theme.accentDeep} sw={1.8} />
               </TouchableOpacity>
             </View>
           </View>
@@ -634,9 +644,8 @@ function OptionRow({ label, options, value, available, onPick, priceOf }: {
         {label}
       </Text>
       <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
-        {options.map((o) => {
+        {options.filter(available).map((o) => {
           const active = o === value;
-          const ok = available(o);
           const price = priceOf?.(o) ?? null;
           return (
             <TouchableOpacity
@@ -648,7 +657,6 @@ function OptionRow({ label, options, value, available, onPick, priceOf }: {
                 borderWidth: active ? 2 : 1,
                 borderColor: active ? theme.accent : theme.line,
                 backgroundColor: active ? theme.accentSoft : theme.surface,
-                opacity: ok ? 1 : 0.4,
                 alignItems: 'center',
               }}
             >

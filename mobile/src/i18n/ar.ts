@@ -191,6 +191,7 @@ const AR = {
     listing_expired: 'انتهت صلاحية الإعلان',
     cannot_renew: 'لا يمكن تجديد هذا الإعلان حالياً',
     listing_hourly_limit: 'يمكنك نشر إعلان واحد كل ساعة. حاول لاحقاً.',
+    price_too_low: 'لا نقبل أي جهاز بسعر أقل من 100,000 د.ع.',
     // Images
     too_many_images: 'الحد الأقصى 10 صور',
     not_image: 'الملف ليس صورة',

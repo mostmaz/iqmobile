@@ -16,7 +16,7 @@ import * as Location from 'expo-location';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, FieldLabel, Input } from '../../components/ui';
-import { IconCheck, IconPin, IconID } from '../../components/icons';
+import { IconCheck, IconPin, IconID, IconStore, IconChevronLeft, IconArrowLeft } from '../../components/icons';
 import { completeProfile } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
 import { ar } from '../../i18n/ar';
@@ -25,6 +25,11 @@ export default function CompleteProfileScreen() {
   const { refresh } = useAuth();
   const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
+  // Two-stage onboarding: the account-type choice is its own full window
+  // FIRST (big person/shop cards), then the details form for that type.
+  // The old layout buried the choice as a pill row inside the form and
+  // most shop owners sailed past it as "individual".
+  const [stage, setStage] = useState<'type' | 'details'>('type');
   const [sellerType, setSellerType] = useState<'individual' | 'shop'>('individual');
   const [shopImage, setShopImage] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -107,45 +112,75 @@ export default function CompleteProfileScreen() {
     }
   }
 
+  if (stage === 'type') {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <ScrollView contentContainerStyle={{
+          paddingTop: insets.top + 18, paddingBottom: insets.bottom + 30, paddingHorizontal: 20,
+        }}>
+          <Text style={{
+            fontFamily: fonts.arBold, fontSize: 26, color: theme.ink,
+            letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
+            أهلاً بك في iQ Mobile
+          </Text>
+          <Text style={{
+            marginTop: 6, fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, lineHeight: 21, textAlign: 'right',
+          }}>
+            اختر نوع الحساب للبدء.
+          </Text>
+
+          <ChoiceCard
+            icon={<IconID size={26} color={theme.accentDeep} sw={1.8} />}
+            title="شخص"
+            subtitle="أبيع وأشتري الأجهزة الشخصية"
+            onPress={() => { setSellerType('individual'); setErr(''); setStage('details'); }}
+          />
+          <ChoiceCard
+            icon={<IconStore size={26} color={theme.accentDeep} sw={1.8} />}
+            title="متجر"
+            subtitle="عندي محل — لافتة وموقع وصفحة متجر خاصة"
+            onPress={() => { setSellerType('shop'); setErr(''); setStage('details'); }}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView contentContainerStyle={{
         paddingTop: insets.top + 18, paddingBottom: insets.bottom + 30, paddingHorizontal: 20,
       }}>
+        {/* Back to the type choice — a full round-trip keeps the shop
+            fields' state, only the window changes. */}
+        <TouchableOpacity
+          onPress={() => { setErr(''); setStage('type'); }}
+          hitSlop={8}
+          style={{ alignSelf: 'flex-start', width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginBottom: 2, marginInlineStart: -10 }}
+          activeOpacity={0.6}
+        >
+          <View style={{ transform: [{ scaleX: -1 }] }}>
+            <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
+          </View>
+        </TouchableOpacity>
         <Text style={{
           fontFamily: fonts.arBold, fontSize: 26, color: theme.ink,
           letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
-          أكمل ملفك الشخصي
+          {sellerType === 'shop' ? 'معلومات المتجر' : 'أكمل ملفك الشخصي'}
         </Text>
         <Text style={{
           marginTop: 6, fontFamily: fonts.ar, fontSize: 13.5, color: theme.subtle, lineHeight: 21, textAlign: 'right',
         }}>
-          سيظهر اسمك للمشترين على إعلاناتك. يمكنك تعديل الاسم مرتين فقط لاحقاً.
+          {sellerType === 'shop'
+            ? 'سيظهر اسم متجرك ولافتته للمشترين. يمكنك التعديل مرتين فقط لاحقاً.'
+            : 'سيظهر اسمك للمشترين على إعلاناتك. يمكنك تعديل الاسم مرتين فقط لاحقاً.'}
         </Text>
 
         {/* Name */}
         <View style={{ marginTop: 22 }}>
-          <FieldLabel>الاسم أو اسم المتجر</FieldLabel>
-          <Input value={name} onChangeText={setName} placeholder="مثلاً: أحمد · متجر الكرادة" />
-        </View>
-
-        {/* Seller type chooser */}
-        <View style={{ marginTop: 18 }}>
-          <FieldLabel>نوع الحساب</FieldLabel>
-          <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-            <TypeBtn
-              active={sellerType === 'individual'}
-              onPress={() => setSellerType('individual')}
-              title="شخص"
-              subtitle="بيع وشراء"
-            />
-            <TypeBtn
-              active={sellerType === 'shop'}
-              onPress={() => setSellerType('shop')}
-              title="متجر"
-              subtitle="مع لافتة وموقع"
-            />
-          </View>
+          <FieldLabel>{sellerType === 'shop' ? 'اسم المتجر' : 'الاسم'}</FieldLabel>
+          <Input value={name} onChangeText={setName}
+            placeholder={sellerType === 'shop' ? 'مثلاً: متجر الكرادة' : 'مثلاً: أحمد'} />
         </View>
 
         {/* Shop-only fields */}
@@ -222,21 +257,30 @@ export default function CompleteProfileScreen() {
   );
 }
 
-function TypeBtn({ active, onPress, title, subtitle }: { active: boolean; onPress: () => void; title: string; subtitle: string }) {
+function ChoiceCard({ icon, title, subtitle, onPress }: { icon: React.ReactNode; title: string; subtitle: string; onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={{
-      flex: 1, paddingVertical: 14, paddingHorizontal: 12, borderRadius: radius.lg,
-      borderWidth: active ? 2 : 1,
-      borderColor: active ? theme.accent : theme.line,
-      backgroundColor: active ? theme.accentSoft : theme.surface,
-      alignItems: 'center',
+      marginTop: 14, padding: 18, borderRadius: radius.xl,
+      borderWidth: 1, borderColor: theme.line, backgroundColor: theme.surface,
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 14,
     }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: active ? theme.accentDeep : theme.ink }}>
-        {title}
-      </Text>
-      <Text style={{ marginTop: 2, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>
-        {subtitle}
-      </Text>
+      <View style={{
+        width: 52, height: 52, borderRadius: radius.lg, backgroundColor: theme.accentSoft,
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {icon}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 17, color: theme.ink, textAlign: 'right' }}>
+          {title}
+        </Text>
+        <Text style={{ marginTop: 3, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', lineHeight: 18 }}>
+          {subtitle}
+        </Text>
+      </View>
+      <View style={{ transform: [{ scaleX: 1 }] }}>
+        <IconChevronLeft size={16} color={theme.subtle} sw={2} />
+      </View>
     </TouchableOpacity>
   );
 }

@@ -974,6 +974,8 @@ addColumnIfMissing('users', 'shop_created_at INTEGER');
 addColumnIfMissing('users', 'shop_phones TEXT');
 addColumnIfMissing('users', 'shop_facebook TEXT');
 addColumnIfMissing('users', 'shop_instagram TEXT');
+// Qi Card feature payments carry the sender's account name, not a SIM.
+addColumnIfMissing('feature_requests', 'sender_name TEXT');
 
 // Seed the brands table on first boot. Mirrors the historical hardcoded
 // list from governorates.js so existing listings stay valid. Skips if

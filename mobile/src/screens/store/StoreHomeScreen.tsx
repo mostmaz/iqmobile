@@ -342,7 +342,7 @@ export default function StoreHomeScreen({ navigation, route }: any) {
 
       {/* ── Sticky cart bar ──────────────────────────────────────── */}
       {cartHere ? (
-        <View style={{ position: 'absolute', left: 14, right: 14, bottom: insets.bottom + 14 }}>
+        <View style={{ position: 'absolute', left: 14, right: 14, bottom: 12 }}>
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => navigation.navigate('Cart')}

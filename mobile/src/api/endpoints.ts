@@ -464,7 +464,7 @@ export const Notifications = {
 // No payment gateway: the seller transfers airtime to the owner's number,
 // submits a request with the carrier + sending number, and an admin approves
 // it from the dashboard (which pins the listing).
-export type FeatureCarrier = 'asiacell' | 'korek';
+export type FeatureCarrier = 'asiacell' | 'korek' | 'qicard';
 export interface FeatureTier {
   key: string;          // 'bronze' | 'silver' | 'gold'
   amount: number;       // IQD
@@ -479,8 +479,10 @@ export interface FeatureTiersResponse {
   // Per-carrier receiving numbers + USSD dial templates. The app fills
   // {amount} (tier IQD) and {number} (the matching receiving number) and
   // opens the dialer with the result.
-  transfer_numbers: Record<FeatureCarrier, string>;
-  ussd_templates: Record<FeatureCarrier, string>;
+  transfer_numbers: Partial<Record<FeatureCarrier, string>>;
+  ussd_templates: Partial<Record<FeatureCarrier, string>>;
+  qi_card?: { account: string; name: string };
+  carrier_prefixes?: Partial<Record<FeatureCarrier, string>>;
 }
 export interface FeatureRequest {
   id: number;
@@ -501,7 +503,7 @@ export interface FeatureRequest {
 }
 export const Features = {
   tiers: () => api<FeatureTiersResponse>('/features/tiers'),
-  request: (listingId: number, body: { tier: string; carrier: FeatureCarrier; sender_phone: string; note?: string }) =>
+  request: (listingId: number, body: { tier: string; carrier: FeatureCarrier; sender_phone?: string; sender_name?: string; note?: string }) =>
     api<FeatureRequest>(`/listings/${listingId}/feature-request`, { method: 'POST', body: JSON.stringify(body) }),
   // Cancels the caller's pending request for this listing — the "لم أحوّل
   // الرصيد بعد" escape hatch when the dial was never completed.

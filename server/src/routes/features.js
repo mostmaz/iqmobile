@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
-import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, tierFor } from '../featureTiers.js';
+import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
 
 const r = Router();
 
@@ -29,6 +29,8 @@ r.get('/features/tiers', (_req, res) => {
     owner_phone: OWNER_PHONE,
     transfer_numbers: TRANSFER_NUMBERS,
     ussd_templates: USSD_TEMPLATES,
+    qi_card: QI_CARD,
+    carrier_prefixes: CARRIER_PREFIXES,
   });
 });
 
@@ -47,8 +49,23 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   const carrier = String(req.body?.carrier || '').trim().toLowerCase();
   if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
 
-  const senderPhone = normalizeIraqiPhone(req.body?.sender_phone);
-  if (!senderPhone) return res.status(400).json({ error: 'bad_sender_phone' });
+  // Qi Card: the matcher is the sender's account NAME (their Qi app
+  // shows it on the transfer); phone is optional. Airtime carriers: the
+  // sender phone is required and must belong to the same network.
+  let senderPhone = null;
+  let senderName = null;
+  if (carrier === 'qicard') {
+    senderName = String(req.body?.sender_name || '').trim().slice(0, 80);
+    if (senderName.length < 2) return res.status(400).json({ error: 'bad_sender_name' });
+    senderPhone = normalizeIraqiPhone(req.body?.sender_phone); // optional
+  } else {
+    senderPhone = normalizeIraqiPhone(req.body?.sender_phone);
+    if (!senderPhone) return res.status(400).json({ error: 'bad_sender_phone' });
+    const pfx = CARRIER_PREFIXES[carrier];
+    if (pfx && !senderPhone.startsWith(pfx)) {
+      return res.status(400).json({ error: 'bad_sender_prefix' });
+    }
+  }
 
   const note = req.body?.note ? String(req.body.note).trim().slice(0, 280) : null;
 
@@ -62,11 +79,11 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   const id = db.prepare(
     `INSERT INTO feature_requests(
       listing_id, user_id, tier, amount, days, boosts_per_day,
-      carrier, sender_phone, note, status, created_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,'pending',?)`,
+      carrier, sender_phone, sender_name, note, status, created_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,'pending',?)`,
   ).run(
     listing.id, req.user.id, tier.key, tier.amount, tier.days, tier.boosts_per_day,
-    carrier, senderPhone, note, now(),
+    carrier, senderPhone, senderName, note, now(),
   ).lastInsertRowid;
 
   res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(id));

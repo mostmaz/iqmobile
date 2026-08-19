@@ -15,6 +15,7 @@ type FeatureRequest = {
   boosts_per_day: number;
   carrier: string;
   sender_phone: string | null;
+  sender_name: string | null;
   note: string | null;
   status: 'pending' | 'approved' | 'rejected';
   created_at: number;
@@ -48,7 +49,7 @@ export function FeatureRequestsPage() {
   useEffect(() => { load(); }, [status]);
 
   async function approve(f: FeatureRequest) {
-    if (!confirm(`Approve "${f.brand} ${f.model}" — ${tierLabel(f)}?\nConfirm you received ${fmtIQD(f.amount)} airtime from ${f.sender_phone || '—'} (${f.carrier}).`)) return;
+    if (!confirm(`Approve "${f.brand} ${f.model}" — ${tierLabel(f)}?\nConfirm you received ${fmtIQD(f.amount)} from ${f.sender_name || f.sender_phone || '—'} (${f.carrier}).`)) return;
     setBusy(true);
     try { await api(`/admin/feature-requests/${f.id}/approve`, { method: 'POST' }); await load(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
@@ -101,7 +102,7 @@ export function FeatureRequestsPage() {
                   </td>
                   <td>{tierLabel(f)}</td>
                   <td style={{ textTransform: 'capitalize' }}>{f.carrier}</td>
-                  <td style={{ fontFamily: 'monospace' }}>{f.sender_phone || '—'}</td>
+                  <td style={{ fontFamily: 'monospace' }}>{f.sender_name || f.sender_phone || '—'}</td>
                   <td>{f.user_name}<div className="muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>{f.user_phone || '—'}</div></td>
                   <td className="muted" style={{ fontSize: 12 }}>{fmtDate(f.created_at)}</td>
                   {status === 'pending' ? (

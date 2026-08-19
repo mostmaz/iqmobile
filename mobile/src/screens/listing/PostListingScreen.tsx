@@ -125,6 +125,7 @@ export default function PostListingScreen({ navigation }: any) {
 
   // Contact step — public on the listing. WhatsApp is optional and can
   // mirror the contact phone via the "same number" toggle.
+  const lowPriceWarnedRef = useRef<number | null>(null);
   const [contactPhone, setContactPhone] = useState(user?.phone || '');
   // The useState snapshot above runs before /auth/me resolves on cold
   // start, so a wizard mounted early would start (and stay) empty. Fill
@@ -364,7 +365,24 @@ export default function PostListingScreen({ navigation }: any) {
         }
       }
     }
-    if (step === 2 && parsePrice(askingPrice) == null) { setFieldErr('price'); return setErr('أدخل سعراً صحيحاً'); }
+    if (step === 2) {
+      const priceVal = parsePrice(askingPrice);
+      if (priceVal == null) { setFieldErr('price'); return setErr('أدخل سعراً صحيحاً'); }
+      // Hard floor: no listings under 100,000 IQD. First attempt reads as
+      // a typo check ("did you drop a zero?"), a second attempt at the
+      // same low price gets the policy stated outright. Editing the price
+      // resets the ladder (lowPriceWarnedRef tracks WHICH value we warned
+      // about). The server enforces the same floor regardless.
+      if (priceVal < 100000) {
+        setFieldErr('price');
+        if (lowPriceWarnedRef.current === priceVal) {
+          return setErr('نعتذر — لا نقبل أي جهاز بسعر أقل من 100,000 د.ع.');
+        }
+        lowPriceWarnedRef.current = priceVal;
+        return setErr('تأكد أن السعر أعلى من 100,000 د.ع.');
+      }
+      lowPriceWarnedRef.current = null;
+    }
     if (step === 3) {
       // Accept Arabic-Indic digits (٠١٢…) in phone fields. Iraqi keyboards
       // default to them, so a raw /\D/g filter would silently empty the
