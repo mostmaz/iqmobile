@@ -675,8 +675,9 @@ export default function PostListingScreen({ navigation }: any) {
             </View>
             <FieldLabel>{ar.auth.city}</FieldLabel>
             <Input value={city} onChangeText={setCity} placeholder={districtHint(govAr)} />
-            <FieldLabel style={{ marginTop: 12 }}>{ar.listing.description}</FieldLabel>
-            <Input value={description} onChangeText={setDescription} placeholder="ملاحظات إضافية…" multiline />
+            <FieldLabel style={{ marginTop: 12 }}>وصف حالة الجهاز</FieldLabel>
+            <Input value={description} onChangeText={setDescription}
+              placeholder="مثلاً: شخوط، نظيف، مثل الجديد…" multiline />
           </>
         )}
         {step === 3 && (

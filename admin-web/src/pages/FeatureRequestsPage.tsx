@@ -3,7 +3,7 @@
 // approves (which pins the listing) or rejects it.
 
 import React, { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, API_BASE } from '../api';
 
 type FeatureRequest = {
   id: number;
@@ -27,6 +27,7 @@ type FeatureRequest = {
   featured_until: number | null;
   user_name: string;
   user_phone: string | null;
+  cover_image: string | null;
 };
 
 const fmtIQD = (n: number) => new Intl.NumberFormat('en-US').format(n) + ' IQD';
@@ -94,11 +95,19 @@ export function FeatureRequestsPage() {
               {rows.map((f) => (
                 <tr key={f.id}>
                   <td>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      {f.cover_image ? (
+                        <img src={`${API_BASE}${f.cover_image}`} alt=""
+                          style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }} />
+                      ) : null}
+                      <div>
                     <strong>#{f.listing_id} · {f.brand} {f.model}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>{fmtIQD(f.asking_price)} · {f.governorate}</div>
                     {f.note ? <div className="muted" style={{ fontSize: 12 }}>“{f.note}”</div> : null}
                     {f.featured_until && f.featured_until > Date.now()
                       ? <div style={{ color: '#7bd88f', fontSize: 12 }}>featured until {fmtDate(f.featured_until)}</div> : null}
+                      </div>
+                    </div>
                   </td>
                   <td>{tierLabel(f)}</td>
                   <td style={{ textTransform: 'capitalize' }}>{f.carrier}</td>
