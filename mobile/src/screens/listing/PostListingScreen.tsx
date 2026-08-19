@@ -126,6 +126,12 @@ export default function PostListingScreen({ navigation }: any) {
   // Contact step — public on the listing. WhatsApp is optional and can
   // mirror the contact phone via the "same number" toggle.
   const [contactPhone, setContactPhone] = useState(user?.phone || '');
+  // The useState snapshot above runs before /auth/me resolves on cold
+  // start, so a wizard mounted early would start (and stay) empty. Fill
+  // the account phone in once it arrives — but never over a user edit.
+  useEffect(() => {
+    if (user?.phone) setContactPhone((cur) => cur || user.phone!);
+  }, [user?.phone]);
   const [contactWhatsapp, setContactWhatsapp] = useState('');
   const [waSameAsPhone, setWaSameAsPhone] = useState(false);
 
