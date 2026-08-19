@@ -19,7 +19,7 @@ import { normalizeGovernorate } from '../../governorates.js';
 import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { composeShareImage, facebookCaption } from '../../social.js';
-import { notify, notifyShopReview } from '../../notify.js';
+import { notify, notifyShopReview, hasNotified, versionAtLeast } from '../../notify.js';
 import { tierFor, tierTiming } from '../../featureTiers.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
@@ -862,6 +862,96 @@ r.post('/push/broadcast', requireAdmin, async (req, res) => {
 
   await pushTo(ids, title, body, data || { kind: 'broadcast' });
   res.json({ ok: true, recipients: ids.length });
+});
+
+// ─── quiet-listings outreach ─────────────────────────────────────────
+// Nudge sellers whose RECENT listings drew no contact at all — no call
+// tap, no WhatsApp tap, no chat thread. One notification per seller
+// (their newest quiet listing carries the tap target), never repeated
+// for the same listing (hasNotified guard).
+//
+// Same two-step ritual as /push/broadcast: ?dry=1 previews the audience,
+// ?confirm=1 actually sends. `days` bounds the listing age window —
+// default 7, so week-old-or-newer listings only; a listing posted an
+// hour ago hasn't had time to be contacted and is excluded via min_age
+// (12h) rather than nudged absurdly early.
+//
+// Delivery per seller mirrors notifyShopReview's version gate:
+//   - builds >= 0.3.7 know the 'listing.quiet' inbox label → notify()
+//     writes the inbox row (and pushes when a token exists).
+//   - older builds get push only (server text renders on any build);
+//     no token on file = nothing, rather than a raw-key inbox row.
+const QUIET_UI_MIN_VERSION = '0.3.7';
+r.post('/push/quiet-listings', requireAdmin, async (req, res) => {
+  const days = Math.max(1, Math.min(90, Number(req.body?.days) || 7));
+  const minAgeMs = 12 * 3600 * 1000;
+  const title = (req.body?.title || '').trim() || 'إعلانك ما وصله تواصل بعد';
+  const body = (req.body?.body || '').trim()
+    || 'جرّب تحسين الصور أو مراجعة السعر — أو ميّز إعلانك ليظهر بأعلى النتائج.';
+  const isDry = req.query.dry === '1' || req.body?.dry === true;
+  const isConfirmed = req.query.confirm === '1';
+
+  const now = Date.now();
+  const rows = db.prepare(
+    `SELECT l.id AS listing_id, l.created_at, l.seller_id,
+            u.expo_push_token,
+            (SELECT d.app_version FROM user_active_days d
+              WHERE d.user_id = u.id ORDER BY d.day DESC LIMIT 1) AS app_version
+     FROM phone_listings l
+     JOIN users u ON u.id = l.seller_id
+     WHERE l.status = 'active'
+       AND l.created_at >= ? AND l.created_at <= ?
+       AND u.seller_type != 'shop'
+       AND u.phone NOT LIKE 'seed:%'
+       AND NOT EXISTS (SELECT 1 FROM events e
+                       WHERE e.listing_id = l.id
+                         AND e.type IN ('contact_call','contact_whatsapp'))
+       AND NOT EXISTS (SELECT 1 FROM chats c WHERE c.listing_id = l.id)
+     ORDER BY l.created_at DESC`,
+  ).all(now - days * 86400000, now - minAgeMs);
+
+  // One entry per seller — newest quiet listing wins the tap target.
+  // Skip sellers whose newest quiet listing was already nudged.
+  const bySeller = new Map();
+  for (const row of rows) {
+    if (!bySeller.has(row.seller_id)) bySeller.set(row.seller_id, row);
+  }
+  const targets = [...bySeller.values()]
+    .filter((t) => !hasNotified(t.seller_id, 'listing.quiet', t.listing_id));
+
+  const withInbox = targets.filter((t) => versionAtLeast(t.app_version, QUIET_UI_MIN_VERSION));
+  const withToken = targets.filter((t) => t.expo_push_token);
+  const reachable = targets.filter(
+    (t) => versionAtLeast(t.app_version, QUIET_UI_MIN_VERSION) || t.expo_push_token,
+  );
+
+  const preview = {
+    days,
+    quiet_listings: rows.length,
+    sellers: targets.length,
+    inbox_capable: withInbox.length,
+    push_capable: withToken.length,
+    reachable: reachable.length,
+    title, body,
+  };
+  if (isDry) return res.json({ ok: true, dry: true, ...preview });
+  if (!isConfirmed) {
+    return res.status(400).json({
+      error: 'confirm_required',
+      hint: 'add ?confirm=1 to actually send, or ?dry=1 for a preview',
+      ...preview,
+    });
+  }
+
+  for (const t of reachable) {
+    if (versionAtLeast(t.app_version, QUIET_UI_MIN_VERSION)) {
+      notify(t.seller_id, 'listing.quiet', { listing_id: t.listing_id }, { title, body });
+    } else {
+      await pushTo([t.seller_id], title, body, { kind: 'listing.quiet', listing_id: t.listing_id })
+        .catch((err) => console.error('[quiet-listings] pushTo failed', err));
+    }
+  }
+  res.json({ ok: true, sent: reachable.length, skipped_unreachable: targets.length - reachable.length, ...preview });
 });
 
 // ─── brands CRUD ─────────────────────────────────────────────────────

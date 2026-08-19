@@ -45,6 +45,10 @@ const KIND_LABEL: Record<string, string> = {
   'order.returned': 'تم تسجيل إرجاع طلبك',
   'video.approved': 'تمت الموافقة على الفيديو ✅',
   'video.rejected': 'لم تتم الموافقة على الفيديو',
+  // Admin "quiet listing" outreach — the server only writes this row for
+  // builds that carry this label (QUIET_UI_MIN_VERSION gate, same pattern
+  // as shop.review.*). Payload has listing_id → tap opens the listing.
+  'listing.quiet': 'إعلانك ما وصله تواصل بعد 📣',
 };
 
 // Compose the secondary line under the kind label: "<sender> · <listing>".

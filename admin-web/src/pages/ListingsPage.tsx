@@ -124,6 +124,80 @@ const EMPTY_FORM = {
   description: '',
 };
 
+// ─── Quiet-listings outreach ─────────────────────────────────────────
+// Nudges sellers of recent listings that drew no call tap, no WhatsApp
+// tap, and no chat. Mirrors the server's two-step ritual: preview first
+// (dry run, shows exactly how many sellers are reachable), then send.
+function QuietListingsCard() {
+  const [days, setDays] = useState(7);
+  const [title, setTitle] = useState('إعلانك ما وصله تواصل بعد');
+  const [body, setBody] = useState('جرّب تحسين الصور أو مراجعة السعر — أو ميّز إعلانك ليظهر بأعلى النتائج.');
+  const [preview, setPreview] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  async function dryRun() {
+    setBusy(true); setMsg('');
+    try {
+      const r = await api('/admin/push/quiet-listings?dry=1', {
+        method: 'POST', body: JSON.stringify({ days, title, body }),
+      });
+      setPreview(r);
+    } catch (e: any) { setMsg(e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function send() {
+    if (!preview) return;
+    if (!window.confirm(`إرسال الإشعار إلى ${preview.reachable} بائع؟`)) return;
+    setBusy(true); setMsg('');
+    try {
+      const r = await api('/admin/push/quiet-listings?confirm=1', {
+        method: 'POST', body: JSON.stringify({ days, title, body }),
+      });
+      setMsg(`أُرسل إلى ${r.sent} بائع (غير قابل للوصول: ${r.skipped_unreachable})`);
+      setPreview(null);
+    } catch (e: any) { setMsg(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="card">
+      <h2>إشعار الإعلانات الصامتة</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        البائعون الذين نشروا إعلاناً خلال آخر مدة محددة ولم يصلهم أي اتصال أو واتساب أو محادثة.
+        كل بائع يُشعَر مرة واحدة لكل إعلان.
+      </p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+        <label>آخر</label>
+        <input type="number" min={1} max={90} value={days}
+          onChange={(e) => { setDays(Number(e.target.value) || 7); setPreview(null); }}
+          style={{ width: 70 }} />
+        <label>يوم</label>
+        <input value={title} onChange={(e) => { setTitle(e.target.value); setPreview(null); }}
+          placeholder="العنوان" style={{ flex: 1, minWidth: 200 }} dir="rtl" />
+      </div>
+      <textarea value={body} onChange={(e) => { setBody(e.target.value); setPreview(null); }}
+        rows={2} style={{ width: '100%', marginBottom: 8 }} dir="rtl" />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="secondary" onClick={dryRun} disabled={busy}>معاينة</button>
+        {preview ? (
+          <>
+            <span className="muted">
+              إعلانات صامتة: {preview.quiet_listings} · بائعون: {preview.sellers} ·
+              يمكن الوصول إليهم: {preview.reachable} (إشعار داخل التطبيق: {preview.inbox_capable}، دفع: {preview.push_capable})
+            </span>
+            <button onClick={send} disabled={busy || preview.reachable === 0}>
+              إرسال إلى {preview.reachable}
+            </button>
+          </>
+        ) : null}
+        {msg ? <span className="muted">{msg}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 export function ListingsPage() {
   const [rows, setRows] = useState<Listing[]>([]);
   const [status, setStatus] = useState<string>('');
@@ -249,6 +323,7 @@ export function ListingsPage() {
   return (
     <div>
       <QuickAddCard onCreated={load} />
+      <QuietListingsCard />
       <div className="card">
         <h2>Listings</h2>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center', flexWrap: 'wrap' }}>

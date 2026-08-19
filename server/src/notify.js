@@ -69,7 +69,7 @@ export function notify(userId, kind, payload, push) {
 const REVIEW_UI_MIN_VERSION = '0.3.0';
 
 /** "0.2.1" <= "0.3.0". Missing/unparseable sorts as oldest. */
-function versionAtLeast(v, min) {
+export function versionAtLeast(v, min) {
   if (!v) return false;
   const a = String(v).split('.').map((x) => parseInt(x, 10) || 0);
   const b = String(min).split('.').map((x) => parseInt(x, 10) || 0);
