@@ -841,11 +841,14 @@ r.post('/push/broadcast', requireAdmin, async (req, res) => {
   if (!title || !body) return res.status(400).json({ error: 'missing_fields' });
   const isDry = req.query.dry === '1' || req.body?.dry === true;
   const isConfirmed = req.query.confirm === '1';
+  // Deduped by token: two rows sharing one device must not double-send.
   const rows = db.prepare(
-    `SELECT id FROM users
-     WHERE is_guest=0
-       AND expo_push_token IS NOT NULL
-       AND expo_push_token <> ''`,
+    `SELECT id FROM (
+       SELECT id, is_guest, ROW_NUMBER() OVER (
+         PARTITION BY expo_push_token ORDER BY is_guest ASC, id DESC) AS rn
+       FROM users
+       WHERE expo_push_token IS NOT NULL AND expo_push_token <> ''
+     ) WHERE rn = 1 AND is_guest = 0`,
   ).all();
   const ids = rows.map((r) => r.id);
 
@@ -919,9 +922,16 @@ r.post('/push/weekly-deals', requireAdmin, async (req, res) => {
   const body = req.body?.body?.trim()
     || `${name(head[0])} بـ ${fmt(head[0].asking_price)} · ${name(head[1] || head[0])} بـ ${fmt((head[1] || head[0]).asking_price)} د.ع — شوف باقي العروض 👀`;
 
+  // One recipient per DEVICE, not per user row — reinstalls and the
+  // guest->register flow leave the same token on several rows, which
+  // sent duplicate copies of the same notification to one phone.
   const ids = db.prepare(
-    `SELECT id FROM users
-     WHERE expo_push_token IS NOT NULL AND expo_push_token <> ''`,
+    `SELECT id FROM (
+       SELECT id, ROW_NUMBER() OVER (
+         PARTITION BY expo_push_token ORDER BY is_guest ASC, id DESC) AS rn
+       FROM users
+       WHERE expo_push_token IS NOT NULL AND expo_push_token <> ''
+     ) WHERE rn = 1`,
   ).all().map((r2) => r2.id);
 
   const preview = { recipients: ids.length, title, body,
