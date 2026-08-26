@@ -46,8 +46,12 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
       borderColor: theme.line,
       gap: 4,
     }}>
-      {state.routes.map((route, idx) => {
-        const focused = state.index === idx;
+      {/* Chats left the bottom bar for the Browse header (design §A) — the
+          route stays REGISTERED so navigate('Chats') and notification deep
+          links keep working; it just isn't rendered here. Focus therefore
+          compares route keys, not indices. */}
+      {state.routes.filter((r) => r.name !== 'Chats').map((route) => {
+        const focused = route.key === state.routes[state.index].key;
         const isSell = route.name === 'Sell';
         const Icon = ICONS[route.name];
         const onPress = () => {
@@ -58,7 +62,7 @@ export function TabBar({ state, navigation }: BottomTabBarProps) {
           // standard bottom-nav behaviour, and previously a no-op. Without
           // it, a tab left on a nested page (a promo screen, a shop) had no
           // one-tap way home, and back would not pop it either.
-          const tabState: any = state.routes[idx].state;
+          const tabState: any = route.state;
           if (tabState && tabState.index > 0) {
             navigation.dispatch({
               ...StackActions.popToTop(),

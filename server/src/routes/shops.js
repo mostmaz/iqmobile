@@ -108,6 +108,56 @@ function shopCard(u, nowTs) {
   const listing_count = db.prepare(
     "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status IN ('active','reserved','sold','expired')",
   ).get(u.id).n;
+  // Directory enrichment (2026-08: shops-directory redesign). All additive —
+  // older app builds ignore the extra fields. Derived from ACTIVE listings
+  // only, so thumbnails/brands/badges self-correct as stock changes.
+  const activeAgg = db.prepare(
+    "SELECT COUNT(*) AS n, MAX(created_at) AS last FROM phone_listings WHERE seller_id=? AND status='active'",
+  ).get(u.id);
+  const newToday = db.prepare(
+    "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status='active' AND created_at > ?",
+  ).get(u.id, nowTs - 86400000).n;
+  const thumbnails = db.prepare(
+    `SELECT (SELECT i.image_path FROM listing_images i
+              WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS img
+       FROM phone_listings l
+      WHERE l.seller_id=? AND l.status='active'
+      ORDER BY l.created_at DESC LIMIT 3`,
+  ).all(u.id).map((r) => r.img).filter(Boolean);
+  const brands = db.prepare(
+    "SELECT DISTINCT brand FROM phone_listings WHERE seller_id=? AND status='active' AND brand IS NOT NULL AND brand != ''",
+  ).all(u.id).map((r) => r.brand);
+  // Reply behaviour over the 30 most recent buyer-opened chats: median time
+  // from the buyer's first message to the shop's first reply, and the share
+  // of chats that got any reply. Null until the shop has 3 measurable chats
+  // — a single lucky reply must not mint a "يرد خلال ساعة" badge.
+  let reply_rate = null;
+  let reply_median_minutes = null;
+  {
+    const chats = db.prepare(
+      'SELECT id, buyer_id FROM chats WHERE seller_id=? ORDER BY created_at DESC LIMIT 30',
+    ).all(u.id);
+    const firstBuyerMsg = db.prepare(
+      'SELECT MIN(created_at) AS t FROM chat_messages WHERE chat_id=? AND sender_id=?',
+    );
+    const firstReplyAfter = db.prepare(
+      'SELECT MIN(created_at) AS t FROM chat_messages WHERE chat_id=? AND sender_id=? AND created_at > ?',
+    );
+    const deltas = [];
+    let asked = 0;
+    for (const c of chats) {
+      const t0 = firstBuyerMsg.get(c.id, c.buyer_id)?.t;
+      if (!t0) continue;
+      asked++;
+      const t1 = firstReplyAfter.get(c.id, u.id, t0)?.t;
+      if (t1) deltas.push(t1 - t0);
+    }
+    if (asked >= 3 && deltas.length) {
+      deltas.sort((a, b) => a - b);
+      reply_median_minutes = Math.round(deltas[Math.floor(deltas.length / 2)] / 60000);
+      reply_rate = Math.round((deltas.length / asked) * 100);
+    }
+  }
   return {
     id: u.id,
     display_name: u.display_name,
@@ -139,6 +189,13 @@ function shopCard(u, nowTs) {
     verified: !!u.verified,
     is_featured: !!(u.shop_featured_until && u.shop_featured_until > nowTs),
     listing_count,
+    active_count: activeAgg.n,
+    last_posted_at: activeAgg.last || null,
+    new_today_count: newToday,
+    thumbnails,
+    brands,
+    reply_rate,
+    reply_median_minutes,
     // Storefront mode. The app shows add-to-cart + COD checkout instead of
     // the call/WhatsApp row when this is on. Shipping is a flat per-order
     // charge, sent alongside so the cart can show the total before checkout.

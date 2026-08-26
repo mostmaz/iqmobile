@@ -98,9 +98,54 @@ r.get('/app-config', (_req, res) => {
     };
   })();
 
+  // Home-hub "كل المتاجر" segment: three dashboard-picked shops (app_settings
+  // key 'home_shops' = JSON array of user ids), topped up automatically —
+  // featured first, then the biggest active inventories — so the segment
+  // never renders half-empty when nothing was picked.
+  const homeShops = (() => {
+    const nowTs = Date.now();
+    let picked = [];
+    try {
+      const v = JSON.parse(getSetting('home_shops') || '[]');
+      if (Array.isArray(v)) picked = v.map(Number).filter(Number.isFinite);
+    } catch {}
+    const baseSql = `SELECT id, shop_name, display_name, city, governorate,
+        shop_image_path, profile_image_path
+      FROM users WHERE seller_type='shop'
+        AND COALESCE(shop_hidden,0)=0 AND COALESCE(shop_status,'approved')='approved'`;
+    let rows = picked
+      .map((pid) => db.prepare(baseSql + ' AND id=?').get(pid))
+      .filter(Boolean)
+      .slice(0, 3);
+    if (rows.length < 3) {
+      const exclude = rows.map((r) => r.id);
+      const fill = db.prepare(baseSql + `
+          AND id NOT IN (${exclude.length ? exclude.map(() => '?').join(',') : '0'})
+        ORDER BY (CASE WHEN shop_featured_until > ? THEN 1 ELSE 0 END) DESC,
+          (SELECT COUNT(*) FROM phone_listings l
+            WHERE l.seller_id = users.id AND l.status='active') DESC,
+          rating_avg DESC
+        LIMIT ?`).all(...exclude, nowTs, 3 - rows.length);
+      rows = rows.concat(fill);
+    }
+    return rows.map((u) => ({
+      id: u.id,
+      name: u.shop_name || u.display_name,
+      city: u.city || null,
+      governorate: u.governorate || null,
+      logo: u.shop_image_path || u.profile_image_path || null,
+    }));
+  })();
+  const shopsTotal = db.prepare(
+    `SELECT COUNT(*) AS n FROM users WHERE seller_type='shop'
+      AND COALESCE(shop_hidden,0)=0 AND COALESCE(shop_status,'approved')='approved'`,
+  ).get().n;
+
   res.set('Cache-Control', 'public, max-age=60').json({
     price_shop_id: priceShop ? priceShop.id : null,
     storefront,
+    home_shops: homeShops,
+    shops_total: shopsTotal,
     update: {
       // The app compares its own version against these. Doing the comparison
       // client-side (rather than the server reading x-app-version) means the

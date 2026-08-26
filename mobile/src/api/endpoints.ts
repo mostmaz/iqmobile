@@ -536,6 +536,15 @@ export interface ShopCard {
   // Storefront mode — add-to-cart + COD checkout instead of call/WhatsApp.
   orders_enabled?: boolean;
   shipping_fee?: number | null;
+  // Directory enrichment (shops-directory redesign) — derived from ACTIVE
+  // listings server-side; all optional so older payloads still typecheck.
+  active_count?: number;
+  last_posted_at?: number | null;
+  new_today_count?: number;
+  thumbnails?: string[];
+  brands?: string[];
+  reply_rate?: number | null;
+  reply_median_minutes?: number | null;
 }
 export interface ShopImage { id: number; image_path: string; position?: number }
 export interface ShopDetail extends ShopCard {

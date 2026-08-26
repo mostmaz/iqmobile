@@ -9,13 +9,14 @@ import { CONDITIONS } from '../../lib/conditions';
 import { digitsOnly } from '../../lib/format';
 import { theme, fonts, radius, shadowAccent } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
-import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconStore, IconBag } from '../../components/icons';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag, IconChat } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
-import { StorefrontCard, type Storefront } from '../../components/StorefrontCard';
-import { Listings, Brands, Banners, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
+import { type Storefront } from '../../components/StorefrontCard';
+import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
+import { Listings, Brands, Banners, Chats, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
@@ -75,7 +76,7 @@ export default function BrowseScreen({ navigation }: any) {
     queryFn: async () => {
       const res = await fetch(`${getBaseUrl()}/app-config`);
       if (!res.ok) throw new Error('app_config_failed');
-      return res.json() as Promise<{ storefront?: Storefront | null }>;
+      return res.json() as Promise<{ storefront?: Storefront | null; home_shops?: HomeShop[]; shops_total?: number }>;
     },
     staleTime: 10 * 60 * 1000,
     // A cold start on a slow Iraqi connection routinely loses the first
@@ -90,6 +91,20 @@ export default function BrowseScreen({ navigation }: any) {
     refetchOnReconnect: true,
   });
   const storefront = appConfig?.storefront ?? null;
+  const homeShops = appConfig?.home_shops ?? [];
+  const shopsTotal = appConfig?.shops_total ?? 0;
+
+  // Unread-chats total for the header badge. Shares the inbox's own query
+  // key, so opening the inbox refreshes the badge and vice versa.
+  const { data: chatRows } = useQuery({
+    queryKey: ['chats', 'all'],
+    queryFn: () => Chats.list(),
+    staleTime: 60000,
+  });
+  const chatUnread = useMemo(
+    () => (chatRows || []).reduce((a: number, c: any) => a + (c.unread_count || 0), 0),
+    [chatRows],
+  );
 
   // Brand catalog — server-side now (table-backed, admin-editable).
   // staleTime 5min so we don't refetch on every focus; the dashboard
@@ -282,9 +297,12 @@ export default function BrowseScreen({ navigation }: any) {
         }
       });
     }
-    if (bannerPool.length === 0) return out;
-    return [{ __bannerPool: bannerPool }, ...out];
-  }, [items, bannerPool, feedBanners]);
+    // Home-hub card (storefront + shops segments) — right after the promo
+    // banner, before the first listing (design §A ordering).
+    const hub = (storefront || homeShops.length) ? [{ __homeHub: true }] : [];
+    if (bannerPool.length === 0) return [...hub, ...out];
+    return [{ __bannerPool: bannerPool }, ...hub, ...out];
+  }, [items, bannerPool, feedBanners, storefront, homeShops]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -314,9 +332,9 @@ export default function BrowseScreen({ navigation }: any) {
             onPress={() => setShowFilter(true)}
             activeOpacity={0.7}
             style={{
-              flexShrink: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+              flexShrink: 0, flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
               backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-              borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, marginHorizontal: 8,
+              borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, marginHorizontal: 5,
             }}
           >
             <IconPin size={13} color={theme.accent} sw={1.7} />
@@ -327,7 +345,7 @@ export default function BrowseScreen({ navigation }: any) {
           {/* Trailing actions: filter + bell, side by side. The search box
               and brand rail that used to sit below were removed — search has
               its own tab, brand selection moved into the filter sheet. */}
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             {/* Cart. The store's sticky cart bar was the ONLY route back to
                 an in-progress basket, so navigating away from the store
                 stranded the items with no way back except re-entering it.
@@ -360,12 +378,14 @@ export default function BrowseScreen({ navigation }: any) {
                 </View>
               </TouchableOpacity>
             ) : null}
-            {/* Shops directory entry. */}
+            {/* My chats — moved out of the bottom tab bar (design §A). The
+                unread badge is the sum over the inbox; the store entry that
+                used to live here became the feed's segmented card. */}
             <TouchableOpacity
-              onPress={() => navigation.navigate('Shops')}
+              onPress={() => (navigation as any).getParent()?.navigate('Chats')}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="المتاجر"
+              accessibilityLabel="محادثاتي"
               hitSlop={6}
               style={{
                 width: 38, height: 38, borderRadius: 999,
@@ -373,7 +393,19 @@ export default function BrowseScreen({ navigation }: any) {
                 alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <IconStore size={18} color={theme.ink} sw={1.7} />
+              <IconChat size={19} color={theme.ink} sw={1.7} />
+              {chatUnread > 0 ? (
+                <View style={{
+                  position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17,
+                  paddingHorizontal: 4, borderRadius: 999, backgroundColor: theme.accent,
+                  alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1.5, borderColor: theme.bg,
+                }}>
+                  <Text style={{ fontFamily: fonts.ltrBold, fontSize: 9.5, color: '#fff' }}>
+                    {chatUnread > 99 ? '99+' : chatUnread}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
             {/* Filter button. Compact icon button matching the bell; the
                 accent dot signals an active (non-location) filter, and the
@@ -550,6 +582,7 @@ export default function BrowseScreen({ navigation }: any) {
         data={feedData}
         keyExtractor={(item) => (
           item.__bannerPool ? 'banner-carousel'
+            : item.__homeHub ? 'home-hub'
             : item.__feedBanner ? `feed-banner-${item.__slot}`
               : String(item.id)
         )}
@@ -566,6 +599,18 @@ export default function BrowseScreen({ navigation }: any) {
               banners={item.__bannerPool}
               onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
               onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
+            />
+          ) : item.__homeHub ? (
+            <HomeHubCard
+              storefront={storefront}
+              shops={homeShops}
+              shopsTotal={shopsTotal}
+              onOpenProduct={(p) => storefront && navigation.navigate('StoreProduct', {
+                shopId: storefront.shop_id, brand: p.brand, model: p.model, shopName: storefront.shop_name,
+              })}
+              onOpenStore={() => storefront && navigation.navigate('StoreHome', { id: storefront.shop_id })}
+              onOpenDirectory={() => navigation.navigate('Shops')}
+              onOpenShopPage={(sid) => navigation.navigate('ShopDetail', { id: sid })}
             />
           ) : item.__feedBanner ? (
             <FeedBanner
@@ -589,15 +634,6 @@ export default function BrowseScreen({ navigation }: any) {
         // of every screen and cost that much vertical space on every scroll.
         // As a list header it leads the feed, then scrolls away with the
         // banner and the listings like any other content.
-        ListHeaderComponent={storefront ? (
-          <StorefrontCard
-            storefront={storefront}
-            onOpenShop={() => navigation.navigate('StoreHome', { id: storefront.shop_id })}
-            onOpenProduct={(p) => navigation.navigate('StoreProduct', {
-              shopId: storefront.shop_id, brand: p.brand, model: p.model, shopName: storefront.shop_name,
-            })}
-          />
-        ) : null}
         ListFooterComponent={isFetchingNextPage ? (
           <View style={{ paddingVertical: 20, alignItems: 'center' }}>
             <ActivityIndicator color={theme.accent} />
