@@ -1101,6 +1101,26 @@ addColumnIfMissing('feature_requests', 'sender_name TEXT');
   }
 }
 
+// Price-aggregator source cull (2026-08-23, owner request): the hidden
+// price shop (#2548) keeps only prices sourced from Free Zone imports
+// (no contact number) and the four approved pages — IQ Mobile, Trend,
+// عالم القلعة, Sonic. Listings sourced from Point mobile (07711581025)
+// and برج العرب (07722222614) are turned off. Source attribution lives
+// in each aggregated listing's contact_whatsapp. Flag-guarded one-shot;
+// rows are kept as status='removed' so this is reversible by hand.
+{
+  const done = db.prepare("SELECT value FROM app_settings WHERE key='migration_v8_price_source_cull'").get();
+  if (!done) {
+    const r = db.prepare(
+      `UPDATE phone_listings SET status='removed', updated_at=?
+        WHERE seller_id = 2548 AND status='active'
+          AND contact_whatsapp IN ('07711581025','07722222614')`,
+    ).run(Date.now());
+    db.prepare("INSERT OR REPLACE INTO app_settings(key,value) VALUES('migration_v8_price_source_cull','done')").run();
+    console.log(`[iqmobile] migration v8: price-source cull — ${r.changes} aggregated listings turned off`);
+  }
+}
+
 // Seed the device catalog from the bundled GSMArena snapshot (~4k rows for
 // 20 brands, 2017→present). One transaction, flag-guarded so it runs exactly
 // once. INSERT OR IGNORE means a later re-seed (bump the flag key to
