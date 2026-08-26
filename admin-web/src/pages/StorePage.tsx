@@ -121,6 +121,90 @@ async function sendForm(path: string, method: string, fd: FormData) {
   return data;
 }
 
+// ── Excel bulk import ────────────────────────────────────────────────
+// One sheet adds devices AND updates prices: existing rows (brand+model+
+// storage) get the new price, unknown rows become new store listings, and
+// a row without a price imports as "اتصل للسعر" (pre-order) until a later
+// sheet prices it. prices_only suppresses creation.
+function ExcelImportCard() {
+  const [file, setFile] = useState<File | null>(null);
+  const [pricesOnly, setPricesOnly] = useState(false);
+  const [preview, setPreview] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  async function send(dry: boolean) {
+    if (!file) return;
+    setBusy(true); setNote('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const q = `?${dry ? 'dry=1&' : ''}${pricesOnly ? 'prices_only=1' : ''}`;
+      const r = await apiForm<any>(`/admin/store/import-excel${q}`, fd);
+      if (dry) setPreview(r);
+      else {
+        setPreview(null); setFile(null);
+        setNote(`تم: ${r.updated} سعر محدّث · ${r.created} جهاز جديد (${r.preorders} حجز مسبق بدون سعر)`);
+      }
+    } catch (e: any) { setNote(`خطأ: ${e?.data?.error || e.message}`); }
+    finally { setBusy(false); }
+  }
+
+  const AR_ACTION: Record<string, string> = {
+    update_price: 'تحديث سعر', create: 'جهاز جديد', create_preorder: 'جديد — حجز مسبق (بدون سعر)',
+    unchanged: 'بدون تغيير', noop: 'بدون تغيير', skip_priceless: 'تجاهل (سطر بلا سعر لجهاز مسعّر)',
+    no_match: 'غير موجود (وضع الأسعار فقط)',
+  };
+
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="chart-title">استيراد Excel — أجهزة وأسعار</div>
+      <p className="muted" style={{ fontSize: 12.5 }}>
+        الأعمدة: الماركة، الموديل، السعة، اللون، السعر، الحالة، ملاحظات.
+        سطر بدون سعر = حجز مسبق (يظهر «اتصل للسعر» حتى يصله سعر في شيت لاحق).
+        «603» تعني 603,000.
+      </p>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input type="file" accept=".xlsx,.xls" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); }} />
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+          <input type="checkbox" checked={pricesOnly} onChange={(e) => { setPricesOnly(e.target.checked); setPreview(null); }} />
+          الأسعار فقط (لا تنشئ أجهزة جديدة)
+        </label>
+        <button className="secondary" disabled={!file || busy} onClick={() => send(true)}>معاينة</button>
+        {preview ? (
+          <button className="primary" disabled={busy} onClick={() => send(false)}>
+            تنفيذ ({Object.entries(preview.counts).filter(([k]) => k !== 'unchanged' && k !== 'noop').reduce((a, [, v]: any) => a + v, 0)} تغيير)
+          </button>
+        ) : null}
+        {note ? <span className="muted">{note}</span> : null}
+      </div>
+      {preview ? (
+        <div style={{ marginTop: 10, maxHeight: 300, overflowY: 'auto' }}>
+          {preview.errors?.length ? (
+            <div style={{ color: 'salmon', fontSize: 12.5, marginBottom: 6 }}>{preview.errors.join(' · ')}</div>
+          ) : null}
+          <table className="data-table">
+            <thead><tr><th>سطر</th><th>الجهاز</th><th>السعر</th><th>الإجراء</th></tr></thead>
+            <tbody>
+              {preview.rows.map((r2: any, i: number) => (
+                <tr key={i}>
+                  <td>{r2.line}</td>
+                  <td>{r2.brand} {r2.model}{r2.storage ? ` · ${r2.storage}` : ''}{r2.color ? ` · ${r2.color}` : ''}</td>
+                  <td style={{ fontFamily: 'monospace' }}>
+                    {r2.preorder ? '—' : Number(r2.price).toLocaleString('en-US')}
+                    {r2.old_prices?.length ? ` (كان: ${r2.old_prices.join('/')})` : ''}
+                  </td>
+                  <td>{AR_ACTION[r2.action] || r2.action}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function StorePage() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [shopId, setShopId] = useState<number | null>(null);
@@ -304,6 +388,8 @@ export function StorePage() {
     <div>
       {err ? <div className="card" style={{ color: 'salmon', marginBottom: 12 }}>{err}</div> : null}
       {msg ? <div className="card" style={{ color: '#7bd88f', marginBottom: 12 }}>{msg}</div> : null}
+
+      <ExcelImportCard />
 
       <div className="card" style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>

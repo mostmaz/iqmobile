@@ -11,6 +11,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { db, setSettingValue } from '../../db.js';
+import multer from 'multer';
+import { parseSheet, planImport, applyImport } from '../../storeImport.js';
 import { notify } from '../../notify.js';
 import {
   CARD_MODES, CARD_SLOTS, readCardConfig, resolveStorefrontCard, cardModeCounts,
@@ -29,6 +31,27 @@ const dayStart = (ms) => {
 const OPEN = "('pending','confirmed','shipped')";
 
 export function registerStoreRoutes(requireAdmin, imageUpload, UPLOADS) {
+
+  // ── Excel bulk import (devices + prices) ─────────────────────────
+  // POST /admin/store/import-excel  (multipart 'file'; ?dry=1 previews,
+  // ?prices_only=1 suppresses creation). See src/storeImport.js.
+  const excelUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+  r.post('/store/import-excel', requireAdmin, excelUpload.single('file'), (req, res) => {
+    if (!req.file?.buffer) return res.status(400).json({ error: 'missing_file' });
+    let parsed;
+    try { parsed = parseSheet(req.file.buffer); }
+    catch (e) { return res.status(400).json({ error: 'bad_file', detail: String(e?.message || e) }); }
+    const pricesOnly = req.query.prices_only === '1';
+    const planned = planImport(parsed.rows, { pricesOnly });
+    if (planned.error) return res.status(400).json({ error: planned.error });
+    const counts = {};
+    for (const p of planned.plan) counts[p.action] = (counts[p.action] || 0) + 1;
+    if (req.query.dry === '1') {
+      return res.json({ ok: true, dry: true, counts, errors: parsed.errors, rows: planned.plan });
+    }
+    const result = applyImport(planned.plan, planned.shopId);
+    res.json({ ok: true, counts, errors: parsed.errors, ...result });
+  });
   // ─── home-screen card ──────────────────────────────────────────────
   // What the storefront card shows: newest / best sellers / most viewed /
   // hand-picked / a banner image instead of tiles.

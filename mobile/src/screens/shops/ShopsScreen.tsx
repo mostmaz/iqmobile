@@ -185,7 +185,7 @@ export default function ShopsScreen({ navigation }: any) {
           contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8 }}
         >
           <Chip selected={tab === 'all'} onPress={() => setTab('all')} label="الكل" />
-          <Chip selected={tab === 'active'} onPress={() => setTab('active')} label="🆕 نشط" />
+          <Chip selected={tab === 'active'} onPress={() => setTab('active')} label="نشط" />
           {brandFacets.map(([brand]) => (
             <Chip
               key={brand}
