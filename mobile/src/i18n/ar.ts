@@ -57,6 +57,7 @@ const AR = {
     accessories: 'الملحقات',
     description: 'الوصف',
     chat: 'محادثة البائع',
+    chatShop: 'محادثة المتجر',
     phoneLocked: 'رقم البائع يُكشف بعد تأكيد السعر من الطرفين',
     callSeller: 'اتصال بالبائع',
     save: 'حفظ',

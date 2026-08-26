@@ -1089,7 +1089,7 @@ function ContactRow({
         <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
             <IconChat size={15} color="#fff" sw={1.8} />
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{ar.listing.chat}</Text>
+            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{sellerType === 'shop' ? ar.listing.chatShop : ar.listing.chat}</Text>
           </View>
         </Btn>
       </View>
