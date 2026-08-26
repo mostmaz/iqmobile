@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
+import { shopOrdersAllowed } from '../storefrontCard.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { pushToAdmins } from '../adminPush.js';
@@ -199,8 +200,8 @@ function shopCard(u, nowTs) {
     // Storefront mode. The app shows add-to-cart + COD checkout instead of
     // the call/WhatsApp row when this is on. Shipping is a flat per-order
     // charge, sent alongside so the cart can show the total before checkout.
-    orders_enabled: !!u.shop_orders_enabled,
-    shipping_fee: u.shop_orders_enabled ? (Number(u.shop_shipping_fee) || 0) : null,
+    orders_enabled: shopOrdersAllowed(u),
+    shipping_fee: shopOrdersAllowed(u) ? (Number(u.shop_shipping_fee) || 0) : null,
   };
 }
 

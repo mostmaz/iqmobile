@@ -9,6 +9,7 @@ import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
 import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
+import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
@@ -167,6 +168,10 @@ r.get('/settings', requireAdmin, (_req, res) => {
     // Default on: show every listing regardless of TTL (nothing expires).
     listings_never_expire: getSetting('listings_never_expire') !== '0',
 
+    // Multi-shop COD orders (merchant panel feature). Off by default —
+    // when off, only the house storefront takes in-app orders.
+    multi_shop_orders: getSetting('multi_shop_orders') === '1',
+
     // Update floor. '0' = nothing enforced.
     min_supported_version: getSetting('min_supported_version') || '0',
     nag_below_version: getSetting('nag_below_version') || '0',
@@ -184,7 +189,8 @@ r.get('/settings', requireAdmin, (_req, res) => {
 });
 
 r.patch('/settings', requireAdmin, (req, res) => {
-  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings, listings_never_expire } = req.body || {};
+  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings, listings_never_expire, multi_shop_orders } = req.body || {};
+  if (multi_shop_orders != null) setSettingValue('multi_shop_orders', multi_shop_orders ? '1' : '0');
   if (listing_ttl_days != null) {
     const n = Number(listing_ttl_days);
     if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'bad_ttl' });
@@ -1881,6 +1887,27 @@ r.post('/feature-requests/:id(\\d+)/reject', requireAdmin, (req, res) => {
 // Shops are users with seller_type='shop'. Admin can list them, flag an
 // account as a shop (find-or-create by phone), edit the shop profile, grant a
 // featured window (shop_featured_until), or revert to an individual account.
+// Set (or clear, with empty strings) a shop's merchant-panel login. The
+// username must be unique across shops; the password is stored bcrypt-hashed
+// and never readable back.
+r.post('/shops/:id(\\d+)/dash-credentials', requireAdmin, (req, res) => {
+  const shop = db.prepare("SELECT id FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!shop) return res.status(404).json({ error: 'not_found' });
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  if (!username && !password) {
+    db.prepare('UPDATE users SET shop_dash_username=NULL, shop_dash_password_hash=NULL WHERE id=?').run(shop.id);
+    return res.json({ ok: true, cleared: true });
+  }
+  if (username.length < 3) return res.status(400).json({ error: 'bad_username' });
+  if (password.length < 6) return res.status(400).json({ error: 'bad_password' });
+  const taken = db.prepare('SELECT id FROM users WHERE shop_dash_username=? AND id != ?').get(username, shop.id);
+  if (taken) return res.status(409).json({ error: 'username_taken' });
+  db.prepare('UPDATE users SET shop_dash_username=?, shop_dash_password_hash=? WHERE id=?')
+    .run(username, bcrypt.hashSync(password, 10), shop.id);
+  res.json({ ok: true, username });
+});
+
 r.get('/shops', requireAdmin, (req, res) => {
   const q = req.query.q ? String(req.query.q).slice(0, 64) : '';
   let sql = `
@@ -1890,6 +1917,7 @@ r.get('/shops', requireAdmin, (req, res) => {
            COALESCE(u.shop_hidden,0) AS shop_hidden,
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
+           u.shop_dash_username,
            COALESCE(u.shop_shipping_fee,5000) AS shop_shipping_fee,
            COALESCE(u.shop_delivery_days_min,2) AS shop_delivery_days_min,
            COALESCE(u.shop_delivery_days_max,4) AS shop_delivery_days_max,
@@ -2669,14 +2697,7 @@ r.post('/listings/:id(\\d+)/publish', requireAdmin, imageUpload.single('image'),
 // until it's delivered. Anything else (delivered → shipped, resurrecting a
 // cancelled order) is a mistake, not a workflow, so the transition map
 // rejects it rather than letting the dashboard write an impossible state.
-const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
-const ORDER_NEXT = {
-  pending: ['confirmed', 'cancelled'],
-  confirmed: ['shipped', 'cancelled'],
-  shipped: ['delivered', 'cancelled'],
-  delivered: [],
-  cancelled: [],
-};
+// Lifecycle map moved to src/orderFlow.js — shared with the merchant panel.
 
 r.get('/orders', requireAdmin, (req, res) => {
   const status = ORDER_STATUSES.includes(req.query.status) ? req.query.status : '';

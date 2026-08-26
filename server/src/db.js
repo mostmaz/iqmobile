@@ -976,6 +976,11 @@ addColumnIfMissing('users', 'shop_facebook TEXT');
 addColumnIfMissing('users', 'shop_instagram TEXT');
 // Qi Card feature payments carry the sender's account name, not a SIM.
 addColumnIfMissing('feature_requests', 'sender_name TEXT');
+// Per-shop merchant panel (dormant behind the multi_shop_orders switch):
+// each shop can get its own dashboard username/password, scoped to its
+// orders only. Set by the admin from the shops page.
+addColumnIfMissing('users', 'shop_dash_username TEXT');
+addColumnIfMissing('users', 'shop_dash_password_hash TEXT');
 
 // Seed the brands table on first boot. Mirrors the historical hardcoded
 // list from governorates.js so existing listings stay valid. Skips if

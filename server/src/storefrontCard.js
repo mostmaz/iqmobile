@@ -18,6 +18,35 @@ export const CARD_SLOTS = 3;
 
 const setting = (k, d = '') => getSetting(k) ?? d;
 
+// The HOUSE storefront (the home card + the always-on orders shop). Pinned
+// by setting when present; otherwise the first HIDDEN order-enabled shop
+// (the iQ store is hidden), falling back to any order-enabled shop. Without
+// the hidden preference, enabling orders for a regular low-id shop would
+// hijack the home card.
+export function houseShopId() {
+  const pinned = Number(getSetting('storefront_shop_id'));
+  if (Number.isFinite(pinned) && pinned > 0) return pinned;
+  const hidden = db.prepare(
+    `SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
+      AND COALESCE(shop_hidden,0)=1 ORDER BY id ASC LIMIT 1`,
+  ).get();
+  if (hidden) return hidden.id;
+  const any = db.prepare(
+    `SELECT id FROM users WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
+      ORDER BY id ASC LIMIT 1`,
+  ).get();
+  return any ? any.id : null;
+}
+
+// Can this shop take in-app orders RIGHT NOW? Per-shop flag AND the global
+// multi-shop switch — except the house storefront, which predates the
+// switch and always works.
+export function shopOrdersAllowed(shopUser) {
+  if (!shopUser || !shopUser.shop_orders_enabled) return false;
+  if (getSetting('multi_shop_orders') === '1') return true;
+  return shopUser.id === houseShopId();
+}
+
 export function readCardConfig() {
   const raw = setting('storefront_card_mode', 'newest');
   return {

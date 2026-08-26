@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Login } from './auth/Login';
+import { ShopPanelPage, ShopLogin, getShopToken } from './pages/ShopPanelPage';
 import { api, getToken, setStoredToken } from './api';
 import { OverviewPage } from './pages/OverviewPage';
 import { BrandsPage } from './pages/BrandsPage';
@@ -135,7 +136,25 @@ export function App() {
     return () => clearInterval(t);
   }, [authed, refreshQueue]);
 
-  if (!authed) return <Login onAuth={() => setAuthed(true)} />;
+  // Merchant panel: a shop token puts the whole shell into panel mode —
+  // the admin nav never mounts. The entry link lives on the admin login.
+  const [shopMode, setShopMode] = useState<'off' | 'login' | 'in'>(getShopToken() ? 'in' : 'off');
+  if (shopMode === 'in') {
+    return <ShopPanelPage onExit={() => setShopMode('off')} />;
+  }
+  if (shopMode === 'login') {
+    return <ShopLogin onAuth={() => setShopMode('in')} onBack={() => setShopMode('off')} />;
+  }
+  if (!authed) {
+    return (
+      <div>
+        <Login onAuth={() => setAuthed(true)} />
+        <div style={{ textAlign: 'center', marginTop: -8, paddingBottom: 24 }}>
+          <button className="ghost" onClick={() => setShopMode('login')}>دخول لوحة التاجر ←</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1240, margin: '24px auto', padding: '0 16px' }}>

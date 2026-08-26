@@ -16,6 +16,7 @@
 
 import { Router } from 'express';
 import { db, now } from '../db.js';
+import { shopOrdersAllowed } from '../storefrontCard.js';
 import { requireAuth } from '../auth.js';
 import { normalizeGovernorate } from '../governorates.js';
 import { notify } from '../notify.js';
@@ -118,7 +119,7 @@ r.post('/orders', requireAuth(), orderLimiter, (req, res) => {
   if (shopIds.length !== 1) return res.status(400).json({ error: 'mixed_shops' });
 
   const shop = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(shopIds[0]);
-  if (!shop || !shop.shop_orders_enabled) return res.status(403).json({ error: 'orders_not_enabled' });
+  if (!shop || !shopOrdersAllowed(shop)) return res.status(403).json({ error: 'orders_not_enabled' });
 
   // Sold/removed/expired listings can sit in a cart the buyer opened an hour
   // ago. Re-check at checkout rather than trusting what the app last saw.

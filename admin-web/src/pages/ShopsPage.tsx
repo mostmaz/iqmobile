@@ -29,6 +29,7 @@ type Shop = {
   shop_hidden: number;
   shop_no_contact: number;
   shop_orders_enabled: number;
+  shop_dash_username?: string | null;
   shop_shipping_fee: number;
 };
 
@@ -116,6 +117,26 @@ export function ShopsPage() {
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
+  // Merchant-panel login. Prompt-based like featured_days — two questions,
+  // one POST. Empty username clears the credentials.
+  async function setDashLogin(s2: Shop) {
+    const username = prompt(`Merchant login for "${s2.shop_name || s2.display_name}" — username:`, s2.shop_dash_username || '');
+    if (username == null) return;
+    if (!username.trim()) {
+      if (!confirm("Clear this shop's merchant login?")) return;
+      await api(`/admin/shops/${s2.id}/dash-credentials`, { method: 'POST', body: JSON.stringify({ username: '', password: '' }) });
+      await load(); return;
+    }
+    const password = prompt('Password (min 6 chars):', '');
+    if (!password) return;
+    try {
+      await api(`/admin/shops/${s2.id}/dash-credentials`, { method: 'POST', body: JSON.stringify({ username: username.trim(), password }) });
+      await load();
+    } catch (e: any) {
+      alert(e?.data?.error === 'username_taken' ? 'Username already used by another shop.' : (e.message || 'failed'));
+    }
+  }
+
   async function unshop(s: Shop) {
     if (!confirm(`Revert "${s.shop_name || s.display_name}" to a normal (individual) account? It leaves the Shops directory.`)) return;
     setBusy(true);
@@ -193,6 +214,10 @@ export function ShopsPage() {
                              onChange={() => toggleFlag(s, 'shop_orders_enabled')} />
                       Orders{s.shop_orders_enabled ? ` (${Number(s.shop_shipping_fee || 0).toLocaleString('en-US')} د.ع)` : ''}
                     </label>
+                    <button className="ghost" disabled={busy} onClick={() => setDashLogin(s)}
+                            title="بيانات دخول لوحة التاجر — يشوف طلبات متجره فقط">
+                      {s.shop_dash_username ? `لوحة: ${s.shop_dash_username}` : 'إنشاء دخول اللوحة'}
+                    </button>
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="primary" disabled={busy} onClick={() => setEditingId(editingId === s.id ? null : s.id)}>

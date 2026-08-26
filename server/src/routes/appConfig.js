@@ -13,7 +13,7 @@
 
 import { Router } from 'express';
 import { db, getSetting } from '../db.js';
-import { resolveStorefrontCard } from '../storefrontCard.js';
+import { resolveStorefrontCard, houseShopId } from '../storefrontCard.js';
 
 const r = Router();
 
@@ -58,11 +58,11 @@ r.get('/app-config', (_req, res) => {
   // card showing three empty boxes is worse than no card, and the app has no
   // way to know the shelf is bare without asking.
   const storefront = (() => {
-    const shop = db.prepare(
+    const hid = houseShopId();
+    const shop = hid ? db.prepare(
       `SELECT id, shop_name, display_name, shop_shipping_fee FROM users
-        WHERE seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1
-        ORDER BY id ASC LIMIT 1`,
-    ).get();
+        WHERE id=? AND seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1`,
+    ).get(hid) : null;
     if (!shop) return null;
 
     // Grouped by brand + model, exactly like /storefront/:id — a shop

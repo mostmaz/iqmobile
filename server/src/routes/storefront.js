@@ -14,6 +14,7 @@
 
 import { Router } from 'express';
 import { db } from '../db.js';
+import { shopOrdersAllowed } from '../storefrontCard.js';
 import { expandQuery, arabicNormalizeSql } from '../searchNormalize.js';
 import { PRODUCT_TYPES } from '../productType.js';
 import { logEvent } from '../eventLog.js';
@@ -42,12 +43,13 @@ const SORTS = {
 const productKey = (brand, model) => `${brand}|${String(model).trim().toLowerCase()}`;
 
 function loadShop(id) {
-  return db.prepare(
+  const row = db.prepare(
     `SELECT id, shop_name, display_name, shop_phone, shop_shipping_fee,
-            shop_delivery_days_min, shop_delivery_days_max
+            shop_delivery_days_min, shop_delivery_days_max, shop_orders_enabled
        FROM users
-      WHERE id=? AND seller_type='shop' AND COALESCE(shop_orders_enabled,0)=1`,
+      WHERE id=? AND seller_type='shop'`,
   ).get(id);
+  return row && shopOrdersAllowed(row) ? row : null;
 }
 
 // ─── storefront home: shop + categories ───────────────────────────────
