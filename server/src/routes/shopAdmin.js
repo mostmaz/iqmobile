@@ -57,6 +57,65 @@ r.get('/shop-admin/me', requireShopAdmin, (req, res) => {
     st,
     db.prepare('SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND status=?').get(u.id, st).n,
   ]));
+
+  // ── "الشيفت" summary (design 1a): money reality + today's decisions ──
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+  const ds = dayStart.getTime();
+  const one = (sql, ...p) => db.prepare(sql).get(...p);
+  const delivered = one(
+    'SELECT COUNT(*) AS n, COALESCE(SUM(total),0) AS t FROM orders WHERE shop_id=? AND delivered_at >= ?',
+    u.id, ds,
+  );
+  const recorded = one(
+    'SELECT COUNT(*) AS n, COALESCE(SUM(total),0) AS t FROM orders WHERE shop_id=? AND created_at >= ?',
+    u.id, ds,
+  );
+  const cancelledToday = one(
+    "SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND status='cancelled' AND updated_at >= ?",
+    u.id, ds,
+  );
+  const inflight = one(
+    "SELECT COUNT(*) AS n FROM orders WHERE shop_id=? AND status IN ('confirmed','shipped')",
+    u.id,
+  );
+
+  // Oldest un-actioned order — the "اتصل بالأول" target.
+  const oldestPending = one(
+    `SELECT id, code, customer_phone, governorate, created_at
+       FROM orders WHERE shop_id=? AND status='pending'
+       ORDER BY created_at ASC LIMIT 1`,
+    u.id,
+  );
+
+  // Out of stock with the listing still live: paying attention (or promotion)
+  // for merchandise that cannot be sold.
+  const oos = db.prepare(
+    `SELECT brand, model FROM phone_listings
+      WHERE seller_id=? AND status='active' AND stock_qty = 0
+      ORDER BY updated_at DESC LIMIT 12`,
+  ).all(u.id);
+
+  // Chats whose last message is the buyer's — the shop owes a reply.
+  let unanswered = 0;
+  let unansweredOldestMin = null;
+  {
+    const chats = db.prepare(
+      'SELECT id, buyer_id, last_message_at FROM chats WHERE seller_id=? ORDER BY last_message_at DESC LIMIT 100',
+    ).all(u.id);
+    const lastSender = db.prepare(
+      'SELECT sender_id, created_at FROM chat_messages WHERE chat_id=? ORDER BY created_at DESC LIMIT 1',
+    );
+    const nowTs = Date.now();
+    for (const c of chats) {
+      const m = lastSender.get(c.id);
+      if (m && m.sender_id !== u.id) {
+        unanswered++;
+        const age = Math.round((nowTs - m.created_at) / 60000);
+        if (unansweredOldestMin == null || age > unansweredOldestMin) unansweredOldestMin = age;
+      }
+    }
+  }
+
   res.json({
     id: u.id,
     name: u.shop_name || u.display_name,
@@ -66,6 +125,24 @@ r.get('/shop-admin/me', requireShopAdmin, (req, res) => {
       "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status='active'",
     ).get(u.id).n,
     order_counts: counts,
+    today: {
+      delivered_total: delivered.t,
+      delivered_count: delivered.n,
+      recorded_total: recorded.t,
+      recorded_count: recorded.n,
+      cancelled_count: cancelledToday.n,
+      inflight_count: inflight.n,
+    },
+    pending_calls: oldestPending ? {
+      count: counts.pending,
+      oldest_order_id: oldestPending.id,
+      oldest_code: oldestPending.code,
+      oldest_phone: oldestPending.customer_phone,
+      oldest_governorate: oldestPending.governorate,
+      oldest_created_at: oldestPending.created_at,
+    } : { count: 0 },
+    out_of_stock: { count: oos.length, models: oos.slice(0, 3).map((r2) => `${r2.brand} ${r2.model}`) },
+    unanswered_chats: { count: unanswered, oldest_minutes: unansweredOldestMin },
   });
 });
 

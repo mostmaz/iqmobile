@@ -14,6 +14,7 @@ export default defineConfig(({ command }) => ({
     proxy: {
       '/admin': 'http://localhost:4001',
       '/brands': 'http://localhost:4001',
+      '/shop-admin': 'http://localhost:4001',
       // Listing/shop photos. In a production build API_BASE is the absolute
       // api.iqmobile.org origin, so images resolve without a proxy — but in
       // dev API_BASE is '' and an unproxied /uploads/* would hit Vite's SPA
