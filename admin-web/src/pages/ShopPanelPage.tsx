@@ -105,7 +105,7 @@ const todayAr = () =>
 
 export function ShopPanelPage({ onExit }: { onExit: () => void }) {
   const [me, setMe] = useState<Me | null>(null);
-  const [view, setView] = useState<'tasks' | 'orders'>('tasks');
+  const [view, setView] = useState<'tasks' | 'orders' | 'devices' | 'chats'>('tasks');
   const [status, setStatus] = useState<string>('pending');
   const [orders, setOrders] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
@@ -172,7 +172,11 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
           </div>
         ) : null}
 
-        {view === 'tasks' ? (
+        {view === 'devices' ? (
+          <DevicesView />
+        ) : view === 'chats' ? (
+          <ChatsView shopId={me?.id} />
+        ) : view === 'tasks' ? (
           <>
             {/* ── Money strip ────────────────────────────────────── */}
             <div style={{ margin: '4px 16px 0', background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 16 }}>
@@ -316,6 +320,18 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
                       <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(o.total)} د.ع</span>
                     </div>
                   </div>
+                  {(o.status === 'confirmed' || o.status === 'shipped') ? (
+                    <button
+                      onClick={async () => {
+                        const courier = prompt('اسم المندوب / شركة التوصيل:', (o as any).courier || '');
+                        if (courier == null) return;
+                        try { await shopApi(`/shop-admin/orders/${o.id}/fulfilment`, { method: 'PATCH', body: JSON.stringify({ courier }) }); await load(); } catch {}
+                      }}
+                      style={{ marginTop: 10, background: 'transparent', border: `1px dashed ${T.line}`, borderRadius: 10, padding: '8px 12px', font: `400 12px ${FONT}`, color: T.subtle, cursor: 'pointer', width: '100%' }}
+                    >
+                      {(o as any).courier ? `المندوب: ${(o as any).courier} — تعديل` : '+ اسم المندوب / التوصيل'}
+                    </button>
+                  ) : null}
                   {NEXT_ACTIONS[o.status]?.length ? (
                     <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                       {NEXT_ACTIONS[o.status].map((a) => (
@@ -350,7 +366,346 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
       }}>
         <FooterTab label="المهام" on={view === 'tasks'} onClick={() => setView('tasks')} />
         <FooterTab label={`الطلبات${counts.pending ? ` (${arNum(counts.pending)})` : ''}`} on={view === 'orders'} onClick={() => setView('orders')} />
+        <FooterTab label="الأجهزة" on={view === 'devices'} onClick={() => setView('devices')} />
+        <FooterTab label="المحادثات" on={view === 'chats'} onClick={() => setView('chats')} />
       </div>
+    </div>
+  );
+}
+
+// ─── الأجهزة — inventory, add device, Excel import, price-list images ──
+type PanelListing = {
+  id: number; brand: string; model: string; storage?: string | null;
+  color?: string | null; asking_price: number; status: string;
+  price_on_request?: number; stock_qty?: number | null; cover?: string | null;
+};
+
+function DevicesView() {
+  const [rows, setRows] = useState<PanelListing[]>([]);
+  const [gallery, setGallery] = useState<{ id: number; image_path: string }[]>([]);
+  const [q, setQ] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [form, setForm] = useState({ brand: '', model: '', storage: '', color: '', asking_price: '', stock_qty: '', condition: 'new' });
+  const [xlsFile, setXlsFile] = useState<File | null>(null);
+  const [xlsPreview, setXlsPreview] = useState<any | null>(null);
+  const [pricesOnly, setPricesOnly] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [l, g] = await Promise.all([
+        shopApi<PanelListing[]>('/shop-admin/listings'),
+        shopApi<{ id: number; image_path: string }[]>('/shop-admin/shop-images'),
+      ]);
+      setRows(l); setGallery(g);
+    } catch (e: any) { setMsg(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const visible = rows.filter((r) =>
+    !q.trim() || `${r.brand} ${r.model}`.toLowerCase().includes(q.trim().toLowerCase()));
+
+  async function addDevice(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setMsg('');
+    try {
+      await shopApi('/shop-admin/listings', { method: 'POST', body: JSON.stringify({
+        ...form,
+        asking_price: form.asking_price ? Number(form.asking_price) : undefined,
+        stock_qty: form.stock_qty ? Number(form.stock_qty) : undefined,
+      }) });
+      setForm({ brand: '', model: '', storage: '', color: '', asking_price: '', stock_qty: '', condition: 'new' });
+      setAddOpen(false); await load();
+      setMsg('تمت إضافة الجهاز ✓');
+    } catch (e2: any) { setMsg(`خطأ: ${e2?.data?.error || e2.message}`); }
+    finally { setBusy(false); }
+  }
+
+  async function editPrice(r: PanelListing) {
+    const v = prompt(`سعر ${r.brand} ${r.model} (603 تعني 603,000):`, r.price_on_request ? '' : String(r.asking_price));
+    if (v == null || !v.trim()) return;
+    try { await shopApi(`/shop-admin/listings/${r.id}`, { method: 'PATCH', body: JSON.stringify({ asking_price: Number(v) }) }); await load(); }
+    catch (e: any) { alert(e?.data?.error === 'price_too_low' ? 'لا نقبل سعراً أقل من 100,000' : (e.message || 'فشل')); }
+  }
+  async function editStock(r: PanelListing) {
+    const v = prompt(`كمية ${r.brand} ${r.model} بالمخزن:`, r.stock_qty == null ? '' : String(r.stock_qty));
+    if (v == null || !v.trim()) return;
+    try { await shopApi(`/shop-admin/listings/${r.id}`, { method: 'PATCH', body: JSON.stringify({ stock_qty: Number(v) }) }); await load(); } catch {}
+  }
+  async function removeListing(r: PanelListing) {
+    if (!confirm(`إزالة ${r.brand} ${r.model} من المتجر؟`)) return;
+    try { await shopApi(`/shop-admin/listings/${r.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'removed' }) }); await load(); } catch {}
+  }
+  async function uploadListingImage(r: PanelListing, f: File) {
+    const fd = new FormData();
+    fd.append('image', f);
+    const token = getShopToken();
+    await fetch(`${API_BASE}/shop-admin/listings/${r.id}/images`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: fd });
+    await load();
+  }
+  async function uploadGallery(f: File) {
+    const fd = new FormData();
+    fd.append('image', f);
+    const token = getShopToken();
+    await fetch(`${API_BASE}/shop-admin/shop-images`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: fd });
+    await load();
+  }
+  async function sendSheet(dry: boolean) {
+    if (!xlsFile) return;
+    setBusy(true); setMsg('');
+    try {
+      const fd = new FormData();
+      fd.append('file', xlsFile);
+      const token = getShopToken();
+      const q2 = `?${dry ? 'dry=1&' : ''}${pricesOnly ? 'prices_only=1' : ''}`;
+      const res = await fetch(`${API_BASE}/shop-admin/import-excel${q2}`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: fd });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d?.error || 'failed');
+      if (dry) setXlsPreview(d);
+      else {
+        setXlsPreview(null); setXlsFile(null); await load();
+        setMsg(`تم: ${d.updated} سعر محدّث · ${d.created} جهاز جديد (${d.preorders} بدون سعر)`);
+      }
+    } catch (e: any) { setMsg(`خطأ: ${e.message}`); }
+    finally { setBusy(false); }
+  }
+
+  const card: React.CSSProperties = { background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 14, margin: '0 16px 10px' };
+  const input: React.CSSProperties = { background: T.inset, border: `1px solid ${T.line}`, borderRadius: 10, padding: '9px 11px', font: `400 13px ${FONT}`, color: T.ink, outline: 'none', width: '100%', boxSizing: 'border-box' };
+  const AR_ACTION: Record<string, string> = {
+    update_price: 'تحديث سعر', create: 'جديد', create_preorder: 'جديد بدون سعر',
+    unchanged: 'بدون تغيير', noop: 'بدون تغيير', skip_priceless: 'تجاهل', no_match: 'غير موجود',
+  };
+
+  return (
+    <div style={{ paddingTop: 6 }}>
+      {msg ? <div style={{ ...card, color: msg.startsWith('خطأ') ? T.red : T.green, fontSize: 13 }}>{msg}</div> : null}
+
+      {/* Add device */}
+      <div style={card}>
+        <button onClick={() => setAddOpen(!addOpen)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', font: `700 14px ${FONT}`, color: T.accent, padding: 0 }}>
+          {addOpen ? '− إغلاق' : '+ أضف جهازاً'}
+        </button>
+        {addOpen ? (
+          <form onSubmit={addDevice} style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input placeholder="الماركة *" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} style={input} required />
+            <input placeholder="الموديل *" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} style={input} required />
+            <input placeholder="السعة (256GB)" value={form.storage} onChange={(e) => setForm({ ...form, storage: e.target.value })} style={input} />
+            <input placeholder="اللون" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} style={input} />
+            <input placeholder="السعر (فارغ = اتصل للسعر)" value={form.asking_price} onChange={(e) => setForm({ ...form, asking_price: e.target.value })} style={input} inputMode="numeric" />
+            <input placeholder="الكمية بالمخزن" value={form.stock_qty} onChange={(e) => setForm({ ...form, stock_qty: e.target.value })} style={input} inputMode="numeric" />
+            <select value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value })} style={{ ...input, gridColumn: '1 / -1' }}>
+              <option value="new">جديد</option><option value="used">مستعمل</option><option value="refurbished">مجدد</option>
+            </select>
+            <button disabled={busy} style={{ gridColumn: '1 / -1', background: T.accent, border: 'none', borderRadius: 10, padding: '11px 0', font: `700 13px ${FONT}`, color: '#fff', cursor: 'pointer' }}>إضافة</button>
+          </form>
+        ) : null}
+      </div>
+
+      {/* Excel import */}
+      <div style={card}>
+        <div style={{ font: `700 14px ${FONT}`, color: T.ink, marginBottom: 6 }}>استيراد Excel</div>
+        <div style={{ font: `400 11.5px ${FONT}`, color: T.subtle, marginBottom: 10 }}>
+          الأعمدة: الماركة، الموديل، السعة، اللون، السعر. سطر بدون سعر = «اتصل للسعر». «603» تعني 603,000.
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="file" accept=".xlsx,.xls" onChange={(e) => { setXlsFile(e.target.files?.[0] || null); setXlsPreview(null); }} style={{ color: T.subtle, fontSize: 12 }} />
+          <label style={{ display: 'flex', gap: 5, alignItems: 'center', font: `400 12px ${FONT}`, color: T.subtle }}>
+            <input type="checkbox" checked={pricesOnly} onChange={(e) => { setPricesOnly(e.target.checked); setXlsPreview(null); }} />
+            الأسعار فقط
+          </label>
+          <button disabled={!xlsFile || busy} onClick={() => sendSheet(true)} style={{ background: T.inset, border: `1px solid ${T.line}`, borderRadius: 10, padding: '8px 14px', font: `700 12.5px ${FONT}`, color: T.ink, cursor: 'pointer' }}>معاينة</button>
+          {xlsPreview ? (
+            <button disabled={busy} onClick={() => sendSheet(false)} style={{ background: T.accent, border: 'none', borderRadius: 10, padding: '8px 14px', font: `700 12.5px ${FONT}`, color: '#fff', cursor: 'pointer' }}>تنفيذ</button>
+          ) : null}
+        </div>
+        {xlsPreview ? (
+          <div style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto', font: `400 12px ${FONT}`, color: T.subtle }}>
+            {(xlsPreview.rows || []).map((r2: any, i: number) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${T.line}` }}>
+                <span style={{ color: T.ink }}>{r2.brand} {r2.model}{r2.storage ? ` · ${r2.storage}` : ''}</span>
+                <span>{AR_ACTION[r2.action] || r2.action}{r2.preorder ? '' : ` · ${money(r2.price)}`}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Price-list gallery */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ font: `700 14px ${FONT}`, color: T.ink }}>قائمة الأسعار (صور)</div>
+          <label style={{ font: `700 12.5px ${FONT}`, color: T.accent, cursor: 'pointer' }}>
+            + أضف صورة
+            <input type="file" accept="image/*" style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadGallery(f); e.target.value = ''; }} />
+          </label>
+        </div>
+        {gallery.length ? (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {gallery.map((g) => (
+              <div key={g.id} style={{ position: 'relative' }}>
+                <img src={`${API_BASE}${g.image_path}`} alt="" style={{ width: 74, height: 92, objectFit: 'cover', borderRadius: 10, border: `1px solid ${T.line}` }} />
+                <button onClick={async () => { if (confirm('حذف الصورة؟')) { await shopApi(`/shop-admin/shop-images/${g.id}`, { method: 'DELETE' }); load(); } }}
+                  style={{ position: 'absolute', top: -6, left: -6, width: 20, height: 20, borderRadius: 999, background: T.red, border: 'none', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: '20px', padding: 0 }}>×</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ font: `400 12px ${FONT}`, color: T.faint }}>الزبون يشوف صور قائمة أسعارك على صفحة متجرك بالتطبيق.</div>
+        )}
+      </div>
+
+      {/* Inventory list */}
+      <div style={{ margin: '0 16px 8px' }}>
+        <input placeholder="ابحث في أجهزتك…" value={q} onChange={(e) => setQ(e.target.value)} style={input} />
+      </div>
+      {visible.map((r) => (
+        <div key={r.id} style={{ ...card, display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 10, background: T.inset, overflow: 'hidden', flexShrink: 0 }}>
+            {r.cover ? <img src={`${API_BASE}${r.cover}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ font: `600 13.5px ${FONT}`, color: T.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', direction: 'ltr', textAlign: 'right' }}>
+              {r.brand} {r.model}{r.storage ? ` · ${r.storage}` : ''}
+            </div>
+            <div style={{ font: `400 12px ${FONT}`, marginTop: 3, color: r.price_on_request ? T.amber : T.green }}>
+              {r.price_on_request ? 'اتصل للسعر' : `${money(r.asking_price)} د.ع`}
+              {r.stock_qty != null ? (
+                <span style={{ color: r.stock_qty === 0 ? T.red : T.subtle }}> · مخزن {arNum(r.stock_qty)}</span>
+              ) : null}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <MiniBtn label="سعر" onClick={() => editPrice(r)} />
+            <MiniBtn label="كمية" onClick={() => editStock(r)} />
+            <label style={{ font: `600 11.5px ${FONT}`, color: T.subtle, border: `1px solid ${T.line}`, borderRadius: 8, padding: '6px 9px', cursor: 'pointer' }}>
+              صورة
+              <input type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadListingImage(r, f); e.target.value = ''; }} />
+            </label>
+            <MiniBtn label="×" danger onClick={() => removeListing(r)} />
+          </div>
+        </div>
+      ))}
+      {!visible.length ? <div style={{ margin: '0 16px', font: `400 13px ${FONT}`, color: T.faint }}>لا أجهزة.</div> : null}
+    </div>
+  );
+}
+
+function MiniBtn({ label, danger, onClick }: { label: string; danger?: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      font: `600 11.5px ${FONT}`, color: danger ? T.red : T.subtle,
+      background: 'transparent', border: `1px solid ${danger ? 'rgba(229,84,75,0.4)' : T.line}`,
+      borderRadius: 8, padding: '6px 9px', cursor: 'pointer',
+    }}>{label}</button>
+  );
+}
+
+// ─── المحادثات — the app's chat pipeline, shop side ───────────────────
+type PanelChat = {
+  id: number; buyer_name: string; listing_label: string | null;
+  last_message: string | null; last_message_at: number; unread: boolean;
+};
+type PanelMsg = { id: number; sender_id: number; body: string | null; image_path: string | null; created_at: number };
+
+function ChatsView({ shopId }: { shopId?: number }) {
+  const [chats, setChats] = useState<PanelChat[]>([]);
+  const [open, setOpen] = useState<PanelChat | null>(null);
+  const [msgs, setMsgs] = useState<PanelMsg[]>([]);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const loadList = useCallback(async () => {
+    try { setChats(await shopApi<PanelChat[]>('/shop-admin/chats')); } catch {}
+  }, []);
+  const loadThread = useCallback(async (id: number) => {
+    try { setMsgs(await shopApi<PanelMsg[]>(`/shop-admin/chats/${id}/messages`)); } catch {}
+  }, []);
+  useEffect(() => { loadList(); const t = setInterval(loadList, 20000); return () => clearInterval(t); }, [loadList]);
+  useEffect(() => {
+    if (!open) return;
+    loadThread(open.id);
+    const t = setInterval(() => loadThread(open.id), 8000);
+    return () => clearInterval(t);
+  }, [open, loadThread]);
+
+  async function send() {
+    const body = draft.trim();
+    if (!body || !open) return;
+    setBusy(true);
+    try { await shopApi(`/shop-admin/chats/${open.id}/messages`, { method: 'POST', body: JSON.stringify({ body }) }); setDraft(''); await loadThread(open.id); }
+    catch {}
+    setBusy(false);
+  }
+
+  if (open) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 150px)' }}>
+        <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={() => { setOpen(null); loadList(); }} style={{ background: 'transparent', border: 'none', color: T.accent, font: `700 14px ${FONT}`, cursor: 'pointer' }}>→ رجوع</button>
+          <div style={{ font: `700 14px ${FONT}`, color: T.ink }}>{open.buyer_name}</div>
+          {open.listing_label ? <div style={{ font: `400 12px ${FONT}`, color: T.faint }}>{open.listing_label}</div> : null}
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '6px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {msgs.map((m) => {
+            const mine = m.sender_id === shopId;
+            return (
+              <div key={m.id} style={{
+                alignSelf: mine ? 'flex-start' : 'flex-end', maxWidth: '78%',
+                background: mine ? T.accent : T.card, border: mine ? 'none' : `1px solid ${T.line}`,
+                borderRadius: 14, padding: '9px 12px', font: `400 13.5px ${FONT}`, color: mine ? '#fff' : T.ink,
+              }}>
+                {m.body}
+                {m.image_path ? <img src={`${API_BASE}${m.image_path}`} alt="" style={{ maxWidth: 180, borderRadius: 10, display: 'block', marginTop: m.body ? 6 : 0 }} /> : null}
+                <div style={{ font: `400 10px ${FONT}`, color: mine ? 'rgba(255,255,255,0.7)' : T.faint, marginTop: 4 }}>{agoAr(m.created_at)}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, padding: '8px 16px' }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') send(); }}
+            placeholder="اكتب رداً…"
+            style={{ flex: 1, background: T.inset, border: `1px solid ${T.line}`, borderRadius: 12, padding: '11px 13px', font: `400 13.5px ${FONT}`, color: T.ink, outline: 'none' }}
+          />
+          <button disabled={busy || !draft.trim()} onClick={send} style={{ background: T.accent, border: 'none', borderRadius: 12, padding: '0 18px', font: `700 13px ${FONT}`, color: '#fff', cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>إرسال</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ paddingTop: 6 }}>
+      {chats.length === 0 ? (
+        <div style={{ margin: '0 16px', background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 18, font: `400 13px ${FONT}`, color: T.subtle }}>
+          محادثات الزبائن مع متجرك تظهر هنا — نفس المحادثات اللي بالتطبيق.
+        </div>
+      ) : chats.map((c) => (
+        <button key={c.id} onClick={() => setOpen(c)} style={{
+          display: 'flex', alignItems: 'center', gap: 12, width: 'calc(100% - 32px)',
+          margin: '0 16px 8px', background: T.card, border: `1px solid ${c.unread ? 'rgba(228,100,63,0.5)' : T.line}`,
+          borderRadius: 16, padding: 13, cursor: 'pointer', textAlign: 'right',
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+              <span style={{ font: `700 13.5px ${FONT}`, color: T.ink }}>{c.buyer_name}</span>
+              {c.listing_label ? <span style={{ font: `400 11.5px ${FONT}`, color: T.faint }}>{c.listing_label}</span> : null}
+            </div>
+            <div style={{ font: `400 12.5px ${FONT}`, color: c.unread ? T.ink : T.subtle, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {c.last_message || '…'}
+            </div>
+          </div>
+          <div style={{ textAlign: 'left', flexShrink: 0 }}>
+            <div style={{ font: `400 10.5px ${FONT}`, color: T.faint }}>{agoAr(c.last_message_at)}</div>
+            {c.unread ? <div style={{ width: 9, height: 9, borderRadius: 999, background: T.accent, marginTop: 6, marginInlineStart: 'auto' }} /> : null}
+          </div>
+        </button>
+      ))}
     </div>
   );
 }

@@ -86,8 +86,8 @@ export function parseSheet(buffer) {
   return { rows, errors };
 }
 
-export function planImport(rows, { pricesOnly = false } = {}) {
-  const shopId = houseShopId();
+export function planImport(rows, { pricesOnly = false, shopId: shopIdArg } = {}) {
+  const shopId = shopIdArg || houseShopId();
   if (!shopId) return { error: 'no_house_shop' };
   const findExact = db.prepare(
     `SELECT id, asking_price, price_on_request FROM phone_listings
