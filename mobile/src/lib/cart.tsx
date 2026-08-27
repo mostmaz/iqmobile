@@ -26,6 +26,7 @@ export interface CartLine {
 /** Shop identity a cart is bound to — one cart, one shop. */
 export interface CartShop {
   id: number; name: string; shipping_fee: number;
+  cod_enabled?: boolean;
   delivery_days_min?: number | null;
   delivery_days_max?: number | null;
 }
@@ -34,13 +35,14 @@ interface CartState {
   shop_id: number | null;
   shop_name: string | null;
   shipping_fee: number;
+  cod_enabled?: boolean;
   // Carried alongside the fee so the cart can state WHEN as well as how
   // much, without a second fetch just to render one line of text.
   delivery_days_min?: number | null;
   delivery_days_max?: number | null;
   lines: CartLine[];
 }
-const EMPTY: CartState = { shop_id: null, shop_name: null, shipping_fee: 0, delivery_days_min: null, delivery_days_max: null, lines: [] };
+const EMPTY: CartState = { shop_id: null, shop_name: null, shipping_fee: 0, cod_enabled: true, delivery_days_min: null, delivery_days_max: null, lines: [] };
 const KEY = 'iq_cart_v1';
 const MAX_QTY = 10;
 
@@ -87,7 +89,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => {
       const base = prev.shop_id === shop.id
         ? prev
-        : { shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines: [] };
+        : { shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, cod_enabled: shop.cod_enabled ?? true, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines: [] };
       const existing = base.lines.find((l) => l.listing_id === line.listing_id);
       const lines = existing
         ? base.lines.map((l) => (l.listing_id === line.listing_id
@@ -95,7 +97,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         : [...base.lines, { ...line, qty: Math.min(MAX_QTY, qty) }];
       // Refresh the fee/name too — the shop may have changed them since the
       // cart was stored.
-      return { shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines };
+      return { shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, cod_enabled: shop.cod_enabled ?? true, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines };
     });
   }, []);
 
@@ -113,7 +115,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         return true;
       },
       replaceWith: (shop, line, qty = 1) => {
-        setState({ shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines: [] });
+        setState({ shop_id: shop.id, shop_name: shop.name, shipping_fee: shop.shipping_fee, cod_enabled: shop.cod_enabled ?? true, delivery_days_min: shop.delivery_days_min ?? null, delivery_days_max: shop.delivery_days_max ?? null, lines: [] });
         // setState is queued, so `put` would read the pre-reset state and
         // see a foreign shop_id. Passing the shop explicitly makes `put`
         // rebuild from scratch anyway, so the reset above is belt-and-braces.

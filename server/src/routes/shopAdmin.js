@@ -20,6 +20,9 @@ import { ORDER_STATUSES, ORDER_NEXT, orderStatusNotification } from '../orderFlo
 import { parseSheet, planImport, applyImport } from '../storeImport.js';
 import { SHOP_FEATURE_TIERS, CARRIERS, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES } from '../featureTiers.js';
 import { pushToAdmins } from '../adminPush.js';
+import { audit } from '../auditLog.js';
+import { getShopSignals, computeShopSignals } from '../shopSignals.js';
+import { refreshShopDiagnostics, demandForShop } from '../shopDiagnostics.js';
 
 // Same upload conventions as the app: disk storage under ./uploads, image
 // mime/ext allow-list, 5MB cap. lst_/shp_ prefixes match existing files.
@@ -63,6 +66,15 @@ function requireShopAdmin(req, res, next) {
   ).get(payload.shop_id);
   if (!shop) return res.status(401).json({ error: 'unauthorized' });
   req.shop = shop;
+  next();
+}
+
+// Advanced-tier gate. Everything the simple dashboard already had stays
+// reachable without it — this only guards the additive surfaces (spec §12).
+function requireAdvanced(req, res, next) {
+  if (req.shop?.shop_tier !== 'advanced') {
+    return res.status(403).json({ error: 'advanced_required' });
+  }
   next();
 }
 
@@ -190,7 +202,131 @@ r.get('/shop-admin/me', requireShopAdmin, (req, res) => {
     feature_request_status: db.prepare(
       "SELECT status, tier, created_at FROM shop_feature_requests WHERE shop_id=? ORDER BY id DESC LIMIT 1",
     ).get(u.id) || null,
+
+    // ── Tier + upgrade offer (spec §1, §2) ──────────────────────────
+    tier: u.shop_tier || 'simple',
+    tier_state: u.shop_tier_state || null,
+    sells_new: !!u.shop_sells_new,
+    signals: (() => {
+      const sig = getShopSignals(u.id);
+      return sig ? {
+        active_listings: sig.active_listings,
+        listings_30d: sig.listings_30d,
+        contacts_30d: sig.contacts_30d,
+        whatsapp_30d: sig.whatsapp_30d,
+        chat_30d: sig.chat_30d,
+        call_30d: sig.call_30d,
+        qualifies: !!sig.qualifies,
+      } : null;
+    })(),
+    // The offer is only ever surfaced in-context: the panel asks for it at
+    // the moment of friction and the SERVER decides whether it is due, so
+    // the 7-day cadence and the 14-day dismissal can't be bypassed by a
+    // client that forgets its own state.
+    upgrade_offer: (() => {
+      if ((u.shop_tier || 'simple') === 'advanced') return null;
+      if (u.shop_tier_state === 'requested' || u.shop_tier_state === 'pending_review') {
+        return { state: 'pending' };
+      }
+      const t2 = now();
+      if (u.shop_offer_dismissed_until && u.shop_offer_dismissed_until > t2) return null;
+      if (u.shop_offer_last_at && t2 - u.shop_offer_last_at < 7 * 86400000) return null;
+      const sig = getShopSignals(u.id);
+      if (!sig?.qualifies) return null;
+      // 30-day cool-off after a rejection (spec §3).
+      if (u.shop_tier_rejected_at && t2 - u.shop_tier_rejected_at < 30 * 86400000) return null;
+      return { state: 'available', reason: sig.active_listings >= 10 ? 'listings' : 'activity' };
+    })(),
+    channels: {
+      call: (u.shop_ch_call ?? 1) ? true : false,
+      whatsapp: (u.shop_ch_whatsapp ?? 1) ? true : false,
+      chat: (u.shop_ch_chat ?? 1) ? true : false,
+    },
+    // Reply performance, private view (spec §9): the exact figure and the
+    // distance to the next badge. The buyer UI never sees a slow signal.
+    reply: (() => {
+      const chats = db.prepare(
+        'SELECT id, buyer_id FROM chats WHERE seller_id=? ORDER BY created_at DESC LIMIT 60',
+      ).all(u.id);
+      const firstBuyer = db.prepare('SELECT MIN(created_at) AS t FROM chat_messages WHERE chat_id=? AND sender_id=?');
+      const firstReply = db.prepare('SELECT MIN(created_at) AS t FROM chat_messages WHERE chat_id=? AND sender_id=? AND created_at > ?');
+      const deltas = [];
+      for (const c of chats) {
+        const t0 = firstBuyer.get(c.id, c.buyer_id)?.t;
+        if (!t0) continue;
+        const t1 = firstReply.get(c.id, u.id, t0)?.t;
+        if (t1) deltas.push(t1 - t0);
+      }
+      if (deltas.length < 5) {
+        return { conversations: deltas.length, median_minutes: null, badge: null, needed: 5 - deltas.length };
+      }
+      deltas.sort((a, b) => a - b);
+      const med = Math.round(deltas[Math.floor(deltas.length / 2)] / 60000);
+      return {
+        conversations: deltas.length,
+        median_minutes: med,
+        badge: med <= 60 ? 'fast' : med <= 240 ? 'same_day' : null,
+        next_badge: med <= 60 ? null : med <= 240 ? 'fast' : 'same_day',
+      };
+    })(),
+    unread_threads: db.prepare(`
+      SELECT COUNT(*) AS n FROM chats c
+       WHERE c.seller_id=? AND c.closed_at IS NULL
+         AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.chat_id=c.id
+                       AND m.sender_id != ? AND m.created_at > COALESCE(c.seller_last_read_at, 0))
+    `).get(u.id, u.id).n,
   });
+});
+
+// ─── tier request (spec §3) ──────────────────────────────────────────
+r.post('/shop-admin/offer-dismiss', requireShopAdmin, (req, res) => {
+  db.prepare('UPDATE users SET shop_offer_dismissed_until=? WHERE id=?')
+    .run(now() + 14 * 86400000, req.shop.id);
+  res.json({ ok: true });
+});
+
+r.post('/shop-admin/offer-seen', requireShopAdmin, (req, res) => {
+  db.prepare('UPDATE users SET shop_offer_last_at=? WHERE id=?').run(now(), req.shop.id);
+  res.json({ ok: true });
+});
+
+r.post('/shop-admin/tier-request', requireShopAdmin, (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.shop.id);
+  if ((u.shop_tier || 'simple') === 'advanced') return res.status(409).json({ error: 'already_advanced' });
+  const open = db.prepare(
+    "SELECT id FROM shop_tier_requests WHERE shop_id=? AND status='pending'",
+  ).get(u.id);
+  if (open) return res.status(409).json({ error: 'request_pending' });
+  // Rejected shops may re-apply after 30 days (spec §1).
+  if (u.shop_tier_rejected_at && now() - u.shop_tier_rejected_at < 30 * 86400000) {
+    return res.status(409).json({
+      error: 'too_soon',
+      retry_at: u.shop_tier_rejected_at + 30 * 86400000,
+    });
+  }
+  const b = req.body || {};
+  const sellsNew = b.sells_new ? 1 : 0;
+  const id = db.prepare(`
+    INSERT INTO shop_tier_requests(shop_id, store_name, governorate, device_count_approx,
+                                   sells_new, phone, whatsapp, status, created_at)
+    VALUES(?,?,?,?,?,?,?, 'pending', ?)
+  `).run(
+    u.id,
+    String(b.store_name || u.shop_name || u.display_name || '').slice(0, 120),
+    String(b.governorate || u.governorate || '').slice(0, 40),
+    Number.isFinite(Number(b.device_count_approx)) ? Number(b.device_count_approx) : null,
+    sellsNew,
+    String(b.phone || u.shop_phone || u.phone || '').slice(0, 20),
+    String(b.whatsapp || u.shop_whatsapp || '').slice(0, 20),
+    now(),
+  ).lastInsertRowid;
+  db.prepare("UPDATE users SET shop_tier_state='pending_review', shop_sells_new=? WHERE id=?")
+    .run(sellsNew, u.id);
+  computeShopSignals(u.id);
+  audit('shop', u.id, 'tier.request', { kind: 'shop', id: u.id }, { request_id: id });
+  pushToAdmins('shop.new', 'طلب ترقية لوحة متجر',
+    `${u.shop_name || u.display_name}`, { screen: 'tier_requests' }).catch(() => {});
+  res.json({ ok: true, id });
 });
 
 r.get('/shop-admin/orders', requireShopAdmin, (req, res) => {
@@ -234,11 +370,12 @@ r.patch('/shop-admin/orders/:id(\\d+)', requireShopAdmin, (req, res) => {
 r.get('/shop-admin/listings', requireShopAdmin, (req, res) => {
   const rows = db.prepare(
     `SELECT l.id, l.brand, l.model, l.storage, l.color, l.asking_price, l.status,
-            l.price_on_request, l.stock_qty, l.created_at,
+            l.price_on_request, l.stock_qty, l.is_draft, l.created_at,
             (SELECT i.image_path FROM listing_images i
               WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS cover
-       FROM phone_listings l WHERE l.seller_id=? AND l.status != 'removed'
-       ORDER BY l.created_at DESC LIMIT 500`,
+       FROM phone_listings l
+      WHERE l.seller_id=? AND (l.status != 'removed' OR COALESCE(l.is_draft,0)=1)
+      ORDER BY COALESCE(l.is_draft,0) DESC, l.created_at DESC LIMIT 500`,
   ).all(req.shop.id);
   res.json(rows);
 });
@@ -326,6 +463,285 @@ r.post('/shop-admin/listings/:id(\\d+)/images', requireShopAdmin, uploadLimiter,
   res.json({ ok: true, image_path: `/uploads/${req.file.filename}` });
 });
 
+// ─── bulk operations (spec §4) ───────────────────────────────────────
+// One transaction per call: better-sqlite3 is synchronous, so 100+ rows is
+// a single sub-second write with no timeout surface at all. The BEFORE
+// values go to bulk_undo so undo is a restore rather than an inverse — a
+// -7% price change cannot be un-applied arithmetically without drift.
+const UNDO_MS = 30000;
+
+r.post('/shop-admin/bulk', requireShopAdmin, requireAdvanced, (req, res) => {
+  const action = String(req.body?.action || '');
+  const ids = Array.isArray(req.body?.listing_ids)
+    ? req.body.listing_ids.map(Number).filter(Number.isFinite).slice(0, 500)
+    : [];
+  if (!ids.length) return res.status(400).json({ error: 'no_selection' });
+
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT id, asking_price, price_on_request, status, stock_qty, is_draft
+       FROM phone_listings WHERE id IN (${ph}) AND seller_id=?`,
+  ).all(...ids, req.shop.id);
+  if (!rows.length) return res.status(404).json({ error: 'not_found' });
+
+  const t = now();
+  const before = rows.map((r2) => ({
+    id: r2.id, asking_price: r2.asking_price, price_on_request: r2.price_on_request,
+    status: r2.status, stock_qty: r2.stock_qty, is_draft: r2.is_draft,
+  }));
+
+  const setPrice = db.prepare('UPDATE phone_listings SET asking_price=?, price_on_request=0, updated_at=? WHERE id=?');
+  const setStatus = db.prepare('UPDATE phone_listings SET status=?, updated_at=? WHERE id=?');
+  const setStock = db.prepare('UPDATE phone_listings SET stock_qty=?, updated_at=? WHERE id=?');
+  let affected = 0;
+
+  try {
+    db.transaction(() => {
+      for (const r2 of rows) {
+        switch (action) {
+          case 'price_fixed': {
+            const n = Number(req.body?.amount);
+            if (!Number.isFinite(n)) throw new Error('bad_amount');
+            const v = n < 10000 ? n * 1000 : Math.round(n);
+            if (v < 100000) throw new Error('price_too_low');
+            setPrice.run(v, t, r2.id); affected++;
+            break;
+          }
+          case 'price_percent': {
+            const pct = Number(req.body?.percent);
+            if (!Number.isFinite(pct) || pct < -90 || pct > 200) throw new Error('bad_percent');
+            // Price-on-request rows have a placeholder price; a percentage
+            // of a placeholder is nonsense, so they are skipped, not
+            // silently corrupted.
+            if (r2.price_on_request) break;
+            const v = Math.max(0, Math.round((r2.asking_price * (100 + pct)) / 100 / 1000) * 1000);
+            if (v < 100000) throw new Error('price_too_low');
+            setPrice.run(v, t, r2.id); affected++;
+            break;
+          }
+          case 'activate': setStatus.run('active', t, r2.id); affected++; break;
+          case 'deactivate': setStatus.run('expired', t, r2.id); affected++; break;
+          case 'delete': setStatus.run('removed', t, r2.id); affected++; break;
+          case 'stock_set': {
+            const q = Number(req.body?.stock_qty);
+            if (!Number.isFinite(q) || q < 0) throw new Error('bad_stock');
+            setStock.run(q, t, r2.id); affected++;
+            break;
+          }
+          default: throw new Error('bad_action');
+        }
+      }
+    })();
+  } catch (err) {
+    const known = ['bad_amount', 'bad_percent', 'bad_action', 'bad_stock', 'price_too_low'];
+    const code = known.includes(err.message) ? err.message : 'bulk_failed';
+    return res.status(400).json({ error: code });
+  }
+
+  const undoId = db.prepare(`
+    INSERT INTO bulk_undo(shop_id, action, payload_json, affected, created_at, expires_at)
+    VALUES(?,?,?,?,?,?)
+  `).run(req.shop.id, action, JSON.stringify(before), affected, t, t + UNDO_MS).lastInsertRowid;
+  audit('shop', req.shop.id, `bulk.${action}`, { kind: 'shop', id: req.shop.id },
+    { affected, ids: ids.slice(0, 50) });
+  res.json({ ok: true, affected, undo_id: undoId, undo_ms: UNDO_MS });
+});
+
+r.post('/shop-admin/bulk/:id(\\d+)/undo', requireShopAdmin, requireAdvanced, (req, res) => {
+  const u = db.prepare('SELECT * FROM bulk_undo WHERE id=? AND shop_id=?')
+    .get(req.params.id, req.shop.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  if (u.undone_at) return res.status(409).json({ error: 'already_undone' });
+  if (now() > u.expires_at) return res.status(409).json({ error: 'undo_expired' });
+
+  const before = JSON.parse(u.payload_json);
+  const restore = db.prepare(`
+    UPDATE phone_listings SET asking_price=?, price_on_request=?, status=?, stock_qty=?, is_draft=?, updated_at=?
+     WHERE id=? AND seller_id=?
+  `);
+  const t = now();
+  db.transaction(() => {
+    for (const b of before) {
+      restore.run(b.asking_price, b.price_on_request, b.status, b.stock_qty, b.is_draft, t, b.id, req.shop.id);
+    }
+    db.prepare('UPDATE bulk_undo SET undone_at=? WHERE id=?').run(t, u.id);
+  })();
+  audit('shop', req.shop.id, 'bulk.undo', { kind: 'shop', id: req.shop.id }, { undo_id: u.id, affected: before.length });
+  res.json({ ok: true, restored: before.length });
+});
+
+// Multi-row keyboard entry from the desktop table (spec §5). Rows without
+// a price are legal — they land as price_on_request, same rule as import.
+r.post('/shop-admin/listings/bulk-add', requireShopAdmin, requireAdvanced, (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 200) : [];
+  if (!rows.length) return res.status(400).json({ error: 'no_rows' });
+  const asDraft = !!req.body?.draft;
+  const t = now();
+  const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
+  const ins = db.prepare(`
+    INSERT INTO phone_listings(
+      seller_id, brand, model, storage, color, condition,
+      battery_health, warranty_status, accessories_json, asking_price,
+      governorate, city, description, status,
+      contact_phone, contact_whatsapp, price_on_request, stock_qty, is_draft,
+      created_at, expires_at, updated_at
+    ) VALUES(?,?,?,?,?,?,NULL,NULL,'[]',?,?,NULL,?,?,NULL,NULL,?,?,?,?,?,?)
+  `);
+  const created = [];
+  const errors = [];
+  db.transaction(() => {
+    rows.forEach((row, i) => {
+      const brand = String(row.brand || '').trim();
+      const model = String(row.model || '').trim();
+      if (!brand || !model) { errors.push({ row: i + 1, error: 'missing_fields' }); return; }
+      const raw = Number(row.asking_price);
+      const hasPrice = Number.isFinite(raw) && raw > 0;
+      const price = hasPrice ? (raw < 10000 ? raw * 1000 : Math.round(raw)) : 1;
+      if (hasPrice && price < 100000) { errors.push({ row: i + 1, error: 'price_too_low' }); return; }
+      const stock = Number.isFinite(Number(row.stock_qty)) && Number(row.stock_qty) >= 0 ? Number(row.stock_qty) : null;
+      const id = ins.run(
+        req.shop.id, brand, model,
+        String(row.storage || '').trim() || null,
+        String(row.color || '').trim() || null,
+        ['new', 'used', 'refurbished', 'repaired'].includes(row.condition) ? row.condition : 'new',
+        price, req.shop.governorate || 'Baghdad',
+        String(row.description || '').trim() || null,
+        asDraft ? 'removed' : 'active',
+        hasPrice ? 0 : 1, stock, asDraft ? 1 : 0,
+        t, t + TTL_MS, t,
+      ).lastInsertRowid;
+      created.push(id);
+    });
+  })();
+  audit('shop', req.shop.id, 'bulk.add', { kind: 'shop', id: req.shop.id }, { created: created.length });
+  res.json({ ok: true, created: created.length, ids: created, errors });
+});
+
+// Duplicate a device — same model, different storage/colour (spec §4).
+r.post('/shop-admin/listings/:id(\\d+)/duplicate', requireShopAdmin, requireAdvanced, (req, res) => {
+  const src = db.prepare('SELECT * FROM phone_listings WHERE id=? AND seller_id=?')
+    .get(req.params.id, req.shop.id);
+  if (!src) return res.status(404).json({ error: 'not_found' });
+  const t = now();
+  const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
+  const id = db.prepare(`
+    INSERT INTO phone_listings(
+      seller_id, brand, model, storage, color, condition, battery_health,
+      warranty_status, accessories_json, asking_price, governorate, city,
+      description, status, contact_phone, contact_whatsapp, price_on_request,
+      stock_qty, is_draft, created_at, expires_at, updated_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?,0,?,?,?)
+  `).run(
+    src.seller_id, src.brand, src.model,
+    req.body?.storage !== undefined ? (String(req.body.storage).trim() || null) : src.storage,
+    req.body?.color !== undefined ? (String(req.body.color).trim() || null) : src.color,
+    src.condition, src.battery_health, src.warranty_status, src.accessories_json,
+    Number.isFinite(Number(req.body?.asking_price)) && Number(req.body.asking_price) > 0
+      ? (Number(req.body.asking_price) < 10000 ? Number(req.body.asking_price) * 1000 : Math.round(Number(req.body.asking_price)))
+      : src.asking_price,
+    src.governorate, src.city, src.description,
+    src.contact_phone, src.contact_whatsapp, src.price_on_request,
+    src.stock_qty, t, t + TTL_MS, t,
+  ).lastInsertRowid;
+  res.json({ ok: true, id });
+});
+
+// Publish a draft (spec §4 "add photos now, publish later").
+r.post('/shop-admin/listings/:id(\\d+)/publish', requireShopAdmin, (req, res) => {
+  const l = db.prepare('SELECT * FROM phone_listings WHERE id=? AND seller_id=?')
+    .get(req.params.id, req.shop.id);
+  if (!l) return res.status(404).json({ error: 'not_found' });
+  if (!l.is_draft) return res.status(409).json({ error: 'not_a_draft' });
+  if (!l.price_on_request && l.asking_price < 100000) return res.status(400).json({ error: 'price_too_low' });
+  const photos = db.prepare('SELECT COUNT(*) AS n FROM listing_images WHERE listing_id=?').get(l.id).n;
+  if (!photos) return res.status(400).json({ error: 'needs_photo' });
+  const t = now();
+  const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
+  db.prepare("UPDATE phone_listings SET status='active', is_draft=0, created_at=?, expires_at=?, updated_at=? WHERE id=?")
+    .run(t, t + TTL_MS, t, l.id);
+  res.json({ ok: true });
+});
+
+// ─── sold prompt (spec §10) ──────────────────────────────────────────
+// The transaction price is the point: contacts have always been countable,
+// what a device actually SOLD for never has been.
+r.get('/shop-admin/sold-prompt', requireShopAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT l.id, l.brand, l.model, l.storage, l.color, l.asking_price, l.created_at,
+           (SELECT i.image_path FROM listing_images i WHERE i.listing_id=l.id ORDER BY i.position, i.id LIMIT 1) AS cover
+      FROM phone_listings l
+     WHERE l.seller_id=? AND l.status='active' AND COALESCE(l.is_draft,0)=0
+     ORDER BY l.created_at ASC LIMIT 12
+  `).all(req.shop.id);
+  res.json(rows);
+});
+
+r.post('/shop-admin/listings/:id(\\d+)/sold', requireShopAdmin, (req, res) => {
+  const l = db.prepare('SELECT id FROM phone_listings WHERE id=? AND seller_id=?')
+    .get(req.params.id, req.shop.id);
+  if (!l) return res.status(404).json({ error: 'not_found' });
+  const raw = Number(req.body?.sale_price);
+  const price = Number.isFinite(raw) && raw > 0
+    ? (raw < 10000 ? raw * 1000 : Math.round(raw))
+    : null;
+  const t = now();
+  db.prepare("UPDATE phone_listings SET status='sold', sold_at=?, sale_price=?, updated_at=? WHERE id=?")
+    .run(t, price, t, l.id);
+  res.json({ ok: true });
+});
+
+// Explicit "still available" — resets the prompt clock without changing the
+// listing, so the same device isn't asked about again tomorrow.
+r.post('/shop-admin/listings/:id(\\d+)/still-available', requireShopAdmin, (req, res) => {
+  const t = now();
+  const upd = db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=? AND seller_id=?')
+    .run(t, req.params.id, req.shop.id);
+  if (!upd.changes) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+// ─── diagnostics + demand (spec §7, §8) ──────────────────────────────
+r.get('/shop-admin/diagnostics', requireShopAdmin, requireAdvanced, (req, res) => {
+  const rows = db.prepare(`
+    SELECT d.*, l.brand, l.model, l.storage, l.asking_price, l.price_on_request
+      FROM listing_diagnostics d JOIN phone_listings l ON l.id = d.listing_id
+     WHERE d.seller_id=? AND l.status='active' AND COALESCE(l.is_draft,0)=0
+     ORDER BY CASE d.reason_code WHEN 'price_high' THEN 0 WHEN 'few_photos' THEN 1
+                                 WHEN 'stale' THEN 2 ELSE 3 END, d.views_30d DESC
+     LIMIT 300
+  `).all(req.shop.id);
+  res.json(rows);
+});
+
+r.post('/shop-admin/diagnostics/refresh', requireShopAdmin, requireAdvanced, (req, res) => {
+  const n = refreshShopDiagnostics(req.shop.id);
+  res.json({ ok: true, listings: n });
+});
+
+r.get('/shop-admin/demand', requireShopAdmin, requireAdvanced, (req, res) => {
+  res.json(demandForShop(req.shop.id, 10));
+});
+
+// ─── contact channels (spec §11) ─────────────────────────────────────
+r.patch('/shop-admin/channels', requireShopAdmin, (req, res) => {
+  const b = req.body || {};
+  const cur = db.prepare('SELECT shop_ch_call, shop_ch_whatsapp, shop_ch_chat FROM users WHERE id=?')
+    .get(req.shop.id);
+  const next = {
+    call: b.call !== undefined ? !!b.call : (cur.shop_ch_call ?? 1) === 1,
+    whatsapp: b.whatsapp !== undefined ? !!b.whatsapp : (cur.shop_ch_whatsapp ?? 1) === 1,
+    chat: b.chat !== undefined ? !!b.chat : (cur.shop_ch_chat ?? 1) === 1,
+  };
+  // A shop with no way to reach it is a dead listing — refuse the last one.
+  if (!next.call && !next.whatsapp && !next.chat) {
+    return res.status(400).json({ error: 'need_one_channel' });
+  }
+  db.prepare('UPDATE users SET shop_ch_call=?, shop_ch_whatsapp=?, shop_ch_chat=? WHERE id=?')
+    .run(next.call ? 1 : 0, next.whatsapp ? 1 : 0, next.chat ? 1 : 0, req.shop.id);
+  audit('shop', req.shop.id, 'channels.update', { kind: 'shop', id: req.shop.id }, next);
+  res.json({ ok: true, channels: next });
+});
+
 // ─── price-list images (shop gallery) ────────────────────────────────
 r.get('/shop-admin/shop-images', requireShopAdmin, (req, res) => {
   res.json(db.prepare('SELECT id, image_path, position FROM shop_images WHERE shop_id=? ORDER BY position, id')
@@ -384,28 +800,155 @@ r.patch('/shop-admin/orders/:id(\\d+)/fulfilment', requireShopAdmin, (req, res) 
 // app they appear exactly like any seller reply, with the shop's name.
 
 r.get('/shop-admin/chats', requireShopAdmin, (req, res) => {
-  const rows = db.prepare(
-    'SELECT * FROM chats WHERE seller_id=? ORDER BY last_message_at DESC LIMIT 100',
-  ).all(req.shop.id);
+  // Filters and search are advanced-only (spec §12); a simple shop gets the
+  // plain thread list by ignoring the params rather than by a second route.
+  const adv = req.shop.shop_tier === 'advanced';
+  const filter = adv ? String(req.query.filter || 'all') : 'all';
+  const q = adv ? String(req.query.q || '').trim().toLowerCase() : '';
+  let sql = 'SELECT * FROM chats WHERE seller_id=?';
+  if (filter === 'closed') sql += ' AND closed_at IS NOT NULL';
+  else sql += ' AND closed_at IS NULL';
+  sql += ' ORDER BY last_message_at DESC LIMIT 200';
+  const rows = db.prepare(sql).all(req.shop.id);
   const lastMsg = db.prepare(
     'SELECT sender_id, body, image_path, created_at FROM chat_messages WHERE chat_id=? ORDER BY created_at DESC LIMIT 1',
   );
   const buyer = db.prepare('SELECT display_name FROM users WHERE id=?');
-  const listing = db.prepare('SELECT brand, model FROM phone_listings WHERE id=?');
-  res.json(rows.map((c) => {
+  const listing = db.prepare(`
+    SELECT l.brand, l.model, l.status, l.asking_price,
+           (SELECT i.image_path FROM listing_images i WHERE i.listing_id=l.id ORDER BY i.position, i.id LIMIT 1) AS cover
+      FROM phone_listings l WHERE l.id=?`);
+  let out = rows.map((c) => {
     const m = lastMsg.get(c.id);
     const l = listing.get(c.listing_id);
     return {
       id: c.id,
+      buyer_id: c.buyer_id,
       buyer_name: buyer.get(c.buyer_id)?.display_name || 'زبون',
+      listing_id: c.listing_id,
       listing_label: l ? `${l.brand} ${l.model}` : null,
+      listing_cover: l?.cover || null,
+      listing_status: l?.status || null,
+      listing_price: l?.asking_price ?? null,
       last_message: m ? (m.body || '📷 صورة') : null,
       last_message_at: c.last_message_at,
+      closed: !!c.closed_at,
       unread: !!(m && m.sender_id !== req.shop.id
         && (!c.seller_last_read_at || m.created_at > c.seller_last_read_at)),
     };
-  }));
+  });
+  if (filter === 'unread') out = out.filter((c) => c.unread);
+  if (q) out = out.filter((c) =>
+    (c.listing_label || '').toLowerCase().includes(q) || (c.buyer_name || '').toLowerCase().includes(q));
+  res.json(out);
 });
+
+// ─── thread actions + quick replies (spec §9) ────────────────────────
+r.post('/shop-admin/chats/:id(\\d+)/close', requireShopAdmin, requireAdvanced, (req, res) => {
+  const upd = db.prepare('UPDATE chats SET closed_at=? WHERE id=? AND seller_id=?')
+    .run(now(), req.params.id, req.shop.id);
+  if (!upd.changes) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+r.post('/shop-admin/chats/:id(\\d+)/reopen', requireShopAdmin, requireAdvanced, (req, res) => {
+  const upd = db.prepare('UPDATE chats SET closed_at=NULL WHERE id=? AND seller_id=?')
+    .run(req.params.id, req.shop.id);
+  if (!upd.changes) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+// Block / report. Both are logged for admin review (spec §9 data & privacy).
+r.post('/shop-admin/chats/:id(\\d+)/block', requireShopAdmin, requireAdvanced, (req, res) => {
+  const c = db.prepare('SELECT * FROM chats WHERE id=? AND seller_id=?').get(req.params.id, req.shop.id);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  db.prepare('INSERT OR IGNORE INTO chat_blocks(shop_id, buyer_id, created_at) VALUES(?,?,?)')
+    .run(req.shop.id, c.buyer_id, now());
+  db.prepare('UPDATE chats SET closed_at=? WHERE id=?').run(now(), c.id);
+  audit('shop', req.shop.id, 'chat.block', { kind: 'user', id: c.buyer_id }, { chat_id: c.id });
+  res.json({ ok: true });
+});
+
+r.post('/shop-admin/chats/:id(\\d+)/report', requireShopAdmin, (req, res) => {
+  const c = db.prepare('SELECT * FROM chats WHERE id=? AND seller_id=?').get(req.params.id, req.shop.id);
+  if (!c) return res.status(404).json({ error: 'not_found' });
+  const reason = String(req.body?.reason || '').trim().slice(0, 300);
+  audit('shop', req.shop.id, 'chat.report', { kind: 'user', id: c.buyer_id }, { chat_id: c.id, reason });
+  pushToAdmins('report.new', 'بلاغ من متجر',
+    `${req.shop.shop_name || req.shop.display_name}: ${reason || 'بدون سبب'}`,
+    { screen: 'reports' }).catch(() => {});
+  res.json({ ok: true });
+});
+
+const SEED_QUICK_REPLIES = [
+  'الجهاز متوفر',
+  'السعر نهائي',
+  'الجهاز انباع',
+  'تفضل زورنا بالمحل، الموقع بالصفحة',
+];
+
+r.get('/shop-admin/quick-replies', requireShopAdmin, requireAdvanced, (req, res) => {
+  let rows = db.prepare('SELECT id, text, position FROM shop_quick_replies WHERE shop_id=? ORDER BY position, id')
+    .all(req.shop.id);
+  // Seeded on first read rather than at approval time, so a shop upgraded
+  // before this shipped still gets them.
+  if (!rows.length) {
+    const ins = db.prepare('INSERT INTO shop_quick_replies(shop_id, text, position) VALUES(?,?,?)');
+    db.transaction(() => SEED_QUICK_REPLIES.forEach((t2, i) => ins.run(req.shop.id, t2, i)))();
+    rows = db.prepare('SELECT id, text, position FROM shop_quick_replies WHERE shop_id=? ORDER BY position, id')
+      .all(req.shop.id);
+  }
+  res.json(rows);
+});
+
+r.post('/shop-admin/quick-replies', requireShopAdmin, requireAdvanced, (req, res) => {
+  const text = String(req.body?.text || '').trim().slice(0, 200);
+  if (!text) return res.status(400).json({ error: 'empty' });
+  const n = db.prepare('SELECT COUNT(*) AS n FROM shop_quick_replies WHERE shop_id=?').get(req.shop.id).n;
+  if (n >= 10) return res.status(409).json({ error: 'limit_reached' });
+  const id = db.prepare('INSERT INTO shop_quick_replies(shop_id, text, position) VALUES(?,?,?)')
+    .run(req.shop.id, text, n).lastInsertRowid;
+  res.json({ ok: true, id });
+});
+
+r.delete('/shop-admin/quick-replies/:id(\\d+)', requireShopAdmin, requireAdvanced, (req, res) => {
+  const del = db.prepare('DELETE FROM shop_quick_replies WHERE id=? AND shop_id=?')
+    .run(req.params.id, req.shop.id);
+  if (!del.changes) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true });
+});
+
+// ─── new-device catalog (spec §6) ────────────────────────────────────
+// One product = brand+model; variants are the shop's own listings, one per
+// storage×colour, each with its own stock. Zero stock disables a variant —
+// it never hides the product.
+r.get('/shop-admin/catalog', requireShopAdmin, requireAdvanced, (req, res) => {
+  const rows = db.prepare(`
+    SELECT l.id, l.brand, l.model, l.storage, l.color, l.asking_price,
+           l.price_on_request, l.stock_qty, l.status,
+           (SELECT i.image_path FROM listing_images i WHERE i.listing_id=l.id ORDER BY i.position, i.id LIMIT 1) AS cover
+      FROM phone_listings l
+     WHERE l.seller_id=? AND l.status IN ('active','reserved') AND COALESCE(l.is_draft,0)=0
+     ORDER BY l.brand, l.model, l.storage
+  `).all(req.shop.id);
+  const products = new Map();
+  for (const l of rows) {
+    const key = `${l.brand}|${l.model}`;
+    if (!products.has(key)) {
+      products.set(key, { brand: l.brand, model: l.model, cover: l.cover, variants: [] });
+    }
+    const p = products.get(key);
+    if (!p.cover && l.cover) p.cover = l.cover;
+    p.variants.push({
+      id: l.id, storage: l.storage, color: l.color,
+      asking_price: l.asking_price, price_on_request: !!l.price_on_request,
+      stock_qty: l.stock_qty, in_stock: l.stock_qty == null || l.stock_qty > 0,
+    });
+  }
+  res.json([...products.values()]);
+});
+
+
 
 r.get('/shop-admin/chats/:id(\\d+)/messages', requireShopAdmin, (req, res) => {
   const chat = db.prepare('SELECT * FROM chats WHERE id=? AND seller_id=?').get(req.params.id, req.shop.id);

@@ -19,6 +19,7 @@ export type Queue = {
   reports: number;
   feature_requests: number;
   new_shops: number;
+  tier_requests: number;
 };
 
 type Tile = { key: keyof Queue; label: string; page: Page; icon: string };
@@ -33,6 +34,7 @@ const TILES: Tile[] = [
   { key: 'reports', label: 'بلاغات مفتوحة', page: 'reports', icon: '🚩' },
   { key: 'feature_requests', label: 'طلبات ترويج', page: 'featured', icon: '⭐' },
   { key: 'new_shops', label: 'متاجر بانتظار المراجعة', page: 'shop_review', icon: '🏪' },
+  { key: 'tier_requests', label: 'طلبات ترقية لوحة', page: 'tier_requests', icon: '⚙️' },
 ];
 
 export function WorkQueue({ queue, onGo }: { queue: Queue; onGo: (p: Page) => void }) {

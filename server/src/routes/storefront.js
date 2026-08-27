@@ -253,15 +253,23 @@ r.get('/storefront/:id(\\d+)/product', optionalAuth(), (req, res) => {
   const model = String(req.query.model || '').trim();
   if (!brand || !model) return res.status(400).json({ error: 'brand_and_model_required' });
 
+  // Unlike the grid, the product page keeps sold-out variants: "the 512GB
+  // exists here, just not today" is useful to a shopper, and hiding it makes
+  // the shop look like it never carried the capacity. The client renders them
+  // disabled and orders.js refuses them, so nothing sold-out can be bought.
   const variants = db.prepare(
     `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at,
             stock_qty, COALESCE(price_on_request,0) AS price_on_request, specs_json
        FROM phone_listings
-      WHERE seller_id=? AND status='active' AND COALESCE(stock_qty, 1) > 0
+      WHERE seller_id=? AND status='active'
         AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
       ORDER BY asking_price ASC`,
   ).all(shop.id, brand, model);
   if (!variants.length) return res.status(404).json({ error: 'not_found' });
+  const inStock = (v) => v.stock_qty === null || v.stock_qty === undefined || v.stock_qty > 0;
+  // Headline price comes from what can actually be bought; only an entirely
+  // sold-out product falls back to the full set.
+  const priced = variants.filter(inStock).length ? variants.filter(inStock) : variants;
 
   // Store traffic was never recorded. The marketplace logs a 'view' on its
   // listing page, but a shopper who never leaves the storefront produced no
@@ -322,8 +330,8 @@ r.get('/storefront/:id(\\d+)/product', optionalAuth(), (req, res) => {
     // and an empty one on the cheapest variant shouldn't win.
     description: withImages.map((v) => v.description || '').sort((a, b) => b.length - a.length)[0] || null,
     images,
-    min_price: Math.min(...variants.map((v) => v.asking_price)),
-    max_price: Math.max(...variants.map((v) => v.asking_price)),
+    min_price: Math.min(...priced.map((v) => v.asking_price)),
+    max_price: Math.max(...priced.map((v) => v.asking_price)),
     price_on_request: variants.every((v) => v.price_on_request),
     specs,
     storages: [...new Set(variants.map((v) => v.storage).filter(Boolean))],

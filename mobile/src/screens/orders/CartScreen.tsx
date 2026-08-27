@@ -224,7 +224,7 @@ export default function CartScreen({ navigation }: any) {
               <View style={{ height: 1, backgroundColor: theme.line, marginVertical: 8 }} />
               <Row label="المجموع" value={`${fmtIQD(cart.subtotal + shippingShown)} د.ع`} bold />
               <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 6 }}>
-                الدفع عند الاستلام{deliveryWindow ? ` · التوصيل ${deliveryWindow}` : ''}
+                {cart.cod_enabled === false ? 'الدفع يُتفق عليه مع المتجر' : 'الدفع عند الاستلام'}{deliveryWindow ? ` · التوصيل ${deliveryWindow}` : ''}
               </Text>
             </View>
 

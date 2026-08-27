@@ -60,6 +60,22 @@ r.get('/quick-messages', requireAuth(), (_req, res) => res.json(QUICK_MESSAGES))
 // tied to that row; when they later upgrade via phoneLogin → the same
 // row is promoted in-place and their existing chats carry over.
 r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
+  // Spec §9 data & privacy: a shop that blocked this buyer stops receiving
+  // new threads from them, and no buyer may open more than 20 threads a
+  // day — the cheap way to spam every shop in a governorate.
+  {
+    const target = db.prepare('SELECT seller_id FROM phone_listings WHERE id=?').get(req.params.id);
+    if (target) {
+      const blocked = db.prepare('SELECT 1 FROM chat_blocks WHERE shop_id=? AND buyer_id=?')
+        .get(target.seller_id, req.user.id);
+      if (blocked) return res.status(403).json({ error: 'blocked_by_shop' });
+    }
+    const dayAgo = Date.now() - 86400000;
+    const opened = db.prepare('SELECT COUNT(*) AS n FROM chats WHERE buyer_id=? AND created_at > ?')
+      .get(req.user.id, dayAgo).n;
+    if (opened >= 20) return res.status(429).json({ error: 'too_many_threads' });
+  }
+
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
   if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id === req.user.id) return res.status(400).json({ error: 'cannot_chat_self' });

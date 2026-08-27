@@ -10,6 +10,7 @@ import { issueToken, requireAdmin } from '../../auth.js';
 import { registerStoreRoutes } from './store.js';
 import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
+import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
@@ -1903,6 +1904,172 @@ r.post('/shops/:id(\\d+)/dash-credentials', requireAdmin, (req, res) => {
   res.json({ ok: true, username });
 });
 
+// ─── advanced-dashboard tier requests (spec §1, §3) ──────────────────
+// The queue shows each request WITH its computed signals, so approval is a
+// decision made against evidence rather than a name.
+r.get('/tier-requests', requireAdmin, (req, res) => {
+  const status = ['pending', 'approved', 'rejected'].includes(req.query.status)
+    ? req.query.status : 'pending';
+  const rows = db.prepare(`
+    SELECT t.*, u.shop_name, u.display_name, u.governorate AS shop_governorate,
+           u.phone AS account_phone, u.shop_tier, u.verified,
+           -- The shop's stored flag, not the one typed on the form: this is
+           -- the value qualification actually reads, so the evidence panel
+           -- must show it or "qualifies" looks like it came from nowhere.
+           COALESCE(u.shop_sells_new, 0) AS shop_sells_new,
+           s.active_listings, s.listings_30d, s.contacts_30d,
+           s.whatsapp_30d, s.chat_30d, s.call_30d, s.qualifies
+      FROM shop_tier_requests t
+      JOIN users u ON u.id = t.shop_id
+      LEFT JOIN shop_signals s ON s.shop_id = t.shop_id
+     WHERE t.status=? ORDER BY t.created_at DESC LIMIT 200
+  `).all(status);
+  // Shops flagged by the 60-day rule ride along — the spec asks for review,
+  // not revocation, and this is where a human would look.
+  const flagged = db.prepare(`
+    SELECT u.id, u.shop_name, u.display_name, u.shop_tier_flagged_at,
+           s.active_listings, s.listings_30d, s.contacts_30d
+      FROM users u LEFT JOIN shop_signals s ON s.shop_id = u.id
+     WHERE u.shop_tier='advanced' AND u.shop_tier_flagged_at IS NOT NULL
+     ORDER BY u.shop_tier_flagged_at ASC LIMIT 50
+  `).all();
+  res.json({ requests: rows, flagged });
+});
+
+r.post('/tier-requests/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, res) => {
+  const tr = db.prepare('SELECT * FROM shop_tier_requests WHERE id=?').get(req.params.id);
+  if (!tr) return res.status(404).json({ error: 'not_found' });
+  if (tr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const approve = req.params.action === 'approve';
+  const note = String(req.body?.note || '').trim().slice(0, 500) || null;
+  const t = now();
+
+  db.transaction(() => {
+    db.prepare('UPDATE shop_tier_requests SET status=?, admin_note=?, reviewed_at=?, reviewed_by=? WHERE id=?')
+      .run(approve ? 'approved' : 'rejected', note, t, req.admin?.id ?? null, tr.id);
+    if (approve) {
+      db.prepare(`UPDATE users SET shop_tier='advanced', shop_tier_state='approved',
+                    shop_tier_reviewed_at=?, shop_tier_rejected_at=NULL, shop_tier_flagged_at=NULL
+                  WHERE id=?`).run(t, tr.shop_id);
+    } else {
+      db.prepare(`UPDATE users SET shop_tier_state='rejected', shop_tier_reviewed_at=?,
+                    shop_tier_rejected_at=? WHERE id=?`).run(t, t, tr.shop_id);
+    }
+  })();
+
+  audit('admin', req.admin?.id ?? null, approve ? 'tier.approve' : 'tier.reject',
+    { kind: 'shop', id: tr.shop_id }, { request_id: tr.id, note });
+  notify(tr.shop_id, approve ? 'shop.review.approved' : 'shop.review.rejected',
+    { kind: 'tier' }, {
+      title: approve ? 'صار عندك لوحة إدارة متجرك' : 'لم يُقبل طلب الترقية',
+      body: approve
+        ? 'سجّل دخولك للوحة وشوف الأدوات الجديدة.'
+        : (note || 'تواصل معنا للتفاصيل.'),
+    });
+  res.json({ ok: true });
+});
+
+// Manual grant / revoke, bypassing every signal (spec §1).
+r.post('/shops/:id(\\d+)/tier', requireAdmin, (req, res) => {
+  const tier = String(req.body?.tier || '');
+  if (!['simple', 'advanced'].includes(tier)) return res.status(400).json({ error: 'bad_tier' });
+  const u = db.prepare("SELECT id FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  db.prepare('UPDATE users SET shop_tier=?, shop_tier_reviewed_at=?, shop_tier_flagged_at=NULL WHERE id=?')
+    .run(tier, now(), u.id);
+  audit('admin', req.admin?.id ?? null, tier === 'advanced' ? 'tier.grant' : 'tier.revoke',
+    { kind: 'shop', id: u.id }, { manual: true });
+  notify(u.id, 'shop.review.approved', { kind: 'tier' }, {
+    title: tier === 'advanced' ? 'صار عندك لوحة إدارة متجرك' : 'تغيّرت صلاحيات لوحتك',
+    body: tier === 'advanced' ? 'سجّل دخولك للوحة وشوف الأدوات الجديدة.' : 'راجعنا للتفاصيل.',
+  });
+  res.json({ ok: true, tier });
+});
+
+// ─── customer chat console ───────────────────────────────────────────
+// Every buyer/seller conversation in the marketplace, readable and
+// answerable from the admin dashboard. Replies are sent AS THE SELLER
+// account of that thread, which is how the operator app already answers
+// store chats — the buyer sees one consistent counterpart.
+r.get('/chats', requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const rows = db.prepare(`
+    SELECT c.*, b.display_name AS buyer_name, b.phone AS buyer_phone,
+           se.display_name AS seller_name, se.shop_name AS seller_shop,
+           l.brand, l.model, l.status AS listing_status
+      FROM chats c
+      JOIN users b ON b.id = c.buyer_id
+      JOIN users se ON se.id = c.seller_id
+      LEFT JOIN phone_listings l ON l.id = c.listing_id
+     ORDER BY c.last_message_at DESC LIMIT 300
+  `).all();
+  const lastMsg = db.prepare(
+    'SELECT sender_id, body, image_path, created_at FROM chat_messages WHERE chat_id=? ORDER BY created_at DESC LIMIT 1',
+  );
+  let out = rows.map((c) => {
+    const m = lastMsg.get(c.id);
+    return {
+      id: c.id,
+      buyer_id: c.buyer_id,
+      buyer_name: c.buyer_name,
+      seller_id: c.seller_id,
+      seller_name: c.seller_shop || c.seller_name,
+      listing_id: c.listing_id,
+      listing_label: c.brand ? `${c.brand} ${c.model}` : null,
+      listing_status: c.listing_status,
+      last_message: m ? (m.body || '📷 صورة') : null,
+      last_message_at: c.last_message_at,
+      closed: !!c.closed_at,
+      // Unread from the SELLER's side — the operator's question is always
+      // "is a customer waiting on someone".
+      awaiting_seller: !!(m && m.sender_id === c.buyer_id
+        && (!c.seller_last_read_at || m.created_at > c.seller_last_read_at)),
+    };
+  });
+  if (q) {
+    out = out.filter((c) =>
+      (c.buyer_name || '').toLowerCase().includes(q)
+      || (c.seller_name || '').toLowerCase().includes(q)
+      || (c.listing_label || '').toLowerCase().includes(q));
+  }
+  if (req.query.awaiting === '1') out = out.filter((c) => c.awaiting_seller);
+  res.json(out);
+});
+
+r.get('/chats/:id(\\d+)/messages', requireAdmin, (req, res) => {
+  const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.id);
+  if (!chat) return res.status(404).json({ error: 'not_found' });
+  const rows = db.prepare(`
+    SELECT m.id, m.chat_id, m.sender_id, m.body, m.image_path, m.created_at,
+           u.display_name AS sender_name
+      FROM chat_messages m JOIN users u ON u.id = m.sender_id
+     WHERE m.chat_id=? ORDER BY m.created_at ASC LIMIT 500
+  `).all(chat.id);
+  res.json({ chat, messages: rows });
+});
+
+r.post('/chats/:id(\\d+)/messages', requireAdmin, (req, res) => {
+  const chat = db.prepare('SELECT * FROM chats WHERE id=?').get(req.params.id);
+  if (!chat) return res.status(404).json({ error: 'not_found' });
+  const body = String(req.body?.body || '').trim().slice(0, 2000);
+  if (!body) return res.status(400).json({ error: 'empty_message' });
+  const t = now();
+  const ins = db.prepare(
+    'INSERT INTO chat_messages(chat_id, sender_id, body, image_path, masked, created_at) VALUES(?,?,?,NULL,0,?)',
+  ).run(chat.id, chat.seller_id, body, t);
+  db.prepare('UPDATE chats SET last_message_at=?, seller_last_read_at=? WHERE id=?').run(t, t, chat.id);
+  const msg = db.prepare(`
+    SELECT m.id, m.chat_id, m.sender_id, m.body, m.image_path, m.created_at,
+           u.display_name AS sender_name
+      FROM chat_messages m JOIN users u ON u.id = m.sender_id WHERE m.id=?
+  `).get(ins.lastInsertRowid);
+  notify(chat.buyer_id, 'chat.message', { chat_id: chat.id, message: msg }, {
+    title: 'رسالة جديدة', body: body.slice(0, 80),
+  });
+  audit('admin', req.admin?.id ?? null, 'chat.reply', { kind: 'chat', id: chat.id });
+  res.json(msg);
+});
+
 // Shop-level requests raised from the merchant panel: ميّز متجري (paid
 // featuring) and توثيق (verification). Approving featuring extends
 // shop_featured_until by the tier's days; approving verification sets the
@@ -2405,6 +2572,7 @@ r.get('/analytics', requireAdmin, (req, res) => {
 r.get('/work-queue', requireAdmin, (_req, res) => {
   const count = (sql, ...args) => db.prepare(sql).get(...args).n;
   res.json({
+    tier_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_tier_requests WHERE status='pending'").get().n,
     shop_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_feature_requests WHERE status='pending'").get().n
       + db.prepare("SELECT COUNT(*) AS n FROM shop_verification_requests WHERE status='pending'").get().n,
     // Flagged listings awaiting a human verdict. Matches the الفحص queue's

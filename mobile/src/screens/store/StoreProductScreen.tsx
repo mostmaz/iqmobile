@@ -55,10 +55,16 @@ export default function StoreProductScreen({ navigation, route }: any) {
 
   const variants = product?.variants || [];
 
-  // Default to the cheapest variant (the server returns them price-ascending)
-  // so the headline price is the one the grid tile promised.
+  // Sold-out variants now reach this screen (the grid still hides them) so a
+  // shopper can see the shop carries the capacity. Anything out of stock is
+  // shown disabled and can't be bought.
+  const inStockV = (v: StoreVariant) => v.stock_qty == null || v.stock_qty > 0;
+
+  // Default to the cheapest variant that can actually be bought (the server
+  // returns them price-ascending) so the headline price is one the shopper
+  // can act on; a fully sold-out product falls back to the cheapest overall.
   const defaults = useMemo(() => {
-    const v = variants[0];
+    const v = variants.find(inStockV) || variants[0];
     return { storage: v?.storage ?? null, color: v?.color ?? null };
   }, [variants]);
   const selStorage = storage ?? defaults.storage;
@@ -68,10 +74,18 @@ export default function StoreProductScreen({ navigation, route }: any) {
     if (!variants.length) return undefined;
     return (
       variants.find((v) => v.storage === selStorage && v.color === selColor)
+      || variants.find((v) => v.storage === selStorage && inStockV(v))
       || variants.find((v) => v.storage === selStorage)
       || variants[0]
     );
   }, [variants, selStorage, selColor]);
+  const soldOut = !!selected && !inStockV(selected);
+
+  // A chip is "sold out" when no buyable variant sits behind it — it stays
+  // on screen, greyed, instead of vanishing as if the shop never had it.
+  const storageSoldOut = (st: string) => !variants.some((v) => v.storage === st && inStockV(v));
+  const colorSoldOut = (c: string) =>
+    !variants.some((v) => v.color === c && (!selStorage || v.storage === selStorage) && inStockV(v));
 
   // A capacity that only exists in one colour must not look pickable in
   // another — grey it out rather than silently switching the colour.
@@ -125,6 +139,9 @@ export default function StoreProductScreen({ navigation, route }: any) {
 
   function addToCart(thenCheckout = false) {
     if (!product || !selected) return;
+    // Belt and braces: the buy bar is already replaced for a sold-out
+    // variant, and orders.js refuses it server-side.
+    if (!inStockV(selected)) return;
     const shop = {
       id: product.shop.id, name: product.shop.name, shipping_fee: product.shop.shipping_fee,
       delivery_days_min: product.shop.delivery_days_min,
@@ -356,6 +373,7 @@ export default function StoreProductScreen({ navigation, route }: any) {
               options={product.storages}
               value={selStorage}
               available={(st) => variants.some((v) => v.storage === st)}
+              soldOut={storageSoldOut}
               onPick={pickStorage}
               priceOf={(s) => {
                 const m = variants.filter((v) => v.storage === s);
@@ -369,6 +387,7 @@ export default function StoreProductScreen({ navigation, route }: any) {
               options={product.colors}
               value={selColor}
               available={colorAvailable}
+              soldOut={colorSoldOut}
               onPick={pickColor}
             />
           ) : null}
@@ -557,6 +576,38 @@ export default function StoreProductScreen({ navigation, route }: any) {
               اتصل للسعر والطلب
             </Text>
           </TouchableOpacity>
+        ) : soldOut ? (
+          // The variant is carried but out of stock. Say so plainly and give
+          // the shopper the one useful action left: ask the shop when it's back.
+          <>
+            <View style={{
+              flex: 1, backgroundColor: theme.chipBg, borderRadius: radius.xl,
+              paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.subtle }}>
+                نفد من المخزن
+              </Text>
+            </View>
+            {product.shop.phone ? (
+              <TouchableOpacity
+                onPress={() => {
+                  Storefront.contact(product.shop.id, selected?.id);
+                  callPhone(product.shop.phone as string);
+                }}
+                activeOpacity={0.85}
+                style={{
+                  flex: 1, backgroundColor: theme.ink, borderRadius: radius.xl,
+                  paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+                  flexDirection: 'row-reverse', gap: 8,
+                }}
+              >
+                <IconMsgCall size={17} color={theme.buttonInk} sw={1.9} />
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.buttonInk }}>
+                  اسأل المتجر
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </>
         ) : (
         <>
         {/* Add-to-cart is the SECONDARY path and now looks like it. The two
@@ -627,11 +678,15 @@ function BackBar({ insets, onBack }: { insets: { top: number }; onBack: () => vo
   );
 }
 
-function OptionRow({ label, options, value, available, onPick, priceOf }: {
+function OptionRow({ label, options, value, available, soldOut, onPick, priceOf }: {
   label: string;
   options: string[];
   value: string | null;
   available: (o: string) => boolean;
+  // Carried by the shop but out of stock — greyed and unpickable, never
+  // hidden. A combination the shop doesn't carry at all is filtered out by
+  // `available` instead: that isn't a choice, it's a thing that never existed.
+  soldOut?: (o: string) => boolean;
   onPick: (o: string) => void;
   priceOf?: (o: string) => number | null;
 }) {
@@ -647,10 +702,12 @@ function OptionRow({ label, options, value, available, onPick, priceOf }: {
         {options.filter(available).map((o) => {
           const active = o === value;
           const price = priceOf?.(o) ?? null;
+          const out = soldOut?.(o) ?? false;
           return (
             <TouchableOpacity
               key={o}
               onPress={() => onPick(o)}
+              disabled={out}
               activeOpacity={0.8}
               style={{
                 paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.lg,
@@ -658,6 +715,7 @@ function OptionRow({ label, options, value, available, onPick, priceOf }: {
                 borderColor: active ? theme.accent : theme.line,
                 backgroundColor: active ? theme.accentSoft : theme.surface,
                 alignItems: 'center',
+                opacity: out ? 0.45 : 1,
               }}
             >
               <Text style={{
@@ -666,6 +724,11 @@ function OptionRow({ label, options, value, available, onPick, priceOf }: {
               }}>
                 {o}
               </Text>
+              {out ? (
+                <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, marginTop: 2, color: theme.subtle }}>
+                  نفد
+                </Text>
+              ) : null}
               {price !== null ? (
                 <Text style={{
                   fontFamily: fonts.ltr, fontSize: 10.5, marginTop: 2,

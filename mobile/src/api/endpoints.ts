@@ -536,6 +536,9 @@ export interface ShopCard {
   // Storefront mode — add-to-cart + COD checkout instead of call/WhatsApp.
   orders_enabled?: boolean;
   shipping_fee?: number | null;
+  // Per-shop COD promise + house-storefront marker.
+  cod_enabled?: boolean;
+  is_house?: boolean;
   // Directory enrichment (shops-directory redesign) — derived from ACTIVE
   // listings server-side; all optional so older payloads still typecheck.
   active_count?: number;
@@ -545,6 +548,14 @@ export interface ShopCard {
   brands?: string[];
   reply_rate?: number | null;
   reply_median_minutes?: number | null;
+  // Positive-only reply signal, decided server-side so a client can never
+  // synthesise a "slow" badge out of the raw numbers. null = show nothing.
+  reply_badge?: 'fast' | 'same_day' | null;
+  // Which contact affordances this shop actually answers on. The server
+  // guarantees at least one is true; absent payload = all three (old build).
+  channels?: { call: boolean; whatsapp: boolean; chat: boolean };
+  // Declared by the shop at registration; null = never declared.
+  delivery_available?: boolean | null;
 }
 export interface ShopImage { id: number; image_path: string; position?: number }
 export interface ShopDetail extends ShopCard {
@@ -576,6 +587,7 @@ export const Shops = {
     shop_name: string; shop_bio?: string; shop_phone?: string;
     shop_whatsapp?: string; shop_address?: string; governorate?: string;
     shop_phones?: string[]; shop_facebook?: string | null; shop_instagram?: string | null;
+    shop_delivery?: boolean;
   }) => api<ShopCard & { shop_images?: ShopImage[] }>('/shops/register', { method: 'POST', body: JSON.stringify(body) }),
   removeImage: (imageId: number) =>
     api<{ ok: boolean; images: ShopImage[] }>(`/shops/me/images/${imageId}`, { method: 'DELETE' }),

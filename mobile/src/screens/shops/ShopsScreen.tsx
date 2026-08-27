@@ -75,9 +75,11 @@ export default function ShopsScreen({ navigation }: any) {
   const [tab, setTab] = useState<'all' | 'active'>('all');
   const [sort, setSort] = useState<SortKey>('best');
   const [brands, setBrands] = useState<string[]>([]);
+  const [deliveryOnly, setDeliveryOnly] = useState(false);
   const [draftBrands, setDraftBrands] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
+  const railRef = useRef<ScrollView>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['shops', govEn ?? '__all__'],
@@ -88,10 +90,11 @@ export default function ShopsScreen({ navigation }: any) {
   const now = Date.now();
 
   // ── Filtering ────────────────────────────────────────────────────
-  const byTab = useMemo(
-    () => (tab === 'active' ? shops.filter((s) => postedRecently(s, now)) : shops),
-    [shops, tab, now],
-  );
+  const byTab = useMemo(() => {
+    let rows = tab === 'active' ? shops.filter((s) => postedRecently(s, now)) : shops;
+    if (deliveryOnly) rows = rows.filter((s) => s.delivery_available === true);
+    return rows;
+  }, [shops, tab, deliveryOnly, now]);
   const applyBrands = (list: ShopCard[], sel: string[]) =>
     sel.length ? list.filter((s) => (s.brands || []).some((b) => sel.includes(b))) : list;
   const visible = useMemo(() => {
@@ -135,7 +138,7 @@ export default function ShopsScreen({ navigation }: any) {
   const isShop = user?.seller_type === 'shop';
   const sortLabel = SORTS.find((s) => s.key === sort)!.label;
 
-  const clearAll = () => { setTab('all'); setSort('best'); setBrands([]); setDraftBrands([]); };
+  const clearAll = () => { setTab('all'); setSort('best'); setBrands([]); setDraftBrands([]); setDeliveryOnly(false); };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -179,13 +182,19 @@ export default function ShopsScreen({ navigation }: any) {
             filter sheet edits — quick toggles for the common case, the sheet
             for counts and clearing. */}
         <ScrollView
+          ref={railRef}
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 12, flexDirection: 'row-reverse' }}
-          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8 }}
+          style={{ marginTop: 12 }}
+          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 2 }}
+          // RTL horizontal rails open at their LEFT end, hiding the first
+          // chips — pin to the right end whenever content resizes (same
+          // fix as the browse filter's brand rail).
+          onContentSizeChange={() => railRef.current?.scrollToEnd({ animated: false })}
         >
           <Chip selected={tab === 'all'} onPress={() => setTab('all')} label="الكل" />
           <Chip selected={tab === 'active'} onPress={() => setTab('active')} label="نشط" />
+          <Chip selected={deliveryOnly} onPress={() => setDeliveryOnly((v) => !v)} label="توصيل متوفر" />
           {brandFacets.map(([brand]) => (
             <Chip
               key={brand}
@@ -213,10 +222,10 @@ export default function ShopsScreen({ navigation }: any) {
               <IconStore size={30} color={theme.subtle} sw={1.6} />
             </View>
             <Text style={{ marginTop: 14, fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>
-              ما في متاجر بهذي الفلاتر
+              لا توجد متاجر بهذه الفلاتر
             </Text>
             <Text style={{ marginTop: 5, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, lineHeight: 21, textAlign: 'center' }}>
-              جرّب تشيل فلتر أو غيّر المحافظة
+              أزل بعض الفلاتر أو غيّر المحافظة
             </Text>
             <TouchableOpacity
               onPress={clearAll}
@@ -268,7 +277,7 @@ export default function ShopsScreen({ navigation }: any) {
         </View>
 
         <Text style={{ marginTop: 16, fontFamily: fonts.arBold, fontSize: 12.5, color: theme.subtle, textAlign: 'right' }}>
-          عنده أجهزة
+          الماركات المتوفرة
         </Text>
         <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           {brandFacets.map(([brand, count]) => {
@@ -298,14 +307,14 @@ export default function ShopsScreen({ navigation }: any) {
           })}
           {!brandFacets.length ? (
             <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle }}>
-              ما في ماركات ضمن الفلتر الحالي.
+              لا توجد ماركات ضمن الفلتر الحالي.
             </Text>
           ) : null}
         </View>
 
         {draftCount === 0 ? (
           <Text style={{ marginTop: 14, fontFamily: fonts.ar, fontSize: 12.5, color: theme.danger, textAlign: 'center' }}>
-            ما في نتائج — جرّب تشيل فلتر
+            لا توجد نتائج — أزل أحد الفلاتر
           </Text>
         ) : null}
         <TouchableOpacity
@@ -365,7 +374,10 @@ function ShopRow({ shop, now, onPress }: { shop: ShopCard; now: number; onPress:
   const extra = Math.max(0, activeCount - thumbs.length);
   const recent = postedRecently(shop, now);
   const idleDays = shop.last_posted_at ? Math.floor((now - shop.last_posted_at) / DAY_MS) : null;
-  const fastReply = shop.reply_median_minutes != null && shop.reply_median_minutes <= 60;
+  // The badge is decided by the server (min 5 conversations, positive only).
+  // We deliberately do NOT derive it from reply_median_minutes here: a shop
+  // that answers slowly should show nothing, never a slow badge.
+  const replyBadge = shop.reply_badge ?? null;
 
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
@@ -451,18 +463,25 @@ function ShopRow({ shop, now, onPress }: { shop: ShopCard; now: number; onPress:
             </Text>
           </Badge>
         ) : null}
-        {fastReply ? (
+        {shop.delivery_available === true ? (
+          <Badge bg={theme.successSoft}>
+            <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.success }}>
+              توصيل متوفر
+            </Text>
+          </Badge>
+        ) : null}
+        {replyBadge ? (
           <Badge bg={theme.chipBg}>
             <IconChat size={11} color={theme.chipInk} sw={1.8} />
             <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.chipInk }}>
-              يرد خلال ساعة
+              {replyBadge === 'fast' ? 'يرد بسرعة' : 'يرد بنفس اليوم'}
             </Text>
           </Badge>
         ) : null}
         {!recent ? (
           <Badge bg="transparent" border="rgba(27,26,24,0.14)">
             <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>
-              {idleDays == null ? 'ما نشر بعد' : `ما نشر من ${arNum(idleDays)} يوم`}
+              {idleDays == null ? 'لم ينشر بعد' : `لم ينشر منذ ${arNum(idleDays)} يوم`}
             </Text>
           </Badge>
         ) : null}

@@ -50,6 +50,7 @@ import bannersRoutes from './routes/banners.js';
 import featuresRoutes from './routes/features.js';
 import shopsRoutes from './routes/shops.js';
 import { startExpirer } from './expirer.js';
+import { startShopJobs } from './shopJobs.js';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -300,3 +301,4 @@ app.listen(PORT, () => {
 });
 
 startExpirer();
+startShopJobs();

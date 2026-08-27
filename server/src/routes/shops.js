@@ -153,7 +153,9 @@ function shopCard(u, nowTs) {
       const t1 = firstReplyAfter.get(c.id, u.id, t0)?.t;
       if (t1) deltas.push(t1 - t0);
     }
-    if (asked >= 3 && deltas.length) {
+    // Spec §9: at least FIVE measured conversations before any badge — a
+    // couple of lucky replies must not mint a public promise.
+    if (deltas.length >= 5) {
       deltas.sort((a, b) => a - b);
       reply_median_minutes = Math.round(deltas[Math.floor(deltas.length / 2)] / 60000);
       reply_rate = Math.round((deltas.length / asked) * 100);
@@ -198,6 +200,20 @@ function shopCard(u, nowTs) {
     brands,
     reply_rate,
     reply_median_minutes,
+    // Positive badges only (spec §9). The server decides the tier so no
+    // client can invent a "slow" state: under an hour is ⚡, under four
+    // hours is same-day, anything else is simply absent — silently.
+    reply_badge: reply_median_minutes == null ? null
+      : reply_median_minutes <= 60 ? 'fast'
+      : reply_median_minutes <= 240 ? 'same_day'
+      : null,
+    // Per-channel availability (spec §11). NULL means on, so shops that
+    // predate the setting keep every channel.
+    channels: {
+      call: (u.shop_ch_call ?? 1) ? true : false,
+      whatsapp: (u.shop_ch_whatsapp ?? 1) ? true : false,
+      chat: (u.shop_ch_chat ?? 1) ? true : false,
+    },
     // Storefront mode. The app shows add-to-cart + COD checkout instead of
     // the call/WhatsApp row when this is on. Shipping is a flat per-order
     // charge, sent alongside so the cart can show the total before checkout.

@@ -34,6 +34,9 @@ export default function ShopRegisterScreen({ navigation }: any) {
 
   const [shopName, setShopName] = useState((user as any)?.shop_name || user?.display_name || '');
   const [bio, setBio] = useState((user as any)?.shop_bio || '');
+  // Delivery declaration — drives the «توصيل متوفر» badge and the
+  // directory filter. Defaults to the stored value when editing.
+  const [delivery, setDelivery] = useState<boolean>(!!(user as any)?.shop_delivery);
   // Public phone numbers (branch lines) — each becomes a call button on the
   // shop page. Seeded from the phones list, falling back to the legacy single
   // shop_phone / the account phone.
@@ -88,6 +91,7 @@ export default function ShopRegisterScreen({ navigation }: any) {
         governorate: govAr ? GOV_AR_TO_EN[govAr] : undefined,
         shop_facebook: facebook.trim() || null,
         shop_instagram: instagram.trim() || null,
+        shop_delivery: delivery,
       });
       // Map location (edit mode only, when changed and budget remains).
       if (editing && shopLocLeft > 0 && coords &&
@@ -261,6 +265,32 @@ export default function ShopRegisterScreen({ navigation }: any) {
         <View style={{ height: 12 }} />
         <FieldLabel>العنوان (اختياري)</FieldLabel>
         <Input value={address} onChangeText={setAddress} placeholder="الشارع / المنطقة" />
+
+        <View style={{ height: 12 }} />
+        <TouchableOpacity
+          onPress={() => setDelivery((v) => !v)}
+          activeOpacity={0.75}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: delivery }}
+          style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, paddingVertical: 8 }}
+        >
+          <View style={{
+            width: 22, height: 22, borderRadius: 7,
+            backgroundColor: delivery ? theme.success : 'transparent',
+            borderWidth: delivery ? 0 : 2, borderColor: theme.subtle,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            {delivery ? <IconCheck size={13} color="#fff" sw={2.6} /> : null}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}>
+              التوصيل متوفر
+            </Text>
+            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+              تظهر شارة «توصيل متوفر» على متجرك ويشملك فلتر التوصيل في الدليل.
+            </Text>
+          </View>
+        </TouchableOpacity>
 
         <View style={{ height: 12 }} />
         <FieldLabel>نبذة عن المتجر (اختياري)</FieldLabel>

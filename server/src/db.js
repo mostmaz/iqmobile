@@ -1003,6 +1003,136 @@ CREATE TABLE IF NOT EXISTS shop_verification_requests (
   reviewed_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_shop_verification_requests ON shop_verification_requests(status, created_at DESC);`);
+
+// ─── Advanced store dashboard (spec §1–§14) ──────────────────────────
+// Two tiers: 'simple' (what every shop has) and 'advanced' (inventory
+// tooling). Additive by construction — advanced only ever unlocks extra
+// surfaces, never removes one.
+addColumnIfMissing('users', "shop_tier TEXT NOT NULL DEFAULT 'simple'");
+addColumnIfMissing('users', 'shop_tier_state TEXT');          // requested|pending_review|approved|rejected
+addColumnIfMissing('users', 'shop_tier_reviewed_at INTEGER');
+addColumnIfMissing('users', 'shop_tier_rejected_at INTEGER'); // 30-day re-apply gate
+addColumnIfMissing('users', 'shop_tier_flagged_at INTEGER');  // 60 days below every signal
+addColumnIfMissing('users', 'shop_sells_new INTEGER');        // qualification signal + §6 gate
+// Per-channel contact toggles. NULL counts as ON so existing shops keep
+// every channel; the server refuses to turn the last one off.
+addColumnIfMissing('users', 'shop_ch_call INTEGER');
+addColumnIfMissing('users', 'shop_ch_whatsapp INTEGER');
+addColumnIfMissing('users', 'shop_ch_chat INTEGER');
+// Upgrade-offer pacing (§2): at most one prompt per 7 days, and «بعدين»
+// silences it for 14.
+addColumnIfMissing('users', 'shop_offer_last_at INTEGER');
+addColumnIfMissing('users', 'shop_offer_dismissed_until INTEGER');
+
+// Drafts deliberately ride status='removed' + is_draft=1 rather than a new
+// status value: eleven public queries filter `status != 'removed'`, so a
+// 'draft' status would surface unfinished listings in the feed, in search
+// and in the shop's public listing_count. This way every existing query
+// excludes them already and only the panel goes looking.
+addColumnIfMissing('phone_listings', 'is_draft INTEGER NOT NULL DEFAULT 0');
+// Actual transacted price (§10) — the dataset the marketplace has never had.
+addColumnIfMissing('phone_listings', 'sale_price INTEGER');
+addColumnIfMissing('chats', 'closed_at INTEGER');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS shop_tier_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  store_name TEXT,
+  governorate TEXT,
+  device_count_approx INTEGER,
+  sells_new INTEGER NOT NULL DEFAULT 0,
+  phone TEXT,
+  whatsapp TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  admin_note TEXT,
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER,
+  reviewed_by INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shop_tier_requests ON shop_tier_requests(status, created_at DESC);
+
+-- Materialised qualification signals. Recomputed daily by shopJobs.js —
+-- never derived on a dashboard load (spec §14).
+CREATE TABLE IF NOT EXISTS shop_signals (
+  shop_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  active_listings INTEGER NOT NULL DEFAULT 0,
+  listings_30d INTEGER NOT NULL DEFAULT 0,
+  contacts_30d INTEGER NOT NULL DEFAULT 0,
+  whatsapp_30d INTEGER NOT NULL DEFAULT 0,
+  chat_30d INTEGER NOT NULL DEFAULT 0,
+  call_30d INTEGER NOT NULL DEFAULT 0,
+  qualifies INTEGER NOT NULL DEFAULT 0,
+  below_since INTEGER,
+  computed_at INTEGER NOT NULL
+);
+
+-- Materialised per-listing diagnostics (§7). reason_code is what makes a
+-- weak metric actionable; the UI refuses to render a number without one.
+CREATE TABLE IF NOT EXISTS listing_diagnostics (
+  listing_id INTEGER PRIMARY KEY REFERENCES phone_listings(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL,
+  views_30d INTEGER NOT NULL DEFAULT 0,
+  contacts_30d INTEGER NOT NULL DEFAULT 0,
+  last_contact_at INTEGER,
+  photo_count INTEGER NOT NULL DEFAULT 0,
+  price_delta_pct INTEGER,
+  reason_code TEXT,
+  computed_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_listing_diag_seller ON listing_diagnostics(seller_id);
+
+-- Unmet demand (§8): searches that returned nothing, by governorate.
+CREATE TABLE IF NOT EXISTS demand_queries (
+  governorate TEXT NOT NULL,
+  query_norm TEXT NOT NULL,
+  searches_7d INTEGER NOT NULL,
+  computed_at INTEGER NOT NULL,
+  PRIMARY KEY(governorate, query_norm)
+);
+
+CREATE TABLE IF NOT EXISTS shop_quick_replies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_quick_replies_shop ON shop_quick_replies(shop_id, position);
+
+CREATE TABLE IF NOT EXISTS chat_blocks (
+  shop_id INTEGER NOT NULL,
+  buyer_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY(shop_id, buyer_id)
+);
+
+-- Bulk undo (§4): the 30-second window. payload_json holds the BEFORE
+-- values, so undo is a restore, not an inverse operation — a percentage
+-- price change can't be un-applied arithmetically without drift.
+CREATE TABLE IF NOT EXISTS bulk_undo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  affected INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  undone_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_undo_shop ON bulk_undo(shop_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_kind TEXT NOT NULL,        -- admin | shop | system
+  actor_id INTEGER,
+  action TEXT NOT NULL,
+  target_kind TEXT,
+  target_id INTEGER,
+  detail_json TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_kind, target_id);`);
 // Per-shop merchant panel (dormant behind the multi_shop_orders switch):
 // each shop can get its own dashboard username/password, scoped to its
 // orders only. Set by the admin from the shops page.

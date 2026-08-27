@@ -176,7 +176,12 @@ export function newPriceFor(listing) {
   // "Buy a new one" target. Suppressed on the storefront's own listings —
   // those already carry the full-width buy button, and a second button
   // pointing at the page the buyer is effectively on would just be noise.
-  const store = orderShopIds().includes(listing.seller_id)
+  //
+  // Also suppressed when the listing itself is marked new: offering to sell
+  // a new one to someone already looking at a new one is nonsense. The price
+  // reference above still renders — comparing a sealed phone against the
+  // shop's price is the whole point — only the CTA goes.
+  const store = (listing.condition === 'new' || orderShopIds().includes(listing.seller_id))
     ? null
     : storeRefFor(listing.brand, wantModel, wantStorage);
 
