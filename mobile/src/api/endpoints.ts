@@ -708,6 +708,8 @@ export const Storefront = {
   },
   product: (shopId: number, brand: string, model: string) =>
     api<StoreProduct>(
-      `/storefront/${shopId}/product?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}`,
+      // include_sold_out: this build greys out zero-stock variants instead of
+      // hiding them. Builds that don't are served in-stock variants only.
+      `/storefront/${shopId}/product?brand=${encodeURIComponent(brand)}&model=${encodeURIComponent(model)}&include_sold_out=1`,
     ),
 };

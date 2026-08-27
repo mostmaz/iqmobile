@@ -253,15 +253,20 @@ r.get('/storefront/:id(\\d+)/product', optionalAuth(), (req, res) => {
   const model = String(req.query.model || '').trim();
   if (!brand || !model) return res.status(400).json({ error: 'brand_and_model_required' });
 
-  // Unlike the grid, the product page keeps sold-out variants: "the 512GB
+  // Unlike the grid, the product page can keep sold-out variants: "the 512GB
   // exists here, just not today" is useful to a shopper, and hiding it makes
   // the shop look like it never carried the capacity. The client renders them
   // disabled and orders.js refuses them, so nothing sold-out can be bought.
+  //
+  // Opt-in, because a build that predates that rendering would show a
+  // sold-out capacity as an ordinary pickable chip and only discover the
+  // truth at checkout. Old apps keep asking for stock only.
+  const wantSoldOut = req.query.include_sold_out === '1';
   const variants = db.prepare(
     `SELECT id, brand, model, storage, color, condition, asking_price, description, created_at,
             stock_qty, COALESCE(price_on_request,0) AS price_on_request, specs_json
        FROM phone_listings
-      WHERE seller_id=? AND status='active'
+      WHERE seller_id=? AND status='active' ${wantSoldOut ? '' : 'AND COALESCE(stock_qty, 1) > 0'}
         AND brand=? AND LOWER(TRIM(model))=LOWER(TRIM(?))
       ORDER BY asking_price ASC`,
   ).all(shop.id, brand, model);
