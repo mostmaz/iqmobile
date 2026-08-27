@@ -976,6 +976,33 @@ addColumnIfMissing('users', 'shop_facebook TEXT');
 addColumnIfMissing('users', 'shop_instagram TEXT');
 // Qi Card feature payments carry the sender's account name, not a SIM.
 addColumnIfMissing('feature_requests', 'sender_name TEXT');
+
+// Shop-level paid featuring + verification, both requested from the
+// merchant panel and approved by the admin. Statuses route-validated
+// (pending/approved/rejected) — no CHECK, per the condition-column
+// precedent.
+db.exec(`CREATE TABLE IF NOT EXISTS shop_feature_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tier TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  days INTEGER NOT NULL,
+  carrier TEXT NOT NULL,
+  sender_phone TEXT,
+  sender_name TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shop_feature_requests ON shop_feature_requests(status, created_at DESC);
+CREATE TABLE IF NOT EXISTS shop_verification_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  reviewed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shop_verification_requests ON shop_verification_requests(status, created_at DESC);`);
 // Per-shop merchant panel (dormant behind the multi_shop_orders switch):
 // each shop can get its own dashboard username/password, scoped to its
 // orders only. Set by the admin from the shops page.

@@ -1903,6 +1903,60 @@ r.post('/shops/:id(\\d+)/dash-credentials', requireAdmin, (req, res) => {
   res.json({ ok: true, username });
 });
 
+// Shop-level requests raised from the merchant panel: ميّز متجري (paid
+// featuring) and توثيق (verification). Approving featuring extends
+// shop_featured_until by the tier's days; approving verification sets the
+// badge. Both notify the shop so it sees the result in its own app.
+r.get('/shop-requests', requireAdmin, (_req, res) => {
+  const feature = db.prepare(`
+    SELECT f.*, u.shop_name, u.display_name, u.governorate
+      FROM shop_feature_requests f JOIN users u ON u.id = f.shop_id
+     WHERE f.status='pending' ORDER BY f.created_at DESC LIMIT 100`).all();
+  const verification = db.prepare(`
+    SELECT v.*, u.shop_name, u.display_name, u.governorate, u.shop_image_path,
+           (SELECT COUNT(*) FROM shop_images si WHERE si.shop_id = u.id) AS gallery_count,
+           u.shop_lat, u.shop_lng
+      FROM shop_verification_requests v JOIN users u ON u.id = v.shop_id
+     WHERE v.status='pending' ORDER BY v.created_at DESC LIMIT 100`).all();
+  res.json({ feature, verification });
+});
+
+r.post('/shop-requests/feature/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, res) => {
+  const fr = db.prepare('SELECT * FROM shop_feature_requests WHERE id=?').get(req.params.id);
+  if (!fr) return res.status(404).json({ error: 'not_found' });
+  if (fr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const t = now();
+  const approve = req.params.action === 'approve';
+  db.prepare('UPDATE shop_feature_requests SET status=?, reviewed_at=? WHERE id=?')
+    .run(approve ? 'approved' : 'rejected', t, fr.id);
+  if (approve) {
+    const cur = db.prepare('SELECT shop_featured_until FROM users WHERE id=?').get(fr.shop_id)?.shop_featured_until || 0;
+    const base = Math.max(cur, t);
+    db.prepare('UPDATE users SET shop_featured_until=? WHERE id=?')
+      .run(base + fr.days * 86400000, fr.shop_id);
+  }
+  notify(fr.shop_id, approve ? 'shop.review.approved' : 'shop.review.rejected', { kind: 'feature' }, {
+    title: approve ? 'تم تمييز متجرك ✨' : 'لم يُقبل طلب التمييز',
+    body: approve ? `متجرك مميّز لمدة ${fr.days} يوم` : 'راجعنا الطلب — تواصل معنا للتفاصيل.',
+  });
+  res.json({ ok: true });
+});
+
+r.post('/shop-requests/verification/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, res) => {
+  const vr = db.prepare('SELECT * FROM shop_verification_requests WHERE id=?').get(req.params.id);
+  if (!vr) return res.status(404).json({ error: 'not_found' });
+  if (vr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
+  const approve = req.params.action === 'approve';
+  db.prepare('UPDATE shop_verification_requests SET status=?, reviewed_at=? WHERE id=?')
+    .run(approve ? 'approved' : 'rejected', now(), vr.id);
+  if (approve) db.prepare('UPDATE users SET verified=1 WHERE id=?').run(vr.shop_id);
+  notify(vr.shop_id, approve ? 'shop.review.approved' : 'shop.review.rejected', { kind: 'verification' }, {
+    title: approve ? 'تم توثيق متجرك ✔️' : 'لم يُقبل طلب التوثيق',
+    body: approve ? 'شارة التوثيق ظهرت على صفحة متجرك.' : 'تأكد من الشعار والصور والموقع ثم أعد الطلب.',
+  });
+  res.json({ ok: true });
+});
+
 r.get('/shops', requireAdmin, (req, res) => {
   const q = req.query.q ? String(req.query.q).slice(0, 64) : '';
   let sql = `
@@ -2351,6 +2405,8 @@ r.get('/analytics', requireAdmin, (req, res) => {
 r.get('/work-queue', requireAdmin, (_req, res) => {
   const count = (sql, ...args) => db.prepare(sql).get(...args).n;
   res.json({
+    shop_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_feature_requests WHERE status='pending'").get().n
+      + db.prepare("SELECT COUNT(*) AS n FROM shop_verification_requests WHERE status='pending'").get().n,
     // Flagged listings awaiting a human verdict. Matches the الفحص queue's
     // filter — a 'clean' verdict is logged for audit, never for review.
     inspection: count(

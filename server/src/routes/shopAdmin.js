@@ -18,6 +18,8 @@ import { notify } from '../notify.js';
 import { applyStatusToStock } from '../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT, orderStatusNotification } from '../orderFlow.js';
 import { parseSheet, planImport, applyImport } from '../storeImport.js';
+import { SHOP_FEATURE_TIERS, CARRIERS, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES } from '../featureTiers.js';
+import { pushToAdmins } from '../adminPush.js';
 
 // Same upload conventions as the app: disk storage under ./uploads, image
 // mime/ext allow-list, 5MB cap. lst_/shp_ prefixes match existing files.
@@ -174,6 +176,20 @@ r.get('/shop-admin/me', requireShopAdmin, (req, res) => {
     } : { count: 0 },
     out_of_stock: { count: oos.length, models: oos.slice(0, 3).map((r2) => `${r2.brand} ${r2.model}`) },
     unanswered_chats: { count: unanswered, oldest_minutes: unansweredOldestMin },
+    // Verification + featuring state for the panel's shop-level cards.
+    verified: !!u.verified,
+    featured_until: u.shop_featured_until || null,
+    verification: {
+      has_logo: !!(u.shop_image_path || u.profile_image_path),
+      gallery_count: db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n,
+      has_location: !!(u.shop_lat && u.shop_lng),
+      request_status: db.prepare(
+        'SELECT status FROM shop_verification_requests WHERE shop_id=? ORDER BY id DESC LIMIT 1',
+      ).get(u.id)?.status || null,
+    },
+    feature_request_status: db.prepare(
+      "SELECT status, tier, created_at FROM shop_feature_requests WHERE shop_id=? ORDER BY id DESC LIMIT 1",
+    ).get(u.id) || null,
   });
 });
 
@@ -424,6 +440,113 @@ r.post('/shop-admin/chats/:id(\\d+)/messages', requireShopAdmin, (req, res) => {
     body: body.slice(0, 80),
   });
   res.json(msg);
+});
+
+
+// ─── market intelligence: top-10 demanded devices across the app ─────
+// Contact taps (call/WhatsApp) weigh 5× a view — intent beats curiosity.
+// 30-day window over EVERY listing in the marketplace, so a merchant sees
+// what Iraq is actually asking for, not just their own shelf.
+r.get('/shop-admin/top-devices', requireShopAdmin, (_req, res) => {
+  const since = Date.now() - 30 * 86400000;
+  const rows = db.prepare(`
+    SELECT l.brand, l.model,
+           SUM(CASE WHEN e.type='view' THEN 1 ELSE 0 END) AS views,
+           SUM(CASE WHEN e.type IN ('contact_call','contact_whatsapp') THEN 1 ELSE 0 END) AS contacts
+      FROM events e JOIN phone_listings l ON l.id = e.listing_id
+     WHERE e.created_at > ? AND e.type IN ('view','contact_call','contact_whatsapp')
+       AND l.brand IS NOT NULL AND l.brand != ''
+     GROUP BY l.brand, l.model
+     ORDER BY (SUM(CASE WHEN e.type IN ('contact_call','contact_whatsapp') THEN 1 ELSE 0 END) * 5
+             + SUM(CASE WHEN e.type='view' THEN 1 ELSE 0 END)) DESC
+     LIMIT 10
+  `).all(since);
+  res.json(rows);
+});
+
+// ─── shop logo + location (verification prerequisites) ───────────────
+r.post('/shop-admin/logo', requireShopAdmin, uploadLimiter, shopImg.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  db.prepare('UPDATE users SET shop_image_path=? WHERE id=?')
+    .run(`/uploads/${req.file.filename}`, req.shop.id);
+  res.json({ ok: true, image_path: `/uploads/${req.file.filename}` });
+});
+
+r.post('/shop-admin/location', requireShopAdmin, (req, res) => {
+  const lat = Number(req.body?.lat); const lng = Number(req.body?.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return res.status(400).json({ error: 'bad_location' });
+  }
+  db.prepare('UPDATE users SET shop_lat=?, shop_lng=? WHERE id=?').run(lat, lng, req.shop.id);
+  res.json({ ok: true });
+});
+
+// ─── ميّز متجري — shop featuring request ─────────────────────────────
+r.get('/shop-admin/feature-config', requireShopAdmin, (_req, res) => {
+  res.json({
+    tiers: SHOP_FEATURE_TIERS,
+    carriers: CARRIERS,
+    transfer_numbers: TRANSFER_NUMBERS,
+    ussd_templates: USSD_TEMPLATES,
+    qi_card: QI_CARD,
+    carrier_prefixes: CARRIER_PREFIXES,
+  });
+});
+
+r.post('/shop-admin/feature-request', requireShopAdmin, (req, res) => {
+  const tier = SHOP_FEATURE_TIERS.find((t2) => t2.key === String(req.body?.tier || ''));
+  if (!tier) return res.status(400).json({ error: 'bad_tier' });
+  const carrier = String(req.body?.carrier || '').trim().toLowerCase();
+  if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
+  let senderPhone = null; let senderName = null;
+  if (carrier === 'qicard') {
+    senderName = String(req.body?.sender_name || '').trim().slice(0, 80);
+    if (senderName.length < 2) return res.status(400).json({ error: 'bad_sender_name' });
+  } else {
+    senderPhone = String(req.body?.sender_phone || '').replace(/\D/g, '');
+    if (senderPhone.length < 10) return res.status(400).json({ error: 'bad_sender_phone' });
+    const pfx = CARRIER_PREFIXES[carrier];
+    if (pfx && !senderPhone.startsWith(pfx)) return res.status(400).json({ error: 'bad_sender_prefix' });
+  }
+  const open = db.prepare(
+    "SELECT id FROM shop_feature_requests WHERE shop_id=? AND status='pending'",
+  ).get(req.shop.id);
+  if (open) return res.status(409).json({ error: 'request_pending' });
+  const id = db.prepare(`
+    INSERT INTO shop_feature_requests(shop_id, tier, amount, days, carrier, sender_phone, sender_name, status, created_at)
+    VALUES(?,?,?,?,?,?,?,'pending',?)
+  `).run(req.shop.id, tier.key, tier.amount, tier.days, carrier, senderPhone, senderName, now()).lastInsertRowid;
+  pushToAdmins('feature.requested', 'طلب تمييز متجر ✨',
+    `${req.shop.shop_name || req.shop.display_name} · ${tier.label_ar} · ${tier.amount.toLocaleString('en-US')} د.ع`,
+    { screen: 'shops' },
+  ).catch(() => {});
+  res.json({ ok: true, id });
+});
+
+// ─── verification request ────────────────────────────────────────────
+// Prerequisites enforced server-side too: logo, ≥3 gallery images, and a
+// pinned location — the badge should mean something.
+r.post('/shop-admin/verification-request', requireShopAdmin, (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.shop.id);
+  if (u.verified) return res.status(409).json({ error: 'already_verified' });
+  const gallery = db.prepare('SELECT COUNT(*) AS n FROM shop_images WHERE shop_id=?').get(u.id).n;
+  const missing = [];
+  if (!(u.shop_image_path || u.profile_image_path)) missing.push('logo');
+  if (gallery < 3) missing.push('gallery');
+  if (!(u.shop_lat && u.shop_lng)) missing.push('location');
+  if (missing.length) return res.status(400).json({ error: 'requirements_missing', missing });
+  const open = db.prepare(
+    "SELECT id FROM shop_verification_requests WHERE shop_id=? AND status='pending'",
+  ).get(u.id);
+  if (open) return res.status(409).json({ error: 'request_pending' });
+  const id = db.prepare(
+    "INSERT INTO shop_verification_requests(shop_id, status, created_at) VALUES(?, 'pending', ?)",
+  ).run(u.id, now()).lastInsertRowid;
+  pushToAdmins('shop.new', 'طلب توثيق متجر ✔️',
+    `${u.shop_name || u.display_name}`,
+    { screen: 'shops' },
+  ).catch(() => {});
+  res.json({ ok: true, id });
 });
 
 export default r;

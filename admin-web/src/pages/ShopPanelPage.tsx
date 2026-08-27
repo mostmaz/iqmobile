@@ -78,6 +78,10 @@ type Me = {
   };
   out_of_stock?: { count: number; models: string[] };
   unanswered_chats?: { count: number; oldest_minutes: number | null };
+  verified?: boolean;
+  featured_until?: number | null;
+  verification?: { has_logo: boolean; gallery_count: number; has_location: boolean; request_status: string | null };
+  feature_request_status?: { status: string; tier: string; created_at: number } | null;
 };
 
 const STATUS_AR: Record<string, string> = {
@@ -100,6 +104,19 @@ const GOV_AR: Record<string, string> = {
 };
 const govAr = (g?: string | null) => (g && GOV_AR[g]) || g || '';
 
+// Desktop gets a different layout (design 1b "صباح المتجر"): the decisions
+// column and the money/summary panel side by side, with the tabs as a top
+// rail instead of a bottom bar. Phones keep 1a exactly.
+function useWide() {
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 900);
+  useEffect(() => {
+    const on = () => setWide(window.innerWidth >= 900);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
+  return wide;
+}
+
 const todayAr = () =>
   new Date().toLocaleDateString('ar-IQ', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -110,6 +127,7 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const wide = useWide();
 
   const load = useCallback(async () => {
     try {
@@ -147,7 +165,7 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
 
   return (
     <div dir="rtl" style={{ minHeight: '100vh', background: T.bg, fontFamily: FONT, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ flex: 1, maxWidth: 560, width: '100%', margin: '0 auto', paddingBottom: 76 }}>
+      <div style={{ flex: 1, maxWidth: wide ? 1240 : 560, width: '100%', margin: '0 auto', paddingBottom: wide ? 24 : 76, paddingTop: wide ? 56 : 0 }}>
 
         {/* ── Header ─────────────────────────────────────────────── */}
         <div style={{ padding: '14px 18px 10px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -177,9 +195,9 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
         ) : view === 'chats' ? (
           <ChatsView shopId={me?.id} />
         ) : view === 'tasks' ? (
-          <>
+          <div style={wide ? { display: 'grid', gridTemplateColumns: '1fr 420px', gridTemplateAreas: '"money money" "growth decisions"', gap: 16, padding: '0 16px', alignItems: 'start', direction: 'rtl' } : undefined}>
             {/* ── Money strip ────────────────────────────────────── */}
-            <div style={{ margin: '4px 16px 0', background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 16 }}>
+            <div style={{ gridArea: wide ? 'money' : undefined, margin: wide ? 0 : '4px 16px 0', background: T.card, border: `1px solid ${T.line}`, borderRadius: 18, padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ font: `400 12px ${FONT}`, color: T.subtle }}>مُسلّم اليوم — نقد بالجيب</div>
@@ -215,7 +233,7 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
             </div>
 
             {/* ── Decisions ──────────────────────────────────────── */}
-            <div style={{ padding: '20px 16px 0' }}>
+            <div style={{ gridArea: wide ? 'decisions' : undefined, padding: wide ? 0 : '20px 16px 0' }}>
               <div style={{ font: `700 12.5px ${FONT}`, color: T.faint, marginBottom: 9 }}>
                 قرارات الآن{decisions ? ` · ${arNum(decisions)}` : ''}
               </div>
@@ -269,7 +287,10 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
                 {arNum(me?.active_listings ?? 0)} جهاز معروض حالياً.
               </div>
             </div>
-          </>
+            <div style={{ gridArea: wide ? 'growth' : undefined }}>
+              <GrowthPanel me={me} wide={wide} onReload={load} />
+            </div>
+          </div>
         ) : (
           <>
             {/* ── Orders board ───────────────────────────────────── */}
@@ -359,7 +380,11 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
       </div>
 
       {/* ── Footer tabs ────────────────────────────────────────────── */}
-      <div style={{
+      <div style={wide ? {
+        position: 'fixed', left: 0, right: 0, top: 0, zIndex: 5,
+        display: 'flex', justifyContent: 'center', gap: 4,
+        background: T.card, borderBottom: `1px solid ${T.line}`, padding: '0 16px',
+      } : {
         position: 'fixed', left: 0, right: 0, bottom: 0,
         display: 'flex', background: T.card, borderTop: `1px solid ${T.line}`,
         maxWidth: 560, margin: '0 auto',
@@ -369,6 +394,238 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
         <FooterTab label="الأجهزة" on={view === 'devices'} onClick={() => setView('devices')} />
         <FooterTab label="المحادثات" on={view === 'chats'} onClick={() => setView('chats')} />
       </div>
+    </div>
+  );
+}
+
+// ─── Growth panel — top-10 demand, ميّز متجري, توثيق ─────────────────
+// Sits beside the decisions column on desktop and below it on phones. All
+// three answer "how do I get more customers", which is the question a
+// merchant asks the moment today's orders are handled.
+function GrowthPanel({ me, wide, onReload }: { me: Me | null; wide: boolean; onReload: () => void }) {
+  const [top, setTop] = useState<{ brand: string; model: string; views: number; contacts: number }[]>([]);
+  const [cfg, setCfg] = useState<any | null>(null);
+  const [tier, setTier] = useState('week');
+  const [carrier, setCarrier] = useState('asiacell');
+  const [sender, setSender] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [featOpen, setFeatOpen] = useState(false);
+
+  useEffect(() => {
+    shopApi<any[]>('/shop-admin/top-devices').then(setTop).catch(() => {});
+    shopApi<any>('/shop-admin/feature-config').then(setCfg).catch(() => {});
+  }, []);
+
+  const v = me?.verification;
+  const ready = !!(v?.has_logo && (v?.gallery_count ?? 0) >= 3 && v?.has_location);
+  const featPending = me?.feature_request_status?.status === 'pending';
+  const featured = !!(me?.featured_until && me.featured_until > Date.now());
+
+  async function uploadLogo(f: File) {
+    const fd = new FormData(); fd.append('image', f);
+    await fetch(`${API_BASE}/shop-admin/logo`, { method: 'POST', headers: { authorization: `Bearer ${getShopToken()}` }, body: fd });
+    onReload();
+  }
+  async function pinLocation() {
+    if (!navigator.geolocation) { setMsg('المتصفح ما يدعم تحديد الموقع'); return; }
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        await shopApi('/shop-admin/location', { method: 'POST', body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }) });
+        setMsg('تم حفظ موقع المتجر ✓'); onReload();
+      } catch (e: any) { setMsg(`خطأ: ${e.message}`); }
+    }, () => setMsg('تعذّر تحديد الموقع — فعّل الإذن بالمتصفح'));
+  }
+  async function requestVerification() {
+    setBusy(true); setMsg('');
+    try { await shopApi('/shop-admin/verification-request', { method: 'POST', body: '{}' }); setMsg('أُرسل طلب التوثيق ✓'); onReload(); }
+    catch (e: any) {
+      const mi = e?.data?.missing;
+      setMsg(mi ? `ناقص: ${mi.map((x: string) => ({ logo: 'شعار', gallery: '٣ صور', location: 'الموقع' } as any)[x] || x).join(' · ')}` : `خطأ: ${e.message}`);
+    }
+    finally { setBusy(false); }
+  }
+  async function requestFeature() {
+    setBusy(true); setMsg('');
+    try {
+      const body: any = { tier, carrier };
+      if (carrier === 'qicard') body.sender_name = sender; else body.sender_phone = sender;
+      await shopApi('/shop-admin/feature-request', { method: 'POST', body: JSON.stringify(body) });
+      setMsg('أُرسل طلب التمييز — يُفعّل بعد تأكيد وصول المبلغ ✓');
+      setFeatOpen(false); onReload();
+    } catch (e: any) {
+      const map: Record<string, string> = {
+        request_pending: 'عندك طلب قيد المراجعة.',
+        bad_sender_prefix: 'الرقم لا يطابق الشبكة المختارة.',
+        bad_sender_name: 'اكتب اسم صاحب حساب Qi.',
+        bad_sender_phone: 'أدخل الرقم الذي ستحوّل منه.',
+      };
+      setMsg(map[e?.data?.error] || `خطأ: ${e.message}`);
+    }
+    finally { setBusy(false); }
+  }
+
+  const card: React.CSSProperties = {
+    background: T.card, border: `1px solid ${T.line}`, borderRadius: 18,
+    padding: 16, margin: wide ? '0 0 12px' : '0 16px 12px',
+  };
+  const input: React.CSSProperties = {
+    background: T.inset, border: `1px solid ${T.line}`, borderRadius: 10,
+    padding: '9px 11px', font: `400 13px ${FONT}`, color: T.ink, outline: 'none', width: '100%', boxSizing: 'border-box',
+  };
+  const selectedTier = (cfg?.tiers || []).find((t2: any) => t2.key === tier);
+  const ussd = cfg && carrier !== 'qicard' && selectedTier
+    ? (cfg.ussd_templates?.[carrier] || '').replace('{amount}', String(selectedTier.amount)).replace('{number}', cfg.transfer_numbers?.[carrier] || '')
+    : null;
+
+  return (
+    <div style={{ marginTop: wide ? 0 : 18 }}>
+      {msg ? <div style={{ ...card, color: msg.startsWith('خطأ') || msg.startsWith('ناقص') ? T.red : T.green, fontSize: 13 }}>{msg}</div> : null}
+
+      {/* Top-10 demand across the whole marketplace */}
+      <div style={card}>
+        <div style={{ font: `700 14px ${FONT}`, color: T.ink }}>الأكثر طلباً بالعراق</div>
+        <div style={{ font: `400 11.5px ${FONT}`, color: T.subtle, margin: '4px 0 10px' }}>
+          آخر ٣٠ يوم — من كل إعلانات التطبيق، الاتصال يُحتسب أقوى من المشاهدة.
+        </div>
+        {top.length ? top.map((d, i) => (
+          <div key={`${d.brand}-${d.model}`} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
+            borderTop: i ? `1px solid ${T.line}` : 'none',
+          }}>
+            <span style={{ font: `700 12px ${FONT}`, color: i < 3 ? T.accent : T.faint, minWidth: 18 }}>{arNum(i + 1)}</span>
+            <span style={{ flex: 1, font: `600 13px ${FONT}`, color: T.ink, direction: 'ltr', textAlign: 'right' }}>{d.brand} {d.model}</span>
+            <span style={{ font: `400 11.5px ${FONT}`, color: T.subtle }}>
+              {arNum(d.contacts)} تواصل · {arNum(d.views)} مشاهدة
+            </span>
+          </div>
+        )) : <div style={{ font: `400 12.5px ${FONT}`, color: T.faint }}>لا بيانات كافية بعد.</div>}
+      </div>
+
+      {/* ميّز متجري */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ font: `700 14px ${FONT}`, color: T.ink }}>ميّز متجري ✨</div>
+          {featured ? (
+            <span style={{ font: `600 11.5px ${FONT}`, color: T.green }}>
+              مميّز حتى {new Date(me!.featured_until!).toLocaleDateString('ar-IQ')}
+            </span>
+          ) : featPending ? (
+            <span style={{ font: `600 11.5px ${FONT}`, color: T.amber }}>قيد المراجعة</span>
+          ) : null}
+        </div>
+        <div style={{ font: `400 11.5px ${FONT}`, color: T.subtle, margin: '5px 0 10px' }}>
+          متجرك يطلع بأول دليل المتاجر مع شارة «مميّز» — يعني مشاهدات أكثر واتصالات أكثر.
+        </div>
+        {!featured && !featPending ? (
+          !featOpen ? (
+            <button onClick={() => setFeatOpen(true)} style={{ background: T.accent, border: 'none', borderRadius: 12, padding: '11px 18px', font: `700 13px ${FONT}`, color: '#fff', cursor: 'pointer' }}>
+              اطلب التمييز
+            </button>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {(cfg?.tiers || []).map((t2: any) => (
+                  <button key={t2.key} onClick={() => setTier(t2.key)} style={{
+                    flex: 1, minWidth: 92, borderRadius: 12, padding: '10px 8px', cursor: 'pointer',
+                    background: tier === t2.key ? T.accent : T.inset,
+                    border: `1px solid ${tier === t2.key ? T.accent : T.line}`,
+                    font: `700 12.5px ${FONT}`, color: tier === t2.key ? '#fff' : T.ink,
+                  }}>
+                    {t2.label_ar}<br />
+                    <span style={{ font: `400 11px ${FONT}`, opacity: 0.85 }}>{money(t2.amount)} د.ع</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(cfg?.carriers || []).map((c: string) => (
+                  <button key={c} onClick={() => { setCarrier(c); setSender(''); }} style={{
+                    flex: 1, borderRadius: 10, padding: '9px 6px', cursor: 'pointer',
+                    background: carrier === c ? T.inset : 'transparent',
+                    border: `1px solid ${carrier === c ? T.accent : T.line}`,
+                    font: `600 12px ${FONT}`, color: T.ink,
+                  }}>{c === 'asiacell' ? 'آسياسيل' : c === 'korek' ? 'كورك' : 'كي كارد'}</button>
+                ))}
+              </div>
+              <input
+                value={sender}
+                onChange={(e) => setSender(e.target.value)}
+                placeholder={carrier === 'qicard' ? 'اسم صاحب حساب Qi' : (carrier === 'korek' ? '0750XXXXXXX' : '0770XXXXXXX')}
+                style={input}
+              />
+              {carrier === 'qicard' && cfg?.qi_card ? (
+                <div style={{ background: T.inset, borderRadius: 10, padding: 10, font: `400 12px ${FONT}`, color: T.subtle }}>
+                  حوّل {money(selectedTier?.amount || 0)} د.ع إلى حساب Qi:{' '}
+                  <span style={{ fontFamily: 'ui-monospace, monospace', color: T.ink }}>{cfg.qi_card.account}</span> — {cfg.qi_card.name}
+                </div>
+              ) : ussd ? (
+                <div style={{ background: T.inset, borderRadius: 10, padding: 10, font: `400 12px ${FONT}`, color: T.subtle }}>
+                  حوّل الرصيد بالرمز: <span style={{ fontFamily: 'ui-monospace, monospace', color: T.ink, direction: 'ltr', display: 'inline-block' }}>{ussd}</span>
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button disabled={busy || !sender.trim()} onClick={requestFeature} style={{ flex: 1, background: T.accent, border: 'none', borderRadius: 12, padding: '11px 0', font: `700 13px ${FONT}`, color: '#fff', cursor: 'pointer', opacity: busy || !sender.trim() ? 0.6 : 1 }}>
+                  حوّلت — أرسل الطلب
+                </button>
+                <button onClick={() => setFeatOpen(false)} style={{ background: 'transparent', border: `1px solid ${T.line}`, borderRadius: 12, padding: '11px 16px', font: `700 13px ${FONT}`, color: T.subtle, cursor: 'pointer' }}>إلغاء</button>
+              </div>
+            </div>
+          )
+        ) : null}
+      </div>
+
+      {/* توثيق المتجر */}
+      <div style={card}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ font: `700 14px ${FONT}`, color: T.ink }}>توثيق المتجر ✔️</div>
+          {me?.verified ? <span style={{ font: `600 11.5px ${FONT}`, color: T.green }}>موثّق</span>
+            : v?.request_status === 'pending' ? <span style={{ font: `600 11.5px ${FONT}`, color: T.amber }}>قيد المراجعة</span>
+            : null}
+        </div>
+        {!me?.verified ? (
+          <>
+            <div style={{ font: `400 11.5px ${FONT}`, color: T.subtle, margin: '5px 0 10px' }}>
+              الشارة تزيد ثقة الزبون. المطلوب: شعار المتجر، ٣ صور على الأقل، وموقعك على الخريطة.
+            </div>
+            <Req ok={!!v?.has_logo} label="شعار المتجر" action={
+              <label style={{ font: `700 12px ${FONT}`, color: T.accent, cursor: 'pointer' }}>
+                رفع
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.target.value = ''; }} />
+              </label>
+            } />
+            <Req ok={(v?.gallery_count ?? 0) >= 3} label={`صور المتجر (${arNum(v?.gallery_count ?? 0)}/٣)`} hint="من تبويب الأجهزة ← قائمة الأسعار" />
+            <Req ok={!!v?.has_location} label="موقع المتجر" action={
+              <button onClick={pinLocation} style={{ background: 'transparent', border: 'none', font: `700 12px ${FONT}`, color: T.accent, cursor: 'pointer' }}>
+                حدّد موقعي
+              </button>
+            } />
+            {v?.request_status !== 'pending' ? (
+              <button disabled={busy || !ready} onClick={requestVerification} style={{
+                marginTop: 10, width: '100%', borderRadius: 12, padding: '11px 0', cursor: ready ? 'pointer' : 'not-allowed',
+                background: ready ? T.accent : T.inset, border: 'none',
+                font: `700 13px ${FONT}`, color: ready ? '#fff' : T.faint,
+              }}>اطلب التوثيق</button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Req({ ok, label, hint, action }: { ok: boolean; label: string; hint?: string; action?: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 0' }}>
+      <span style={{
+        width: 18, height: 18, borderRadius: 999, flexShrink: 0,
+        background: ok ? T.green : 'transparent', border: ok ? 'none' : `1.5px solid ${T.line}`,
+        display: 'grid', placeItems: 'center', font: '700 11px system-ui', color: '#fff',
+      }}>{ok ? '✓' : ''}</span>
+      <span style={{ flex: 1, font: `400 12.5px ${FONT}`, color: ok ? T.subtle : T.ink }}>
+        {label}{hint && !ok ? <span style={{ color: T.faint }}> — {hint}</span> : null}
+      </span>
+      {!ok && action ? action : null}
     </div>
   );
 }

@@ -26,6 +26,15 @@ export const QI_CARD = { account: '7117114582', name: 'مصطفى مازن' };
 // Asiacell numbers are 077x, Korek 075x. Validated on both ends.
 export const CARRIER_PREFIXES = { asiacell: '077', korek: '075' };
 
+// Shop-level featuring (ميّز متجري) — requested from the merchant panel,
+// paid the same three ways as listing featuring. Amounts are IQD; edit
+// here to change the offer (served live, no deploy of the panel needed).
+export const SHOP_FEATURE_TIERS = [
+  { key: 'week', amount: 10000, days: 7, label_ar: 'أسبوع' },
+  { key: 'half', amount: 20000, days: 15, label_ar: 'نصف شهر' },
+  { key: 'month', amount: 35000, days: 30, label_ar: 'شهر كامل' },
+];
+
 // Owner contact. OWNER_PHONE is the primary (Asiacell) line; OWNER_WHATSAPP is
 // the wa.me number the banner "contact us" form opens. Digits only for
 // wa.me (country code + number, no +).
