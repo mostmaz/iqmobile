@@ -29,6 +29,7 @@ type Shop = {
   shop_hidden: number;
   shop_no_contact: number;
   shop_orders_enabled: number;
+  shop_cod_enabled: number;
   shop_dash_username?: string | null;
   shop_shipping_fee: number;
 };
@@ -109,7 +110,7 @@ export function ShopsPage() {
   // Both flags are plain PATCH toggles. Contact suppression is server-side, so
   // flipping it takes effect on apps already installed from the stores — no
   // release needed.
-  async function toggleFlag(s: Shop, flag: 'shop_hidden' | 'shop_no_contact' | 'shop_orders_enabled') {
+  async function toggleFlag(s: Shop, flag: 'shop_hidden' | 'shop_no_contact' | 'shop_orders_enabled' | 'shop_cod_enabled') {
     setBusy(true);
     try {
       await api(`/admin/shops/${s.id}`, { method: 'PATCH', body: JSON.stringify({ [flag]: !s[flag] }) });
@@ -214,6 +215,14 @@ export function ShopsPage() {
                              onChange={() => toggleFlag(s, 'shop_orders_enabled')} />
                       Orders{s.shop_orders_enabled ? ` (${Number(s.shop_shipping_fee || 0).toLocaleString('en-US')} د.ع)` : ''}
                     </label>
+                    {s.shop_orders_enabled ? (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}
+                             title="الدفع عند الاستلام: عند إيقافه يُكتب للزبون أن الدفع يُتفق عليه مع المتجر.">
+                        <input type="checkbox" disabled={busy} checked={!!s.shop_cod_enabled}
+                               onChange={() => toggleFlag(s, 'shop_cod_enabled')} />
+                        COD
+                      </label>
+                    ) : null}
                     <button className="ghost" disabled={busy} onClick={() => setDashLogin(s)}
                             title="بيانات دخول لوحة التاجر — يشوف طلبات متجره فقط">
                       {s.shop_dash_username ? `لوحة: ${s.shop_dash_username}` : 'إنشاء دخول اللوحة'}

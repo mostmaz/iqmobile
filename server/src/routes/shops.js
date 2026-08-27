@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
-import { shopOrdersAllowed } from '../storefrontCard.js';
+import { shopOrdersAllowed, houseShopId } from '../storefrontCard.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { pushToAdmins } from '../adminPush.js';
@@ -168,6 +168,7 @@ function shopCard(u, nowTs) {
     profile_image_path: u.profile_image_path || null,
     shop_image_path: u.shop_image_path || null,
     shop_bio: u.shop_bio || null,
+    delivery_available: u.shop_delivery == null ? null : !!u.shop_delivery,
     shop_address: u.shop_address || null,
     shop_phone: noContact ? null : (u.shop_phone || u.phone || null),
     shop_whatsapp: noContact ? null : (u.shop_whatsapp || null),
@@ -202,6 +203,11 @@ function shopCard(u, nowTs) {
     // charge, sent alongside so the cart can show the total before checkout.
     orders_enabled: shopOrdersAllowed(u),
     shipping_fee: shopOrdersAllowed(u) ? (Number(u.shop_shipping_fee) || 0) : null,
+    // NULL (pre-feature rows) counts as ON.
+    cod_enabled: (u.shop_cod_enabled ?? 1) ? true : false,
+    // The house storefront gets the dedicated store experience in the app;
+    // every other order-enabled shop keeps its shop page + add-to-cart.
+    is_house: u.id === houseShopId(),
   };
 }
 
@@ -333,6 +339,12 @@ r.post('/shops/register', requireAuth(), (req, res) => {
   ];
   const params = ['shop', shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address,
     JSON.stringify(shop_phones), shop_facebook, shop_instagram];
+  // Optional — only new app builds send it; absent key leaves the stored
+  // value untouched so an old-build edit can't wipe the declaration.
+  if (req.body?.shop_delivery != null) {
+    fields.push('shop_delivery=?');
+    params.push(req.body.shop_delivery ? 1 : 0);
+  }
   if (governorate) { fields.push('governorate=?'); params.push(governorate); }
   if (isFirstRegistration) {
     fields.push('shop_status=?');

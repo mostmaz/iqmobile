@@ -1912,6 +1912,7 @@ r.get('/shops', requireAdmin, (req, res) => {
            COALESCE(u.shop_hidden,0) AS shop_hidden,
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
+           COALESCE(u.shop_cod_enabled,1) AS shop_cod_enabled,
            u.shop_dash_username,
            COALESCE(u.shop_shipping_fee,5000) AS shop_shipping_fee,
            COALESCE(u.shop_delivery_days_min,2) AS shop_delivery_days_min,
@@ -2016,6 +2017,9 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
     }
   }
   // Storefront mode: add-to-cart + COD checkout on this shop's listings.
+  if (b.shop_cod_enabled !== undefined) {
+    fields.push('shop_cod_enabled=?'); params.push(b.shop_cod_enabled ? 1 : 0);
+  }
   if (b.shop_orders_enabled !== undefined) {
     fields.push('shop_orders_enabled=?'); params.push(b.shop_orders_enabled ? 1 : 0);
   }

@@ -979,6 +979,12 @@ addColumnIfMissing('feature_requests', 'sender_name TEXT');
 // Per-shop merchant panel (dormant behind the multi_shop_orders switch):
 // each shop can get its own dashboard username/password, scoped to its
 // orders only. Set by the admin from the shops page.
+// Delivery availability, declared by the shop at registration. NULL =
+// never declared (old app builds) — the filter treats only 1 as yes.
+addColumnIfMissing('users', 'shop_delivery INTEGER');
+// Per-shop COD promise: NULL/1 = الدفع عند الاستلام shown; 0 = payment
+// arranged with the shop (order still records 'cod' — cash either way).
+addColumnIfMissing('users', 'shop_cod_enabled INTEGER');
 addColumnIfMissing('users', 'shop_dash_username TEXT');
 addColumnIfMissing('users', 'shop_dash_password_hash TEXT');
 
