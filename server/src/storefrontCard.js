@@ -38,13 +38,13 @@ export function houseShopId() {
   return any ? any.id : null;
 }
 
-// Can this shop take in-app orders RIGHT NOW? Per-shop flag AND the global
-// multi-shop switch — except the house storefront, which predates the
-// switch and always works.
+// Can this shop take in-app orders? Activation is PER SHOP (owner
+// decision, 2026-08): the Orders checkbox on the dashboard's shops page
+// is the whole switch — ticking it makes that one shop a storefront
+// immediately. Kept as the single gate point so a future policy change
+// stays a one-line edit.
 export function shopOrdersAllowed(shopUser) {
-  if (!shopUser || !shopUser.shop_orders_enabled) return false;
-  if (getSetting('multi_shop_orders') === '1') return true;
-  return shopUser.id === houseShopId();
+  return !!(shopUser && shopUser.shop_orders_enabled);
 }
 
 export function readCardConfig() {

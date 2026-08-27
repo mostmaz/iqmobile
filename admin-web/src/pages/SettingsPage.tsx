@@ -14,17 +14,15 @@ export function SettingsPage() {
   const [ttl, setTtl] = useState<string>('30');
   const [reserveOnConfirm, setReserveOnConfirm] = useState<boolean>(true);
   const [msg, setMsg] = useState('');
-  const [multiShop, setMultiShop] = useState<boolean>(false);
   // AI inspection lives on its own switches — saved immediately on toggle
   // rather than behind the Save button, so there's no ambiguity about
   // whether a safety-relevant setting is actually in effect.
   const [insp, setInsp] = useState<InspectionStatus | null>(null);
 
   useEffect(() => {
-    api<{ listing_ttl_days: number; reserve_on_confirm: boolean; multi_shop_orders?: boolean }>('/admin/settings').then((s) => {
+    api<{ listing_ttl_days: number; reserve_on_confirm: boolean }>('/admin/settings').then((s) => {
       setTtl(String(s.listing_ttl_days));
       setReserveOnConfirm(s.reserve_on_confirm);
-      setMultiShop(!!s.multi_shop_orders);
     });
     api<InspectionStatus>('/admin/inspection/status').then(setInsp).catch(() => {});
   }, []);
@@ -66,28 +64,6 @@ export function SettingsPage() {
         </div>
         <button onClick={save}>Save</button>
         {msg ? <span style={{ marginRight: 12, color: '#10b981' }}>{msg}</span> : null}
-      </div>
-
-      <div className="card">
-        <h2>الشراء من كل المتاجر (لوحة التاجر)</h2>
-        <p style={{ color: '#9ca3af', fontSize: 13.5, marginTop: 0, maxWidth: 620 }}>
-          عند التفعيل: أي متجر عليه علامة <strong>Orders</strong> في صفحة المتاجر يصبح
-          واجهة بيع كاملة داخل التطبيق (سلة + دفع عند الاستلام)، ويدير طلباته بنفسه من
-          لوحة التاجر ببيانات الدخول الخاصة به. عند الإيقاف: متجر iQ Mobile فقط يستقبل الطلبات.
-        </p>
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={multiShop}
-            onChange={async (e) => {
-              const v = e.target.checked;
-              setMultiShop(v);
-              try { await api('/admin/settings', { method: 'PATCH', body: JSON.stringify({ multi_shop_orders: v }) }); }
-              catch { setMultiShop(!v); }
-            }}
-          />
-          تفعيل الشراء من كل المتاجر
-        </label>
       </div>
 
       <div className="card">

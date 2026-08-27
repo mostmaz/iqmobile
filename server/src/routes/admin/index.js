@@ -168,10 +168,6 @@ r.get('/settings', requireAdmin, (_req, res) => {
     // Default on: show every listing regardless of TTL (nothing expires).
     listings_never_expire: getSetting('listings_never_expire') !== '0',
 
-    // Multi-shop COD orders (merchant panel feature). Off by default —
-    // when off, only the house storefront takes in-app orders.
-    multi_shop_orders: getSetting('multi_shop_orders') === '1',
-
     // Update floor. '0' = nothing enforced.
     min_supported_version: getSetting('min_supported_version') || '0',
     nag_below_version: getSetting('nag_below_version') || '0',
@@ -189,8 +185,7 @@ r.get('/settings', requireAdmin, (_req, res) => {
 });
 
 r.patch('/settings', requireAdmin, (req, res) => {
-  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings, listings_never_expire, multi_shop_orders } = req.body || {};
-  if (multi_shop_orders != null) setSettingValue('multi_shop_orders', multi_shop_orders ? '1' : '0');
+  const { listing_ttl_days, reserve_on_confirm, shops_unlimited_listings, listings_never_expire } = req.body || {};
   if (listing_ttl_days != null) {
     const n = Number(listing_ttl_days);
     if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'bad_ttl' });
