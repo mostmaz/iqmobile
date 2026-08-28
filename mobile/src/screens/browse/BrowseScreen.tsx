@@ -661,7 +661,14 @@ export default function BrowseScreen({ navigation }: any) {
             <ListingCard
               listing={item}
               onPress={() => navigation.navigate('ListingDetail', { id: item.id })}
-              onCompare={() => addToCompare(item)}
+              // The "+" only exists while a comparison is under way. A
+              // shortlist is started from a listing page, deliberately: most
+              // buyers never compare anything, and a badge on every card in
+              // the feed would be permanent clutter for them. Once one
+              // device is in, picking the rest from the feed is the fast
+              // path, so the badges appear then and vanish when the list
+              // empties.
+              onCompare={compare.ids.length ? () => addToCompare(item) : undefined}
               inCompare={compare.has(item.id)}
             />
           )
