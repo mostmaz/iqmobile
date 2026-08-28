@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Auth, type User } from '../api/endpoints';
@@ -38,6 +38,8 @@ const TOKEN_KEY = 'iq2_token';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  // Who the cache currently belongs to — see persist().
+  const userIdRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const identify = useIdentify();
   const resetIdentity = useResetIdentity();
@@ -126,8 +128,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const persist = useCallback(async (token: string, u: User) => {
     await SecureStore.setItem(TOKEN_KEY, token);
+    // Same reason logout clears the cache, in the other direction: every
+    // query is keyed by name alone, so signing in on top of a guest session
+    // leaves the guest's results in memory and the new user reads them. A
+    // shop that had just been approved opened the bell to "لا توجد
+    // إشعارات" — its own inbox was one refetch away, behind the guest's
+    // empty one. Only on an actual identity change, so a token refresh for
+    // the same user keeps its warm cache.
+    const switched = userIdRef.current != null && userIdRef.current !== u.id;
+    userIdRef.current = u.id;
     setToken(token);
     setUser(u);
+    // AFTER the token swap, not before: clearing first makes every mounted
+    // query refetch immediately, and those requests would still carry the
+    // outgoing user's token — re-caching the old identity's results under
+    // the new user and defeating the point of the clear.
+    if (switched) qc.clear();
     // Tie all subsequent PostHog events to this user. The `is_guest`
     // and `seller_type` traits become filterable in the dashboard
     // (e.g. "show DAU but only for real users", "show contact-rate
@@ -140,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile_completed: u.profile_completed,
       });
     }
-  }, [identify]);
+  }, [identify, qc]);
 
   const login = useCallback(
     async (phone: string, password: string) => {
@@ -201,6 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await SecureStore.deleteItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
+    userIdRef.current = null;
     // Wipe every React Query cache entry so the next user on the same
     // device doesn't briefly see the previous user's saved listings /
     // mine / chats flash on the screen. Without this the cache stays
