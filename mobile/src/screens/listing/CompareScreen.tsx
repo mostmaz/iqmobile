@@ -9,7 +9,7 @@
 // trade against each other — cheaper but a smaller battery, newer chipset at
 // a worse price — and a winner would be inventing a preference the buyer
 // never stated. Show the differences; the buyer decides what they are worth.
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -45,6 +45,18 @@ export default function CompareScreen({ navigation }: any) {
   });
 
   const items = data?.items ?? [];
+
+  // A shortlist outlives the listings in it: one gets sold, deleted or
+  // expires, the server stops returning it, and the table quietly renders
+  // one column and no rows. Drop what came back missing so the screen tells
+  // the truth instead of looking broken.
+  const [pruned, setPruned] = useState(false);
+  useEffect(() => {
+    if (!data) return;
+    const alive = new Set(items.map((i: any) => i.id));
+    const gone = ids.filter((id) => !alive.has(id));
+    if (gone.length) { gone.forEach(remove); setPruned(true); }
+  }, [data]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const rows = useMemo<Row[]>(() => {
     if (items.length < 2) return [];
@@ -117,13 +129,15 @@ export default function CompareScreen({ navigation }: any) {
     return { same: false, diff: max - min, pct: Math.round(((max - min) / max) * 100) };
   }, [items]);
 
-  if (ids.length < 2) {
+  if (ids.length < 2 || (!isLoading && items.length < 2)) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <Header title="مقارنة" onBack={() => navigation.goBack()} />
         <View style={{ padding: 32, alignItems: 'center' }}>
           <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.subtle, textAlign: 'center', lineHeight: 24 }}>
-            اختر جهازين أو ثلاثة من صفحة الإعلان — زر «قارن» فوق الصورة — وتشوفهم هنا جنب بعض.
+            {pruned
+              ? 'أحد الأجهزة ما عاد متوفر — شيلناه من المقارنة. أضف غيره وجرب.'
+              : 'اختر جهازين أو ثلاثة من صفحة الإعلان — زر «أضف للمقارنة» — وتشوفهم هنا جنب بعض.'}
           </Text>
         </View>
       </View>
