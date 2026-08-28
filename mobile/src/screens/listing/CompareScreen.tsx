@@ -10,7 +10,7 @@
 // a worse price — and a winner would be inventing a preference the buyer
 // never stated. Show the differences; the buyer decides what they are worth.
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Header, fmtIQD } from '../../components/ui';
@@ -111,7 +111,18 @@ export default function CompareScreen({ navigation }: any) {
     );
   }
 
-  const colW = items.length >= 3 ? 108 : 140;
+  // Column width is computed from the screen rather than fixed or flexed.
+  // A fixed 108pt overran a 402pt screen at three columns and cut the first
+  // one off the edge; flex:1 did not constrain it either, because the
+  // device name inside sizes the column to itself. Arithmetic always fits.
+  const LABEL_W = 58;
+  const GAP = 6;
+  const H_PAD = 8;      // inside the table card
+  const H_MARGIN = 12;  // the card's own margin
+  const colW = Math.floor(
+    (Dimensions.get('window').width - H_MARGIN * 2 - H_PAD * 2 - LABEL_W - GAP * items.length) /
+    Math.max(1, items.length),
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -122,17 +133,23 @@ export default function CompareScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
           {/* Column heads: the listings themselves, each removable so the
               buyer can swap one out without leaving the comparison. */}
-          <View style={{ flexDirection: 'row-reverse', paddingHorizontal: 12, paddingTop: 12, gap: 8 }}>
-            <View style={{ width: 74 }} />
+          <View style={{
+            flexDirection: 'row-reverse', paddingHorizontal: H_MARGIN + H_PAD,
+            paddingTop: 12, gap: GAP,
+          }}>
+            <View style={{ width: LABEL_W }} />
             {items.map((i: any) => (
               <View key={i.id} style={{ width: colW, alignItems: 'center' }}>
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ListingDetail', { id: i.id })}
                   activeOpacity={0.85}
-                  style={{ alignItems: 'center' }}
+                  // Without a width the touchable sizes to its text, and a
+                  // long name ("Apple iPhone 13") pushed its column — and
+                  // the whole row — past the screen edge.
+                  style={{ alignItems: 'center', width: '100%' }}
                 >
                   <View style={{
-                    width: colW - 16, height: colW - 16, borderRadius: radius.lg,
+                    width: '100%', aspectRatio: 1, borderRadius: radius.lg,
                     backgroundColor: theme.chipBg, overflow: 'hidden',
                   }}>
                     {i.image_path ? (
@@ -168,21 +185,22 @@ export default function CompareScreen({ navigation }: any) {
             الصفوف المظللة هي اللي تختلف بيناتهم.
           </Text>
 
-          <View style={{ marginHorizontal: 12, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: theme.line }}>
+          <View style={{ marginHorizontal: H_MARGIN, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: theme.line }}>
             {rows.map((r, ri) => {
               const hot = differs(r);
               return (
                 <View
                   key={r.label}
                   style={{
-                    flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 8, paddingVertical: 10,
+                    flexDirection: 'row-reverse', gap: GAP,
+                    paddingHorizontal: H_PAD, paddingVertical: 10,
                     backgroundColor: hot ? theme.accentSoft : theme.surface,
                     borderTopWidth: ri === 0 ? 0 : 1, borderTopColor: theme.line,
                   }}
                 >
                   <Text
                     maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-                    style={{ width: 74, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}
+                    style={{ width: LABEL_W, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}
                   >
                     {r.label}
                   </Text>
