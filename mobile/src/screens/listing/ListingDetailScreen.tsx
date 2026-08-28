@@ -594,12 +594,15 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
-        {/* When the store button above is showing, ContactRow would add a
-            SECOND chat button on the same screen — bound to the aggregator
-            account, which answers nobody. One entry point, the right one.
-            Normal listings are unaffected: store_chat only exists on
-            price-book rows. */}
-        {!isMine && !isDead && !(data as any).store_chat ? (
+        {/* Two reasons to skip the contact row, both about the price book.
+            With the store button above, ContactRow would add a SECOND chat
+            button bound to the aggregator account. Without it — no shop
+            stocks this device — the row's numbers are already blank, so all
+            that remains is that same dead chat button. Neither is worth
+            showing; the store button is the only contact that reaches a
+            person. Normal listings are unaffected: both flags are
+            price-book only. */}
+        {!isMine && !isDead && !(data as any).store_chat && !(data as any).contact_suppressed ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
             <ContactRow
               phone={contactPhone}

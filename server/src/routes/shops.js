@@ -209,11 +209,17 @@ function shopCard(u, nowTs) {
       : null,
     // Per-channel availability (spec §11). NULL means on, so shops that
     // predate the setting keep every channel.
+    // The price book is not a seller: its rows carry other shops' numbers
+    // and its account answers nobody. Blanking the phones already hid call
+    // and WhatsApp, but chat is not driven by a number, so it survived as
+    // the one button on the page that led nowhere.
     channels: {
-      call: (u.shop_ch_call ?? 1) ? true : false,
-      whatsapp: (u.shop_ch_whatsapp ?? 1) ? true : false,
-      chat: (u.shop_ch_chat ?? 1) ? true : false,
+      call: !noContact && (u.shop_ch_call ?? 1) ? true : false,
+      whatsapp: !noContact && (u.shop_ch_whatsapp ?? 1) ? true : false,
+      chat: !noContact && (u.shop_ch_chat ?? 1) ? true : false,
     },
+    // Same fact, named for clients that predate `channels`.
+    contact_suppressed: noContact,
     // Storefront mode. The app shows add-to-cart + COD checkout instead of
     // the call/WhatsApp row when this is on. Shipping is a flat per-order
     // charge, sent alongside so the cart can show the total before checkout.

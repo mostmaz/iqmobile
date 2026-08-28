@@ -79,6 +79,14 @@ r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
   if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id === req.user.id) return res.status(400).json({ error: 'cannot_chat_self' });
+  // A contact-suppressed seller (the price book) has no one reading chats.
+  // The app hides the button, but installed builds predate that, so refuse
+  // here too rather than open a thread that will never be answered — the
+  // listing carries `store_chat` when a real shop stocks the same device.
+  const suppressed = db.prepare(
+    'SELECT 1 FROM users WHERE id=? AND COALESCE(shop_no_contact,0)=1',
+  ).get(listing.seller_id);
+  if (suppressed) return res.status(400).json({ error: 'seller_no_contact' });
 
   let row = db.prepare('SELECT * FROM chats WHERE listing_id=? AND buyer_id=?').get(listing.id, req.user.id);
   if (!row) {

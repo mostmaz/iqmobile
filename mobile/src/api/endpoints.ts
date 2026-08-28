@@ -551,6 +551,9 @@ export interface ShopCard {
   // Positive-only reply signal, decided server-side so a client can never
   // synthesise a "slow" badge out of the raw numbers. null = show nothing.
   reply_badge?: 'fast' | 'same_day' | null;
+  // The price book takes no contact: its rows carry other shops' numbers and
+  // its account reads no chats. Listings of such a shop carry the same flag.
+  contact_suppressed?: boolean;
   // Which contact affordances this shop actually answers on. The server
   // guarantees at least one is true; absent payload = all three (old build).
   channels?: { call: boolean; whatsapp: boolean; chat: boolean };

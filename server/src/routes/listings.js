@@ -713,6 +713,11 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     // Falls back to null (not the login phone) when no support line is set:
     // the shop's account phone is a placeholder nobody answers.
     storefront_phone: storefrontShop ? (storefrontShop.shop_phone || null) : null,
+    // Price-book rows have no one behind them. The numbers are already
+    // blanked; this says so explicitly so the app drops the whole contact
+    // row instead of leaving a lone chat button pointed at an account that
+    // answers nobody. `store_chat` above is the one contact that works.
+    contact_suppressed: noContactSellers().has(row.seller_id),
     contact_phone: hideContact ? null : withImgs.contact_phone,
     contact_whatsapp: hideContact ? null : withImgs.contact_whatsapp,
     seller,
