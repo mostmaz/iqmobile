@@ -55,6 +55,7 @@ import { Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { AuthProvider } from './src/auth/AuthContext';
 import { CartProvider } from './src/lib/cart';
+import { CompareProvider } from './src/lib/compare';
 import RootNav from './src/navigation';
 import { loadLang, onLangChange } from './src/i18n/ar';
 import { theme } from './src/theme';
@@ -125,11 +126,13 @@ function AppInner() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <CartProvider>
+            <CompareProvider>
             {/* key={langKey} remounts the whole nav tree when the language
                 changes, so every screen re-reads the (in-place swapped)
                 string dictionary in the new language. */}
             <RootNav key={langKey} />
             <StatusBar style="dark" />
+            </CompareProvider>
           </CartProvider>
         </AuthProvider>
       </QueryClientProvider>

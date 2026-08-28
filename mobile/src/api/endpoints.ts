@@ -261,6 +261,12 @@ export const Listings = {
   browse: (f: BrowseFilters = {}) => api<Listing[]>('/listings' + qs(f)),
   mine: (status: 'all' | ListingStatus = 'all') => api<Listing[]>(`/listings/mine?status=${status}`),
   get: (id: number) => api<Listing>(`/listings/${id}`),
+  // Two or three listings in one request — the compare table renders them
+  // together, so fetching them separately just risks a half-drawn screen.
+  compare: (ids: number[]) =>
+    api<{ items: Array<Listing & { specs?: DeviceSpecSheet | null; seller_name?: string }> }>(
+      `/listings/compare?ids=${ids.join(',')}`,
+    ),
   // Other active listings of the same brand within ±10% of this price —
   // the detail page's "أجهزة مشابهة" rail. Cross-seller by design.
   similar: (id: number) => api<Listing[]>(`/listings/${id}/similar`),

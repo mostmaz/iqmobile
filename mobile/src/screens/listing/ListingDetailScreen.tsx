@@ -10,7 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
-import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock } from '../../components/icons';
+import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock, IconCompare } from '../../components/icons';
+import { useCompare, COMPARE_MAX } from '../../lib/compare';
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
@@ -31,6 +32,16 @@ const SCREEN_H = Dimensions.get('window').height;
 export default function ListingDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
   const insets = useSafeAreaInsets();
+  // Compare shortlist. Capped, so a full list has to say so rather than
+  // silently ignoring the tap.
+  const compare = useCompare();
+  const inCompare = compare.has(id);
+  const onCompareTap = () => {
+    const ok = compare.toggle(id);
+    if (!ok) {
+      Alert.alert('القائمة ممتلئة', `تكدر تقارن ${COMPARE_MAX} أجهزة بالمرة — شيل واحد وجرب.`);
+    }
+  };
   const tabClearance = useTabBarClearance();
   const qc = useQueryClient();
   const track = useTrack();
@@ -335,6 +346,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               <View style={{ transform: [{ scaleX: -1 }] }}><IconArrowLeft size={18} color="#fff" sw={1.7} /></View>
             </FloatBtn>
             <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
+              {/* Add to the shortlist being compared. Sits with save and
+                  share because it is the same kind of act: putting this
+                  listing aside to weigh later. */}
+              <FloatBtn onPress={onCompareTap} active={inCompare}>
+                <IconCompare size={16} color={inCompare ? theme.accent : '#fff'} sw={1.8} />
+              </FloatBtn>
               <FloatBtn onPress={onSaveTap} active={isSaved}>
                 <IconBookmark size={16} color={isSaved ? theme.accent : '#fff'} sw={1.7} filled={isSaved} />
               </FloatBtn>
@@ -799,6 +816,25 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               {data.description}
             </Text>
           </View>
+        ) : null}
+
+        {/* Once two are shortlisted the comparison is one tap away — without
+            this the buyer has to remember where the screen lives. */}
+        {compare.ids.length >= 2 ? (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Compare')}
+            activeOpacity={0.9}
+            style={{
+              marginHorizontal: 16, marginTop: 16, paddingVertical: 13,
+              borderRadius: radius.xl, backgroundColor: theme.ink,
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >
+            <IconCompare size={16} color={theme.buttonInk} sw={1.8} />
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.buttonInk }}>
+              قارن {compare.ids.length === 2 ? 'جهازين' : 'ثلاثة أجهزة'}
+            </Text>
+          </TouchableOpacity>
         ) : null}
 
         {/* The device's own spec sheet, right under what the seller wrote:

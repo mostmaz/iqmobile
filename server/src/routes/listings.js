@@ -588,6 +588,51 @@ r.get('/mine', requireAuth(), (req, res) => {
 // ─── listing detail ──────────────────────────────────────────────────
 // Public — anonymous visitors see the same listing data, with phone hidden
 // (no logged-in user means they can't have a confirmed deal).
+// ─── compare ────────────────────────────────────────────────────────
+// Two or three listings side by side, with the spec sheet behind each.
+//
+// One request rather than one per listing: the client is about to render
+// them in a single table, and three round trips to build one screen is
+// three chances for it to render half-empty.
+//
+// Deliberately NOT a "which is better" score. The listings differ on axes
+// that trade against each other — a cheaper phone with a smaller battery,
+// a newer chipset at a worse price — and ranking them would be inventing a
+// preference the buyer has not stated. The client marks which rows DIFFER;
+// the buyer decides what that is worth.
+r.get('/compare', optionalAuth(), (req, res) => {
+  const ids = String(req.query.ids || '')
+    .split(',')
+    .map((x) => Number(x.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0)
+    .slice(0, 4);
+  if (ids.length < 2) return res.status(400).json({ error: 'need_two_ids' });
+
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT l.id, l.brand, l.model, l.storage, l.color, l.condition, l.battery_health,
+           l.asking_price, l.governorate, l.city, l.status, l.created_at, l.seller_id,
+           (SELECT i.image_path FROM listing_images i
+             WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS image_path,
+           u.display_name AS seller_name, u.shop_name, u.seller_type, u.verified
+      FROM phone_listings l
+      JOIN users u ON u.id = l.seller_id
+     WHERE l.id IN (${ph})
+  `).all(...ids);
+
+  // Preserve the order the buyer picked them in — the table's columns are
+  // their columns, not the database's.
+  const byId = new Map(rows.map((x) => [x.id, x]));
+  const items = ids.map((id) => byId.get(id)).filter(Boolean).map((l) => ({
+    ...l,
+    shop_name: l.shop_name || null,
+    seller_name: l.shop_name || l.seller_name,
+    specs: specsFor(l.brand, l.model),
+  }));
+
+  res.json({ items });
+});
+
 r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   const row = loadListing(req.params.id);
   if (!row || row.status === 'removed') return res.status(404).json({ error: 'not_found' });
