@@ -671,6 +671,29 @@ export interface StoreVariant {
   images: Array<{ id: number; image_path: string; position: number }>;
 }
 export interface StoreSpec { label: string; value: string }
+// The device's reference spec sheet (display, chipset, RAM, battery, charge
+// speed, cameras), resolved server-side from the device the listing names.
+// Null whenever the model hasn't been mapped — see tools/gsmarena.
+export interface DeviceSpecSheet {
+  device?: string | null;
+  display_inches?: number | null;
+  display_type?: string | null;
+  display_resolution?: string | null;
+  chipset?: string | null;
+  cpu?: string | null;
+  ram_gb?: string | null;
+  storage_options?: string | null;
+  battery_mah?: number | null;
+  charge_w?: number | null;
+  charge_w_wireless?: number | null;
+  camera_main_mp?: number | null;
+  camera_main?: string | null;
+  camera_selfie_mp?: number | null;
+  camera_selfie?: string | null;
+  os?: string | null;
+  announced?: string | null;
+  source?: string | null;
+}
 export interface StoreProduct {
   brand: string; model: string; description: string | null;
   // Key specs, entered per product in the dashboard.
@@ -679,6 +702,7 @@ export interface StoreProduct {
   min_price: number; max_price: number;
   price_on_request?: boolean;
   storages: string[]; colors: string[];
+  device_specs?: DeviceSpecSheet | null;
   variants: StoreVariant[];
   shop: StoreShop;
 }

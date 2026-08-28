@@ -1132,7 +1132,65 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_time ON audit_log(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_kind, target_id);`);
+CREATE INDEX IF NOT EXISTS idx_audit_log_target ON audit_log(target_kind, target_id);
+
+-- ─── device spec sheets ──────────────────────────────────────────────
+-- Specs belong to the DEVICE, not to the listing: forty sellers of the
+-- same iPhone 13 Pro Max share one sheet, and a listing posted tomorrow
+-- inherits it without anyone typing anything.
+--
+-- Sourced from GSMArena, the same place device_catalog came from. Numbers
+-- are split out of the prose (display_inches, battery_mah, charge_w) so the
+-- app can render a compact spec strip, and the prose is kept beside them so
+-- nothing has to be re-fetched to show a detail we didn't parse.
+CREATE TABLE IF NOT EXISTS device_specs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source TEXT NOT NULL DEFAULT 'gsmarena',
+  source_url TEXT NOT NULL UNIQUE,
+  source_name TEXT NOT NULL,          -- the maker's own name for it
+  brand TEXT,
+  display_inches REAL,
+  display TEXT,
+  display_resolution TEXT,
+  display_type TEXT,
+  chipset TEXT,
+  cpu TEXT,
+  gpu TEXT,
+  ram_gb TEXT,                        -- "8" or "8/12" when it ships in several
+  storage_options TEXT,
+  battery_mah INTEGER,
+  battery TEXT,
+  charging TEXT,
+  charge_w REAL,                      -- wired; the number a buyer asks about
+  charge_w_wireless REAL,
+  camera_main TEXT,
+  camera_main_video TEXT,
+  camera_selfie TEXT,
+  camera_selfie_video TEXT,
+  os TEXT,
+  network TEXT,
+  announced TEXT,
+  body TEXT,
+  sim TEXT,
+  raw_json TEXT,
+  fetched_at INTEGER NOT NULL
+);
+
+-- Which (brand, model) text a real listing carries -> which sheet.
+--
+-- Deliberately an exact-match table rather than fuzzy matching at read time:
+-- the matching is hard (Arabic, "+" vs "Plus", model years) and doing it in
+-- two languages would guarantee drift. The importer decides once; the server
+-- only ever does an equality lookup, so a listing either resolves or doesn't.
+CREATE TABLE IF NOT EXISTS device_spec_map (
+  brand TEXT NOT NULL,
+  model_norm TEXT NOT NULL,           -- LOWER(TRIM(model))
+  spec_id INTEGER NOT NULL,
+  confidence TEXT NOT NULL,           -- exact | loose | prefix | manual
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (brand, model_norm)
+);
+CREATE INDEX IF NOT EXISTS idx_device_spec_map_spec ON device_spec_map(spec_id);`);
 // Per-shop merchant panel (dormant behind the multi_shop_orders switch):
 // each shop can get its own dashboard username/password, scoped to its
 // orders only. Set by the admin from the shops page.

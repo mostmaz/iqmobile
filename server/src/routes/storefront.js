@@ -19,6 +19,7 @@ import { expandQuery, arabicNormalizeSql } from '../searchNormalize.js';
 import { PRODUCT_TYPES } from '../productType.js';
 import { logEvent } from '../eventLog.js';
 import { optionalAuth } from '../auth.js';
+import { specsFor } from '../deviceSpecs.js';
 
 const r = Router();
 
@@ -338,7 +339,10 @@ r.get('/storefront/:id(\\d+)/product', optionalAuth(), (req, res) => {
     min_price: Math.min(...priced.map((v) => v.asking_price)),
     max_price: Math.max(...priced.map((v) => v.asking_price)),
     price_on_request: variants.every((v) => v.price_on_request),
+    // Shop-entered specs win — a storefront that typed its own sheet meant
+    // it — with the device's own sheet behind them for everything else.
     specs,
+    device_specs: specsFor(lead.brand, lead.model),
     storages: [...new Set(variants.map((v) => v.storage).filter(Boolean))],
     colors: [...new Set(variants.map((v) => v.color).filter(Boolean))],
     variants: withImages,

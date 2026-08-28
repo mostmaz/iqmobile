@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "Hand-written mappings for names no matcher can derive, because the two",
+    "sides name the same device differently. Apple sells generations ('iPad",
+    "mini 7') while GSMArena indexes model years ('iPad mini (2024)'), and a",
+    "shop's 'Paper Matte' or 'Kids' edition is the same hardware in a",
+    "different finish.",
+    "",
+    "Keyed by brand then the lowercase model exactly as it appears on our",
+    "listings. Each one was checked against the chipset on the target page",
+    "(see verify_aliases.py) so a wrong year cannot slip in silently."
+  ],
+  "Apple": {
+    "ipad 9": "iPad 10.2 (2021)",
+    "ipad 10": "iPad (2022)",
+    "ipad 11": "iPad (2025)",
+    "ipad 11 a16": "iPad (2025)",
+    "ipad m5 11": "iPad Pro 11 (2025)",
+    "ipad mini 5": "iPad mini (2019)",
+    "ipad mini 6": "iPad mini (2021)",
+    "ipad mini 7": "iPad mini (2024)",
+    "ipad air  4": "iPad Air (2020)",
+    "ipad air 4": "iPad Air (2020)",
+    "ipad air 5th": "iPad Air (2022)",
+    "ipad air m2 11": "iPad Air 11 (2024)",
+    "ipad air m3 11": "iPad Air 11 (2025)",
+    "ipad air m4 11": "iPad Air 11 (2026)",
+    "ipad air m4 13": "iPad Air 13 (2026)",
+    "ipad air 2026 wifi m4": "iPad Air 11 (2026)",
+    "watch 10": "Watch Series 10",
+    "watch 11": "Watch Series 11",
+    "apple watch 10 46mm": "Watch Series 10",
+    "apple watch ultra 1": "Watch Ultra",
+    "ساعة ابل الترا 1": "Watch Ultra",
+    "ايفون اس اي الجيل ال3": "iPhone SE (2022)"
+  },
+  "Honor": {
+    "pad 10 paper matte": "Pad 10",
+    "pad x8b kids": "Pad X8b"
+  },
+  "Huawei": {
+    "matepad 11.5s paper matte": "MatePad 11.5 S (2025)",
+    "pure 80 ultra": "Pura 80 Ultra"
+  },
+  "Xiaomi": {
+    "mix flio": "Mix Flip"
+  }
+}

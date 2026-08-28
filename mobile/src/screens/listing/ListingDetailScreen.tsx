@@ -4,6 +4,7 @@ import {
   Alert, Dimensions, Modal, Animated, Share,
 } from 'react-native';
 import { Img } from '../../components/Img';
+import { DeviceSpecs } from '../../components/DeviceSpecs';
 import { deviceTitle, ltrNum } from '../../lib/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -796,6 +797,11 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             </Text>
           </View>
         ) : null}
+
+        {/* The device's own spec sheet, right under what the seller wrote:
+            the seller says what condition it is in, this says what it is.
+            Renders nothing for a model we haven't mapped. */}
+        <DeviceSpecs specs={(data as any).specs} />
 
         {/* أجهزة مشابهة — the market around this phone: same brand, ±10%
             price, other sellers. push (not navigate) so back returns here.

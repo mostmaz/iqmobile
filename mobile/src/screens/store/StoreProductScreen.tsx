@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Img } from '../../components/Img';
+import { DeviceSpecs } from '../../components/DeviceSpecs';
 import { fmtIQD } from '../../components/ui';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { SkBlock } from '../../components/Skeleton';
@@ -421,6 +422,11 @@ export default function StoreProductScreen({ navigation, route }: any) {
             </Text>
           </View>
         ) : null}
+
+        {/* The device's own sheet, below the shop's text. The shop's
+            hand-entered `specs` (when it filled any in) still render above
+            in their own block — this is the reference data behind them. */}
+        <DeviceSpecs specs={(product as any).device_specs} />
 
         {/* ── Quantity ────────────────────────────────────────────── */}
         <View style={{

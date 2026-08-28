@@ -17,6 +17,7 @@ import { alertWishlistOnListing } from './wishlist.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import { inspectListingAsync } from '../listingInspect.js';
 import { newPriceFor } from '../newPriceRef.js';
+import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 
@@ -723,6 +724,10 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     // at the same capacity. Null unless the match is confident — see
     // newPriceRef.js for why every ambiguity resolves to showing nothing.
     new_price_ref: newPriceFor(row),
+    // Display size, chipset, RAM, battery, charge speed and cameras for the
+    // device this listing is of. Null when nobody has mapped the model yet —
+    // the app renders nothing rather than a half-empty table.
+    specs: specsFor(row.brand, row.model),
   });
 });
 
