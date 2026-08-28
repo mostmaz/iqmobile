@@ -34,15 +34,21 @@ interface CompareCtx {
   entries: CompareEntry[];
   ids: number[];
   has: (id: number) => boolean;
-  /** Returns false when the list is already full, so the caller can say so. */
-  toggle: (entry: CompareEntry) => boolean;
+  /**
+   * Add or remove, and report what happened. Callers act on the RESULT
+   * (`size`) rather than on their own copy of the list: a caller that reads
+   * `ids.length` right after tapping sees the value from before the state
+   * update, which turned "add the second one" into "remove the first".
+   */
+  toggle: (entry: CompareEntry) => { ok: boolean; size: number; added: boolean };
   remove: (id: number) => void;
   clear: () => void;
   isFull: boolean;
 }
 
 const Ctx = createContext<CompareCtx>({
-  entries: [], ids: [], has: () => false, toggle: () => false,
+  entries: [], ids: [], has: () => false,
+  toggle: () => ({ ok: false, size: 0, added: false }),
   remove: () => {}, clear: () => {}, isFull: false,
 });
 
@@ -70,13 +76,24 @@ export function CompareProvider({ children }: { children: React.ReactNode }) {
   }, [entries]);
 
   const toggle = useCallback((entry: CompareEntry) => {
-    let accepted = true;
+    // Computed inside the updater so the answer reflects the list as it
+    // actually is, not as the caller's last render saw it.
+    let result = { ok: true, size: 0, added: false };
     setEntries((prev) => {
-      if (prev.some((e) => e.id === entry.id)) return prev.filter((e) => e.id !== entry.id);
-      if (prev.length >= COMPARE_MAX) { accepted = false; return prev; }
-      return [...prev, entry];
+      if (prev.some((e) => e.id === entry.id)) {
+        const next = prev.filter((e) => e.id !== entry.id);
+        result = { ok: true, size: next.length, added: false };
+        return next;
+      }
+      if (prev.length >= COMPARE_MAX) {
+        result = { ok: false, size: prev.length, added: false };
+        return prev;
+      }
+      const next = [...prev, entry];
+      result = { ok: true, size: next.length, added: true };
+      return next;
     });
-    return accepted;
+    return result;
   }, []);
 
   const value = useMemo<CompareCtx>(() => ({

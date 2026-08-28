@@ -20,6 +20,7 @@ import { Listings } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useCompare } from '../../lib/compare';
 import { ar } from '../../i18n/ar';
+import { arOf } from '../../lib/governorates';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../../theme';
 
 const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -77,7 +78,10 @@ export default function CompareScreen({ navigation }: any) {
         label: 'صحة البطارية',
         values: items.map((i: any) => (i.battery_health ? `${arNum(i.battery_health)}٪` : null)),
       },
-      { label: 'المحافظة', values: items.map((i: any) => i.governorate || null) },
+      // The server stores governorates in English ("Baghdad"); every other
+      // screen prints them in Arabic, and this table was the one place a
+      // Latin word sat in the middle of an Arabic column.
+      { label: 'المحافظة', values: items.map((i: any) => (i.governorate ? arOf(i.governorate) : null)) },
       { label: 'البائع', values: items.map((i: any) => i.seller_name || null) },
       // ── the device itself ──
       {

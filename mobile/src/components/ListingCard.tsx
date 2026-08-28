@@ -12,8 +12,14 @@ import { ar } from '../i18n/ar';
 import type { Listing } from '../api/endpoints';
 
 export function ListingCard({
-  listing, onPress, onToggleSave, saved, compact,
-}: { listing: Listing; onPress: () => void; onToggleSave?: () => void; saved?: boolean; compact?: boolean }) {
+  listing, onPress, onToggleSave, saved, compact, onCompare, inCompare,
+}: {
+  listing: Listing; onPress: () => void; onToggleSave?: () => void;
+  saved?: boolean; compact?: boolean;
+  /** Adds this listing to the comparison without opening it first. */
+  onCompare?: () => void;
+  inCompare?: boolean;
+}) {
   const cover = listing.images?.[0]?.image_path;
   // "Last known price": a price-aggregator device that dropped off every
   // source's list. Grey the whole card and badge it so buyers know it's the
@@ -63,6 +69,29 @@ export function ListingCard({
             alignItems: 'center', justifyContent: 'center',
           }}>
             <Text style={{ color: saved ? theme.accent : '#fff', fontSize: 16 }}>{saved ? '♥' : '♡'}</Text>
+          </TouchableOpacity>
+        ) : null}
+        {/* Add to the comparison straight from the feed. Picking the second
+            device otherwise meant opening a listing, adding it, and coming
+            back — three screens for one decision. Bottom-left so it never
+            collides with the save heart above it. */}
+        {onCompare ? (
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation?.(); onCompare(); }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={{
+              position: 'absolute', bottom: 8, left: 8,
+              width: 30, height: 30, borderRadius: 999,
+              backgroundColor: inCompare ? theme.accent : 'rgba(20,16,12,0.55)',
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Text style={{
+              color: '#fff', fontFamily: fonts.arBold, fontSize: inCompare ? 13 : 17,
+              marginTop: inCompare ? 0 : -2,
+            }}>
+              {inCompare ? '✓' : '+'}
+            </Text>
           </TouchableOpacity>
         ) : null}
         {showStatus ? (

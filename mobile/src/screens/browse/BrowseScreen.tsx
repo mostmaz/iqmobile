@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
 import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
 import { ShopUpgradeCard } from '../../components/ShopUpgradeCard';
+import { useCompare, COMPARE_MAX } from '../../lib/compare';
 import { Listings, Brands, Banners, Chats, Shops, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -63,6 +64,23 @@ export default function BrowseScreen({ navigation }: any) {
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
+  // Comparing from the feed. Adding the SECOND device is the moment the
+  // comparison becomes possible, so that tap opens it rather than leaving
+  // the buyer to find the tray.
+  const compare = useCompare();
+  const addToCompare = (l: any) => {
+    const r = compare.toggle({
+      id: l.id, brand: l.brand, model: l.model,
+      image_path: l.images?.[0]?.image_path ?? null,
+    });
+    if (!r.ok) {
+      Alert.alert('القائمة ممتلئة', `تكدر تقارن ${COMPARE_MAX} أجهزة بالمرة — شيل واحد وجرب.`);
+      return;
+    }
+    // Only on an ADD that completes a pair. Removing one, or adding the
+    // first, leaves the buyer in the feed where they are still choosing.
+    if (r.added && r.size >= 2) navigation.navigate('Compare');
+  };
   const { save: saveSearch, isPending: savingSearch } = useSaveSearch();
   // Rotates which banner shows when a slot has several equally-specific
   // ones — bumped on pull-to-refresh, filter change, and re-opening the tab.
@@ -640,7 +658,12 @@ export default function BrowseScreen({ navigation }: any) {
               onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
             />
           ) : (
-            <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+            <ListingCard
+              listing={item}
+              onPress={() => navigation.navigate('ListingDetail', { id: item.id })}
+              onCompare={() => addToCompare(item)}
+              inCompare={compare.has(item.id)}
+            />
           )
         )}
         // Load the next 15 when the user has scrolled within ~half a screen

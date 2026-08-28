@@ -38,7 +38,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const compare = useCompare();
   const inCompare = compare.has(id);
   const onCompareTap = () => {
-    const ok = compare.toggle({
+    const { ok } = compare.toggle({
       id,
       brand: data?.brand,
       model: data?.model,
@@ -1056,7 +1056,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           in it, so a buyer who never compares never sees it. */}
       <CompareTray
         onOpen={() => navigation.navigate('Compare')}
-        onFindMore={() => navigation.goBack()}
+        // The home feed, not just "back" — back could be the compare page
+        // or another listing, neither of which is where you find a device.
+        onFindMore={() => navigation.navigate('BrowseHome')}
       />
     </View>
   );
