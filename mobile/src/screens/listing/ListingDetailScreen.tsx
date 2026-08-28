@@ -13,10 +13,6 @@ import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
 import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock, IconCompare } from '../../components/icons';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
-
-// The tab bar the tray has to sit above. Measured, not guessed — the bar
-// is a fixed-height custom component in navigation/index.tsx.
-const TAB_BAR_H = 58;
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
@@ -644,30 +640,6 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           </View>
         ) : null}
 
-        {/* The compare shortcut, spelled out. The icon over the photo is
-            easy to miss — this is the same action with a name on it, sitting
-            under the contact buttons where a buyer who is weighing sellers
-            is already looking. Not shown on your own listing: there is
-            nothing to compare against yourself. */}
-        {!isMine ? (
-          <TouchableOpacity
-            onPress={onCompareTap}
-            activeOpacity={0.85}
-            style={{
-              marginHorizontal: 16, marginTop: 10, paddingVertical: 13,
-              borderRadius: radius.xl, borderWidth: 1.5,
-              borderColor: theme.accent,
-              backgroundColor: inCompare ? theme.accentSoft : 'transparent',
-              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}
-          >
-            <IconCompare size={16} color={theme.accentDeep} sw={1.8} />
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.accentDeep }}>
-              {inCompare ? 'بالمقارنة ✓' : 'أضف للمقارنة'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-
         {/* Owner promote CTA — the highest-visibility surface for the
             featured-listing upsell: publishing a listing lands the seller
             right here, so this doubles as the post-publish prompt. Swaps to
@@ -866,6 +838,32 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           conditionLabel={(ar.listing as any)[data.condition] || data.condition}
         />
 
+        {/* The compare shortcut, spelled out. The icon over the photo is
+            easy to miss — this is the same action with a name on it, and it
+            sits just above the similar-devices rail: by here the buyer has
+            read the price, the specs and the seller, which is exactly when
+            "how does this compare with the other one?" becomes the question.
+            Not shown on your own listing — nothing to compare against
+            yourself. */}
+        {!isMine ? (
+          <TouchableOpacity
+            onPress={onCompareTap}
+            activeOpacity={0.85}
+            style={{
+              marginHorizontal: 16, marginTop: 10, paddingVertical: 13,
+              borderRadius: radius.xl, borderWidth: 1.5,
+              borderColor: theme.accent,
+              backgroundColor: inCompare ? theme.accentSoft : 'transparent',
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}
+          >
+            <IconCompare size={16} color={theme.accentDeep} sw={1.8} />
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.accentDeep }}>
+              {inCompare ? 'بالمقارنة ✓' : 'أضف للمقارنة'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* أجهزة مشابهة — the market around this phone: same brand, ±10%
             price, other sellers. push (not navigate) so back returns here.
             Hidden entirely when the server finds nothing comparable. */}
@@ -1056,7 +1054,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 
       {/* The shortlist, parked above the tab bar. Absent until something is
           in it, so a buyer who never compares never sees it. */}
-      <CompareTray onOpen={() => navigation.navigate('Compare')} bottomInset={TAB_BAR_H} />
+      <CompareTray
+        onOpen={() => navigation.navigate('Compare')}
+        onFindMore={() => navigation.goBack()}
+      />
     </View>
   );
 }

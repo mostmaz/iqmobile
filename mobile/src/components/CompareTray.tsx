@@ -6,23 +6,22 @@
 // can add one more" is visible rather than something you have to know.
 //
 // It appears only once something is in it (design 2b: nothing picked, no
-// tray at all), and its action stays disabled at one device — a comparison
-// needs two, and a button that opens an empty table would be a lie.
+// tray at all). At one device the action is not disabled — a dead button is
+// a dead end — it becomes "go find the second one", which is what the buyer
+// has to do next anyway.
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Img } from './Img';
 import { IconClose, IconCompare } from './icons';
 import { fullImageUrl } from '../api/upload';
 import { useCompare, COMPARE_MAX, type CompareEntry } from '../lib/compare';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 
-export function CompareTray({ onOpen, bottomInset = 0 }: {
+export function CompareTray({ onOpen, onFindMore }: {
   onOpen: () => void;
-  /** Height of whatever sits below (a tab bar, a buy bar) in points. */
-  bottomInset?: number;
+  /** Where "add a second one" goes — back to browsing. */
+  onFindMore: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const { entries, remove } = useCompare();
   if (!entries.length) return null;
 
@@ -32,8 +31,10 @@ export function CompareTray({ onOpen, bottomInset = 0 }: {
 
   return (
     <View style={{
-      position: 'absolute', left: 0, right: 0,
-      bottom: bottomInset + insets.bottom,
+      // bottom: 0 — this screen's viewport already ends above the tab bar,
+      // so adding the bar's height (and the home-indicator inset it already
+      // carries) floated the tray a bar-and-a-half up the screen.
+      position: 'absolute', left: 0, right: 0, bottom: 0,
       backgroundColor: theme.surface,
       borderTopWidth: 1, borderTopColor: theme.line,
       paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
@@ -76,24 +77,24 @@ export function CompareTray({ onOpen, bottomInset = 0 }: {
       </View>
 
       <TouchableOpacity
-        onPress={ready ? onOpen : undefined}
-        disabled={!ready}
+        onPress={ready ? onOpen : onFindMore}
         activeOpacity={0.88}
         style={{
           flex: 1, paddingVertical: 12, borderRadius: radius.lg,
           backgroundColor: ready ? theme.ink : theme.chipBg,
+          borderWidth: ready ? 0 : 1, borderColor: theme.line,
           flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
         }}
       >
-        <IconCompare size={15} color={ready ? theme.buttonInk : theme.subtle} sw={1.8} />
+        <IconCompare size={15} color={ready ? theme.buttonInk : theme.chipInk} sw={1.8} />
         <Text
           maxFontSizeMultiplier={FONT_SCALE_TIGHT}
           style={{
             fontFamily: fonts.arBold, fontSize: 13.5,
-            color: ready ? theme.buttonInk : theme.subtle,
+            color: ready ? theme.buttonInk : theme.chipInk,
           }}
         >
-          {ready ? 'قارن' : 'أضف جهاز ثاني'}
+          {ready ? 'قارن' : 'دوّر على جهاز ثاني'}
         </Text>
       </TouchableOpacity>
     </View>
