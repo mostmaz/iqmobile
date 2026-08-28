@@ -51,6 +51,19 @@ const KIND_LABEL: Record<string, string> = {
   'listing.quiet': 'إعلانك ما وصله تواصل بعد 📣',
 };
 
+// The tier decision reuses the shop.review.* kinds, so the label map alone
+// would tell a shop that has traded for a year "تم قبول متجرك" — its shop
+// was approved long ago; what just happened is that it got dashboard tools.
+// The server already distinguishes the two in the payload (kind: 'tier');
+// this is the reader honouring it.
+function labelOf(item: NotificationRow): string {
+  if (item.payload?.kind === 'tier') {
+    if (item.kind === 'shop.review.approved') return 'صار عندك لوحة إدارة متجرك ✅';
+    if (item.kind === 'shop.review.rejected') return 'لم يُقبل طلب ترقية اللوحة';
+  }
+  return KIND_LABEL[item.kind] || item.kind;
+}
+
 // Compose the secondary line under the kind label: "<sender> · <listing>".
 // Falls back gracefully when the server enrichment came back empty
 // (chat deleted, listing removed, …) so the row never looks broken.
@@ -113,6 +126,10 @@ export default function NotificationsScreen({ navigation }: any) {
   //   - otherwise → just mark-read silently
   function onTap(item: NotificationRow) {
     Notifications.read(item.id);
+    // A tier decision is not a review thread — opening one would show the
+    // shop an unrelated conversation. The row says what happened and the
+    // dashboard it points at is on the web, so tapping just marks it read.
+    if (item.payload?.kind === 'tier') return;
     // Shop review has no chat_id and no listing — it's its own thread.
     if (item.kind.startsWith('shop.review')) {
       if (navigationRef.isReady()) {
@@ -177,7 +194,7 @@ export default function NotificationsScreen({ navigation }: any) {
               }}
             >
               <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
-                {KIND_LABEL[item.kind] || item.kind}
+                {labelOf(item)}
               </Text>
               {sub ? (
                 <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.ink, marginTop: 3, textAlign: 'right' }}>
