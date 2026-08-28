@@ -1,8 +1,8 @@
 // What the advanced dashboard actually gives a shop, and the button to ask.
 //
 // Reached from the feed card. The order of the benefits is the order shops
-// asked for them: bulk price editing first (the daily chore), then the
-// desktop table, then the things they did not know to want.
+// asked for them: editing prices in one tap first, it being the daily
+// chore, then the things they did not know to want.
 //
 // Deliberately plain about the wait: the request goes to a human, and a
 // screen that implies instant access would make a 24-hour review feel like
@@ -20,12 +20,8 @@ const arNum = (n: number | string) => String(n).replace(/\d/g, (d) => AR_DIGITS[
 
 const BENEFITS: Array<{ title: string; body: string }> = [
   {
-    title: 'عدّل أسعارك بالجملة',
+    title: 'عدّل أسعارك بنقرة واحدة',
     body: 'اختر عشرين جهاز وغيّر أسعارها بضغطة — نسبة أو سعر موحّد — بدل ما تفتح كل إعلان لحاله.',
-  },
-  {
-    title: 'جدول أجهزتك على الكمبيوتر',
-    body: 'كل أجهزتك بجدول واحد: السعر، المخزن، المشاهدات، وآخر تواصل — تعدّل بالمكان نفسه.',
   },
   {
     title: 'شنو يدور عليه الناس بمحافظتك',
@@ -64,7 +60,7 @@ export default function ShopUpgradeScreen({ navigation }: any) {
     } catch (e: any) {
       // The server owns the rules (already advanced, one open request,
       // 30-day wait after a rejection) — say which one was hit.
-      const msg = e?.data?.error === 'request_pending' ? 'عندك طلب قيد المراجعة already.'
+      const msg = e?.data?.error === 'request_pending' ? 'عندك طلب قيد المراجعة.'
         : e?.data?.error === 'already_advanced' ? 'لوحتك مرقّاة أصلاً.'
           : e?.data?.error === 'too_soon' ? 'تكدر تعيد الطلب بعد ٣٠ يوم من آخر رد.'
             : 'تعذّر إرسال الطلب، حاول مرة ثانية.';

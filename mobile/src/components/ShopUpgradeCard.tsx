@@ -55,7 +55,7 @@ export function ShopUpgradeCard({ status, onPress }: { status: TierStatus; onPre
       </View>
 
       <Text style={{ fontFamily: fonts.arBold, fontSize: 15.5, color: theme.ink, textAlign: 'right' }}>
-        {pending ? 'طلبك وصلنا' : 'خلي اللوحة تدير متجرك'}
+        {pending ? 'طلبك وصلنا' : 'قم بإدارة متجرك بصورة أفضل مجاناً'}
       </Text>
 
       <Text style={{

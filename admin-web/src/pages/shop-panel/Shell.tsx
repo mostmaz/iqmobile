@@ -151,11 +151,11 @@ export function ShopPanelPage({ onExit }: { onExit: () => void }) {
         {!offerOff && me?.upgrade_offer?.state === 'available' ? (
           <div style={{ margin: '0 16px 12px' }}>
             <Card style={{ borderColor: T.accent, marginBottom: 0 }}>
-              <div style={{ font: `700 15px ${FONT}`, color: T.ink }}>خلّي اللوحة تدير متجرك</div>
+              <div style={{ font: `700 15px ${FONT}`, color: T.ink }}>قم بإدارة متجرك بصورة أفضل مجاناً</div>
               <div style={{ font: `400 12.5px ${FONT}`, color: T.subtle, marginTop: 6, lineHeight: 1.7 }}>
                 {me.upgrade_offer.reason === 'listings'
                   ? 'عندك أجهزة كثيرة — تعديل الأسعار بالجملة، جدول على الكمبيوتر، وتنبيهات شنو يدور عليه الناس.'
-                  : 'حركة متجرك زينة — افتح أدوات الإدارة: تعديل بالجملة، جدول على الكمبيوتر، وتنبيهات الطلب.'}
+                  : 'حركة متجرك زينة — افتح أدوات الإدارة: تعديل الأسعار بنقرة، وتنبيهات الطلب.'}
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                 <Btn onClick={() => setReqOpen(true)}>اطلب الترقية</Btn>
