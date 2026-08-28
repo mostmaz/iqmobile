@@ -1,13 +1,18 @@
-// The device's own spec sheet, under the seller's description.
+// The device's specs, under the seller's description, as two chip groups.
 //
-// Two kinds of value live side by side here and they are NOT formatted the
-// same: quantities a shopper reads ("٦.٧ بوصة", "٥٠٠٠ مللي أمبير") get
-// Arabic-Indic digits, while product names ("Snapdragon 8 Gen 3") stay
-// Latin and left-to-right — transliterating a chipset name would make it
-// unsearchable and unrecognisable to the person comparing two phones.
+// The split is the point (design 1a/2a): «حالة هذا الجهاز» is what the
+// SELLER typed about this particular unit — condition, capacity, colour,
+// battery health, warranty — while «مواصفات الموديل» is what the model is,
+// the same for every unit of it and sourced from GSMArena. Merged into one
+// list, a buyer cannot tell which numbers a seller could have got wrong.
 //
-// Every field is optional. A device we know the screen and battery of but
-// not the charge speed shows four rows, not four rows and a blank.
+// Two kinds of value live here and they are NOT formatted the same:
+// quantities a shopper reads ("٦.٧ بوصة") get Arabic-Indic digits, while
+// product names ("Snapdragon 8 Gen 3") stay Latin and left-to-right —
+// transliterating a chipset would make it unrecognisable to the person
+// comparing two phones.
+//
+// Every field is optional, and a group with nothing in it does not render.
 import React from 'react';
 import { View, Text } from 'react-native';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
@@ -36,99 +41,127 @@ export type Specs = {
   source?: string | null;
 };
 
-type Row = { label: string; value: string; ltr?: boolean };
+/** What the seller declared about this unit, as opposed to the model. */
+export type SellerFacts = {
+  condition?: string | null;
+  storage?: string | null;
+  color?: string | null;
+  battery_health?: number | null;
+  warranty_status?: string | null;
+};
 
-/** The rows worth showing, in the order a buyer asks about them. */
-function rowsOf(s: Specs): Row[] {
-  const out: Row[] = [];
-  if (s.display_inches) {
-    out.push({ label: 'الشاشة', value: `${arNum(s.display_inches)} بوصة` });
-  }
-  if (s.chipset) {
-    // "Qualcomm SM6450 Snapdragon 6 Gen 1 (4 nm)" — the part number and the
-    // process node are for spec sheets, not for a buyer choosing a phone.
-    const chip = s.chipset.replace(/\s*\([^)]*nm[^)]*\)\s*$/, '').replace(/^Qualcomm\s+SM\d+\s+/, '');
-    out.push({ label: 'المعالج', value: chip, ltr: true });
-  }
-  if (s.ram_gb) {
-    out.push({ label: 'الرام', value: `${arNum(s.ram_gb.replace('/', ' / '))} جيجا` });
-  }
-  if (s.battery_mah) {
-    out.push({ label: 'البطارية', value: `${arNum(s.battery_mah)} mAh`, ltr: false });
-  }
-  // Wired watts only. An iPhone's 15W is its MagSafe pad, and printing that
-  // as "الشحن" would read as the speed of the plug in the box.
-  if (s.charge_w) {
-    out.push({ label: 'سرعة الشحن', value: `${arNum(s.charge_w)} واط` });
-  }
-  if (s.camera_main_mp) {
-    const front = s.camera_selfie_mp ? ` · أمامية ${arNum(s.camera_selfie_mp)}` : '';
-    out.push({ label: 'الكاميرا', value: `${arNum(s.camera_main_mp)} ميجابكسل${front}` });
-  }
-  return out;
+type Chip = { label: string; value: string; ltr?: boolean; good?: boolean };
+
+/** A pill: quiet label, loud value. */
+function SpecChip({ chip }: { chip: Chip }) {
+  return (
+    <View style={{
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+      paddingHorizontal: 11, paddingVertical: 7, borderRadius: radius.pill,
+      backgroundColor: chip.good ? theme.successSoft : theme.chipBg,
+    }}>
+      <Text
+        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+        style={{
+          fontFamily: fonts.ar, fontSize: 11,
+          color: chip.good ? theme.success : theme.subtle,
+        }}
+      >
+        {chip.label}
+      </Text>
+      <Text
+        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+        style={{
+          fontFamily: chip.ltr ? fonts.ltr : fonts.arBold, fontSize: 12.5,
+          color: chip.good ? theme.success : theme.chipInk,
+          writingDirection: chip.ltr ? 'ltr' : 'rtl',
+        }}
+      >
+        {chip.value}
+      </Text>
+    </View>
+  );
 }
 
-export function DeviceSpecs({ specs }: { specs?: Specs | null }) {
-  if (!specs) return null;
-  const rows = rowsOf(specs);
-  if (rows.length < 2) return null;      // one lonely row isn't a spec sheet
-
+function Group({ title, chips, footnote }: { title: string; chips: Chip[]; footnote?: string | null }) {
+  if (!chips.length) return null;
   return (
-    <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+    <View style={{ marginTop: 14 }}>
       <Text style={{
         fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle,
         textAlign: 'right', marginBottom: 8,
       }}>
-        مواصفات الجهاز
+        {title}
       </Text>
-
-      <View style={{
-        backgroundColor: theme.surface, borderRadius: radius.xl,
-        borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
-      }}>
-        {rows.map((r, i) => (
-          <View
-            key={r.label}
-            style={{
-              flexDirection: 'row-reverse', alignItems: 'center', gap: 12,
-              paddingHorizontal: 14, paddingVertical: 11,
-              borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.line,
-            }}
-          >
-            <Text
-              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}
-            >
-              {r.label}
-            </Text>
-            <Text
-              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              numberOfLines={2}
-              style={{
-                flex: 1,
-                fontFamily: r.ltr ? fonts.ltr : fonts.arBold,
-                fontSize: 13.5, color: theme.ink,
-                textAlign: 'left',
-                writingDirection: r.ltr ? 'ltr' : 'rtl',
-              }}
-            >
-              {r.value}
-            </Text>
-          </View>
-        ))}
+      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 7 }}>
+        {chips.map((c) => <SpecChip key={c.label + c.value} chip={c} />)}
       </View>
-
-      {/* Where the numbers come from. A shopper comparing two listings of the
-          same phone should be able to see the specs weren't typed by either
-          seller. */}
-      {specs.source ? (
+      {footnote ? (
         <Text style={{
           fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle,
-          textAlign: 'right', marginTop: 6, opacity: 0.85,
+          textAlign: 'left', marginTop: 7, opacity: 0.85,
         }}>
-          {`المواصفات من ${specs.source}${specs.device ? ` · ${specs.device}` : ''}`}
+          {footnote}
         </Text>
       ) : null}
+    </View>
+  );
+}
+
+export function DeviceSpecs({ specs, seller, conditionLabel }: {
+  specs?: Specs | null;
+  seller?: SellerFacts | null;
+  /** Arabic label for the condition code, from the caller's dictionary. */
+  conditionLabel?: string | null;
+}) {
+  // What the seller says about this unit.
+  const own: Chip[] = [];
+  if (conditionLabel) own.push({ label: 'الحالة', value: conditionLabel });
+  if (seller?.storage) own.push({ label: 'السعة', value: seller.storage, ltr: true });
+  if (seller?.color) own.push({ label: 'اللون', value: seller.color });
+  if (seller?.warranty_status) own.push({ label: 'الضمان', value: seller.warranty_status });
+  // Battery health is the one number a used-phone buyer asks for first, so
+  // it reads as a positive when it is one.
+  if (seller?.battery_health) {
+    own.push({
+      label: 'صحة البطارية',
+      value: `${arNum(seller.battery_health)}٪`,
+      good: seller.battery_health >= 85,
+    });
+  }
+
+  // What the model is.
+  const model: Chip[] = [];
+  if (specs?.display_inches) model.push({ label: 'الشاشة', value: `${arNum(specs.display_inches)} بوصة` });
+  if (specs?.chipset) {
+    // "Qualcomm SM6450 Snapdragon 6 Gen 1 (4 nm)" — the part number and the
+    // process node are for spec sheets, not for someone choosing a phone.
+    const chip = specs.chipset
+      .replace(/\s*\([^)]*nm[^)]*\)\s*$/, '')
+      .replace(/^Qualcomm\s+SM\d+\s+/, '');
+    model.push({ label: 'المعالج', value: chip, ltr: true });
+  }
+  if (specs?.ram_gb) model.push({ label: 'الرام', value: `${arNum(specs.ram_gb.replace('/', '/'))} جيجا` });
+  if (specs?.battery_mah) model.push({ label: 'البطارية', value: `${arNum(specs.battery_mah)} mAh`, ltr: false });
+  // Wired watts only. An iPhone's 15W is its MagSafe pad, and printing that
+  // as "الشحن" would read as the speed of the plug in the box.
+  if (specs?.charge_w) model.push({ label: 'الشحن', value: `${arNum(specs.charge_w)} واط` });
+  if (specs?.camera_main_mp) {
+    model.push({ label: 'الكاميرا', value: `${arNum(specs.camera_main_mp)} ميجابكسل` });
+  }
+
+  if (!own.length && !model.length) return null;
+
+  return (
+    <View style={{ paddingHorizontal: 16, marginTop: 4 }}>
+      <Group title="حالة هذا الجهاز" chips={own} />
+      <Group
+        title="مواصفات الموديل"
+        chips={model}
+        // Whose numbers these are. A buyer comparing two listings of the
+        // same phone should see the specs weren't typed by either seller.
+        footnote={specs?.source ? `من ${specs.source}` : null}
+      />
     </View>
   );
 }

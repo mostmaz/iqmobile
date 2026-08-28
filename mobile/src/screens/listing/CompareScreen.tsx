@@ -9,7 +9,7 @@
 // trade against each other — cheaper but a smaller battery, newer chipset at
 // a worse price — and a winner would be inventing a preference the buyer
 // never stated. Show the differences; the buyer decides what they are worth.
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -98,6 +98,25 @@ export default function CompareScreen({ navigation }: any) {
 
   const differs = (r: Row) => new Set(r.values.map((v) => v ?? '—')).size > 1;
 
+  // "Show only what differs" — on two phones of the same model most rows
+  // are identical, and scrolling past eight matching rows to find the two
+  // that matter is the work this screen exists to remove.
+  const [onlyDiff, setOnlyDiff] = useState(false);
+  const shown = onlyDiff ? rows.filter(differs) : rows;
+
+  // The gap between cheapest and dearest, stated once in words. It is the
+  // first thing a buyer works out by hand, and the one number the table
+  // makes them compute across two columns.
+  const gap = useMemo(() => {
+    if (items.length < 2) return null;
+    const prices = items.map((i: any) => i.asking_price).filter((n: number) => n > 0);
+    if (prices.length < 2) return null;
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    if (max === min) return { same: true, diff: 0, pct: 0 };
+    return { same: false, diff: max - min, pct: Math.round(((max - min) / max) * 100) };
+  }, [items]);
+
   if (ids.length < 2) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -178,15 +197,55 @@ export default function CompareScreen({ navigation }: any) {
             ))}
           </View>
 
-          <Text style={{
-            fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle,
-            textAlign: 'right', paddingHorizontal: 16, marginTop: 14, marginBottom: 6,
+          {/* Price gap first — the question behind the comparison. */}
+          {gap ? (
+            <View style={{
+              marginHorizontal: 12, marginTop: 14, paddingVertical: 11, paddingHorizontal: 14,
+              borderRadius: radius.xl,
+              backgroundColor: gap.same ? theme.chipBg : theme.successSoft,
+            }}>
+              <Text style={{
+                fontFamily: fonts.arBold, fontSize: 13.5,
+                color: gap.same ? theme.chipInk : theme.success, textAlign: 'right',
+              }}>
+                {gap.same
+                  ? 'نفس السعر بالضبط'
+                  : `فرق السعر ${fmtIQD(gap.diff)} د.ع — ${arNum(gap.pct)}٪`}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={{
+            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+            paddingHorizontal: 16, marginTop: 12, marginBottom: 6, gap: 10,
           }}>
-            الصفوف المظللة هي اللي تختلف بيناتهم.
-          </Text>
+            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, flex: 1, textAlign: 'right' }}>
+              {onlyDiff ? 'نعرض الاختلافات فقط.' : 'الصفوف المظللة هي اللي تختلف بيناتهم.'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setOnlyDiff((v) => !v)}
+              activeOpacity={0.85}
+              style={{
+                paddingHorizontal: 11, paddingVertical: 6, borderRadius: radius.pill,
+                borderWidth: 1,
+                borderColor: onlyDiff ? theme.accent : theme.line,
+                backgroundColor: onlyDiff ? theme.accentSoft : 'transparent',
+              }}
+            >
+              <Text
+                maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+                style={{
+                  fontFamily: fonts.arBold, fontSize: 11.5,
+                  color: onlyDiff ? theme.accentDeep : theme.subtle,
+                }}
+              >
+                الاختلافات فقط
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={{ marginHorizontal: H_MARGIN, borderRadius: radius.xl, overflow: 'hidden', borderWidth: 1, borderColor: theme.line }}>
-            {rows.map((r, ri) => {
+            {shown.map((r, ri) => {
               const hot = differs(r);
               return (
                 <View
