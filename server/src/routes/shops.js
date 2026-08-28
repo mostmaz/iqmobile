@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { tierStatus, createTierRequest } from '../shopTier.js';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -432,6 +433,23 @@ r.delete('/shops/me/images/:id(\\d+)', requireAuth(), (req, res) => {
 // What the owner sees while he waits. Old app builds ignore this endpoint
 // entirely and learn the same facts by push, which is why the review note is
 // also pushed rather than left to be discovered here.
+// ─── advanced dashboard, asked for from the app ──────────────────────
+// Most shops never open the merchant dashboard, so the offer that lives
+// there reaches the wrong half of them. These two let the app carry it:
+// the home feed asks whether this shop qualifies, and sends the request
+// from the same screen.
+r.get('/shops/me/tier', requireAuth(), (req, res) => {
+  const st = tierStatus(req.user.id);
+  if (!st) return res.status(404).json({ error: 'not_a_shop' });
+  res.json(st);
+});
+
+r.post('/shops/me/tier-request', requireAuth(), (req, res) => {
+  const r2 = createTierRequest(req.user.id, req.body || {}, 'shop');
+  if (r2.error) return res.status(r2.status).json(r2);
+  res.json({ ok: true, id: r2.id });
+});
+
 r.get('/shops/me/review', requireAuth(), (req, res) => {
   const me = db.prepare(
     `SELECT id, seller_type, shop_status, shop_review_note, shop_reviewed_at, shop_created_at

@@ -454,6 +454,18 @@ export const Banners = {
   },
 };
 
+// Advanced-dashboard eligibility, asked from the app. The offer used to
+// live only in the merchant dashboard, which most shops never open.
+export interface ShopTierStatus {
+  tier: 'simple' | 'advanced' | string;
+  state: string | null;
+  eligible: boolean;
+  can_request: boolean;
+  retry_at: number | null;
+  requested_at: number | null;
+  signals: { active_listings: number; listings_30d: number; contacts_30d: number };
+}
+
 export const Notifications = {
   list: () => api<NotificationRow[]>('/notifications'),
   readAll: () => api('/notifications/read-all', { method: 'POST' }),
@@ -581,6 +593,10 @@ export const Shops = {
   // not_a_shop for anyone who isn't a shop, so callers treat a failure as
   // "nothing to show" rather than surfacing an error.
   myReview: () => api<ShopReview>('/shops/me/review'),
+  // Same 404 contract as myReview: not a shop → nothing to show.
+  myTier: () => api<ShopTierStatus>('/shops/me/tier'),
+  requestTier: (body: Record<string, unknown>) =>
+    api<{ ok: true; id: number }>('/shops/me/tier-request', { method: 'POST', body: JSON.stringify(body) }),
   sendReviewMessage: (body: string) =>
     api('/shops/me/review/messages', { method: 'POST', body: JSON.stringify({ body }) }),
   list: (governorate?: string) =>

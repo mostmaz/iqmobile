@@ -16,7 +16,8 @@ import { ListingListSkeleton } from '../../components/Skeleton';
 import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
 import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
-import { Listings, Brands, Banners, Chats, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
+import { ShopUpgradeCard } from '../../components/ShopUpgradeCard';
+import { Listings, Brands, Banners, Chats, Shops, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { ar } from '../../i18n/ar';
@@ -231,6 +232,14 @@ export default function BrowseScreen({ navigation }: any) {
   });
   // In-feed slots — a separate dashboard-managed pool, injected one banner
   // after every 5 listings. Empty pool = the feed renders exactly as before.
+  // Eligibility for the advanced dashboard. 404s for everyone who isn't a
+  // shop, which is most users — treated as "no card" rather than an error.
+  const { data: tierStatus } = useQuery({
+    queryKey: ['shop-tier'],
+    queryFn: () => Shops.myTier().catch(() => null),
+    enabled: !!user && (user as any).seller_type === 'shop',
+    staleTime: 5 * 60 * 1000,
+  });
   const { data: feedBanners } = useQuery({
     queryKey: ['banners', 'feed', bannerGov ?? '__all__'],
     queryFn: () => Banners.feed(bannerGov),
@@ -300,9 +309,16 @@ export default function BrowseScreen({ navigation }: any) {
     // Home-hub card (storefront + shops segments) — right after the promo
     // banner, before the first listing (design §A ordering).
     const hub = (storefront || homeShops.length) ? [{ __homeHub: true }] : [];
-    if (bannerPool.length === 0) return [...hub, ...out];
-    return [{ __bannerPool: bannerPool }, ...hub, ...out];
-  }, [items, bannerPool, feedBanners, storefront, homeShops]);
+    // "Your shop qualifies" takes the first listing's slot, for the shop
+    // owner only. It is the one place the offer reaches shops that never
+    // open the merchant dashboard — but it costs a listing, so it shows
+    // only while the shop is eligible and has not been upgraded.
+    const upgrade = (tierStatus && tierStatus.tier !== 'advanced'
+      && (tierStatus.eligible || tierStatus.state === 'pending_review'))
+      ? [{ __shopUpgrade: tierStatus }] : [];
+    if (bannerPool.length === 0) return [...hub, ...upgrade, ...out];
+    return [{ __bannerPool: bannerPool }, ...hub, ...upgrade, ...out];
+  }, [items, bannerPool, feedBanners, storefront, homeShops, tierStatus]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -611,6 +627,11 @@ export default function BrowseScreen({ navigation }: any) {
               onOpenStore={() => storefront && navigation.navigate('StoreHome', { id: storefront.shop_id })}
               onOpenDirectory={() => navigation.navigate('Shops')}
               onOpenShopPage={(sid) => navigation.navigate('ShopDetail', { id: sid })}
+            />
+          ) : item.__shopUpgrade ? (
+            <ShopUpgradeCard
+              status={item.__shopUpgrade}
+              onPress={() => navigation.navigate('ShopUpgrade')}
             />
           ) : item.__feedBanner ? (
             <FeedBanner

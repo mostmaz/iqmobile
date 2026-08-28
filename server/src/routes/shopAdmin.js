@@ -6,6 +6,7 @@
 // move them through the linear lifecycle, glance at your stock.
 
 import { Router } from 'express';
+import { createTierRequest } from '../shopTier.js';
 import multer from 'multer';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -291,42 +292,11 @@ r.post('/shop-admin/offer-seen', requireShopAdmin, (req, res) => {
 });
 
 r.post('/shop-admin/tier-request', requireShopAdmin, (req, res) => {
-  const u = db.prepare('SELECT * FROM users WHERE id=?').get(req.shop.id);
-  if ((u.shop_tier || 'simple') === 'advanced') return res.status(409).json({ error: 'already_advanced' });
-  const open = db.prepare(
-    "SELECT id FROM shop_tier_requests WHERE shop_id=? AND status='pending'",
-  ).get(u.id);
-  if (open) return res.status(409).json({ error: 'request_pending' });
-  // Rejected shops may re-apply after 30 days (spec §1).
-  if (u.shop_tier_rejected_at && now() - u.shop_tier_rejected_at < 30 * 86400000) {
-    return res.status(409).json({
-      error: 'too_soon',
-      retry_at: u.shop_tier_rejected_at + 30 * 86400000,
-    });
-  }
-  const b = req.body || {};
-  const sellsNew = b.sells_new ? 1 : 0;
-  const id = db.prepare(`
-    INSERT INTO shop_tier_requests(shop_id, store_name, governorate, device_count_approx,
-                                   sells_new, phone, whatsapp, status, created_at)
-    VALUES(?,?,?,?,?,?,?, 'pending', ?)
-  `).run(
-    u.id,
-    String(b.store_name || u.shop_name || u.display_name || '').slice(0, 120),
-    String(b.governorate || u.governorate || '').slice(0, 40),
-    Number.isFinite(Number(b.device_count_approx)) ? Number(b.device_count_approx) : null,
-    sellsNew,
-    String(b.phone || u.shop_phone || u.phone || '').slice(0, 20),
-    String(b.whatsapp || u.shop_whatsapp || '').slice(0, 20),
-    now(),
-  ).lastInsertRowid;
-  db.prepare("UPDATE users SET shop_tier_state='pending_review', shop_sells_new=? WHERE id=?")
-    .run(sellsNew, u.id);
-  computeShopSignals(u.id);
-  audit('shop', u.id, 'tier.request', { kind: 'shop', id: u.id }, { request_id: id });
-  pushToAdmins('shop.new', 'طلب ترقية لوحة متجر',
-    `${u.shop_name || u.display_name}`, { screen: 'tier_requests' }).catch(() => {});
-  res.json({ ok: true, id });
+  // Rules live in shopTier.js — the app's home-feed card asks through the
+  // same helper, and two copies would drift the first time one changed.
+  const r2 = createTierRequest(req.shop.id, req.body || {}, 'shop');
+  if (r2.error) return res.status(r2.status).json(r2);
+  res.json({ ok: true, id: r2.id });
 });
 
 r.get('/shop-admin/orders', requireShopAdmin, (req, res) => {
