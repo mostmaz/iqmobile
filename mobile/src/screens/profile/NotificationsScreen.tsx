@@ -49,6 +49,12 @@ const KIND_LABEL: Record<string, string> = {
   // builds that carry this label (QUIET_UI_MIN_VERSION gate, same pattern
   // as shop.review.*). Payload has listing_id → tap opens the listing.
   'listing.quiet': 'إعلانك ما وصله تواصل بعد 📣',
+  // Sent 24h after a feature request is still sitting at 'pending' — almost
+  // always because the seller never completed the transfer. Payload carries
+  // listing_id, and the tap opens the feature screen rather than the
+  // listing, because finishing (or abandoning) the promotion is the only
+  // thing this notification is asking about.
+  'feature.reminder': 'هل ما زلت مهتماً بجعل إعلان هاتفك مميز؟',
 };
 
 // The tier decision reuses the shop.review.* kinds, so the label map alone
@@ -155,6 +161,13 @@ export default function NotificationsScreen({ navigation }: any) {
     // actually answer "where is my order".
     if (item.payload?.order_id || String(item.kind).startsWith('order.')) {
       navigation.navigate('MyOrders');
+      return;
+    }
+    // Before the generic listing_id branch: this one is about the promotion,
+    // not the listing, and dropping the seller on their own ad would leave
+    // them to find "ميّز إعلانك" for themselves.
+    if (item.kind === 'feature.reminder' && item.payload?.listing_id) {
+      navigation.navigate('FeatureListing', { id: item.payload.listing_id });
       return;
     }
     if (item.payload?.listing_id) {

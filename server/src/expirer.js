@@ -1,5 +1,6 @@
 import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
+import { nudgeStalePromotions } from './featureNudge.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
 // Deals time out after 24h in any non-terminal state (so phone numbers aren't
@@ -106,6 +107,22 @@ function tick() {
   ).run(now, now - STALE_MAX_MS);
 }
 
+// The promotion reminder rides here rather than in its own scheduler: it is
+// the same shape as the deal timeout above — a record that has sat in one
+// state for 24 hours — and one sweeper is easier to reason about than two.
+//
+// Kept OUT of tick() because it is async and tick() is deliberately
+// synchronous: awaiting a push inside it would let the 30-second interval
+// stack a second run on top of a slow first one.
+let nudging = false;
+async function nudgeTick() {
+  if (nudging) return;
+  nudging = true;
+  try { await nudgeStalePromotions(); } catch (e) {
+    console.error('[expirer] promotion nudge failed', e?.message);
+  } finally { nudging = false; }
+}
+
 export function startExpirer() {
   // Run once on boot so a long-offline server doesn't wait 30s before
   // catching up on its backlog.
@@ -113,4 +130,10 @@ export function startExpirer() {
   setInterval(() => {
     try { tick(); } catch (e) { console.error('[expirer] tick failed', e); }
   }, 30 * 1000);
+
+  // Every 15 minutes, not every 30 seconds: the threshold is a day, so
+  // quarter-hour granularity is already far finer than the question needs,
+  // and each pass may send push notifications.
+  setTimeout(nudgeTick, 60 * 1000);
+  setInterval(nudgeTick, 15 * 60 * 1000);
 }

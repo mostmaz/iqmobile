@@ -102,6 +102,13 @@ function AppInner() {
         case 'listing.saved':
           if (data?.listing_id) go('Main', { screen: 'Browse', params: { screen: 'ListingDetail', params: { id: data.listing_id } } });
           break;
+        case 'feature.reminder':
+          // "Are you still interested?" — 24h after a feature request was
+          // still pending. Opens the promotion screen, not the listing: the
+          // question is whether to finish paying for it or drop it, and both
+          // answers live there.
+          if (data?.listing_id) go('Main', { screen: 'Browse', params: { screen: 'FeatureListing', params: { id: data.listing_id } } });
+          break;
         case 'broadcast':
           // Marketing / announcement — just open the app, no specific route.
           break;

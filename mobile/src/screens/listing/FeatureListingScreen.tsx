@@ -16,6 +16,7 @@ import { Header, Btn, Input, FieldLabel, fmtIQD } from '../../components/ui';
 import { IconSpark, IconCheck, IconPhoneIcon, IconQiCard } from '../../components/icons';
 import { Features, type FeatureCarrier } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
+import { timeAgoAr } from '../../lib/format';
 
 const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
   asiacell: { label: 'آسياسيل', color: '#ED1C24' },
@@ -60,6 +61,14 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     [mine, listingId],
   );
   const hasPending = existing?.status === 'pending';
+  // Past the point where the server has already asked "are you still
+  // interested?" — same 24h threshold as featureNudge.js on the server.
+  const waitingLong = !!existing && hasPending && Date.now() - existing.created_at > 24 * 3600 * 1000;
+  // The number this request was supposed to be paid to, so a seller who
+  // never completed the transfer can still do it from this screen.
+  const transferNumber = existing
+    ? data?.transfer_numbers?.[existing.carrier as FeatureCarrier] ?? null
+    : null;
 
   // The filled USSD dial code for the current carrier + tier selection.
   const ussdCode = useMemo(() => {
@@ -156,8 +165,30 @@ export default function FeatureListingScreen({ navigation, route }: any) {
             <StatusCard
               tone="pending"
               title="طلبك قيد المراجعة"
-              body="استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد."
+              body={
+                // A request older than a day is one we have already asked
+                // about by notification, and by far the likeliest reason it
+                // is still sitting here is that the balance never arrived.
+                // Saying "we're reviewing it" to that seller is not just
+                // unhelpful, it is wrong — so the copy names the real
+                // condition instead of restating the status.
+                waitingLong
+                  ? `مضى ${timeAgoAr(existing!.created_at)} على الطلب ولم نستلم الرصيد بعد. إذا حوّلته فعلاً راسلنا، وإذا ما حوّلته تكدر تعيد المحاولة من الزر تحت.`
+                  : 'استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد.'
+              }
             />
+            {/* What they owe and where. Hidden behind the form until now,
+                which left the one seller who needs it — the one who never
+                transferred — with nothing to act on. */}
+            {existing ? (
+              <View style={{
+                flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 14,
+              }}>
+                <FactChip label="الباقة" value={existing.tier} ltr />
+                <FactChip label="المبلغ" value={`${existing.amount.toLocaleString('en-US')} د.ع`} />
+                {transferNumber ? <FactChip label="حوّل إلى" value={transferNumber} ltr /> : null}
+              </View>
+            ) : null}
             {/* Escape hatch: opened the dialer but never sent the balance →
                 cancel the pending request and bring the form back to retry. */}
             <Btn kind="ghost" full busy={cancelPending.isPending} onPress={() => cancelPending.mutate()}>
@@ -311,6 +342,25 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           </>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/** Quiet label, loud value — the same pill the spec sheet uses. */
+function FactChip({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
+  return (
+    <View style={{
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+      paddingHorizontal: 11, paddingVertical: 7,
+      borderRadius: radius.pill, backgroundColor: theme.chipBg,
+    }}>
+      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle }}>{label}</Text>
+      <Text style={{
+        fontFamily: ltr ? fonts.ltr : fonts.arBold, fontSize: 12.5, color: theme.chipInk,
+        writingDirection: ltr ? 'ltr' : 'rtl',
+      }}>
+        {value}
+      </Text>
     </View>
   );
 }

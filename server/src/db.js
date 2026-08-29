@@ -976,6 +976,11 @@ addColumnIfMissing('users', 'shop_facebook TEXT');
 addColumnIfMissing('users', 'shop_instagram TEXT');
 // Qi Card feature payments carry the sender's account name, not a SIM.
 addColumnIfMissing('feature_requests', 'sender_name TEXT');
+// When we asked "are you still interested?" about a request that has been
+// pending for a day. Stamped rather than derived, so the reminder goes out
+// exactly once no matter how often the sweep runs or how long the request
+// then sits in the queue.
+addColumnIfMissing('feature_requests', 'nudged_at INTEGER');
 
 // Shop-level paid featuring + verification, both requested from the
 // merchant panel and approved by the admin. Statuses route-validated
