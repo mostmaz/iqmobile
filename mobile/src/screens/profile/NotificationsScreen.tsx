@@ -54,7 +54,7 @@ const KIND_LABEL: Record<string, string> = {
   // listing_id, and the tap opens the feature screen rather than the
   // listing, because finishing (or abandoning) the promotion is the only
   // thing this notification is asking about.
-  'feature.reminder': 'هل ما زلت مهتماً بجعل إعلان هاتفك مميز؟',
+  'feature.reminder': 'هل ما زلت تريد أن تميّز إعلانك؟',
 };
 
 // The tier decision reuses the shop.review.* kinds, so the label map alone

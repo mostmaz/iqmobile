@@ -27,7 +27,7 @@ const PENDING_MS = 24 * 3600 * 1000;
 const REMINDER_UI_MIN_VERSION = '0.3.8';
 
 const TITLE = 'تمييز الإعلان';
-const BODY = 'هل ما زلت مهتماً بجعل إعلان هاتفك مميز؟';
+const BODY = 'هل ما زلت تريد أن تميّز إعلانك؟';
 
 // Per-tick cap, matching expirer.js. After downtime the SELECT can match a
 // backlog; sending them in one tight loop would hold the event loop on
