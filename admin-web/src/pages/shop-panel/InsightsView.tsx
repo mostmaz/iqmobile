@@ -215,7 +215,7 @@ export function InsightsView({ me, advanced, onReload }: { me: any; advanced: bo
                 ))}
               </div>
               <input value={sender} onChange={(e) => setSender(e.target.value)} style={inputStyle}
-                placeholder={carrier === 'qicard' ? 'اسم صاحب حساب Qi' : (carrier === 'korek' ? '0750XXXXXXX' : '0770XXXXXXX')} />
+                placeholder={carrier === 'qicard' ? 'اسم صاحب حساب Qi' : (carrier === 'korek' ? '0750 / 0751 …' : '0770 / 0771 …')} />
               {carrier === 'qicard' && cfg?.qi_card ? (
                 <div style={{ background: T.chip, borderRadius: 10, padding: 10, font: `400 12px ${FONT}`, color: '#3A352D' }}>
                   حوّل {money(selectedTier?.amount || 0)} د.ع إلى حساب Qi:{' '}

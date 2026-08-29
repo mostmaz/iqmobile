@@ -30,6 +30,16 @@ const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
 // sender is identified by account name.
 const FALLBACK_PREFIXES: Partial<Record<FeatureCarrier, string>> = { asiacell: '077', korek: '075' };
 
+// What we SHOW when a number doesn't match the network. The check itself is
+// three digits (077 / 075), which already accepts every number on the
+// network; this is only the human-readable version of it. It used to be
+// derived as `${pfx}0`, which named exactly one of the two ranges each
+// carrier issues and read as a rejection of the other.
+const PREFIX_LABEL: Partial<Record<FeatureCarrier, string>> = {
+  asiacell: '0770 - 0771',
+  korek: '0750 - 0751',
+};
+
 // Mirror of the server's normalizeIraqiPhone, for prefix checks only.
 function normalizePhone(input: string): string {
   let d = input.replace(/\D/g, '');
@@ -131,7 +141,10 @@ export default function FeatureListingScreen({ navigation, route }: any) {
       const pfx = data?.carrier_prefixes?.[carrier] || FALLBACK_PREFIXES[carrier];
       if (pfx && !digits.startsWith(pfx)) {
         const meta = CARRIER_META[carrier];
-        Alert.alert('الرقم لا يطابق الشبكة', `رقم ${meta.label} يجب أن يبدأ بـ ${pfx}0.`);
+        Alert.alert(
+          'الرقم لا يطابق الشبكة',
+          `رقم ${meta.label} يجب أن يبدأ بـ ${PREFIX_LABEL[carrier] || pfx}.`,
+        );
         return;
       }
     }
@@ -247,7 +260,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
               <>
                 <FieldLabel>٢ · الرقم الذي ستحوّل منه</FieldLabel>
                 <Input value={sender} onChangeText={setSender}
-                  placeholder={carrier === 'korek' ? '0750XXXXXXX' : '0770XXXXXXX'} numeric ltr />
+                  placeholder={carrier === 'korek' ? '0750 / 0751 …' : '0770 / 0771 …'} numeric ltr />
               </>
             )}
 
