@@ -18,6 +18,7 @@ import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
 import { ShopUpgradeCard } from '../../components/ShopUpgradeCard';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
+import { SortPills } from '../../components/SortPills';
 import { Listings, Brands, Banners, Chats, Shops, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -161,7 +162,7 @@ export default function BrowseScreen({ navigation }: any) {
   // Any non-location filter active? Drives the little accent dot on the
   // compact filter button (governorate has its own chip, so it's excluded).
   const hasActiveFilters = !!(
-    filters.brand || filters.condition || filters.min_price != null || filters.max_price != null
+    filters.sort || filters.brand || filters.condition || filters.min_price != null || filters.max_price != null
   );
 
   const {
@@ -203,6 +204,10 @@ export default function BrowseScreen({ navigation }: any) {
   }, [user?.governorate]);
 
   function patch(p: Partial<BrowseFilters>) { setFilters((s) => ({ ...s, ...p })); setBannerTick((t) => t + 1); }
+  // Any order but the default makes the server drop sold/expired rows on its
+  // own, so "available only" is already in force — see SORTS in routes/listings.js.
+  const sortImpliesAvailable = !!filters.sort && filters.sort !== 'new';
+  const availableChecked = sortImpliesAvailable || !!filters.available_only;
   function clear() { setFilters({}); }
 
   // Swipe up on the open filter panel to dismiss it — the panel has no
@@ -497,27 +502,36 @@ export default function BrowseScreen({ navigation }: any) {
           >
             {/* Small grab handle — hints the panel is swipe-up dismissable. */}
             <View style={{ alignSelf: 'center', width: 34, height: 4, borderRadius: 999, backgroundColor: theme.line, marginBottom: 10 }} />
+            {/* Order first: it is the one control that changes every row
+                below it, and the reason most buyers open this panel at all
+                ("cheapest first") had no home before. */}
+            <SortPills value={filters.sort} onChange={(v) => patch({ sort: v })} />
             {/* The feed deliberately carries sold and expired rows so it
                 reads as a live market. A shopper who only wants what they can
                 actually buy had no way to say so — the seller's own My
                 Listings has had status chips all along. */}
+            {/* An explicit sort already returns buyable stock only, so under
+                one of those this box is on whether it is ticked or not.
+                Showing it ticked and inert is the honest version — leaving
+                it empty would claim sold rows are in a list they are not. */}
             <TouchableOpacity
-              onPress={() => patch({ available_only: filters.available_only ? undefined : true })}
-              activeOpacity={0.75}
+              onPress={() => { if (!sortImpliesAvailable) patch({ available_only: filters.available_only ? undefined : true }); }}
+              activeOpacity={sortImpliesAvailable ? 1 : 0.75}
               accessibilityRole="switch"
-              accessibilityState={{ checked: !!filters.available_only }}
+              accessibilityState={{ checked: availableChecked, disabled: sortImpliesAvailable }}
               style={{
                 flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
                 paddingVertical: 10, marginBottom: 4,
+                opacity: sortImpliesAvailable ? 0.55 : 1,
               }}
             >
               <View style={{
                 width: 22, height: 22, borderRadius: 7,
-                backgroundColor: filters.available_only ? theme.ink : 'transparent',
-                borderWidth: filters.available_only ? 0 : 2, borderColor: theme.subtle,
+                backgroundColor: availableChecked ? theme.ink : 'transparent',
+                borderWidth: availableChecked ? 0 : 2, borderColor: theme.subtle,
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                {filters.available_only ? <IconCheck size={13} color={theme.bg} sw={2.6} /> : null}
+                {availableChecked ? <IconCheck size={13} color={theme.bg} sw={2.6} /> : null}
               </View>
               <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink }}>
                 المتوفر للبيع فقط
@@ -617,6 +631,7 @@ export default function BrowseScreen({ navigation }: any) {
         keyExtractor={(item) => (
           item.__bannerPool ? 'banner-carousel'
             : item.__homeHub ? 'home-hub'
+            : item.__shopUpgrade ? 'shop-upgrade'
             : item.__feedBanner ? `feed-banner-${item.__slot}`
               : String(item.id)
         )}

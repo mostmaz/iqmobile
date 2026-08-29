@@ -62,14 +62,22 @@ export default function CompareScreen({ navigation }: any) {
   const rows = useMemo<Row[]>(() => {
     if (items.length < 2) return [];
     const spec = (i: any) => i.specs || {};
-    const prices = items.map((i: any) => i.asking_price);
-    const cheapest = prices.indexOf(Math.min(...prices));
+    // "Call for price" is stored as asking_price=1, so a listing with no
+    // price would take the cheapest badge at one dinar. Only real prices
+    // compete, and a listing without one says so.
+    const priceOf = (i: any) => (i.price_on_request ? null : i.asking_price);
+    const real = items.map(priceOf).filter((n: number | null) => n != null && n > 0) as number[];
+    const cheapest = real.length
+      ? items.findIndex((i: any) => priceOf(i) === Math.min(...real))
+      : -1;
 
     const out: Row[] = [
       {
         label: 'السعر',
-        values: items.map((i: any) => `${fmtIQD(i.asking_price)} د.ع`),
-        best: cheapest,
+        values: items.map((i: any) => (
+          i.price_on_request ? 'اتصل للسعر' : `${fmtIQD(i.asking_price)} د.ع`
+        )),
+        best: cheapest >= 0 ? cheapest : null,
       },
       { label: 'الحالة', values: items.map((i: any) => (ar.listing as any)[i.condition] || i.condition) },
       { label: 'السعة', values: items.map((i: any) => i.storage || null) },
@@ -125,7 +133,12 @@ export default function CompareScreen({ navigation }: any) {
   // makes them compute across two columns.
   const gap = useMemo(() => {
     if (items.length < 2) return null;
-    const prices = items.map((i: any) => i.asking_price).filter((n: number) => n > 0);
+    // Same rule as the cheapest badge: a listing with no price has no gap
+    // to state, and the sentinel would report a 100% difference.
+    const prices = items
+      .filter((i: any) => !i.price_on_request)
+      .map((i: any) => i.asking_price)
+      .filter((n: number) => n > 0);
     if (prices.length < 2) return null;
     const min = Math.min(...prices);
     const max = Math.max(...prices);

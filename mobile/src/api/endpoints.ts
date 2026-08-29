@@ -225,8 +225,18 @@ export const Auth = {
 };
 
 // ─── Listings ─────────────────────────────────────────────────────────
+// The four orders the feed supports. 'new' is the server's default and is
+// sent as nothing at all, so an untouched filter panel produces exactly the
+// request it always did.
+//
+// Note the server narrows the result set for any order but 'new': an
+// explicit sort returns buyable stock only, without the sold/expired rows
+// the default feed carries for market context.
+export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed';
+
 export interface BrowseFilters {
   q?: string;
+  sort?: BrowseSort;
   brand?: string;
   model?: string;
   governorate?: string;
@@ -264,7 +274,11 @@ export const Listings = {
   // Two or three listings in one request — the compare table renders them
   // together, so fetching them separately just risks a half-drawn screen.
   compare: (ids: number[]) =>
-    api<{ items: Array<Listing & { specs?: DeviceSpecSheet | null; seller_name?: string }> }>(
+    api<{ items: Array<Listing & {
+      specs?: DeviceSpecSheet | null;
+      seller_name?: string;
+      price_on_request?: number | boolean;
+    }> }>(
       `/listings/compare?ids=${ids.join(',')}`,
     ),
   // Other active listings of the same brand within ±10% of this price —

@@ -384,10 +384,15 @@ r.get('/', optionalAuth(), (req, res) => {
   // pure ordered list with NO featured pinning — someone sorting by price
   // wants price order, not ads first. 'viewed' ranks by the view events the
   // analytics pipeline records (correlated subquery; the table is small).
+  // A "call for price" listing carries asking_price=1 as a sentinel (see
+  // shopAdmin.js, where a missing price becomes 1). Sorted on the raw number
+  // it wins "cheapest" outright and heads the list at one dinar, so both
+  // price sorts push those rows to the end first — the same rule the
+  // storefront's own price sort has always used.
   const SORTS = {
     new: 'l.created_at DESC',
-    price_asc: 'l.asking_price ASC, l.created_at DESC',
-    price_desc: 'l.asking_price DESC, l.created_at DESC',
+    price_asc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, l.created_at DESC',
+    price_desc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price DESC, l.created_at DESC',
     viewed: "(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, l.created_at DESC",
   };
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
@@ -609,15 +614,23 @@ r.get('/compare', optionalAuth(), (req, res) => {
   if (ids.length < 2) return res.status(400).json({ error: 'need_two_ids' });
 
   const ph = ids.map(() => '?').join(',');
+  // The same visibility rule the detail route applies. Ids arrive from the
+  // query string, so without it anyone could read a soft-deleted listing —
+  // or a shop's unpublished draft, which rides status='removed' + is_draft=1
+  // precisely so that every public query already excludes it. A row that
+  // fails this is simply absent; the compare screen prunes what it asked
+  // for and didn't get.
   const rows = db.prepare(`
     SELECT l.id, l.brand, l.model, l.storage, l.color, l.condition, l.battery_health,
-           l.asking_price, l.governorate, l.city, l.status, l.created_at, l.seller_id,
+           l.asking_price, l.price_on_request, l.governorate, l.city, l.status,
+           l.created_at, l.seller_id,
            (SELECT i.image_path FROM listing_images i
              WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS image_path,
            u.display_name AS seller_name, u.shop_name, u.seller_type, u.verified
       FROM phone_listings l
       JOIN users u ON u.id = l.seller_id
      WHERE l.id IN (${ph})
+       AND l.status != 'removed' AND COALESCE(l.is_draft,0) = 0
   `).all(...ids);
 
   // Preserve the order the buyer picked them in — the table's columns are

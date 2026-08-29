@@ -13,7 +13,8 @@ import { IconClose, IconBell, IconChevronDown } from '../../components/icons';
 import { Pill } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
-import { Listings, Brands, type BrandRow } from '../../api/endpoints';
+import { Listings, Brands, type BrandRow, type BrowseSort } from '../../api/endpoints';
+import { SortPills } from '../../components/SortPills';
 import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { useSaveSearch } from '../../lib/useSaveSearch';
 import { ar } from '../../i18n/ar';
@@ -25,6 +26,9 @@ export default function SearchScreen({ navigation }: any) {
   const brandRailRef = useRef<ScrollView>(null);
   const [brand, setBrand] = useState<string | null>(null);
   const [model, setModel] = useState('');
+  // undefined = the server's default order. Kept across a brand change: a
+  // buyer who asked for cheapest-first means it for the next brand too.
+  const [sort, setSort] = useState<BrowseSort | undefined>(undefined);
   const [pickerOpen, setPickerOpen] = useState(false);
   const { save: saveSearch, isPending: savingSearch } = useSaveSearch();
 
@@ -46,9 +50,12 @@ export default function SearchScreen({ navigation }: any) {
     data, isLoading, isError, error, refetch, isFetching,
     fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['search', brand, model],
+    queryKey: ['search', brand, model, sort ?? 'new'],
     queryFn: ({ pageParam = 0 }) =>
-      Listings.browse({ brand: brand!, ...(model ? { model } : {}), limit: PAGE_SIZE, offset: pageParam as number }),
+      Listings.browse({
+        brand: brand!, ...(model ? { model } : {}), ...(sort ? { sort } : {}),
+        limit: PAGE_SIZE, offset: pageParam as number,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
     enabled,
@@ -113,6 +120,15 @@ export default function SearchScreen({ navigation }: any) {
             <IconChevronDown size={16} color={theme.subtle} sw={2} />
           )}
         </TouchableOpacity>
+
+        {/* Order the results. Only once a brand is chosen — there is nothing
+            to order before that, and an inert control above an empty list
+            reads as a broken one. */}
+        {enabled ? (
+          <View style={{ marginTop: 12 }}>
+            <SortPills value={sort} onChange={setSort} label={null} />
+          </View>
+        ) : null}
 
         {/* Save this search → alert on new matching listing */}
         {enabled ? (
