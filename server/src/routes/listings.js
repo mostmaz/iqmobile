@@ -9,7 +9,8 @@ import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
-import { checkListingQuality } from '../listingQuality.js';
+import { checkListingQuality, reviewListingQuality } from '../listingQuality.js';
+import { flagListingForReview } from '../listingFlag.js';
 import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
 import { pushToAdmins } from '../adminPush.js';
@@ -264,12 +265,16 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     if (guess && guess !== 'Other' && isBrand(guess)) finalBrand = guess;
   }
 
-  // Quality gate — reject listings advertising a broken / non-working /
-  // locked / stolen device so the catalogue stays clean. Negation-aware,
+  // Quality gate — refuse a device that is not sellable here at all:
+  // doesn't work, stolen, locked to someone else's account. Negation-aware,
   // so "بدون مشكلة" / "مو مقفول" still pass. Admin quick-add is exempt.
   if (checkListingQuality(model, description)) {
     return res.status(400).json({ error: 'listing_quality' });
   }
+  // Disclosed damage is a different answer: the listing goes live and an
+  // operator sees it. Held until the row exists, since the queue is keyed
+  // on the listing id.
+  const damage = reviewListingQuality(model, description);
   const rawPrice = Number(asking_price);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) return res.status(400).json({ error: 'bad_price' });
   // "500" means 500,000 — see priceScale.js. Applied here rather than in the
@@ -353,6 +358,10 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   if (priceScaled) {
     console.log(`[price-scale] listing ${row.id}: ${rawPrice} -> ${price} (${finalBrand} ${model})`);
   }
+  // Disclosed damage — live, but queued. The seller is told nothing: they
+  // described the phone honestly and the listing worked, which is exactly
+  // the behaviour to encourage.
+  if (damage) flagListingForReview(row.id, damage.defects);
   res.json({ ...attachImages([row])[0], price_corrected: priceScaled ? rawPrice : null });
 });
 
@@ -867,6 +876,19 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
 
+  // The same gate the create path applies, against the text as it will read
+  // AFTER this edit. Without it the gate was a one-time check at birth: post
+  // something clean, then edit the description to say anything. That is not
+  // hypothetical — a listing whose description reads "مقفول ايكلود" was live
+  // on production, posted three weeks AFTER the gate shipped, and the gate
+  // rejects that exact text. The only way in was an edit.
+  const nextModel = req.body.model !== undefined ? req.body.model : row.model;
+  const nextDesc = req.body.description !== undefined ? req.body.description : row.description;
+  const textChanged = req.body.model !== undefined || req.body.description !== undefined;
+  if (textChanged && checkListingQuality(nextModel, nextDesc)) {
+    return res.status(400).json({ error: 'listing_quality' });
+  }
+
   const fields = [];
   const params = [];
   for (const k of EDITABLE) {
@@ -919,6 +941,14 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   // Post-response so alert fan-out can't slow or fail the edit itself.
   if (updatedRow.asking_price < row.asking_price) {
     setImmediate(() => alertOnPriceChange(updatedRow, row.asking_price));
+  }
+  // Damage added by an edit reaches the queue the same way it would have at
+  // creation. Re-checked on every text edit rather than once, because a
+  // description that changes after an operator approved it is new
+  // information — flagListingForReview decides whether that reopens the row.
+  if (textChanged) {
+    const damage = reviewListingQuality(updatedRow.model, updatedRow.description);
+    if (damage) flagListingForReview(updatedRow.id, damage.defects);
   }
   res.json(attachImages([updatedRow])[0]);
 });
