@@ -54,7 +54,11 @@ export async function nudgeStalePromotions() {
       WHERE f.status = 'pending'
         AND f.nudged_at IS NULL
         AND f.created_at <= ?
-        AND l.status != 'removed'
+        -- Only a listing that could still BE featured. A phone that sold or
+        -- expired while the request sat pending has nothing to promote, and
+        -- asking its owner for money would be the worst message the app
+        -- sends all week.
+        AND l.status IN ('active', 'reserved')
       ORDER BY f.created_at ASC
       LIMIT ?`,
   ).all(cutoff, TICK_LIMIT);

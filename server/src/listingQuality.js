@@ -90,13 +90,26 @@ const KIND_OF = new Map([
 // Negations that, when they appear just before a WORD, flip it to a
 // positive claim and clear the flag. Trailing space keeps short particles
 // like "مو"/"مب"/"no" from matching inside unrelated words.
-const NEGATIONS = [
-  'بدون', 'بلا', 'مو ', 'مب ', 'غير ', 'ماكو', 'مافي', 'no ', 'not ',
-  // "لا يوجد كسر" is a seller saying the phone is INTACT. Without these the
-  // matcher read that as a crack — the single most common way an honest
-  // listing was misread in testing.
-  'لا ', 'ولا ', 'ليس', 'مابي', 'مافيه', 'لايوجد',
-];
+// Matched as WHOLE WORDS, never as substrings. That distinction is the
+// whole safety of this list: "لا" as a substring also lives inside "أصلا"
+// and "فعلا", so a substring match turned "أصلا مسروق" — the phone really
+// is stolen — into a cleared listing. Anything added here must be safe to
+// meet in the middle of a sentence.
+const NEGATIONS = new Set([
+  'بدون', 'بلا', 'مو', 'مب', 'غير', 'ماكو', 'مافي', 'no', 'not',
+  // "لا يوجد كسر" is a seller saying the phone is INTACT — the commonest
+  // way an honest listing was misread before these were added.
+  'لا', 'ولا', 'ليس', 'لايوجد',
+  // Bare "ما" standing alone is the Iraqi negation particle — "ما مبدل"،
+  // "ما داخل صيانة". It can also be the relative "what" ("مثل ما موضح")،
+  // which costs an occasional missed flag; that is the cheap direction to
+  // err in, and the alternative rejects honest sellers.
+  'ما',
+]);
+
+/** A token negates if it is one of the above, or an attached ما- form
+ *  ("مابي"، "مابيه"، "مامبدل"، "مافيه") — Iraqi writes those closed up. */
+const isNegation = (t) => NEGATIONS.has(t) || (t.startsWith('ما') && t.length > 2);
 
 // Returns the offending term (string) if the text should be rejected, or
 // null if it passes. Accepts any number of text parts (model, description).
@@ -136,8 +149,13 @@ function firstUnnegated(text, words) {
   for (const w of words) {
     let idx = text.indexOf(w);
     while (idx !== -1) {
+      // A short window, split into whole words. The window is characters
+      // rather than a token count because the defect word itself is often
+      // glued to its negation ("مامبدل"), and slicing 14 characters back
+      // catches the "ما" without needing to tokenize the whole description.
       const before = text.slice(Math.max(0, idx - 14), idx);
-      if (!NEGATIONS.some((n) => before.includes(n))) return w;
+      const negated = before.split(/[^\p{L}]+/u).filter(Boolean).some(isNegation);
+      if (!negated) return w;
       idx = text.indexOf(w, idx + w.length);
     }
   }
