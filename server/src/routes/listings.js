@@ -206,6 +206,20 @@ function normalizeIraqiPhone(input) {
 }
 
 // ─── create listing ──────────────────────────────────────────────────
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+// How many listings a shop may post FROM THE APP in a rolling week.
+// Read per-request from app_settings so it can be tuned from the dashboard
+// without a deploy; 0 means unlimited, and a missing/garbage value falls
+// back to the default rather than accidentally unlocking the cap.
+const SHOP_WEEKLY_DEFAULT = 5;
+function shopWeeklyCap() {
+  const raw = getSetting('shop_weekly_listing_limit');
+  if (raw == null || String(raw).trim() === '') return SHOP_WEEKLY_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : SHOP_WEEKLY_DEFAULT;
+}
+
 r.post('/', requireAuth(), createLimiter, (req, res) => {
   const {
     brand, condition, battery_health,
@@ -234,6 +248,38 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     ).get(req.user.id);
     if (last && Date.now() - last.created_at < HOUR) {
       return res.status(429).json({ error: 'listing_hourly_limit', retry_after_ms: HOUR - (Date.now() - last.created_at) });
+    }
+  } else {
+    // Shops keep the exemption from the per-minute and per-hour rules — they
+    // post their week's stock in one sitting, and a one-an-hour drip would
+    // make that take five hours — but they are capped over the week itself.
+    //
+    // A ROLLING seven days, not a calendar week: a Sunday-midnight reset
+    // trains everyone to dump five listings the moment it flips, which is
+    // the burst the cap exists to prevent.
+    //
+    // This governs the APP's posting form only. The merchant panel, the
+    // Excel import and admin quick-add write through their own routes and
+    // are deliberately untouched — capping those would break catalogue
+    // management, which is what a shop dashboard is for.
+    const cap = shopWeeklyCap();
+    if (cap > 0) {
+      const since = Date.now() - WEEK_MS;
+      const used = db.prepare(
+        "SELECT COUNT(*) AS n FROM phone_listings WHERE seller_id=? AND status != 'removed' AND created_at > ?",
+      ).get(req.user.id, since).n;
+      if (used >= cap) {
+        // Retry when the OLDEST listing in the window ages out, which is the
+        // moment a slot actually frees — not a flat seven days from now.
+        const oldest = db.prepare(
+          "SELECT created_at FROM phone_listings WHERE seller_id=? AND status != 'removed' AND created_at > ? ORDER BY created_at ASC LIMIT 1",
+        ).get(req.user.id, since);
+        return res.status(429).json({
+          error: 'shop_weekly_limit',
+          limit: cap,
+          retry_after_ms: oldest ? Math.max(0, oldest.created_at + WEEK_MS - Date.now()) : WEEK_MS,
+        });
+      }
     }
   }
   // Trim every free-text field client-side data could blow up. A 1MB
