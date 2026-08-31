@@ -171,7 +171,19 @@ export function ShopsPage() {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
           <div className="chart-title">Shops ({shops.length})</div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {/* The column header sorts too, but a dim arrow on a small-caps
+                label is not a control anyone finds. This is the one that
+                gets seen. */}
+            <select
+              value={govSort}
+              onChange={(e) => setGovSort(e.target.value as 'none' | 'asc' | 'desc')}
+              title="Sort the list by governorate"
+            >
+              <option value="none">Sort: newest first</option>
+              <option value="asc">Governorate A → Z</option>
+              <option value="desc">Governorate Z → A</option>
+            </select>
             <input placeholder="search name / phone" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
             <button className="secondary" onClick={load}>Search</button>
           </div>
@@ -187,7 +199,10 @@ export function ShopsPage() {
                   style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
                 >
                   Governorate{' '}
-                  <span style={{ opacity: govSort === 'none' ? 0.35 : 1 }}>
+                  <span style={{
+                    opacity: govSort === 'none' ? 0.4 : 1,
+                    color: govSort === 'none' ? undefined : '#7bd88f',
+                  }}>
                     {govSort === 'desc' ? '\u2193' : '\u2191'}
                   </span>
                 </th>
