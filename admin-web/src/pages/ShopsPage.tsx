@@ -74,6 +74,9 @@ export function ShopsPage() {
   // (~75 shops) — a round trip per click would be slower and would lose the
   // current search.
   const [govSort, setGovSort] = useState<'none' | 'asc' | 'desc'>('none');
+  // '' = every governorate. Client-side like the sort, and for the same
+  // reason: the whole directory is already here.
+  const [govFilter, setGovFilter] = useState('');
 
   async function load() {
     setLoading(true);
@@ -151,9 +154,28 @@ export function ShopsPage() {
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
+  // Filter options come from the shops themselves, with counts, rather than
+  // from the GOVERNORATES constant: a list of 18 where 6 are empty makes the
+  // operator hunt for the ones that would actually return something.
+  const govCounts = new Map<string, number>();
+  for (const s2 of shops) {
+    const g = (s2.governorate || '').trim();
+    if (g) govCounts.set(g, (govCounts.get(g) || 0) + 1);
+  }
+  const govOptions = [...govCounts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const blankCount = shops.filter((s2) => !(s2.governorate || '').trim()).length;
+
+  const filtered = govFilter
+    ? shops.filter((s2) => (
+      govFilter === '__none__'
+        ? !(s2.governorate || '').trim()
+        : (s2.governorate || '').trim() === govFilter
+    ))
+    : shops;
+
   // Shops with no governorate sort last in BOTH directions rather than
   // leading the Z-A list — an empty cell is missing data, not a value.
-  const shown = govSort === 'none' ? shops : [...shops].sort((a, b) => {
+  const shown = govSort === 'none' ? filtered : [...filtered].sort((a, b) => {
     const ga = (a.governorate || '').trim();
     const gb = (b.governorate || '').trim();
     if (!ga !== !gb) return ga ? -1 : 1;
@@ -170,11 +192,24 @@ export function ShopsPage() {
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div className="chart-title">Shops ({shops.length})</div>
+          <div className="chart-title">
+            Shops ({govFilter ? `${shown.length} of ${shops.length}` : shops.length})
+          </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {/* The column header sorts too, but a dim arrow on a small-caps
                 label is not a control anyone finds. This is the one that
                 gets seen. */}
+            <select
+              value={govFilter}
+              onChange={(e) => setGovFilter(e.target.value)}
+              title="Show only one governorate"
+            >
+              <option value="">All governorates</option>
+              {govOptions.map(([g, n]) => (
+                <option key={g} value={g}>{g} ({n})</option>
+              ))}
+              {blankCount ? <option value="__none__">— no governorate ({blankCount})</option> : null}
+            </select>
             <select
               value={govSort}
               onChange={(e) => setGovSort(e.target.value as 'none' | 'asc' | 'desc')}
