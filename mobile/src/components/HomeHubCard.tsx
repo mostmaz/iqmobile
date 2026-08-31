@@ -74,11 +74,11 @@ export function HomeHubCard({
                   ) : null}
                 </View>
                 <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-                  style={{ marginTop: 5, fontFamily: fonts.arBold, fontSize: 11, color: theme.ink, textAlign: 'center' }}>
+                  style={{ alignSelf: 'stretch', marginTop: 5, fontFamily: fonts.arBold, fontSize: 11, color: theme.ink, textAlign: 'center' }}>
                   {p.model}
                 </Text>
                 <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-                  style={{ marginTop: 1, fontFamily: fonts.ltrBold, fontSize: 10.5, color: theme.accentDeep }}>
+                  style={{ alignSelf: 'stretch', textAlign: 'center', marginTop: 1, fontFamily: fonts.ltrBold, fontSize: 10.5, color: theme.accentDeep }}>
                   {p.price_on_request ? 'اتصل للسعر' : fmtIQD(p.asking_price)}
                 </Text>
               </TouchableOpacity>
@@ -114,11 +114,11 @@ export function HomeHubCard({
                   )}
                 </View>
                 <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-                  style={{ marginTop: 5, fontFamily: fonts.arBold, fontSize: 11, color: theme.ink, textAlign: 'center' }}>
+                  style={{ alignSelf: 'stretch', marginTop: 5, fontFamily: fonts.arBold, fontSize: 11, color: theme.ink, textAlign: 'center' }}>
                   {s.name}
                 </Text>
                 <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-                  style={{ marginTop: 1, fontFamily: fonts.ar, fontSize: 10, color: theme.subtle }}>
+                  style={{ alignSelf: 'stretch', textAlign: 'center', marginTop: 1, fontFamily: fonts.ar, fontSize: 10, color: theme.subtle }}>
                   {s.city || ' '}
                 </Text>
               </TouchableOpacity>
@@ -149,8 +149,18 @@ function Segment({ label, on, onPress }: { label: string; on: boolean; onPress: 
         backgroundColor: on ? theme.ink : 'transparent',
       }}
     >
+      {/* alignSelf:'stretch' + textAlign:'center', NOT the parent's
+          alignItems:'center'. Centring via the parent makes the Text
+          shrink-wrap its content, and Android under-measures a shaped
+          Arabic run — «كل المتاجر» rendered with the ك sliced off its
+          leading edge, inside a pill three times wider than the text.
+          Stretching hands the Text the full width so there is nothing to
+          clip; the glyphs were never missing, only outside the box. */}
       <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-        style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: on ? theme.surface : theme.chipInk }}>
+        style={{
+          alignSelf: 'stretch', textAlign: 'center',
+          fontFamily: fonts.arBold, fontSize: 12.5, color: on ? theme.surface : theme.chipInk,
+        }}>
         {label}
       </Text>
     </TouchableOpacity>
