@@ -69,6 +69,12 @@ export function ShopsPage() {
   // Editor
   const [editingId, setEditingId] = useState<number | null>(null);
 
+  // Governorate sort. Three states on the column header: off → A-Z → Z-A →
+  // off. Client-side because the whole directory arrives in one response
+  // (~75 shops) — a round trip per click would be slower and would lose the
+  // current search.
+  const [govSort, setGovSort] = useState<'none' | 'asc' | 'desc'>('none');
+
   async function load() {
     setLoading(true);
     try {
@@ -145,6 +151,19 @@ export function ShopsPage() {
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
 
+  // Shops with no governorate sort last in BOTH directions rather than
+  // leading the Z-A list — an empty cell is missing data, not a value.
+  const shown = govSort === 'none' ? shops : [...shops].sort((a, b) => {
+    const ga = (a.governorate || '').trim();
+    const gb = (b.governorate || '').trim();
+    if (!ga !== !gb) return ga ? -1 : 1;
+    const byGov = ga.localeCompare(gb);
+    // Ties break on the shop's own name, so a governorate's shops read as a
+    // stable alphabetical block instead of an arbitrary one.
+    if (byGov) return govSort === 'asc' ? byGov : -byGov;
+    return (a.shop_name || a.display_name || '').localeCompare(b.shop_name || b.display_name || '');
+  });
+
   return (
     <div>
       {err ? <div className="card" style={{ color: 'salmon', marginBottom: 12 }}>Error: {err}</div> : null}
@@ -161,11 +180,22 @@ export function ShopsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Shop</th><th>Governorate</th><th>Contact</th><th>Listings</th><th>Featured</th><th>Visibility</th><th>Actions</th>
+                <th>Shop</th>
+                <th
+                  onClick={() => setGovSort((v) => (v === 'none' ? 'asc' : v === 'asc' ? 'desc' : 'none'))}
+                  title="Sort by governorate"
+                  style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                >
+                  Governorate{' '}
+                  <span style={{ opacity: govSort === 'none' ? 0.35 : 1 }}>
+                    {govSort === 'desc' ? '\u2193' : '\u2191'}
+                  </span>
+                </th>
+                <th>Contact</th><th>Listings</th><th>Featured</th><th>Visibility</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {shops.map((s) => (
+              {shown.map((s) => (
                 <tr key={s.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
