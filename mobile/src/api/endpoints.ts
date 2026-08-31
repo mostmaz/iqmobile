@@ -237,6 +237,8 @@ export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed';
 export interface BrowseFilters {
   q?: string;
   sort?: BrowseSort;
+  /** Only listings posted within this many days. See SORT_WINDOW_DAYS. */
+  max_age_days?: number;
   brand?: string;
   model?: string;
   governorate?: string;

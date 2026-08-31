@@ -18,6 +18,13 @@ import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
 import { ShopUpgradeCard } from '../../components/ShopUpgradeCard';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
+
+// How far back the sorted home feed reaches. The caption in the filter
+// panel is rendered FROM this constant, so the number a buyer reads can
+// never disagree with the number the request sends.
+const SORT_WINDOW_DAYS = 10;
+const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+const arNum = (n: number | string) => String(n).replace(/\d/g, (d) => AR_DIGITS[+d]);
 import { SortPills } from '../../components/SortPills';
 import { Listings, Brands, Banners, Chats, Shops, type BrowseFilters, type Condition, type BrandRow, type BannerRow } from '../../api/endpoints';
 import { getBaseUrl } from '../../api/client';
@@ -175,7 +182,15 @@ export default function BrowseScreen({ navigation }: any) {
     // server's featured-slot pick (and thus offsets) consistent across pages.
     queryKey: ['browse', filters, bannerTick],
     queryFn: ({ pageParam = 0 }) =>
-      Listings.browse({ ...filters, seed: bannerTick, limit: PAGE_SIZE, offset: pageParam as number }),
+      Listings.browse({
+        ...filters,
+        // A sorted home feed is a shortlist of what is FOR SALE NOW, so it
+        // reaches back ten days and no further. Unsorted, the feed stays the
+        // full catalogue — that view is the market's history and shouldn't
+        // shrink. Search sends nothing, so it still spans everything.
+        ...(filters.sort ? { max_age_days: SORT_WINDOW_DAYS } : {}),
+        seed: bannerTick, limit: PAGE_SIZE, offset: pageParam as number,
+      }),
     initialPageParam: 0,
     // Stop paginating when the server returns a partial page.
     getNextPageParam: (lastPage, allPages) =>
@@ -506,6 +521,17 @@ export default function BrowseScreen({ navigation }: any) {
                 below it, and the reason most buyers open this panel at all
                 ("cheapest first") had no home before. */}
             <SortPills value={filters.sort} onChange={(v) => patch({ sort: v })} />
+            {/* Say the window out loud. A sorted feed is much shorter than
+                the default one, and without this a seller reads that as
+                "my listing disappeared". */}
+            {filters.sort ? (
+              <Text style={{
+                fontFamily: fonts.ar, fontSize: 11, color: theme.subtle,
+                textAlign: 'right', marginTop: -2, marginBottom: 8,
+              }}>
+                يشمل الترتيب أجهزة آخر {arNum(SORT_WINDOW_DAYS)} أيام فقط
+              </Text>
+            ) : null}
             {/* The feed deliberately carries sold and expired rows so it
                 reads as a live market. A shopper who only wants what they can
                 actually buy had no way to say so — the seller's own My

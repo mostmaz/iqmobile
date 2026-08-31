@@ -469,10 +469,20 @@ r.get('/', optionalAuth(), (req, res) => {
   // for sellers; buyers had no equivalent, so a shopper who only wants things
   // they can actually buy had to read every badge themselves.
   const availableOnly = String(req.query.available_only || '') === '1';
+  // How far back a sorted view reaches. Sorting by price over the whole
+  // catalogue put month-old listings at the top of "cheapest first" — the
+  // oldest stock wins that race, because anything cheap and still listed
+  // after a month is usually stale. The home feed sends 10; search does
+  // not, because someone hunting one model wants every one of them.
+  const maxAgeDays = Number(req.query.max_age_days);
+  const ageCutoff = Number.isFinite(maxAgeDays) && maxAgeDays > 0 && maxAgeDays <= 365
+    ? Date.now() - Math.floor(maxAgeDays) * 86400000
+    : null;
   let where = (sort === 'new' && !availableOnly)
     ? `l.status IN ('active','reserved','sold','expired')`
     : `l.status IN ('active','reserved')`;
   const params = [];
+  if (ageCutoff) { where += ' AND l.created_at >= ?'; params.push(ageCutoff); }
   if (!neverExpire) {
     where += ' AND l.expires_at > ?';
     params.push(Date.now());
