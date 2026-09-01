@@ -210,9 +210,14 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 // How many listings a shop may post FROM THE APP in a rolling week.
 // Read per-request from app_settings so it can be tuned from the dashboard
-// without a deploy; 0 means unlimited, and a missing/garbage value falls
-// back to the default rather than accidentally unlocking the cap.
-const SHOP_WEEKLY_DEFAULT = 5;
+// without a deploy; 0 means unlimited.
+//
+// Default is 0 — OFF. It shipped at 5 and a real shop in Karbala hit the
+// ceiling in 33 minutes on its first day, which is what a shop stocking its
+// catalogue actually looks like: five phones is an afternoon, not a week.
+// The rule stays here, tested, behind `shop_weekly_listing_limit`; set that
+// to a number to turn it back on. Nothing else needs to change.
+const SHOP_WEEKLY_DEFAULT = 0;
 function shopWeeklyCap() {
   const raw = getSetting('shop_weekly_listing_limit');
   if (raw == null || String(raw).trim() === '') return SHOP_WEEKLY_DEFAULT;
