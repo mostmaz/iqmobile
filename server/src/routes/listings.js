@@ -274,8 +274,19 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         const oldest = db.prepare(
           "SELECT created_at FROM phone_listings WHERE seller_id=? AND status != 'removed' AND created_at > ? ORDER BY created_at ASC LIMIT 1",
         ).get(req.user.id, since);
+        // `error` is 'rate_limited', not 'shop_weekly_limit', and that is
+        // deliberate. The app renders `ar.errors[code]` and falls back to
+        // the NETWORK error for anything it doesn't know — so a new code
+        // told every shop on the released build that their connection had
+        // failed. They retried seven times and concluded the app was
+        // broken. 'rate_limited' is a string every build already has, and
+        // "too many attempts, try later" is vague but true.
+        //
+        // `reason` carries the precise cause for builds that know to look,
+        // so nothing is lost once the next release is out.
         return res.status(429).json({
-          error: 'shop_weekly_limit',
+          error: 'rate_limited',
+          reason: 'shop_weekly_limit',
           limit: cap,
           retry_after_ms: oldest ? Math.max(0, oldest.created_at + WEEK_MS - Date.now()) : WEEK_MS,
         });

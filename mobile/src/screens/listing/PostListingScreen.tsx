@@ -336,7 +336,15 @@ export default function PostListingScreen({ navigation }: any) {
       } catch {}
       navigation.replace('ListingDetail', { id: listing.id });
     },
-    onError: (e: any) => setErr((ar.errors as any)[e?.message] || (ar.errors as any).network),
+    // `reason` first: the server sends a widely-understood `error` code for
+    // the benefit of older builds and puts the specific cause in `reason`.
+    // Falling back to `.network` for an unknown code is what told shops
+    // their connection had failed when they had simply hit a quota.
+    onError: (e: any) => setErr(
+      (ar.errors as any)[e?.data?.reason]
+      || (ar.errors as any)[e?.message]
+      || (ar.errors as any).network,
+    ),
   });
 
   // Step layout (6 total):
