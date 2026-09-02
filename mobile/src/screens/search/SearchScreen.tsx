@@ -48,7 +48,9 @@ export default function SearchScreen({ navigation }: any) {
   } = useInfiniteQuery({
     queryKey: ['search', brand, model],
     queryFn: ({ pageParam = 0 }) =>
-      Listings.browse({ brand: brand!, ...(model ? { model } : {}), limit: PAGE_SIZE, offset: pageParam as number }),
+      // 'rank' sort: featured devices first, then shops by rating, then price —
+      // so a featured, well-reviewed shop's device leads the results.
+      Listings.browse({ brand: brand!, ...(model ? { model } : {}), sort: 'rank', limit: PAGE_SIZE, offset: pageParam as number }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => (lastPage.length < PAGE_SIZE ? undefined : allPages.length * PAGE_SIZE),
     enabled,

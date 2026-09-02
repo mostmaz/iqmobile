@@ -232,6 +232,9 @@ export interface BrowseFilters {
   // Drop the sold/expired rows the default feed carries for market context.
   available_only?: boolean;
   seller_type?: SellerType;
+  // 'rank' = featured devices first, then by shop rating, then cheapest.
+  // Used by the Shops device-search and the main search.
+  sort?: 'new' | 'price_asc' | 'price_desc' | 'viewed' | 'rank';
   limit?: number;
   offset?: number;
   // Rotation seed for the capped featured slots (top 2 per view). Bumped on

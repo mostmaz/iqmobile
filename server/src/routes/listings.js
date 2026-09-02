@@ -328,9 +328,18 @@ r.get('/', optionalAuth(), (req, res) => {
     price_asc: 'l.asking_price ASC, l.created_at DESC',
     price_desc: 'l.asking_price DESC, l.created_at DESC',
     viewed: "(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, l.created_at DESC",
+    // Quality rank: featured devices first, then by seller (shop) rating, then
+    // cheapest. Powers the Shops device-search and the main search, so a
+    // featured, well-reviewed shop's device outranks a pricier or unrated one.
+    // A pure ordered list — no featured-slot rotation. orderBy is built below
+    // with nowTs, since a static string can't read the clock.
+    rank: null,
   };
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
-  const orderBy = SORTS[sort];
+  const nowTs = Date.now();
+  const orderBy = sort === 'rank'
+    ? `(l.featured_until > ${nowTs}) DESC, COALESCE(u.rating_avg, 0) DESC, l.asking_price ASC, l.created_at DESC`
+    : SORTS[sort];
 
   // Status visibility depends on the view:
   //   - default 'new' feed: active + reserved + sold + expired. Sold shows a
@@ -367,6 +376,10 @@ r.get('/', optionalAuth(), (req, res) => {
   if (verified_only === '1' || verified_only === 'true') { where += ' AND u.verified=1'; }
   if (seller_type === 'individual' || seller_type === 'shop') {
     where += ' AND u.seller_type=?'; params.push(seller_type);
+    // The hidden aggregator (the price shop) is a seller_type='shop' too. Keep
+    // its catalogue of other shops' lowest prices out of the shops
+    // device-search, exactly as the default feed and Shops directory do.
+    if (seller_type === 'shop') where += ' AND COALESCE(u.shop_hidden, 0) = 0';
   } else if (!q) {
     // Default home/browse feed. Shops DO belong here — their stock is real
     // inventory a buyer wants to see. What must stay out is a hidden shop:
@@ -399,8 +412,6 @@ r.get('/', optionalAuth(), (req, res) => {
       for (const t of tokens) params.push('%' + t + '%');
     }
   }
-
-  const nowTs = Date.now();
 
   // Featured slots: collect every currently-featured listing matching the
   // same filters (ordered by most recent boost), then rotate the window of
