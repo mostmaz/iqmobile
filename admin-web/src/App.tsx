@@ -119,6 +119,15 @@ const EMPTY_QUEUE: Queue = {
   reports: 0, feature_requests: 0, new_shops: 0, tier_requests: 0,
 };
 
+// The merchant-facing entry point. Kept deliberately loose about the trailing
+// slash so /dashboard/store and /dashboard/store/ both work when a shop owner
+// retypes the link by hand.
+function isStoreEntry(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.replace(/\/+$/, '');
+  return path.endsWith('/dashboard/store') || window.location.hash === '#store';
+}
+
 export function App() {
   const [authed, setAuthed] = useState(!!getToken());
   const [page, setPage] = useState<Page>('overview');
@@ -142,8 +151,13 @@ export function App() {
   }, [authed, refreshQueue]);
 
   // Merchant panel: a shop token puts the whole shell into panel mode —
-  // the admin nav never mounts. The entry link lives on the admin login.
-  const [shopMode, setShopMode] = useState<'off' | 'login' | 'in'>(getShopToken() ? 'in' : 'off');
+  // the admin nav never mounts. Two ways in: the link on the admin login,
+  // or /dashboard/store — the address we hand to shops, so a merchant never
+  // has to land on an admin screen to reach their own panel. The server's
+  // /dashboard/* SPA fallback serves index.html for it.
+  const [shopMode, setShopMode] = useState<'off' | 'login' | 'in'>(
+    getShopToken() ? 'in' : (isStoreEntry() ? 'login' : 'off'),
+  );
   if (shopMode === 'in') {
     return <ShopPanelPage onExit={() => setShopMode('off')} />;
   }
