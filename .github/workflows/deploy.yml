@@ -25,6 +25,7 @@ on:
       - 'server/**'
       - 'admin-web/dist/**'
       - '.github/workflows/deploy.yml'
+      - 'scripts/deploy-remote.sh'
   workflow_dispatch:
 
 concurrency:
@@ -34,38 +35,72 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - name: SSH to droplet and deploy
+      # Why this step is repeated three times.
+      #
+      # The droplet's sshd runs the stock MaxStartups 10:30:100 with
+      # PerSourceMaxStartups unset, while a steady background of SSH
+      # brute-force bots keeps roughly seven unauthenticated connections
+      # open at all times. Past ten concurrent pre-auth connections sshd
+      # begins refusing new ones at random, so the runner is dropped at
+      # CONNECT — before it ever authenticates. On 2026-09-02 that failed
+      # three of five deploys, each in about seven seconds with no output;
+      # the changes only reached prod when a later push happened to get
+      # through and carried them along, which is a silent way to believe
+      # something shipped when it did not.
+      #
+      # Retrying is a mitigation, not the fix. The fix is on the droplet:
+      # fail2ban plus a much higher MaxStartups (and PerSourceMaxStartups),
+      # so honest connections are never the ones dropped.
+      - name: Deploy (attempt 1)
+        id: a1
+        continue-on-error: true
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: 164.92.130.71
           username: iqmobile
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 8m
           script: |
             set -euo pipefail
             cd ~/iqmobile
-            echo "==> git pull"
             git fetch --depth=1 origin main
             git reset --hard origin/main
-            cd server
-            echo "==> npm ci"
-            npm ci --omit=dev --no-audit --no-fund
-            echo "==> pm2 restart"
-            pm2 restart iqmobile --update-env
-            pm2 save
-            echo "==> health check"
-            # Poll /health for up to 30s — pm2 restart returns before the
-            # Node process finishes booting (Sentry init + DB open + user
-            # load takes ~5s), so a naive sleep 1 races and fails.
-            for i in $(seq 1 30); do
-              if curl -sSf -m 3 http://127.0.0.1:4001/health >/dev/null; then
-                echo "  healthy after ${i}s"
-                echo "==> deploy ok"
-                exit 0
-              fi
-              sleep 1
-            done
-            echo "==> health check failed after 30s"
-            pm2 logs iqmobile --lines 30 --nostream || true
-            exit 1
+            bash scripts/deploy-remote.sh
+      - name: Back off before attempt 2
+        if: steps.a1.outcome == 'failure'
+        run: sleep 20
+      - name: Deploy (attempt 2)
+        if: steps.a1.outcome == 'failure'
+        id: a2
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 164.92.130.71
+          username: iqmobile
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            cd ~/iqmobile
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+            bash scripts/deploy-remote.sh
+      - name: Back off before attempt 3
+        if: steps.a2.outcome == 'failure'
+        run: sleep 45
+      - name: Deploy (attempt 3)
+        if: steps.a2.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: 164.92.130.71
+          username: iqmobile
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 8m
+          script: |
+            set -euo pipefail
+            cd ~/iqmobile
+            git fetch --depth=1 origin main
+            git reset --hard origin/main
+            bash scripts/deploy-remote.sh
