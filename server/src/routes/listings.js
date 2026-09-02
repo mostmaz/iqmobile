@@ -552,6 +552,10 @@ r.get('/', optionalAuth(), (req, res) => {
   if (verified_only === '1' || verified_only === 'true') { where += ' AND u.verified=1'; }
   if (seller_type === 'individual' || seller_type === 'shop') {
     where += ' AND u.seller_type=?'; params.push(seller_type);
+    // The hidden aggregator (the price book) is a seller_type='shop' too. Keep
+    // its catalogue of OTHER shops' prices out of the shops device-search,
+    // exactly as the default feed and the Shops directory already do.
+    if (seller_type === 'shop') where += ' AND COALESCE(u.shop_hidden, 0) = 0';
   } else if (!q) {
     // Default home/browse feed. Shops DO belong here — their stock is real
     // inventory a buyer wants to see. What must stay out is a hidden shop:
