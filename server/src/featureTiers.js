@@ -7,6 +7,17 @@
 // Amounts are IQD. The mobile app fetches these live via GET /features/tiers
 // (no duplicated client copy), so editing here is enough to change the offers.
 export const FEATURE_TIERS = [
+  // LAUNCH PROMOTION (added 2026-09-02). The gold package — 10 days, 4 boosts
+  // a day — at half price. Listed first so it leads the sheet.
+  //
+  // While this runs it strictly dominates silver (5000 for 5 days) and gold
+  // (10000 for the same 10 days), so both are dead offers; decide whether to
+  // hide them rather than leave a shopper comparing an offer nobody would take.
+  //
+  // To END the promotion, delete this line and deploy. Requests already filed
+  // under it stay valid: the row snapshots amount/days/boosts_per_day at submit
+  // time and the approve path falls back to those when the key is gone.
+  { key: 'promo', amount: 5000, days: 10, boosts_per_day: 4, label_ar: 'عرض خاص · باقة ١٠٠٠٠ بـ٥٠٠٠' },
   { key: 'bronze', amount: 2000, days: 2, boosts_per_day: 2, label_ar: 'برونزي' },
   { key: 'silver', amount: 5000, days: 5, boosts_per_day: 3, label_ar: 'فضي' },
   { key: 'gold', amount: 10000, days: 10, boosts_per_day: 4, label_ar: 'ذهبي' },
