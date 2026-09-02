@@ -1030,15 +1030,22 @@ addColumnIfMissing('users', 'shop_ch_chat INTEGER');
 // (see contactChannels.js). NULL is pre-column and reads as self: the safe
 // default, every button on.
 addColumnIfMissing('users', 'shop_origin TEXT');
-// One-time backfill. Only the admin INSERT path leaves password_hash empty
-// on a non-guest account, and only self-registration ever passes through
-// review — a row with both marks is an admin-made shop. Anything else stays
-// NULL rather than guess; new rows are stamped at creation, and the
-// dashboard can flip any row by hand.
+// One-time backfill for rows that predate the column. The mark that is
+// specific to the admin insert is display_name = shop_name: POST /admin/shops
+// writes the shop name into both, while /shops/register never touches
+// display_name (the owner keeps the name they signed up with). password_hash
+// alone is NOT that mark — signup is OTP-based, so nearly every account has
+// it empty; an earlier version of this backfill keyed on it and stamped 76
+// shops instead of 17 (2026-09-02). Only self-registration passes review,
+// so a reviewed row is self even when the two names match. Anything not
+// matched stays NULL (reads as self) rather than guess; new rows are stamped
+// at creation, and the dashboard can flip any row by hand.
 db.prepare(
   `UPDATE users SET shop_origin='admin'
-    WHERE seller_type='shop' AND shop_origin IS NULL AND password_hash=''
-      AND phone NOT LIKE 'guest:%' AND shop_reviewed_at IS NULL
+    WHERE seller_type='shop' AND shop_origin IS NULL
+      AND display_name = shop_name
+      AND shop_reviewed_at IS NULL
+      AND phone NOT LIKE 'guest:%'
       AND COALESCE(shop_no_contact,0)=0`,
 ).run();
 // Upgrade-offer pacing (§2): at most one prompt per 7 days, and «بعدين»
