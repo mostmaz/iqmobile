@@ -9,18 +9,20 @@
 // restores exactly what the shopper had (the screen stays mounted).
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, Modal, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme';
 import { Img } from '../../components/Img';
 import {
   IconStore, IconStar, IconPin, IconSpark, IconPlus, IconChevronLeft,
-  IconChevronDown, IconFilter, IconChat,
+  IconChevronDown, IconFilter, IconChat, IconSearch, IconClose,
 } from '../../components/icons';
 import { GovPicker } from '../../components/GovPicker';
-import { Shops, type ShopCard } from '../../api/endpoints';
+import { Shops, Listings, type ShopCard } from '../../api/endpoints';
+import { ListingCard } from '../../components/ListingCard';
+import { ListingListSkeleton } from '../../components/Skeleton';
 import { fullImageUrl } from '../../api/upload';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
@@ -31,6 +33,7 @@ const arNum = (n: number | string) => String(n).replace(/\d/g, (d) => AR_DIGITS[
 
 const DAY_MS = 86400000;
 const ACTIVE_WINDOW_MS = 7 * DAY_MS;
+const DEVICE_PAGE = 15;
 
 // Arabic labels for brand chips; anything unmapped shows its raw name.
 const BRAND_AR: Record<string, string> = {
@@ -80,6 +83,35 @@ export default function ShopsScreen({ navigation }: any) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const railRef = useRef<ScrollView>(null);
+
+  // ── Device search across shops ─────────────────────────────────
+  // Typing flips the screen from the directory to a device search scoped to
+  // shops, in the same governorate the picker shows. Results come ranked
+  // featured → shop rating → cheapest (server sort='rank'), so a featured,
+  // well-reviewed shop's device leads. `search` is the raw text; `q` is the
+  // debounced term actually sent, so a keystroke doesn't fire a request.
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim()), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+  const searchActive = q.length > 0;
+  const {
+    data: devData, isLoading: devLoading, isError: devError, refetch: devRefetch,
+    fetchNextPage, hasNextPage, isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['shop-device-search', q, govEn ?? '__all__'],
+    queryFn: ({ pageParam = 0 }) => Listings.browse({
+      q, seller_type: 'shop', sort: 'rank', available_only: true,
+      ...(govEn ? { governorate: govEn } : {}),
+      limit: DEVICE_PAGE, offset: pageParam as number,
+    }),
+    initialPageParam: 0,
+    getNextPageParam: (last, all) => (last.length < DEVICE_PAGE ? undefined : all.length * DEVICE_PAGE),
+    enabled: searchActive,
+  });
+  const devices = useMemo(() => devData?.pages.flat() ?? [], [devData]);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['shops', govEn ?? '__all__'],
@@ -151,9 +183,34 @@ export default function ShopsScreen({ navigation }: any) {
           متاجر {govAr || 'العراق'}
         </Text>
         <Text style={{ marginTop: 2, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right' }}>
-          {arNum(visible.length)} متجر
+          {searchActive ? `${arNum(devices.length)} جهاز` : `${arNum(visible.length)} متجر`}
         </Text>
 
+        {/* Device search across shops. Typing swaps the directory below for
+            ranked device results; clearing brings the directory back. */}
+        <View style={{
+          flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 10,
+          backgroundColor: theme.surface, borderRadius: radius.pill,
+          borderWidth: 1, borderColor: theme.line, paddingHorizontal: 14, height: 42,
+        }}>
+          <IconSearch size={17} color={theme.subtle} sw={1.8} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            returnKeyType="search"
+            placeholder="ابحث عن جهاز في المتاجر…"
+            placeholderTextColor={theme.subtle}
+            style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right', paddingVertical: 0 }}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => { setSearch(''); setQ(''); }} activeOpacity={0.6} style={{ padding: 2 }}>
+              <IconClose size={15} color={theme.subtle} sw={2} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* Directory-only chrome — hidden while searching to give results room. */}
+        {!searchActive ? (<>
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 10 }}>
           <HeaderControl onPress={() => { setDraftBrands(brands); setFilterOpen(true); }}>
             <IconFilter size={16} color={theme.ink} sw={1.8} />
@@ -204,9 +261,50 @@ export default function ShopsScreen({ navigation }: any) {
             />
           ))}
         </ScrollView>
+        </>) : null}
       </View>
 
       {/* ── List ────────────────────────────────────────────────── */}
+      {searchActive ? (
+        <FlatList
+          data={devLoading ? [] : devices}
+          keyExtractor={(it) => String(it.id)}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100, paddingTop: 12 }}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
+          )}
+          onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={isFetchingNextPage ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+          ) : null}
+          ListEmptyComponent={devLoading ? (
+            <ListingListSkeleton count={5} />
+          ) : devError ? (
+            <View style={{ paddingVertical: 40, alignItems: 'center', gap: 12 }}>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center' }}>تعذّر إجراء البحث</Text>
+              <TouchableOpacity
+                onPress={() => devRefetch()}
+                activeOpacity={0.85}
+                style={{ paddingHorizontal: 22, paddingVertical: 11, borderRadius: radius.pill, backgroundColor: theme.ink }}
+              >
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.buttonInk }}>إعادة المحاولة</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+              <View style={{ width: 64, height: 64, borderRadius: 999, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center' }}>
+                <IconSearch size={28} color={theme.subtle} sw={1.6} />
+              </View>
+              <Text style={{ marginTop: 14, fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>لا توجد أجهزة تطابق بحثك</Text>
+              <Text style={{ marginTop: 5, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, lineHeight: 21, textAlign: 'center' }}>
+                جرّب اسم موديل آخر{govAr ? ' أو غيّر المحافظة' : ''}
+              </Text>
+            </View>
+          )}
+        />
+      ) : (
       <FlatList
         data={isLoading ? [] : visible}
         keyExtractor={(s) => String(s.id)}
@@ -266,6 +364,7 @@ export default function ShopsScreen({ navigation }: any) {
           </TouchableOpacity>
         }
       />
+      )}
 
       {/* ── Filter sheet ────────────────────────────────────────── */}
       <Sheet open={filterOpen} onClose={() => setFilterOpen(false)}>

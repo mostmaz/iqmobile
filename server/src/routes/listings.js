@@ -494,9 +494,18 @@ r.get('/', optionalAuth(), (req, res) => {
     price_asc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, l.created_at DESC',
     price_desc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price DESC, l.created_at DESC',
     viewed: "(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, l.created_at DESC",
+    // Featured devices first, then by the seller's rating, then cheapest —
+    // the Shops-tab device search, so a featured, well-reviewed shop's device
+    // leads. A pure ordered list, no featured-slot rotation. Built below:
+    // a static string can't read the clock.
+    rank: null,
   };
   const sort = Object.prototype.hasOwnProperty.call(SORTS, req.query.sort) ? req.query.sort : 'new';
-  const orderBy = SORTS[sort];
+  const nowTs = Date.now();
+  const orderBy = sort === 'rank'
+    ? `(l.featured_until > ${nowTs}) DESC, COALESCE(u.rating_avg, 0) DESC, `
+      + 'COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, l.created_at DESC'
+    : SORTS[sort];
 
   // Status visibility depends on the view:
   //   - default 'new' feed: active + reserved + sold + expired. Sold shows a
@@ -576,7 +585,6 @@ r.get('/', optionalAuth(), (req, res) => {
     }
   }
 
-  const nowTs = Date.now();
 
   // Featured slots: collect every currently-featured listing matching the
   // same filters (ordered by most recent boost), then rotate the window of

@@ -234,7 +234,9 @@ export const Auth = {
 // Note the server narrows the result set for any order but 'new': an
 // explicit sort returns buyable stock only, without the sold/expired rows
 // the default feed carries for market context.
-export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed';
+// 'rank' = featured first, then seller rating, then cheapest — the Shops-tab
+// device search. Not offered as a user-picked sort on the main search.
+export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed' | 'rank';
 
 export interface BrowseFilters {
   q?: string;
