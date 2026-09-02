@@ -17,7 +17,9 @@ export const FEATURE_TIERS = [
   // To END the promotion, delete this line and deploy. Requests already filed
   // under it stay valid: the row snapshots amount/days/boosts_per_day at submit
   // time and the approve path falls back to those when the key is gone.
-  { key: 'promo', amount: 5000, days: 10, boosts_per_day: 4, label_ar: 'عرض خاص · باقة ١٠٠٠٠ بـ٥٠٠٠' },
+  // bonus: wallet credit granted when this tier is approved, and ONLY when
+  // it was paid by real transfer — see the guard in the approve route.
+  { key: 'promo', amount: 5000, days: 10, boosts_per_day: 4, bonus: 10000, label_ar: 'عرض خاص · باقة ١٠٠٠٠ بـ٥٠٠٠' },
   { key: 'bronze', amount: 2000, days: 2, boosts_per_day: 2, label_ar: 'برونزي' },
   // hidden: still resolvable by key, but not offered. Both are dominated by
   // the promo above — silver costs the same for half as long, gold costs

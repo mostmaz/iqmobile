@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
+import { balanceOf, entriesFor, spend } from '../wallet.js';
+import { applyFeature } from '../featuring.js';
 import { OFFERED_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
 
 const r = Router();
@@ -34,6 +36,12 @@ r.get('/features/tiers', (_req, res) => {
   });
 });
 
+// The caller's wallet: balance plus the entries that explain it, so the app
+// never has to compute a total the server disagrees with.
+r.get('/wallet', requireAuth(), (req, res) => {
+  res.json({ balance: balanceOf(req.user.id), entries: entriesFor(req.user.id) });
+});
+
 // Seller files a request to feature one of their own listings. We don't take
 // payment in-app: they transfer airtime to OWNER_PHONE, then submit this with
 // the carrier + the number they paid from so the owner can match the transfer.
@@ -48,15 +56,22 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   const tier = tierFor(String(req.body?.tier || '').trim());
   if (!tier || tier.hidden) return res.status(400).json({ error: 'bad_tier' });
 
+  // 'balance' is a payment method, not a carrier: the money is already ours,
+  // so there is no transfer to match and no review to wait for. Deliberately
+  // absent from the served `carriers` list — an older build rendering it as a
+  // carrier button would ask for a sender number that means nothing here.
   const carrier = String(req.body?.carrier || '').trim().toLowerCase();
-  if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
+  const fromBalance = carrier === 'balance';
+  if (!fromBalance && !CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
 
   // Qi Card: the matcher is the sender's account NAME (their Qi app
   // shows it on the transfer); phone is optional. Airtime carriers: the
   // sender phone is required and must belong to the same network.
   let senderPhone = null;
   let senderName = null;
-  if (carrier === 'qicard') {
+  if (fromBalance) {
+    // Nothing to collect. There is no sender to match a transfer against.
+  } else if (carrier === 'qicard') {
     senderName = String(req.body?.sender_name || '').trim().slice(0, 80);
     if (senderName.length < 2) return res.status(400).json({ error: 'bad_sender_name' });
     senderPhone = normalizeIraqiPhone(req.body?.sender_phone); // optional
@@ -78,17 +93,52 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   ).get(listing.id);
   if (pending) return res.status(409).json({ error: 'request_pending', request_id: pending.id });
 
-  const id = db.prepare(
+  const insert = (status, reviewedAt) => db.prepare(
     `INSERT INTO feature_requests(
       listing_id, user_id, tier, amount, days, boosts_per_day,
-      carrier, sender_phone, sender_name, note, status, created_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,'pending',?)`,
+      carrier, sender_phone, sender_name, note, status, created_at, reviewed_at
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     listing.id, req.user.id, tier.key, tier.amount, tier.days, tier.boosts_per_day,
-    carrier, senderPhone, senderName, note, now(),
+    carrier, senderPhone, senderName, note, status, now(), reviewedAt,
   ).lastInsertRowid;
 
-  res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(id));
+  // Paying from the wallet needs no admin: the request is created approved and
+  // the listing is featured in the same transaction, so there is no instant
+  // where the balance is spent and the listing is not yet featured. The
+  // balance is re-checked INSIDE the transaction — two requests submitted
+  // together must not both pass a check made before either one spent.
+  if (fromBalance) {
+    let result;
+    try {
+      result = db.transaction(() => {
+        const id = insert('approved', now());
+        const fr = db.prepare('SELECT * FROM feature_requests WHERE id=?').get(id);
+        if (!spend({
+          userId: req.user.id, amount: tier.amount, reason: 'feature_spend',
+          refType: 'feature_request', refId: id, note: tier.label_ar,
+        })) {
+          const e = new Error('insufficient_balance'); e.clientError = 'insufficient_balance'; throw e;
+        }
+        const applied = applyFeature(fr);
+        if (!applied) {
+          const e = new Error('listing_gone'); e.clientError = 'listing_gone'; throw e;
+        }
+        return { fr, applied };
+      })();
+    } catch (e) {
+      if (e?.clientError) return res.status(400).json({ error: e.clientError });
+      throw e;
+    }
+    return res.json({
+      ...result.fr,
+      featured_until: result.applied.featured_until,
+      paid_from_balance: true,
+      balance: balanceOf(req.user.id),
+    });
+  }
+
+  res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(insert('pending', null)));
 });
 
 // Cancel the caller's own PENDING request for a listing — the "لم أحوّل

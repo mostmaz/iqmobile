@@ -297,6 +297,31 @@ CREATE TABLE IF NOT EXISTS feature_requests (
 CREATE INDEX IF NOT EXISTS idx_feature_requests_status ON feature_requests(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feature_requests_user ON feature_requests(user_id, created_at DESC);
 
+-- Wallet. A signed ledger, never a mutable balance column: the balance is
+-- SUM(delta), so it can always be explained line by line, and a bug can be
+-- corrected by posting a compensating row instead of editing history.
+--
+-- reason:   'promo_bonus'   credit granted when a bonus-bearing tier is approved
+--           'feature_spend' debit when a listing is featured from balance
+--           'admin_adjust'  manual correction from the dashboard
+-- ref:      what the entry is about, so a request can be traced both ways.
+CREATE TABLE IF NOT EXISTS wallet_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  delta INTEGER NOT NULL,
+  reason TEXT NOT NULL,
+  ref_type TEXT,
+  ref_id INTEGER,
+  note TEXT,
+  actor TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_user ON wallet_entries(user_id, created_at DESC);
+-- One entry of a given reason per referenced thing. Approving a request twice
+-- (a double-clicked dashboard button, a future code path) cannot double-credit.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wallet_ref_once
+  ON wallet_entries(ref_type, ref_id, reason) WHERE ref_type IS NOT NULL;
+
 -- Analytics event log for the "Contact & Demand" dashboard. Deliberately
 -- schema-light and FK-free: an event is an immutable historical fact, so it
 -- must survive deletion of the listing/user it references (a contact attempt

@@ -22,7 +22,9 @@ import { parseCsvRow, detectBrand } from '../../importParse.js';
 import { bufferConfigured, bufferChannels, publishToChannels } from '../../buffer.js';
 import { composeShareImage, facebookCaption } from '../../social.js';
 import { notify, notifyShopReview, hasNotified, versionAtLeast } from '../../notify.js';
-import { tierFor, tierTiming } from '../../featureTiers.js';
+import { tierFor } from '../../featureTiers.js';
+import { applyFeature } from '../../featuring.js';
+import { post as walletPost } from '../../wallet.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
 import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
@@ -1841,31 +1843,31 @@ r.post('/feature-requests/:id(\\d+)/approve', requireAdmin, (req, res) => {
   if (!fr) return res.status(404).json({ error: 'not_found' });
   if (fr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
 
-  // Snapshot fields are stored on the request; fall back to the live tier if
-  // the catalog changed since the seller submitted.
-  const tier = tierFor(fr.tier) || { days: fr.days, boosts_per_day: fr.boosts_per_day };
-  const { durationMs, boostIntervalMs } = tierTiming(tier);
-  const t = now();
-
-  // Extend (don't truncate) any featured time the listing still has left.
-  const listing = db.prepare('SELECT featured_until FROM phone_listings WHERE id=?').get(fr.listing_id);
-  if (!listing) return res.status(404).json({ error: 'listing_gone' });
-  const base = listing.featured_until && listing.featured_until > t ? listing.featured_until : t;
-  const featured_until = base + durationMs;
-
-  db.prepare(
-    `UPDATE phone_listings
-     SET featured_until=?, feature_tier=?, boosted_at=?, next_boost_at=?, boost_interval_ms=?
-     WHERE id=?`,
-  ).run(featured_until, fr.tier, t, t + boostIntervalMs, boostIntervalMs, fr.listing_id);
+  const applied = applyFeature(fr);
+  if (!applied) return res.status(404).json({ error: 'listing_gone' });
+  const { featured_until, at: t } = applied;
   db.prepare('UPDATE feature_requests SET status=?, reviewed_at=? WHERE id=?')
     .run('approved', t, fr.id);
 
-  notify(fr.user_id, 'feature.approved',
-    { listing_id: fr.listing_id, tier: fr.tier, featured_until },
-    { title: 'تم تفعيل إعلانك المميّز ✨', body: 'إعلانك الآن في أعلى القائمة' });
+  // Promotion bonus, credited on approval. Only for a request paid by real
+  // transfer: crediting a wallet-funded purchase would let 5000 of credit buy
+  // 10000 of credit, and then do it again. walletPost is idempotent on
+  // (feature_request, id, promo_bonus), so a re-approval cannot double it.
+  const tierDef = tierFor(fr.tier);
+  const bonus = (tierDef?.bonus > 0 && fr.carrier !== 'balance') ? tierDef.bonus : 0;
+  const credited = bonus > 0 && walletPost({
+    userId: fr.user_id, delta: bonus, reason: 'promo_bonus',
+    refType: 'feature_request', refId: fr.id, note: tierDef.label_ar,
+    actor: `admin:${req.admin?.id ?? ''}`,
+  });
 
-  res.json({ ok: true, listing_id: fr.listing_id, featured_until });
+  notify(fr.user_id, 'feature.approved',
+    { listing_id: fr.listing_id, tier: fr.tier, featured_until, bonus: credited ? bonus : 0 },
+    credited
+      ? { title: 'تم تفعيل إعلانك المميّز ✨', body: `إعلانك الآن في أعلى القائمة · وأُضيف ${bonus.toLocaleString('en-US')} د.ع إلى رصيدك` }
+      : { title: 'تم تفعيل إعلانك المميّز ✨', body: 'إعلانك الآن في أعلى القائمة' });
+
+  res.json({ ok: true, listing_id: fr.listing_id, featured_until, bonus: credited ? bonus : 0 });
 });
 
 r.post('/feature-requests/:id(\\d+)/reject', requireAdmin, (req, res) => {
