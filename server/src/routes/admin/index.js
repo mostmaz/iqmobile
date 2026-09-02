@@ -328,6 +328,9 @@ r.post('/listings', requireAdmin, (req, res) => {
   // no contact at all. The app hides the call/WhatsApp row when both contact
   // fields are null, so this creates a pure price entry with no buy button.
   const noContact = !!req.body?.no_contact;
+  // Provenance tag: which feed/import stocked this row ('freezone', 'poco',
+  // 'manual', …). Free text, empty → NULL. See phone_listings.source in db.js.
+  const source = String(req.body?.source || '').trim().slice(0, 32) || null;
 
   if (!brand || !model || !governorate) return res.status(400).json({ error: 'missing_fields' });
   if (!isBrand(brand)) return res.status(400).json({ error: 'bad_brand' });
@@ -367,13 +370,15 @@ r.post('/listings', requireAdmin, (req, res) => {
       battery_health, warranty_status, accessories_json, asking_price,
       governorate, city, description, status,
       contact_phone, contact_whatsapp,
+      source,
       created_at, expires_at, updated_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(
     seller.id, finalBrand, model, storage || null, color || null, condition,
     null, null, '[]', askingPrice,
     governorate, city || null, description || null, 'active',
     noContact ? null : phone, noContact ? null : wa,
+    source,
     t, t + TTL_MS, t,
   ).lastInsertRowid;
 
@@ -466,7 +471,7 @@ r.patch('/listings/:id(\\d+)', requireAdmin, (req, res) => {
   }
   // Free-text columns: trimmed, length-capped, empty → NULL so the
   // mobile client's `field || fallback` checks behave consistently.
-  for (const [key, max] of [['city', 60], ['storage', 16], ['color', 30], ['description', 2000]]) {
+  for (const [key, max] of [['city', 60], ['storage', 16], ['color', 30], ['description', 2000], ['source', 32]]) {
     if (!has(key)) continue;
     const v = String(b[key] ?? '').trim().slice(0, max);
     fields.push(`${key}=?`); params.push(v || null);

@@ -946,6 +946,17 @@ CREATE INDEX IF NOT EXISTS idx_guarantee_buyer ON guarantee_orders(buyer_id, cre
 // drift apart.
 addColumnIfMissing('phone_listings', 'specs_json TEXT');
 
+// Provenance of a listing that we (not a public seller) stocked: which feed
+// or import put it here. 'freezone' = the Free Zone supplier catalog import,
+// 'poco'/'manual' = a model added by hand from a price board, etc. NULL means
+// legacy/untagged (a normal marketplace listing, or a store row from before
+// this column). Lets an operator tell an IQ-store device IQ can actually
+// source (Free Zone) apart from one added ad-hoc, and lets a future reset
+// prune by origin instead of wiping the store blind — the store's "buy new"
+// button is gated on store membership, so knowing WHY a row is in the store
+// is what makes that button trustworthy.
+addColumnIfMissing('phone_listings', 'source TEXT');
+
 // One-time backfill for rows that were already sold when the column landed.
 // updated_at is the closest thing to a sale date we have — it's the last
 // edit, which for a sold listing is usually the edit that marked it sold.
