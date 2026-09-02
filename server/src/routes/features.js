@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
-import { FEATURE_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
+import { OFFERED_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
 
 const r = Router();
 
@@ -24,7 +24,7 @@ function normalizeIraqiPhone(input) {
 // ({amount}/{number}) to open the dialer. No secrets here.
 r.get('/features/tiers', (_req, res) => {
   res.json({
-    tiers: FEATURE_TIERS,
+    tiers: OFFERED_TIERS,
     carriers: CARRIERS,
     owner_phone: OWNER_PHONE,
     transfer_numbers: TRANSFER_NUMBERS,
@@ -43,8 +43,10 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
 
+  // A hidden tier resolves by key (so old pending requests still approve) but
+  // may not be newly requested.
   const tier = tierFor(String(req.body?.tier || '').trim());
-  if (!tier) return res.status(400).json({ error: 'bad_tier' });
+  if (!tier || tier.hidden) return res.status(400).json({ error: 'bad_tier' });
 
   const carrier = String(req.body?.carrier || '').trim().toLowerCase();
   if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });

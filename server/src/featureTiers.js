@@ -19,11 +19,21 @@ export const FEATURE_TIERS = [
   // time and the approve path falls back to those when the key is gone.
   { key: 'promo', amount: 5000, days: 10, boosts_per_day: 4, label_ar: 'عرض خاص · باقة ١٠٠٠٠ بـ٥٠٠٠' },
   { key: 'bronze', amount: 2000, days: 2, boosts_per_day: 2, label_ar: 'برونزي' },
-  { key: 'silver', amount: 5000, days: 5, boosts_per_day: 3, label_ar: 'فضي' },
-  { key: 'gold', amount: 10000, days: 10, boosts_per_day: 4, label_ar: 'ذهبي' },
+  // hidden: still resolvable by key, but not offered. Both are dominated by
+  // the promo above — silver costs the same for half as long, gold costs
+  // double for identical terms — and an offer nobody would take, sitting
+  // beside the one they would, reads as a mistake in the app. Delete the
+  // flags when the promotion ends.
+  { key: 'silver', amount: 5000, days: 5, boosts_per_day: 3, label_ar: 'فضي', hidden: true },
+  { key: 'gold', amount: 10000, days: 10, boosts_per_day: 4, label_ar: 'ذهبي', hidden: true },
 ];
 
+// Every tier, including hidden ones: approving a request filed before a tier
+// was hidden must still resolve its key.
 export const TIERS_BY_KEY = Object.fromEntries(FEATURE_TIERS.map((t) => [t.key, t]));
+
+// What the app is actually offered.
+export const OFFERED_TIERS = FEATURE_TIERS.filter((t) => !t.hidden);
 
 // Carriers users transfer airtime from. Lowercase canonical keys.
 export const CARRIERS = ['asiacell', 'korek', 'qicard'];
