@@ -11,6 +11,7 @@ import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
 import { logEvent } from '../eventLog.js';
+import { channelsFor } from '../contactChannels.js';
 
 const r = Router();
 
@@ -105,6 +106,8 @@ function attachImages(rows) {
 function shopCard(u, nowTs) {
   // Contact suppression (users.shop_no_contact) blanks every number below.
   const noContact = !!u.shop_no_contact;
+  // Which buttons the page shows — one rule shared with listings and chat.
+  const ch = channelsFor(u);
   // Matches the shop page's listing set: everything but 'removed' (sold and
   // expired show with badges), so the directory count equals the page.
   const listing_count = db.prepare(
@@ -174,7 +177,9 @@ function shopCard(u, nowTs) {
     delivery_available: u.shop_delivery == null ? null : !!u.shop_delivery,
     shop_address: u.shop_address || null,
     shop_phone: noContact ? null : (u.shop_phone || u.phone || null),
-    shop_whatsapp: noContact ? null : (u.shop_whatsapp || null),
+    // Blanked whenever the WhatsApp channel is off, not only for no-contact:
+    // builds that predate `channels` read this field directly.
+    shop_whatsapp: ch.whatsapp ? (u.shop_whatsapp || null) : null,
     // Full list of public numbers (branch lines). Falls back to the single
     // legacy shop_phone / account phone so older shops still show a number.
     // Note the account-phone fallback: a contact-suppressed shop must return
@@ -214,11 +219,7 @@ function shopCard(u, nowTs) {
     // and its account answers nobody. Blanking the phones already hid call
     // and WhatsApp, but chat is not driven by a number, so it survived as
     // the one button on the page that led nowhere.
-    channels: {
-      call: !noContact && (u.shop_ch_call ?? 1) ? true : false,
-      whatsapp: !noContact && (u.shop_ch_whatsapp ?? 1) ? true : false,
-      chat: !noContact && (u.shop_ch_chat ?? 1) ? true : false,
-    },
+    channels: ch,
     // Same fact, named for clients that predate `channels`.
     contact_suppressed: noContact,
     // Storefront mode. The app shows add-to-cart + COD checkout instead of
@@ -372,6 +373,9 @@ r.post('/shops/register', requireAuth(), (req, res) => {
   if (isFirstRegistration) {
     fields.push('shop_status=?');
     params.push('pending');
+    // The owner did this from the app — every contact channel is theirs.
+    fields.push('shop_origin=?');
+    params.push('self');
   }
   // Stamp shop_created_at once (first time they register).
   fields.push('shop_created_at=COALESCE(shop_created_at, ?)');

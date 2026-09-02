@@ -21,6 +21,7 @@ import { newPriceFor } from '../newPriceRef.js';
 import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
+import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 
 const r = Router();
 
@@ -168,8 +169,30 @@ function noContactSellers() {
 // (it skips the whole action row), so no client change is needed — including
 // on builds already installed from the stores.
 function stripContact(row) {
-  if (!row || !noContactSellers().has(row.seller_id)) return row;
-  return { ...row, contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false };
+  if (!row) return row;
+  if (noContactSellers().has(row.seller_id)) {
+    return { ...row, contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false };
+  }
+  // Admin-made shops keep the call button only (contactChannels.js). The
+  // number stays in the DB; it is omitted from the response exactly as the
+  // no-contact case above, so installed builds never render the button.
+  if (callOnlySellers().has(row.seller_id)) return { ...row, contact_whatsapp: null };
+  return row;
+}
+
+// Same shape as noContactSellers(): the shops whose WhatsApp and chat are
+// off because the operator created them (users.shop_origin='admin').
+let _callOnlyIds = null;
+let _callOnlyAt = 0;
+function callOnlySellers() {
+  const t = Date.now();
+  if (!_callOnlyIds || t - _callOnlyAt > 30_000) {
+    _callOnlyIds = new Set(
+      db.prepare("SELECT id FROM users WHERE seller_type='shop' AND shop_origin='admin'").all().map((r) => r.id),
+    );
+    _callOnlyAt = t;
+  }
+  return _callOnlyIds;
 }
 
 // Public seller card — drops phone & sensitive bits.
@@ -177,12 +200,18 @@ function sellerCard(uid) {
   const u = db.prepare(
     `SELECT id, display_name, governorate, city, profile_image_path, rating_avg, rating_count,
             verified, seller_type, shop_years,
-            shop_image_path, shop_lat, shop_lng
+            shop_image_path, shop_lat, shop_lng, ${CHANNEL_COLS}
      FROM users WHERE id=?`,
   ).get(uid);
   if (!u) return null;
+  // The channel inputs are for channelsFor only — the card exposes the
+  // decision, never the toggles.
+  const { shop_no_contact, shop_origin, shop_ch_call, shop_ch_whatsapp, shop_ch_chat, ...pub } = u;
   return {
-    ...u,
+    ...pub,
+    // Which contact buttons this seller's listings show. Individuals get
+    // all three; see contactChannels.js for what turns one off.
+    channels: channelsFor(u),
     verified: !!u.verified,
     seller_type: u.seller_type || 'individual',
     shop_image_path: u.shop_image_path || null,
@@ -858,7 +887,7 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     // answers nobody. `store_chat` above is the one contact that works.
     contact_suppressed: noContactSellers().has(row.seller_id),
     contact_phone: hideContact ? null : withImgs.contact_phone,
-    contact_whatsapp: hideContact ? null : withImgs.contact_whatsapp,
+    contact_whatsapp: (hideContact || callOnlySellers().has(row.seller_id)) ? null : withImgs.contact_whatsapp,
     seller,
     seller_phone: hideContact ? null : (row.contact_phone || null),
     phone_visible: hideContact ? false : !!row.contact_phone,

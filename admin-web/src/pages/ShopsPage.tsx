@@ -31,6 +31,10 @@ type Shop = {
   shop_orders_enabled: number;
   shop_cod_enabled: number;
   shop_dash_username?: string | null;
+  // 'admin' = created from here or an import → the app shows the call
+  // button only. 'self' = the owner registered from the app → every channel.
+  // null = older row, reads as self.
+  shop_origin?: 'admin' | 'self' | null;
   shop_shipping_fee: number;
 };
 
@@ -123,6 +127,16 @@ export function ShopsPage() {
     setBusy(true);
     try {
       await api(`/admin/shops/${s.id}`, { method: 'PATCH', body: JSON.stringify({ [flag]: !s[flag] }) });
+      await load();
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+
+  // Server-side like the flags above: flipping it changes which contact
+  // buttons installed apps render, no release needed.
+  async function setOrigin(s: Shop, origin: 'admin' | 'self') {
+    setBusy(true);
+    try {
+      await api(`/admin/shops/${s.id}`, { method: 'PATCH', body: JSON.stringify({ shop_origin: origin }) });
       await load();
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
@@ -288,6 +302,12 @@ export function ShopsPage() {
                       <input type="checkbox" disabled={busy} checked={!!s.shop_no_contact}
                              onChange={() => toggleFlag(s, 'shop_no_contact')} />
                       No contact
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}
+                           title="Created from here (not by the owner in the app): the shop page and its listings show the call button only — no WhatsApp, no chat. Applies to apps already installed.">
+                      <input type="checkbox" disabled={busy} checked={s.shop_origin === 'admin'}
+                             onChange={() => setOrigin(s, s.shop_origin === 'admin' ? 'self' : 'admin')} />
+                      Call only (admin-made)
                     </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}
                            title="Storefront mode: this shop's listings get add-to-cart and cash-on-delivery checkout instead of call/WhatsApp.">

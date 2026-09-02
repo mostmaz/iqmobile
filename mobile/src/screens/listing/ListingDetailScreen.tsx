@@ -636,6 +636,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               onStartChat={startChat}
               chatStarting={chatStarting}
               storefront={isStorefront}
+              chat={data.seller?.channels?.chat ?? true}
             />
           </View>
         ) : null}
@@ -1069,7 +1070,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
 //   - WhatsApp: deeplink wa.me, only when seller provided a number
 //   - Chat: opens the in-app chat so buyers can negotiate without leaving
 function ContactRow({
-  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting, storefront,
+  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting, storefront, chat = true,
 }: {
   phone: string | null;
   whatsapp: string | null;
@@ -1081,6 +1082,9 @@ function ContactRow({
   // A storefront sells through the cart and answers on one support line, so
   // its listings drop the per-seller chat entirely.
   storefront?: boolean;
+  // Whether the seller takes in-app chat at all. Off for admin-made shops
+  // (nobody behind them has the app); the server refuses the thread too.
+  chat?: boolean;
 }) {
   const track = useTrack();
   // The contact-tap is the closest thing this app has to a "sale" —
@@ -1161,6 +1165,7 @@ function ContactRow({
           store chats surface there with a push, and replies go out under
           the shop's own name — so the reason is gone and the button is
           back for every listing. */}
+      {chat ? (
       <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
         <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
@@ -1169,6 +1174,7 @@ function ContactRow({
           </View>
         </Btn>
       </View>
+      ) : null}
     </View>
   );
 }

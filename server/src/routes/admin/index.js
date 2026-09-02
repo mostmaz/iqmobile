@@ -2134,7 +2134,7 @@ r.get('/shops', requireAdmin, (req, res) => {
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
            COALESCE(u.shop_cod_enabled,1) AS shop_cod_enabled,
-           u.shop_dash_username,
+           u.shop_dash_username, u.shop_origin,
            COALESCE(u.shop_shipping_fee,5000) AS shop_shipping_fee,
            COALESCE(u.shop_delivery_days_min,2) AS shop_delivery_days_min,
            COALESCE(u.shop_delivery_days_max,4) AS shop_delivery_days_max,
@@ -2174,15 +2174,17 @@ r.post('/shops', requireAdmin, (req, res) => {
     const id = db.prepare(
       `INSERT INTO users(phone, password_hash, display_name, governorate,
                           seller_type, is_guest, created_at,
-                          shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, shop_created_at)
-       VALUES(?, '', ?, ?, 'shop', 0, ?, ?, ?, ?, ?, ?, ?)`,
+                          shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, shop_created_at,
+                          shop_origin)
+       VALUES(?, '', ?, ?, 'shop', 0, ?, ?, ?, ?, ?, ?, ?, 'admin')`,
     ).run(phone, shop_name, governorate, t, shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, t).lastInsertRowid;
     user = db.prepare('SELECT * FROM users WHERE id=?').get(id);
   } else {
     db.prepare(
       `UPDATE users SET seller_type='shop', shop_name=?, shop_bio=?, shop_phone=?,
               shop_whatsapp=?, shop_address=?, governorate=?,
-              shop_created_at=COALESCE(shop_created_at, ?)
+              shop_created_at=COALESCE(shop_created_at, ?),
+              shop_origin=COALESCE(shop_origin, 'admin')
        WHERE id=?`,
     ).run(shop_name, shop_bio, shop_phone, shop_whatsapp, shop_address, governorate, t, user.id);
     user = db.prepare('SELECT * FROM users WHERE id=?').get(user.id);
@@ -2222,6 +2224,14 @@ r.patch('/shops/:id(\\d+)', requireAdmin, (req, res) => {
   if (b.shop_instagram !== undefined) { fields.push('shop_instagram=?'); params.push(sanitizeUrl(b.shop_instagram)); }
   if (b.shop_hidden !== undefined) { fields.push('shop_hidden=?'); params.push(b.shop_hidden ? 1 : 0); }
   if (b.shop_no_contact !== undefined) { fields.push('shop_no_contact=?'); params.push(b.shop_no_contact ? 1 : 0); }
+  // 'admin' = call button only on the shop page and its listings; 'self' =
+  // every channel the shop allows. Null clears to the pre-column default
+  // (reads as self). See contactChannels.js.
+  if (b.shop_origin !== undefined) {
+    const v = b.shop_origin == null || b.shop_origin === '' ? null : String(b.shop_origin);
+    if (v !== null && v !== 'admin' && v !== 'self') return res.status(400).json({ error: 'bad_shop_origin' });
+    fields.push('shop_origin=?'); params.push(v);
+  }
   // Delegate the shop's inbox to a personal account, addressed by phone
   // (that's what the operator knows — nobody knows their own user id).
   // Empty string clears the delegation. The target must be an existing,

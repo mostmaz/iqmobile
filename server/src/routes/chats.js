@@ -8,6 +8,7 @@ import { requireAuth } from '../auth.js';
 import { uploadLimiter } from '../limits.js';
 import { notify } from '../notify.js';
 import { pushToAdmins } from '../adminPush.js';
+import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 
 const r = Router();
 
@@ -87,6 +88,11 @@ r.post('/listings/:id(\\d+)/chat', requireAuth(), (req, res) => {
     'SELECT 1 FROM users WHERE id=? AND COALESCE(shop_no_contact,0)=1',
   ).get(listing.seller_id);
   if (suppressed) return res.status(400).json({ error: 'seller_no_contact' });
+  // Same refusal for a shop whose chat channel is off — an admin-made shop
+  // (nobody behind it has the app) or one that switched chat off itself.
+  // Same error key: the copy already says the seller can't be reached here.
+  const sellerRow = db.prepare(`SELECT ${CHANNEL_COLS} FROM users WHERE id=?`).get(listing.seller_id);
+  if (sellerRow && !channelsFor(sellerRow).chat) return res.status(400).json({ error: 'seller_no_contact' });
 
   let row = db.prepare('SELECT * FROM chats WHERE listing_id=? AND buyer_id=?').get(listing.id, req.user.id);
   if (!row) {

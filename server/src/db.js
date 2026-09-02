@@ -1024,6 +1024,23 @@ addColumnIfMissing('users', 'shop_sells_new INTEGER');        // qualification s
 addColumnIfMissing('users', 'shop_ch_call INTEGER');
 addColumnIfMissing('users', 'shop_ch_whatsapp INTEGER');
 addColumnIfMissing('users', 'shop_ch_chat INTEGER');
+// Who made the shop: 'admin' (dashboard or an import) or 'self' (the owner,
+// from the app). An admin-made shop's owner never installed the app, so its
+// WhatsApp and chat buttons would reach nobody — the app shows call only
+// (see contactChannels.js). NULL is pre-column and reads as self: the safe
+// default, every button on.
+addColumnIfMissing('users', 'shop_origin TEXT');
+// One-time backfill. Only the admin INSERT path leaves password_hash empty
+// on a non-guest account, and only self-registration ever passes through
+// review — a row with both marks is an admin-made shop. Anything else stays
+// NULL rather than guess; new rows are stamped at creation, and the
+// dashboard can flip any row by hand.
+db.prepare(
+  `UPDATE users SET shop_origin='admin'
+    WHERE seller_type='shop' AND shop_origin IS NULL AND password_hash=''
+      AND phone NOT LIKE 'guest:%' AND shop_reviewed_at IS NULL
+      AND COALESCE(shop_no_contact,0)=0`,
+).run();
 // Upgrade-offer pacing (§2): at most one prompt per 7 days, and «بعدين»
 // silences it for 14.
 addColumnIfMissing('users', 'shop_offer_last_at INTEGER');

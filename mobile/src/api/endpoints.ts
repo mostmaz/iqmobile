@@ -71,7 +71,9 @@ export interface Listing {
   expires_at: number;
   updated_at: number;
   images: ListingImage[];
-  seller?: User | null;
+  // channels: which contact buttons this seller's listings show (server
+  // decides — see contactChannels.js). Absent on older servers = all three.
+  seller?: (User & { channels?: { call: boolean; whatsapp: boolean; chat: boolean } }) | null;
   // "Talk to the shop" for price-book listings: when the same device sits
   // in the storefront's live inventory, the server attaches the store's
   // matching listing here so the chat can open against a seller who
