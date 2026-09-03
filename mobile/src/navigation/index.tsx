@@ -26,6 +26,7 @@ import OnboardingScreen, { ONBOARDED_KEY } from '../screens/auth/OnboardingScree
 import BrowseScreen from '../screens/browse/BrowseScreen';
 import SearchScreen from '../screens/search/SearchScreen';
 import SavedSearchesScreen from '../screens/search/SavedSearchesScreen';
+import WalletScreen from '../screens/profile/WalletScreen';
 import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
@@ -85,6 +86,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
     </BrowseStack.Navigator>
@@ -104,6 +106,7 @@ function SearchStackNav() {
       <BrowseStack.Screen name="OrderConfirmed" component={OrderConfirmedScreen} />
       <BrowseStack.Screen name="MyOrders" component={MyOrdersScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
     </BrowseStack.Navigator>
@@ -134,6 +137,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
+      <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
       <BrowseStack.Screen name="HowItWorks" component={OnboardingScreen} />

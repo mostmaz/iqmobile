@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, Input, FieldLabel, fmtIQD } from '../../components/ui';
 import { IconSpark, IconCheck, IconPhoneIcon, IconQiCard } from '../../components/icons';
-import { Features, type FeatureCarrier } from '../../api/endpoints';
+import { Features, Wallet, type FeatureCarrier, type FeaturePayMethod } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 import { timeAgoAr } from '../../lib/format';
 
@@ -58,8 +58,10 @@ export default function FeatureListingScreen({ navigation, route }: any) {
 
   const { data, isLoading } = useQuery({ queryKey: ['feature-tiers'], queryFn: () => Features.tiers() });
   const { data: mine } = useQuery({ queryKey: ['features-mine'], queryFn: () => Features.mine() });
+  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: () => Wallet.get() });
+  const balance = wallet?.balance ?? 0;
 
-  const [carrier, setCarrier] = useState<FeatureCarrier | null>(null);
+  const [carrier, setCarrier] = useState<FeaturePayMethod | null>(null);
   const [sender, setSender] = useState(user?.phone || '');
   const [senderName, setSenderName] = useState('');
   const [tier, setTier] = useState<string | null>(null);
@@ -80,9 +82,14 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     ? data?.transfer_numbers?.[existing.carrier as FeatureCarrier] ?? null
     : null;
 
+  const selectedAmount = useMemo(
+    () => data?.tiers.find((x) => x.key === tier)?.amount ?? 0,
+    [data, tier],
+  );
+
   // The filled USSD dial code for the current carrier + tier selection.
   const ussdCode = useMemo(() => {
-    if (!data || !carrier || !tier) return null;
+    if (!data || !carrier || carrier === 'balance' || !tier) return null;
     const t = data.tiers.find((x) => x.key === tier);
     const number = data.transfer_numbers?.[carrier];
     const template = data.ussd_templates?.[carrier];
@@ -102,11 +109,21 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   }
 
   const submit = useMutation({
-    mutationFn: () => Features.request(listingId, carrier === 'qicard'
-      ? { tier: tier!, carrier: carrier!, sender_name: senderName.trim() }
-      : { tier: tier!, carrier: carrier!, sender_phone: sender.trim() }),
-    onSuccess: () => {
+    mutationFn: () => Features.request(listingId,
+      carrier === 'balance' ? { tier: tier!, carrier: 'balance' }
+        : carrier === 'qicard' ? { tier: tier!, carrier: carrier!, sender_name: senderName.trim() }
+          : { tier: tier!, carrier: carrier!, sender_phone: sender.trim() }),
+    onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['features-mine'] });
+      // Paid from the wallet: the server already featured the listing, so
+      // there is nothing to dial and nothing to wait for. Refresh the balance
+      // and the listing so both show the new state immediately.
+      if (res?.paid_from_balance) {
+        qc.invalidateQueries({ queryKey: ['wallet'] });
+        qc.invalidateQueries({ queryKey: ['listing', listingId] });
+        Alert.alert('تم التمييز ✨', 'انخصم المبلغ من رصيدك وإعلانك هسه بأعلى القائمة.');
+        return;
+      }
       // Straight to the dialer — the pending card renders when they return.
       if (ussdCode) openDialer(ussdCode);
     },
@@ -119,6 +136,8 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         bad_sender_phone: 'أدخل رقم الهاتف الذي ستحوّل منه.',
         bad_sender_prefix: 'الرقم لا يطابق شركة الاتصال المختارة.',
         bad_sender_name: 'أدخل اسم صاحب حساب Qi الذي ستحوّل منه.',
+        insufficient_balance: 'رصيدك ما يكفي لهذه الباقة.',
+        listing_gone: 'الإعلان لم يعد موجوداً.',
         forbidden: 'هذا الإعلان ليس لك.',
         not_found: 'الإعلان غير موجود.',
       };
@@ -127,8 +146,11 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   });
 
   function onSubmit() {
-    if (!carrier) { Alert.alert('اختر طريقة الدفع', 'حدّد آسياسيل أو كورك أو كي كارد أولاً.'); return; }
-    if (carrier === 'qicard') {
+    if (!carrier) { Alert.alert('اختر طريقة الدفع', 'حدّد رصيدك أو آسياسيل أو كورك أو كي كارد أولاً.'); return; }
+    if (carrier === 'balance') {
+      // Nothing to collect. The balance itself is checked below, once a tier
+      // is picked, and again by the server inside its transaction.
+    } else if (carrier === 'qicard') {
       if (senderName.trim().length < 2) {
         Alert.alert('اسم صاحب الحساب', 'اكتب اسم صاحب حساب Qi الذي ستحوّل منه الأموال.');
         return;
@@ -149,6 +171,10 @@ export default function FeatureListingScreen({ navigation, route }: any) {
       }
     }
     if (!tier) { Alert.alert('اختر الباقة', 'حدّد إحدى باقات التمييز.'); return; }
+    if (carrier === 'balance' && selectedAmount > balance) {
+      Alert.alert('الرصيد ما يكفي', `هذه الباقة ${fmtIQD(selectedAmount)} د.ع ورصيدك ${fmtIQD(balance)} د.ع.`);
+      return;
+    }
     submit.mutate();
   }
 
@@ -223,6 +249,45 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           <>
             {/* 1 — carrier */}
             <FieldLabel>١ · اختر طريقة الدفع</FieldLabel>
+
+            {/* Pay from the wallet. Offered only when there is a balance —
+                an empty option would raise a question this screen cannot
+                answer. It is deliberately not one of the carrier tiles: it
+                is not a transfer, and it needs no sender and no approval. */}
+            {balance > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setCarrier('balance')}
+                style={{
+                  flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginTop: 6,
+                  backgroundColor: carrier === 'balance' ? theme.successSoft : theme.surface,
+                  borderWidth: 1.5, borderColor: carrier === 'balance' ? theme.success : theme.line,
+                  borderRadius: radius.xxl, paddingHorizontal: 14, paddingVertical: 14,
+                }}
+              >
+                <View style={{
+                  width: 40, height: 40, borderRadius: 999, backgroundColor: theme.success,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <IconSpark size={20} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink, textAlign: 'right' }}>
+                    ادفع من رصيدي
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+                    الرصيد: {fmtIQD(balance)} د.ع · يتفعّل فوراً بدون تحويل
+                  </Text>
+                </View>
+                {carrier === 'balance' ? <IconCheck size={18} color={theme.success} /> : null}
+              </TouchableOpacity>
+            ) : null}
+
+            {balance > 0 ? (
+              <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', marginTop: 12 }}>
+                أو حوّل رصيد:
+              </Text>
+            ) : null}
             <View style={{ flexDirection: 'row-reverse', gap: 10, marginTop: 6 }}>
               {(data?.carriers || (['asiacell', 'korek'] as FeatureCarrier[])).map((c) => {
                 const meta = CARRIER_META[c as FeatureCarrier] || { label: c, color: theme.accent };
@@ -251,7 +316,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                 Qi account-holder name for Qi Card (that's what shows on
                 the incoming transfer). */}
             <View style={{ height: 16 }} />
-            {carrier === 'qicard' ? (
+            {carrier === 'balance' ? null : carrier === 'qicard' ? (
               <>
                 <FieldLabel>٢ · اسم صاحب الحساب الذي ستحوّل منه</FieldLabel>
                 <Input value={senderName} onChangeText={setSenderName} placeholder="الاسم الكامل كما في حساب Qi" />
@@ -266,7 +331,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
 
             {/* 3 — tier */}
             <View style={{ height: 16 }} />
-            <FieldLabel>٣ · اختر الباقة</FieldLabel>
+            <FieldLabel>{carrier === 'balance' ? '٢' : '٣'} · اختر الباقة</FieldLabel>
             <View style={{ gap: 10, marginTop: 6 }}>
               {(data?.tiers || []).map((t) => {
                 const active = tier === t.key;
@@ -291,6 +356,15 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                       <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
                         {t.days} أيام · يُرفع لأعلى القائمة {t.boosts_per_day} مرات يومياً
                       </Text>
+                      {/* The gift is paid on an approved TRANSFER only —
+                          crediting a wallet-funded purchase would let 5,000 of
+                          credit buy 10,000 of credit, so the server refuses it.
+                          Don't advertise it on the path that can't deliver. */}
+                      {t.bonus && carrier !== 'balance' ? (
+                        <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.success, textAlign: 'right', marginTop: 3 }}>
+                          + {fmtIQD(t.bonus)} د.ع رصيد هدية
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={{ alignItems: 'center' }}>
                       <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 16, color: theme.accentDeep }}>{fmtIQD(t.amount)}</Text>
@@ -345,12 +419,36 @@ export default function FeatureListingScreen({ navigation, route }: any) {
               </View>
             ) : null}
 
+            {/* Wallet summary — what leaves the balance, and what is left. */}
+            {carrier === 'balance' && tier ? (
+              <View style={{
+                marginTop: 18, backgroundColor: theme.successSoft, borderWidth: 1,
+                borderColor: theme.success, borderRadius: radius.xxl, padding: 16,
+              }}>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.ink, textAlign: 'right', lineHeight: 22 }}>
+                  ينخصم {fmtIQD(selectedAmount)} د.ع من رصيدك ويتفعّل التمييز فوراً — ماكو تحويل ولا انتظار موافقة.
+                </Text>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 6 }}>
+                  الرصيد بعد الخصم: {fmtIQD(Math.max(0, balance - selectedAmount))} د.ع
+                </Text>
+                {data?.tiers.find((x) => x.key === tier)?.bonus ? (
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 6 }}>
+                    الرصيد الهدية يجي وية التحويل بس — مو وية الدفع من الرصيد.
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
+
             <View style={{ height: 22 }} />
             <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>
-              {carrier === 'qicard' ? 'حوّلت المبلغ — إرسال الطلب' : 'تحويل الرصيد وإرسال الطلب'}
+              {carrier === 'balance' ? 'ادفع من رصيدي وميّز الإعلان'
+                : carrier === 'qicard' ? 'حوّلت المبلغ — إرسال الطلب'
+                  : 'تحويل الرصيد وإرسال الطلب'}
             </Btn>
             <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 12, textAlign: 'center', lineHeight: 20 }}>
-              بعد وصول المبلغ وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.
+              {carrier === 'balance'
+                ? 'يُفعَّل التمييز فوراً بعد الخصم من رصيدك.'
+                : 'بعد وصول المبلغ وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.'}
             </Text>
           </>
         )}

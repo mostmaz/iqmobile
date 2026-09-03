@@ -503,12 +503,18 @@ export const Notifications = {
 // submits a request with the carrier + sending number, and an admin approves
 // it from the dashboard (which pins the listing).
 export type FeatureCarrier = 'asiacell' | 'korek' | 'qicard';
+// How a request is paid. 'balance' is not a carrier — there is no transfer to
+// match — so the server keeps it out of the served `carriers` list and the app
+// offers it separately, only when the wallet actually covers the tier.
+export type FeaturePayMethod = FeatureCarrier | 'balance';
 export interface FeatureTier {
   key: string;          // 'bronze' | 'silver' | 'gold'
   amount: number;       // IQD
   days: number;
   boosts_per_day: number;
   label_ar: string;
+  /** Wallet credit granted when this tier is approved, if any. */
+  bonus?: number;
 }
 export interface FeatureTiersResponse {
   tiers: FeatureTier[];
@@ -538,10 +544,33 @@ export interface FeatureRequest {
   brand?: string;
   model?: string;
   featured_until?: number | null;
+  /** Set when the request was paid from the wallet and so needed no review. */
+  paid_from_balance?: boolean;
+  /** The balance left after a wallet-funded request. */
+  balance?: number;
 }
+
+// ─── Wallet ──────────────────────────────────────────────────────────
+// A signed ledger, so a balance can always be explained by the rows under it.
+export interface WalletEntry {
+  id: number;
+  delta: number;          // IQD, negative when spent
+  reason: string;         // 'promo_bonus' | 'feature_spend' | 'admin_adjust'
+  ref_type?: string | null;
+  ref_id?: number | null;
+  note?: string | null;
+  created_at: number;
+}
+export interface WalletState {
+  balance: number;
+  entries: WalletEntry[];
+}
+export const Wallet = {
+  get: () => api<WalletState>('/wallet'),
+};
 export const Features = {
   tiers: () => api<FeatureTiersResponse>('/features/tiers'),
-  request: (listingId: number, body: { tier: string; carrier: FeatureCarrier; sender_phone?: string; sender_name?: string; note?: string }) =>
+  request: (listingId: number, body: { tier: string; carrier: FeaturePayMethod; sender_phone?: string; sender_name?: string; note?: string }) =>
     api<FeatureRequest>(`/listings/${listingId}/feature-request`, { method: 'POST', body: JSON.stringify(body) }),
   // Cancels the caller's pending request for this listing — the "لم أحوّل
   // الرصيد بعد" escape hatch when the dial was never completed.

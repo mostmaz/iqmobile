@@ -134,6 +134,7 @@ const AR = {
     edit: 'تعديل المعلومات',
     orders: 'طلباتي',
     savedSearches: 'عمليات البحث المحفوظة',
+    wallet: 'رصيدي',
     wishlist: 'قائمة الرغبات',
     shops: 'المتاجر',
     shopManage: 'إدارة متجري',

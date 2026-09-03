@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Img } from '../../components/Img';
 import { CommonActions } from '@react-navigation/native';
@@ -7,9 +8,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
-import { Header, FieldLabel, Btn } from '../../components/ui';
+import { Header, FieldLabel, Btn, fmtIQD } from '../../components/ui';
 import { IconBell, IconPin, IconShield, IconID, IconClose, IconChevronLeft, IconTag, IconBookmark, IconStore, IconSpark, IconSearch, IconBox, IconChat } from '../../components/icons';
-import { Auth, Listings } from '../../api/endpoints';
+import { Auth, Listings, Wallet } from '../../api/endpoints';
 import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
@@ -66,7 +67,12 @@ export default function ProfileScreen({ navigation }: any) {
     } catch (e: any) { Alert.alert('خطأ', e.message); }
   }
 
-  const items: { Icon: any; label: string; onPress: () => void }[] = [
+  // Balance sits on its own row with the number in place, so a seller who
+  // was credited by the promotion sees it without having to go looking.
+  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: () => Wallet.get() });
+
+  const items: { Icon: any; label: string; value?: string; onPress: () => void }[] = [
+    { Icon: IconSpark, label: ar.profile.wallet, value: `${fmtIQD(wallet?.balance ?? 0)} د.ع`, onPress: () => navigation.navigate('Wallet') },
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
     { Icon: IconBox, label: ar.profile.orders, onPress: () => navigation.navigate('MyOrders') },
     { Icon: IconBookmark, label: ar.profile.saved, onPress: () => navigation.navigate('Saved') },
@@ -170,6 +176,11 @@ export default function ProfileScreen({ navigation }: any) {
           >
             <s.Icon size={18} color={theme.subtle} sw={1.7} />
             <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right' }}>{s.label}</Text>
+            {s.value ? (
+              <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 13.5, color: theme.accentDeep, writingDirection: 'ltr' }}>
+                {s.value}
+              </Text>
+            ) : null}
 {/* Drill-in, not back. In an RTL layout the forward direction is
                 leftward, so an unflipped left chevron points the way the next
                 screen arrives from. Back buttons keep their scaleX flip —
