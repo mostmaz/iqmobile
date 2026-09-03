@@ -21,6 +21,7 @@ import { IconStore, IconMsgCall, IconPin, IconCheck } from '../../components/ico
 import { GovPicker } from '../../components/GovPicker';
 import { Auth, Shops, ShopImage } from '../../api/endpoints';
 import { updateShopImage, uploadShopImages, fullImageUrl } from '../../api/upload';
+import { logMetaEvent } from '../../analytics/meta';
 import { compressForAvatar, compressForListing } from '../../lib/imageCompress';
 import { useAuth } from '../../auth/AuthContext';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR } from '../../lib/governorates';
@@ -99,6 +100,10 @@ export default function ShopRegisterScreen({ navigation }: any) {
       if (editing) {
         Alert.alert('تم حفظ متجرك ✅', 'تم تحديث معلومات متجرك.', [{ text: 'تم' }]);
       } else {
+        // Meta App Event — the "create shop" conversion Ads Manager
+        // optimises for. Only on a FIRST registration: this same route
+        // doubles as "edit my shop", and re-saving a bio is not a signup.
+        logMetaEvent('CreateShop', govAr ? { governorate: GOV_AR_TO_EN[govAr] } : undefined);
         // New shop — refresh() has flipped the screen into edit mode, so the
         // banner / price-image controls are now visible below. Let them add
         // images here, or jump straight to the public page.

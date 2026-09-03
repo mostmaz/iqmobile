@@ -18,6 +18,7 @@ import { Listings, Brands, DeviceCatalog, type Condition } from '../../api/endpo
 import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { BrandListModal } from '../../components/BrandListModal';
 import { useTrack } from '../../analytics/track';
+import { logMetaEvent } from '../../analytics/meta';
 import { uploadListingImages } from '../../api/upload';
 import { ar } from '../../i18n/ar';
 import { compressForListing } from '../../lib/imageCompress';
@@ -297,6 +298,14 @@ export default function PostListingScreen({ navigation }: any) {
           image_count: images.length,
         });
       } catch {}
+      // Meta App Event — the "add device" conversion Ads Manager optimises
+      // for. Fire-and-forget: logMetaEvent swallows its own errors, so a
+      // broken SDK can never block the hand-off to the detail screen.
+      logMetaEvent('AddDevice', {
+        brand: listing.brand,
+        condition: listing.condition,
+        governorate: listing.governorate,
+      });
       navigation.replace('ListingDetail', { id: listing.id });
     },
     onError: (e: any) => setErr((ar.errors as any)[e?.message] || (ar.errors as any).network),
