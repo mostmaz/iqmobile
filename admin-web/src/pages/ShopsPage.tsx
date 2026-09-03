@@ -19,6 +19,10 @@ type Shop = {
   shop_bio: string | null;
   shop_address: string | null;
   shop_image_path: string | null;
+  // Personal-account avatar. Used only as a display fallback: shop owners who
+  // register without uploading a shop banner still have an avatar, and the
+  // dashboard should show it rather than an empty box.
+  profile_image_path: string | null;
   shop_featured_until: number | null;
   listing_count: number;
   is_featured: boolean;
@@ -263,8 +267,8 @@ export function ShopsPage() {
                 <tr key={s.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {s.shop_image_path
-                        ? <img src={imgUrl(s.shop_image_path)} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover' }} />
+                      {(s.shop_image_path || s.profile_image_path)
+                        ? <img src={imgUrl(s.shop_image_path || s.profile_image_path)} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: 'cover' }} />
                         : <div style={{ width: 32, height: 32, borderRadius: 8, background: '#333' }} />}
                       <div>
                         <strong>{s.shop_name || s.display_name}</strong>
