@@ -1610,7 +1610,7 @@ r.get('/shops', requireAdmin, (req, res) => {
   let sql = `
     SELECT u.id, u.phone, u.display_name, u.shop_name, u.governorate, u.city,
            u.shop_phone, u.shop_whatsapp, u.shop_bio, u.shop_address,
-           u.shop_image_path, u.shop_featured_until, u.verified, u.created_at,
+           u.shop_image_path, u.profile_image_path, u.shop_featured_until, u.verified, u.created_at,
            COALESCE(u.shop_hidden,0) AS shop_hidden,
            COALESCE(u.shop_no_contact,0) AS shop_no_contact,
            COALESCE(u.shop_orders_enabled,0) AS shop_orders_enabled,
