@@ -25,11 +25,36 @@ const isReal = (v?: string) => !!v && !v.startsWith('REPLACE_WITH_');
 export const META_ENABLED = isReal(metaAppId) && isReal(metaClientToken);
 
 let initialized = false;
+let warnedDisabled = false;
+
+// Say so, once, when Meta is off in development.
+//
+// Every function here fails silently by design, which is right in production —
+// analytics must never break the app — but in development that silence cost a
+// long debugging session: a stale simulator binary whose EMBEDDED config
+// predated these keys reported META_ENABLED=false, so every event no-opped
+// while Metro happily served JS that looked correct.
+//
+// The embedded config is the thing to suspect: expo-constants reads
+// Constants.expoConfig from the app bundle, baked in at NATIVE build time, not
+// from Metro. Fresh JS over an old binary cannot fix a missing key — that
+// needs a rebuild.
+function warnIfDisabled(context: string): void {
+  if (!__DEV__ || warnedDisabled) return;
+  warnedDisabled = true;
+  console.warn(
+    `[meta] disabled — ${context} will not be sent. ` +
+    `metaAppId=${metaAppId ?? 'undefined'} metaClientToken=${metaClientToken ? 'set' : 'undefined'}. ` +
+    'These come from Constants.expoConfig.extra, which is embedded at native build time: ' +
+    'if they are present in app.json but undefined here, this binary is older than they are — rebuild it.',
+  );
+}
 
 // Initialise the SDK and resolve iOS tracking consent. Safe to call multiple
 // times; the heavy work runs once. Called from App.tsx on mount.
 export async function initMeta(): Promise<void> {
-  if (!META_ENABLED || initialized) return;
+  if (!META_ENABLED) { warnIfDisabled('app events'); return; }
+  if (initialized) return;
   initialized = true;
   try {
     const { Settings } = await import('react-native-fbsdk-next');
@@ -57,7 +82,7 @@ export async function initMeta(): Promise<void> {
 // Log a custom App Event (e.g. 'CompleteRegistration', 'ViewContent',
 // 'Contact'). Fire-and-forget; no-ops until Meta is configured.
 export async function logMetaEvent(name: string, params?: Record<string, string | number>): Promise<void> {
-  if (!META_ENABLED) return;
+  if (!META_ENABLED) { warnIfDisabled(`event "${name}"`); return; }
   try {
     const { AppEventsLogger } = await import('react-native-fbsdk-next');
     if (params) AppEventsLogger.logEvent(name, params);
