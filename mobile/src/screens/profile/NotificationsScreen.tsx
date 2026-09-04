@@ -12,6 +12,7 @@ import { timeAgoAr, dayBucketAr, deviceTitle } from '../../lib/format';
 import { navigationRef } from '../../navigation/ref';
 import { toLatinDigits } from '../../lib/format';
 import { ar } from '../../i18n/ar';
+import { SHOW_PROMOTE } from '../../config/flags';
 
 const KIND_LABEL: Record<string, string> = {
   'chat.message': 'رسالة جديدة',
@@ -166,7 +167,11 @@ export default function NotificationsScreen({ navigation }: any) {
     // Before the generic listing_id branch: this one is about the promotion,
     // not the listing, and dropping the seller on their own ad would leave
     // them to find "ميّز إعلانك" for themselves.
-    if (item.kind === 'feature.reminder' && item.payload?.listing_id) {
+    // …but only where featuring exists. A seller who bought on another
+    // platform can still receive this push, and on a build with the flow
+    // hidden it would land them on a screen with no way back into context.
+    // Fall through to the listing instead.
+    if (SHOW_PROMOTE && item.kind === 'feature.reminder' && item.payload?.listing_id) {
       navigation.navigate('FeatureListing', { id: item.payload.listing_id });
       return;
     }

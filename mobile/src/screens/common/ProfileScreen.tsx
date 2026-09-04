@@ -15,6 +15,7 @@ import { uploadProfileImage, fullImageUrl } from '../../api/upload';
 import { compressForAvatar } from '../../lib/imageCompress';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
+import { SHOW_PROMOTE } from '../../config/flags';
 import { ar, setLang, getLang } from '../../i18n/ar';
 
 export default function ProfileScreen({ navigation }: any) {
@@ -69,10 +70,17 @@ export default function ProfileScreen({ navigation }: any) {
 
   // Balance sits on its own row with the number in place, so a seller who
   // was credited by the promotion sees it without having to go looking.
-  const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: () => Wallet.get() });
+  //
+  // Gated on SHOW_PROMOTE with the featuring flow it belongs to: balance is
+  // earned by buying a promo tier and spent on featuring, so on a build where
+  // featuring is hidden this row would advertise money with no way to earn it
+  // and nowhere to spend it. Skip the fetch too — no point asking.
+  const { data: wallet } = useQuery({
+    queryKey: ['wallet'], queryFn: () => Wallet.get(), enabled: SHOW_PROMOTE,
+  });
 
   const items: { Icon: any; label: string; value?: string; onPress: () => void }[] = [
-    { Icon: IconSpark, label: ar.profile.wallet, value: `${fmtIQD(wallet?.balance ?? 0)} د.ع`, onPress: () => navigation.navigate('Wallet') },
+    ...(SHOW_PROMOTE ? [{ Icon: IconSpark, label: ar.profile.wallet, value: `${fmtIQD(wallet?.balance ?? 0)} د.ع`, onPress: () => navigation.navigate('Wallet') }] : []),
     { Icon: IconTag, label: ar.profile.listings, onPress: () => navigation.navigate('MyListings') },
     { Icon: IconBox, label: ar.profile.orders, onPress: () => navigation.navigate('MyOrders') },
     { Icon: IconBookmark, label: ar.profile.saved, onPress: () => navigation.navigate('Saved') },

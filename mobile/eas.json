@@ -18,7 +18,11 @@
       "android": {
         "buildType": "app-bundle"
       },
-      "ios": {},
+      "ios": {
+        "env": {
+          "EXPO_PUBLIC_HIDE_PROMOTE": "1"
+        }
+      },
       "env": {
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
