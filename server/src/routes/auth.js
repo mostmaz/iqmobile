@@ -125,12 +125,21 @@ r.post('/register', authLimiter, (req, res) => {
   if (exists) return res.status(409).json({ error: 'phone_taken' });
 
   const hash = hashPassword(password);
+  // A shop born here enters review exactly like one from POST /shops/register.
+  // shop_status defaults to 'approved' at the column level, so staying silent
+  // about it publishes the shop immediately — which is how signup quietly
+  // became a way around the review gate.
+  const isShop = sellerType === 'shop';
   const ins = db
     .prepare(
-      `INSERT INTO users(phone, password_hash, display_name, governorate, city, seller_type, shop_years, created_at)
-       VALUES(?,?,?,?,?,?,?,?)`,
+      `INSERT INTO users(phone, password_hash, display_name, governorate, city, seller_type, shop_years, created_at,
+                         shop_status, shop_origin, shop_created_at)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
     )
-    .run(phone, hash, finalName, finalGov, city || null, sellerType, shopYears, now());
+    .run(phone, hash, finalName, finalGov, city || null, sellerType, shopYears, now(),
+      isShop ? 'pending' : 'approved',
+      isShop ? 'self' : null,
+      isShop ? now() : null);
   const user = db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
   const token = issueToken({ id: user.id });
   res.json({ token, user: publicUser(user) });
@@ -370,13 +379,27 @@ r.post('/complete-profile', requireAuth(), profileUpload.single('shop_image'), (
     cleanup(); // discard any uploaded file if user picked individual
   }
 
-  db.prepare(
-    `UPDATE users
-     SET display_name=?, seller_type=?,
-         shop_image_path=?, shop_lat=?, shop_lng=?,
-         profile_completed=1
-     WHERE id=?`,
-  ).run(name, sellerType, shopImagePath, shopLat, shopLng, req.user.id);
+  // Same gate as signup and POST /shops/register: becoming a shop here is a
+  // first registration, so it enters review rather than going straight live.
+  // Only stamp the review fields when this is genuinely a NEW shop — an
+  // already-approved shop re-running profile completion must not be delisted.
+  const wasShop = db.prepare('SELECT seller_type FROM users WHERE id=?')
+    .get(req.user.id)?.seller_type === 'shop';
+  const entersReview = sellerType === 'shop' && !wasShop;
+
+  const setCols = [
+    'display_name=?', 'seller_type=?',
+    'shop_image_path=?', 'shop_lat=?', 'shop_lng=?',
+    'profile_completed=1',
+  ];
+  const setVals = [name, sellerType, shopImagePath, shopLat, shopLng];
+  if (entersReview) {
+    setCols.push('shop_status=?', 'shop_origin=?',
+      'shop_created_at=COALESCE(shop_created_at, ?)');
+    setVals.push('pending', 'self', now());
+  }
+  db.prepare(`UPDATE users SET ${setCols.join(', ')} WHERE id=?`)
+    .run(...setVals, req.user.id);
 
   const row = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
   res.json({ user: publicUser(row) });
