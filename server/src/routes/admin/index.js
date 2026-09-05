@@ -1,3 +1,4 @@
+import { growthAnalytics } from '../../growthAnalytics.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
@@ -1173,8 +1174,8 @@ r.get('/overview', requireAdmin, (_req, res) => {
       SUM(CASE WHEN is_guest=0 THEN 1 ELSE 0 END) AS real_users,
       SUM(CASE WHEN is_guest=1 THEN 1 ELSE 0 END) AS guests,
       SUM(CASE WHEN suspended_at IS NOT NULL THEN 1 ELSE 0 END) AS suspended,
-      SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS new_7d,
-      SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS new_30d
+      SUM(CASE WHEN registered_at >= ? THEN 1 ELSE 0 END) AS new_7d,
+      SUM(CASE WHEN registered_at >= ? THEN 1 ELSE 0 END) AS new_30d
     FROM users
   `).get(week, month);
 
@@ -1223,6 +1224,7 @@ r.get('/overview', requireAdmin, (_req, res) => {
   `).all().map((u) => ({ ...u, is_guest: !!u.is_guest }));
 
   res.json({
+    growth: growthAnalytics(db, now(), 30),
     users: {
       total: userTotals.total || 0,
       real: userTotals.real_users || 0,
@@ -2665,21 +2667,19 @@ r.get('/analytics/daily', requireAdmin, (req, res) => {
   }
   for (const d of axis) engaged[d] = engagedSets.get(d).size;
 
-  const signups = blank();
-  for (const r2 of db.prepare('SELECT created_at FROM users WHERE created_at >= ?').all(windowStart)) {
-    const d = dayOf(r2.created_at);
-    if (d in signups) signups[d] += 1;
-  }
-
   const listings = blank();
   for (const r2 of db.prepare('SELECT created_at FROM phone_listings WHERE created_at >= ?').all(windowStart)) {
     const d = dayOf(r2.created_at);
     if (d in listings) listings[d] += 1;
   }
 
+  const growth = growthAnalytics(db, Date.now(), days);
+  const registrationDays = new Map(growth.registrations_by_day.map(r => [r.day, r.registrations]));
+  const guestDays = new Map(growth.guests_by_day.map(r => [r.day, r.guests]));
   const series = axis.map((d) => ({
+    registrations: registrationDays.get(d) || 0, guests: guestDays.get(d) || 0,
     day: d, opened: opened[d], engaged: engaged[d],
-    signups: signups[d], listings: listings[d],
+    signups: registrationDays.get(d) || 0, listings: listings[d],
   }));
 
   // Rolling reach. WAU/MAU come from the same table, counted over windows
@@ -2692,6 +2692,7 @@ r.get('/analytics/daily', requireAdmin, (req, res) => {
   const dau = opened[today] || 0;
   const mau = windowUsers(30);
   res.json({
+    growth,
     series,
     totals: {
       dau,

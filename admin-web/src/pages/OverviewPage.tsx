@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 
 type OverviewData = {
+  growth: { tracking_start: number; acquisition: { registrations: number; guests: number }; contact_buyers: number };
   users: { total: number; real: number; guest: number; suspended: number; new_7d: number; new_30d: number };
   listings: { active: number; sold: number; expired: number; removed: number; new_7d: number; new_30d: number };
   by_brand: Array<{ name: string; count: number }>;
@@ -52,18 +53,19 @@ export function OverviewPage() {
   if (err) return <div className="card" style={{ color: 'salmon' }}>Error loading overview: {err}</div>;
   if (!data) return <div className="card">Loading…</div>;
 
-  const newThisWeek = data.users.new_7d + data.listings.new_7d;
+
 
   return (
     <div>
       {/* KPI row */}
       <div className="kpi-row">
-        <Kpi label="Real users" value={data.users.real} sub={`${data.users.new_7d} new this week`} />
-        <Kpi label="Guest sessions" value={data.users.guest} sub={`${data.users.suspended} suspended`} />
+        <Kpi label="Registered accounts" value={data.users.real} sub={`${data.users.new_7d} recorded registrations (7d)`} />
+        <Kpi label="Guest accounts" value={data.users.guest} sub={`${data.growth.acquisition.guests} recorded guest creations (30d)`} />
         <Kpi label="Active listings" value={data.listings.active} sub={`${data.listings.new_7d} new this week`} />
-        <Kpi label="Combined growth (7d)" value={newThisWeek} sub={`+${data.users.new_30d} users · +${data.listings.new_30d} listings (30d)`} />
+        <Kpi label="Buyers contacting sellers (30d)" value={data.growth.contact_buyers} sub="Unique accounts across call, WhatsApp and buyer messages" />
       </div>
 
+      <p className="muted">Registration and guest-creation events are recorded from {new Date(data.growth.tracking_start).toLocaleString('en-GB', { timeZone: 'Asia/Baghdad' })} (Baghdad). Earlier event dates are unknown; these counts may cover only part of the selected period. Registered totals include existing/imported accounts. Guest accounts are not sessions or unique people. External contacts require an app version with tracking.</p>
       {/* Charts row */}
       <div className="chart-row">
         <ChartCard title="Listings by brand">
@@ -109,13 +111,13 @@ export function OverviewPage() {
             </ul>
           )}
         </ChartCard>
-        <ChartCard title="Recent signups">
+        <ChartCard title="Recently created accounts">
           {data.recent_signups.length === 0 ? <Empty /> : (
             <ul className="activity-list">
               {data.recent_signups.map((u) => (
                 <li key={u.id}>
                   <strong>{u.display_name}</strong>
-                  {u.is_guest ? <span className="muted"> · guest</span> : <span className="muted"> · real</span>}
+                  {u.is_guest ? <span className="muted"> · guest</span> : <span className="muted"> · registered</span>}
                   <span className="ts">{timeAgo(u.created_at)}</span>
                 </li>
               ))}

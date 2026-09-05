@@ -17,9 +17,16 @@ import { api } from '../api';
 // history to backfill, because nothing was recording it. The page says so
 // rather than letting the flat early stretch read as "nobody used the app".
 
-type Row = { day: string; opened: number; engaged: number; signups: number; listings: number };
+type Row = { day: string; opened: number; engaged: number; signups: number; registrations: number; guests: number; listings: number };
 type Totals = { dau: number; engaged_today: number; wau: number; mau: number; dau_mau_pct: number };
 type Resp = {
+  growth: {
+    tracking_start: number;
+    active_today: { total: number; guests: number; registered: number; returning: number };
+    contact_buyers: number;
+    cohort_start: string; cohort_end: string;
+    retention: { day: number; eligible: number; returned: number; pct: number | null }[];
+  };
   series: Row[];
   totals: Totals;
   platforms: { platform: string; users: number }[];
@@ -87,10 +94,26 @@ export function DailyUsersPage() {
         <Kpi label="نشط هذا الأسبوع" value={totals.wau.toLocaleString('en-US')} sub="آخر ٧ أيام" />
         <Kpi label="نشط هذا الشهر" value={totals.mau.toLocaleString('en-US')} sub="آخر ٣٠ يوم" />
         <Kpi
-          label="نسبة العودة"
+          label="النشاط اليومي ÷ الشهري"
           value={`${totals.dau_mau_pct}%`}
-          sub="يومي ÷ شهري — ٢٠٪+ ممتاز"
+          sub="مؤشر نشاط، وليس احتفاظاً بالمستخدمين"
         />
+      </div>
+
+      <div className="kpi-row">
+        <Kpi label="حسابات مسجلة نشطة اليوم" value={data.growth.active_today.registered.toLocaleString('en-US')} />
+        <Kpi label="حسابات ضيوف نشطة اليوم" value={data.growth.active_today.guests.toLocaleString('en-US')} />
+        <Kpi label="عادوا اليوم" value={data.growth.active_today.returning.toLocaleString('en-US')} sub="نشطوا في يوم سابق مسجّل؛ يشمل الضيوف" />
+        <Kpi label="مشترون تواصلوا" value={data.growth.contact_buyers.toLocaleString('en-US')} sub={`حسابات فريدة خلال ${days} يوم: اتصال، واتساب، رسالة مشتري`} />
+      </div>
+      <div className="card">
+        <h3>الاحتفاظ بعد التسجيل D1 / D7 / D30</h3>
+        <p className="muted">مجموعات التسجيل من {data.growth.cohort_start} إلى {data.growth.cohort_end}. النسبة لمن عاد في اليوم المحدد بالضبط بتوقيت بغداد. تُستبعد المجموعات التي لم ينتهِ يوم عودتها بعد.</p>
+        <table className="data-table">
+          <thead><tr><th>يوم العودة</th><th>المؤهلون</th><th>العائدون</th><th>الاحتفاظ</th></tr></thead>
+          <tbody>{data.growth.retention.map(r => <tr key={r.day}><td>D{r.day}</td><td>{r.eligible}</td><td>{r.returned}</td><td>{r.pct === null ? 'لا توجد مجموعة مكتملة بعد' : `${r.pct}%`}</td></tr>)}</tbody>
+        </table>
+        <p className="muted">بدأ تسجيل تواريخ التسجيل وإنشاء الضيوف في {new Date(data.growth.tracking_start).toLocaleString('en-GB', { timeZone: 'Asia/Baghdad' })} بتوقيت بغداد. التواريخ السابقة غير معروفة وليست صفراً؛ لا تُحتسب الحسابات المستوردة كتسجيلات. اختر ٩٠ يوماً لمتابعة D30. الضيوف حسابات وليست جلسات أو أشخاصاً فريدين. حالة ضيف/مسجل هي الحالة الحالية. قياس الاتصال وواتساب يعتمد على إصدار التطبيق.</p>
       </div>
 
       {!everOpened ? (
@@ -119,15 +142,17 @@ export function DailyUsersPage() {
 
       <div className="chart-row">
         <div className="card chart-card">
-          <div className="chart-title">تسجيلات جديدة</div>
+          <div className="chart-title">تسجيلات وإنشاء ضيوف (من بدء القياس)</div>
           <div style={{ height: 220 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={series} margin={{ top: 8, right: 8, bottom: 4, left: -14 }}>
+              <BarChart data={series.map(r => r.day < new Date(data.growth.tracking_start + 10800000).toISOString().slice(0, 10) ? { ...r, registrations: null, guests: null } : r)} margin={{ top: 8, right: 8, bottom: 4, left: -14 }}>
                 <CartesianGrid stroke="#172741" vertical={false} />
                 <XAxis dataKey="label" tick={AXIS} axisLine={false} tickLine={false} minTickGap={22} />
                 <YAxis tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip {...TOOLTIP} />
-                <Bar dataKey="signups" name="تسجيلات" fill="#fbbf24" radius={[3, 3, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="registrations" name="تسجيلات فعلية" fill="#fbbf24" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="guests" name="حسابات ضيوف جديدة" fill="#64748b" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -104,7 +104,9 @@ test('phone numbers in chat messages pass through unchanged (no masking)', async
   // 5 register calls a minute and the suite shares one process.
   const s = await call('POST', '/auth/login', { phone: '07700000001', password: 'pw1234' });
   const b = await call('POST', '/auth/login', { phone: '07700000002', password: 'pw1234' });
-  const lc = await call('POST', '/listings', { brand: 'Apple', model: '14', condition: 'new', asking_price: 1, governorate: 'Baghdad', contact_phone: '07700000001' }, s.data.token);
+  // Reuse the listing too: main limits individual sellers to one per hour.
+  const lc = { data: db.prepare('SELECT id FROM phone_listings WHERE seller_id=? ORDER BY id LIMIT 1').get(s.data.user.id) };
+  assert.ok(lc.data);
   const chat = await call('POST', `/listings/${lc.data.id}/chat`, null, b.data.token);
   const msg = await call('POST', `/chats/${chat.data.id}/messages`, { body: 'تواصل 07710000000' }, b.data.token);
   assert.equal(msg.data.blocked, false);
