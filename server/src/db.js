@@ -1228,3 +1228,13 @@ export function setSettingValue(key, value) {
 export function now() {
   return Date.now();
 }
+
+// Preserve unknown historical registration dates; imported sellers are not signups.
+addColumnIfMissing('users', 'registered_at INTEGER');
+addColumnIfMissing('users', 'guest_created_at INTEGER');
+db.exec(`
+CREATE TABLE IF NOT EXISTS analytics_metadata (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_users_registered_at ON users(registered_at);
+CREATE INDEX IF NOT EXISTS idx_users_guest_created_at ON users(guest_created_at);
+`);
+db.prepare("INSERT OR IGNORE INTO analytics_metadata(key,value) VALUES('registration_tracking_start',?)").run(Date.now());

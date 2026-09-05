@@ -127,10 +127,10 @@ r.post('/register', authLimiter, (req, res) => {
   const hash = hashPassword(password);
   const ins = db
     .prepare(
-      `INSERT INTO users(phone, password_hash, display_name, governorate, city, seller_type, shop_years, created_at)
-       VALUES(?,?,?,?,?,?,?,?)`,
+      `INSERT INTO users(phone, password_hash, display_name, governorate, city, seller_type, shop_years, created_at, registered_at)
+       VALUES(?,?,?,?,?,?,?,?,?)`,
     )
-    .run(phone, hash, finalName, finalGov, city || null, sellerType, shopYears, now());
+    .run(phone, hash, finalName, finalGov, city || null, sellerType, shopYears, now(), now());
   const user = db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
   const token = issueToken({ id: user.id });
   res.json({ token, user: publicUser(user) });
@@ -163,10 +163,10 @@ r.post('/guest', guestLimiter, (req, res) => {
   // placeholder then UPDATE — cheap, runs once per guest.
   const ins = db
     .prepare(
-      `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, is_guest, created_at)
-       VALUES(?,?,?,?,?,?,?)`,
+      `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, is_guest, created_at, guest_created_at)
+       VALUES(?,?,?,?,?,?,?,?)`,
     )
-    .run(syntheticPhone, '', 'ضيف', gov, 'individual', 1, now());
+    .run(syntheticPhone, '', 'ضيف', gov, 'individual', 1, now(), now());
   const guestSuffix = String(ins.lastInsertRowid).padStart(4, '0').slice(-4);
   db.prepare('UPDATE users SET display_name=? WHERE id=?')
     .run(`ضيف ${guestSuffix}`, ins.lastInsertRowid);
@@ -205,17 +205,17 @@ function upsertPhoneAccount(req, phone) {
       const finalName = isSyntheticGuestName
         ? `مستخدم ${phone.slice(-4)}`
         : me.display_name;
-      db.prepare('UPDATE users SET phone=?, is_guest=0, display_name=? WHERE id=?')
-        .run(phone, finalName, me.id);
+      db.prepare('UPDATE users SET phone=?, is_guest=0, display_name=?, registered_at=? WHERE id=?')
+        .run(phone, finalName, now(), me.id);
       return db.prepare('SELECT * FROM users WHERE id=?').get(me.id);
     }
   }
 
   const finalName = `مستخدم ${phone.slice(-4)}`;
   const ins = db.prepare(
-    `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, created_at)
-     VALUES(?,?,?,?,?,?)`,
-  ).run(phone, '', finalName, 'Baghdad', 'individual', now());
+    `INSERT INTO users(phone, password_hash, display_name, governorate, seller_type, created_at, registered_at)
+     VALUES(?,?,?,?,?,?,?)`,
+  ).run(phone, '', finalName, 'Baghdad', 'individual', now(), now());
   return db.prepare('SELECT * FROM users WHERE id=?').get(ins.lastInsertRowid);
 }
 
