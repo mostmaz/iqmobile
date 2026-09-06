@@ -1,14 +1,8 @@
-// "ميّز إعلانك" — feature-a-listing flow, paid by airtime (mobile balance)
-// transfer. The seller: picks their carrier (Asiacell/Korek) → enters the
-// number they'll transfer FROM → picks a tier → taps the CTA, which files the
-// request AND opens the phone dialer prefilled with that carrier's USSD
-// transfer code (e.g. Asiacell *133*5000*0773…#, Korek *123*0750…*5000#).
-// The receiving numbers + USSD templates come from GET /features/tiers so the
-// owner can swap SIMs server-side without an app release. An admin approves
-// the request from the dashboard after the airtime lands.
+import { PromotionPayment } from '../../components/PromotionPayment';
+// Promotion checkout: save payment instructions, report a transfer, then await verified activation.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -16,7 +10,7 @@ import { Header, Btn, Input, FieldLabel, fmtIQD } from '../../components/ui';
 import { IconSpark, IconCheck, IconPhoneIcon, IconQiCard } from '../../components/icons';
 import { Features, Wallet, type FeatureCarrier, type FeaturePayMethod } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
-import { timeAgoAr } from '../../lib/format';
+
 
 const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
   asiacell: { label: 'آسياسيل', color: '#ED1C24' },
@@ -57,7 +51,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   const label: string | undefined = route.params?.label;
 
   const { data, isLoading } = useQuery({ queryKey: ['feature-tiers'], queryFn: () => Features.tiers() });
-  const { data: mine } = useQuery({ queryKey: ['features-mine'], queryFn: () => Features.mine() });
+  const { data: mine, isLoading: requestsLoading, isError: requestsError, refetch: refreshRequests } = useQuery({ queryKey: ['features-mine'], queryFn: () => Features.mine() });
   const { data: wallet } = useQuery({ queryKey: ['wallet'], queryFn: () => Wallet.get() });
   const balance = wallet?.balance ?? 0;
 
@@ -73,15 +67,6 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     [mine, listingId],
   );
   const hasPending = existing?.status === 'pending';
-  // Past the point where the server has already asked "are you still
-  // interested?" — same 24h threshold as featureNudge.js on the server.
-  const waitingLong = !!existing && hasPending && Date.now() - existing.created_at > 24 * 3600 * 1000;
-  // The number this request was supposed to be paid to, so a seller who
-  // never completed the transfer can still do it from this screen.
-  const transferNumber = existing
-    ? data?.transfer_numbers?.[existing.carrier as FeatureCarrier] ?? null
-    : null;
-
   const selectedAmount = useMemo(
     () => data?.tiers.find((x) => x.key === tier)?.amount ?? 0,
     [data, tier],
@@ -97,17 +82,6 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     return template.replace('{amount}', String(t.amount)).replace('{number}', number);
   }, [data, carrier, tier]);
 
-  // Open the dialer with the USSD code prefilled. encodeURIComponent keeps
-  // '*' raw and turns '#' into %23 (a raw '#' would be parsed as a URL
-  // fragment and the dialer would drop everything after it). iOS blocks
-  // USSD codes in tel: links entirely — fall back to showing the code so
-  // the user can dial it manually.
-  function openDialer(code: string) {
-    Linking.openURL('tel:' + encodeURIComponent(code)).catch(() => {
-      Alert.alert('اطلب هذا الرمز من تطبيق الهاتف', code);
-    });
-  }
-
   const submit = useMutation({
     mutationFn: () => Features.request(listingId,
       carrier === 'balance' ? { tier: tier!, carrier: 'balance' }
@@ -121,16 +95,16 @@ export default function FeatureListingScreen({ navigation, route }: any) {
       if (res?.paid_from_balance) {
         qc.invalidateQueries({ queryKey: ['wallet'] });
         qc.invalidateQueries({ queryKey: ['listing', listingId] });
-        Alert.alert('تم التمييز ✨', 'انخصم المبلغ من رصيدك وإعلانك هسه بأعلى القائمة.');
+        Alert.alert('تم التمييز ✨', 'انخصم المبلغ من رصيدك وتفعّل تمييز إعلانك.');
         return;
       }
-      // Straight to the dialer — the pending card renders when they return.
-      if (ussdCode) openDialer(ussdCode);
+      // The saved request renders resumable payment instructions. No transfer has happened.
     },
     onError: (e: any) => {
+      qc.invalidateQueries({ queryKey: ['features-mine'] });
       const code = e?.data?.error || e?.message;
       const map: Record<string, string> = {
-        request_pending: 'لديك طلب قيد المراجعة لهذا الإعلان بالفعل.',
+        request_pending: 'لديك طلب قائم لهذا الإعلان. حدّث الصفحة لإكماله.',
         bad_tier: 'اختر باقة صحيحة.',
         bad_carrier: 'اختر شركة الاتصال.',
         bad_sender_phone: 'أدخل رقم الهاتف الذي ستحوّل منه.',
@@ -178,19 +152,6 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     submit.mutate();
   }
 
-  // "لم أحوّل الرصيد بعد" — the user opened the dialer but never completed
-  // the transfer. Cancels the pending request so the form (with their
-  // previous selections still in state) comes back and they can retry.
-  const cancelPending = useMutation({
-    mutationFn: () => Features.cancelRequest(listingId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['features-mine'] }),
-    onError: () => {
-      // Stale state (request already approved/rejected/cancelled) — just
-      // refetch; the screen re-renders to whatever is actually true.
-      qc.invalidateQueries({ queryKey: ['features-mine'] });
-    },
-  });
-
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <Header title="ميّز إعلانك" badge="SHOP" onBack={() => navigation.goBack()} />
@@ -199,52 +160,20 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right', marginBottom: 12 }}>{label}</Text>
         ) : null}
 
-        {hasPending ? (
-          <>
-            <StatusCard
-              tone="pending"
-              title="طلبك قيد المراجعة"
-              body={
-                // A request older than a day is one we have already asked
-                // about by notification, and by far the likeliest reason it
-                // is still sitting here is that the balance never arrived.
-                // Saying "we're reviewing it" to that seller is not just
-                // unhelpful, it is wrong — so the copy names the real
-                // condition instead of restating the status.
-                waitingLong
-                  ? `مضى ${timeAgoAr(existing!.created_at)} على الطلب ولم نستلم الرصيد بعد. إذا حوّلته فعلاً راسلنا، وإذا ما حوّلته تكدر تعيد المحاولة من الزر تحت.`
-                  : 'استلمنا طلبك وسنفعّل التمييز بعد تأكيد وصول الرصيد.'
-              }
-            />
-            {/* What they owe and where. Hidden behind the form until now,
-                which left the one seller who needs it — the one who never
-                transferred — with nothing to act on. */}
-            {existing ? (
-              <View style={{
-                flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, marginBottom: 14,
-              }}>
-                <FactChip label="الباقة" value={existing.tier} ltr />
-                <FactChip label="المبلغ" value={`${existing.amount.toLocaleString('en-US')} د.ع`} />
-                {transferNumber ? <FactChip label="حوّل إلى" value={transferNumber} ltr /> : null}
-              </View>
-            ) : null}
-            {/* Escape hatch: opened the dialer but never sent the balance →
-                cancel the pending request and bring the form back to retry. */}
-            <Btn kind="ghost" full busy={cancelPending.isPending} onPress={() => cancelPending.mutate()}>
-              لم أحوّل الرصيد بعد — أعد المحاولة
-            </Btn>
-            <View style={{ height: 16 }} />
-          </>
+        {hasPending && existing ? (
+          <PromotionPayment key={existing.id} request={existing} supportPhone={data?.owner_phone} />
         ) : existing?.status === 'approved' && existing.featured_until && existing.featured_until > Date.now() ? (
           <StatusCard
             tone="ok"
             title="إعلانك مميّز ✨"
-            body={`سيظل في أعلى القائمة حتى ${new Date(existing.featured_until).toLocaleDateString('en-GB')}.`}
+            body={`التمييز مفعّل حتى ${new Date(existing.featured_until).toLocaleDateString('en-GB')}.`}
           />
         ) : null}
 
-        {isLoading ? (
+        {isLoading || requestsLoading ? (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+        ) : requestsError ? (
+          <Btn full onPress={()=>refreshRequests()}>تعذر تحميل طلباتك — أعد المحاولة</Btn>
         ) : hasPending ? null : (
           <>
             {/* 1 — carrier */}
@@ -383,7 +312,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                 borderRadius: radius.xxl, padding: 16,
               }}>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
-                  عند الضغط على الزر أدناه سيفتح الاتصال برمز التحويل التالي — أكّد المكالمة لإتمام تحويل الرصيد:
+                  بعد حفظ الطلب، اضغط «إكمال الدفع» لفتح رمز التحويل. إتمام التحويل يحتاج تأكيداً من شبكة الاتصال:
                 </Text>
                 <View style={{
                   marginTop: 10, backgroundColor: theme.chipBg, borderRadius: radius.lg,
@@ -403,7 +332,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
                 borderRadius: radius.xxl, padding: 16,
               }}>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 21 }}>
-                  حوّل مبلغ {fmtIQD(data.tiers.find((x) => x.key === tier)?.amount || 0)} د.ع من تطبيق Qi إلى الحساب التالي ثم اضغط «إرسال الطلب»:
+                  المبلغ {fmtIQD(data.tiers.find((x) => x.key === tier)?.amount || 0)} د.ع. احفظ الطلب أولاً، ثم حوّل من تطبيق Qi وأبلغنا بإتمام التحويل:
                 </Text>
                 <View style={{
                   marginTop: 10, backgroundColor: theme.chipBg, borderRadius: radius.lg,
@@ -442,36 +371,16 @@ export default function FeatureListingScreen({ navigation, route }: any) {
             <View style={{ height: 22 }} />
             <Btn kind="accent" full busy={submit.isPending} onPress={onSubmit}>
               {carrier === 'balance' ? 'ادفع من رصيدي وميّز الإعلان'
-                : carrier === 'qicard' ? 'حوّلت المبلغ — إرسال الطلب'
-                  : 'تحويل الرصيد وإرسال الطلب'}
+                : 'متابعة إلى الدفع'}
             </Btn>
             <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, marginTop: 12, textAlign: 'center', lineHeight: 20 }}>
               {carrier === 'balance'
                 ? 'يُفعَّل التمييز فوراً بعد الخصم من رصيدك.'
-                : 'بعد وصول المبلغ وتأكيده، يُفعَّل التمييز ويظهر إعلانك في أعلى القائمة.'}
+                : 'يبدأ التمييز بعد التحقق من وصول المبلغ. الظهور المميّز بالتناوب، ولا يضمن البيع.'}
             </Text>
           </>
         )}
       </ScrollView>
-    </View>
-  );
-}
-
-/** Quiet label, loud value — the same pill the spec sheet uses. */
-function FactChip({ label, value, ltr }: { label: string; value: string; ltr?: boolean }) {
-  return (
-    <View style={{
-      flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
-      paddingHorizontal: 11, paddingVertical: 7,
-      borderRadius: radius.pill, backgroundColor: theme.chipBg,
-    }}>
-      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle }}>{label}</Text>
-      <Text style={{
-        fontFamily: ltr ? fonts.ltr : fonts.arBold, fontSize: 12.5, color: theme.chipInk,
-        writingDirection: ltr ? 'ltr' : 'rtl',
-      }}>
-        {value}
-      </Text>
     </View>
   );
 }

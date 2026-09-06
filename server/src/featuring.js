@@ -4,12 +4,11 @@
 // from their wallet, which needs no review — and they must agree on what
 // "featured" means, so the write lives in one place.
 import { db, now } from './db.js';
-import { tierFor, tierTiming } from './featureTiers.js';
+import { tierTiming } from './featureTiers.js';
 
 export function applyFeature(fr) {
-  // Snapshot fields are on the request; fall back to the live tier only for
-  // what the row does not carry.
-  const tier = tierFor(fr.tier) || { days: fr.days, boosts_per_day: fr.boosts_per_day };
+  // Honor the duration and cadence purchased, even after tier config changes.
+  const tier = { days: fr.days, boosts_per_day: fr.boosts_per_day };
   const { durationMs, boostIntervalMs } = tierTiming(tier);
   const t = now();
 

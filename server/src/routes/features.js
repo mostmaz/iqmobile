@@ -42,13 +42,11 @@ r.get('/wallet', requireAuth(), (req, res) => {
   res.json({ balance: balanceOf(req.user.id), entries: entriesFor(req.user.id) });
 });
 
-// Seller files a request to feature one of their own listings. We don't take
-// payment in-app: they transfer airtime to OWNER_PHONE, then submit this with
-// the carrier + the number they paid from so the owner can match the transfer.
-// The request lands as 'pending'; an admin approves it from the dashboard.
+// Save an unpaid checkout with immutable payment instructions. Reporting a
+// transfer and admin verification are separate from creating this request.
 r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req, res) => {
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(req.params.id);
-  if (!listing || listing.status === 'removed') return res.status(404).json({ error: 'not_found' });
+  if (!listing || !['active', 'reserved'].includes(listing.status)) return res.status(404).json({ error: 'not_found' });
   if (listing.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
 
   // A hidden tier resolves by key (so old pending requests still approve) but
@@ -93,14 +91,22 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   ).get(listing.id);
   if (pending) return res.status(409).json({ error: 'request_pending', request_id: pending.id });
 
+  // Snapshot where the seller was instructed to pay; config changes must not
+  // silently send a resumed request to a different account.
+  const destination = fromBalance ? null : JSON.stringify(carrier === 'qicard'
+    ? { number: QI_CARD.account, name: QI_CARD.name }
+    : { number: TRANSFER_NUMBERS[carrier], code: USSD_TEMPLATES[carrier]
+        .replace('{amount}', String(tier.amount)).replace('{number}', TRANSFER_NUMBERS[carrier]) });
   const insert = (status, reviewedAt) => db.prepare(
     `INSERT INTO feature_requests(
       listing_id, user_id, tier, amount, days, boosts_per_day,
-      carrier, sender_phone, sender_name, note, status, created_at, reviewed_at
-    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      carrier, sender_phone, sender_name, note, status, created_at, reviewed_at,
+      payment_state, payment_destination_json, payment_verified_at, payment_verified_by
+    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
   ).run(
     listing.id, req.user.id, tier.key, tier.amount, tier.days, tier.boosts_per_day,
     carrier, senderPhone, senderName, note, status, now(), reviewedAt,
+    fromBalance ? 'verified' : 'awaiting_payment', destination, fromBalance ? reviewedAt : null, fromBalance ? 'wallet' : null,
   ).lastInsertRowid;
 
   // Paying from the wallet needs no admin: the request is created approved and
@@ -141,12 +147,31 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(insert('pending', null)));
 });
 
+// Seller report is a claim, never proof of receipt. The request id prevents
+// a stale screen from reporting a replacement request by listing id.
+r.post('/feature-requests/:id(\\d+)/report-payment', requireAuth(), (req, res) => {
+  const fr = db.prepare('SELECT * FROM feature_requests WHERE id=? AND user_id=?')
+    .get(req.params.id, req.user.id);
+  if (!fr) return res.status(404).json({ error: 'not_found' });
+  if (fr.status !== 'pending') return res.status(409).json({ error: 'not_pending' });
+  if (fr.payment_state === 'reported') return res.json(fr);
+  const reference = req.body?.reference;
+  if (reference != null && (typeof reference !== 'string' || reference.length > 120))
+    return res.status(400).json({ error: 'bad_reference' });
+  db.prepare(`UPDATE feature_requests SET payment_state='reported', payment_reported_at=?,
+    payment_reference=? WHERE id=? AND status='pending'`)
+    .run(now(), reference?.trim() || null, fr.id);
+  res.json(db.prepare('SELECT * FROM feature_requests WHERE id=?').get(fr.id));
+});
+
 // Cancel the caller's own PENDING request for a listing — the "لم أحوّل
 // الرصيد بعد" escape hatch. A user who opened the dialer but never completed
 // the transfer would otherwise be stuck behind the one-pending-per-listing
 // guard with no way to restart the flow. Approved/rejected requests are
 // immutable history and can't be cancelled.
 r.delete('/listings/:id(\\d+)/feature-request', requireAuth(), (req, res) => {
+  const fr = db.prepare("SELECT payment_state FROM feature_requests WHERE listing_id=? AND user_id=? AND status='pending'").get(req.params.id, req.user.id);
+  if (fr?.payment_state === 'reported') return res.status(409).json({ error: 'payment_under_review' });
   const result = db.prepare(
     "DELETE FROM feature_requests WHERE listing_id=? AND user_id=? AND status='pending'",
   ).run(req.params.id, req.user.id);
@@ -158,7 +183,7 @@ r.delete('/listings/:id(\\d+)/feature-request', requireAuth(), (req, res) => {
 // so the app can show "بانتظار الموافقة / مفعّل / مرفوض" per listing.
 r.get('/features/mine', requireAuth(), (req, res) => {
   const rows = db.prepare(
-    `SELECT f.*, l.brand, l.model, l.featured_until
+    `SELECT f.*, l.brand, l.model, l.featured_until, l.status AS listing_status
      FROM feature_requests f
      JOIN phone_listings l ON l.id = f.listing_id
      WHERE f.user_id=? ORDER BY f.created_at DESC LIMIT 100`,

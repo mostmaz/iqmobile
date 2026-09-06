@@ -626,6 +626,13 @@ export interface FeatureTiersResponse {
   carrier_prefixes?: Partial<Record<FeatureCarrier, string>>;
 }
 export interface FeatureRequest {
+  listing_status?: string;
+  payment_state?: 'awaiting_payment' | 'reported' | 'verified' | 'legacy_unconfirmed';
+  payment_reported_at?: number | null;
+  payment_reference?: string | null;
+  payment_verified_at?: number | null;
+  payment_destination_json?: string | null;
+  sender_name?: string | null;
   id: number;
   listing_id: number;
   tier: string;
@@ -666,6 +673,10 @@ export const Wallet = {
   get: () => api<WalletState>('/wallet'),
 };
 export const Features = {
+  reportPayment: (requestId: number, reference: string) =>
+    api<FeatureRequest>(`/feature-requests/${requestId}/report-payment`, {
+      method: 'POST', body: JSON.stringify({ reference }),
+    }),
   tiers: () => api<FeatureTiersResponse>('/features/tiers'),
   request: (listingId: number, body: { tier: string; carrier: FeaturePayMethod; sender_phone?: string; sender_name?: string; note?: string }) =>
     api<FeatureRequest>(`/listings/${listingId}/feature-request`, { method: 'POST', body: JSON.stringify(body) }),
