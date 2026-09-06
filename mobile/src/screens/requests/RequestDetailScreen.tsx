@@ -28,6 +28,11 @@ import { arOf } from '../../lib/governorates';
 import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useAuth } from '../../auth/AuthContext';
 
+// Loose model comparison for "is this the device he asked for" — mirrors the
+// spirit of the server's normalizer (lowercase, fold Arabic digits and
+// spacing) without pulling the whole thing into the app.
+const sameModel = (m?: string | null) => String(m || '').toLowerCase().replace(/\s+/g, '');
+
 const conditionLabel = (k?: string | null) => ({
   new: 'جديد', used: 'مستعمل', refurbished: 'مجدّد', repaired: 'مصلّح',
 } as Record<string, string>)[k || ''] || 'أي حالة';
@@ -320,7 +325,11 @@ function ctaStyle(primary: boolean) {
 function SellerView({ request, onDone, navigation }: { request: PhoneRequest; onDone: () => void; navigation: any }) {
   const existing = request.my_offer || null;
   const isOpen = request.status === 'open';
-  const [price, setPrice] = useState(String(existing?.price ?? request.max_price));
+  // Deliberately NOT seeded with request.max_price. Pre-filling the buyer's
+  // ceiling anchors every lazy seller at the most expensive number he is
+  // allowed to say, which is exactly the comparison the buyer opened the
+  // list to make. An empty box costs one tap and keeps the offers honest.
+  const [price, setPrice] = useState(existing ? String(existing.price) : '');
   const [note, setNote] = useState(existing?.note ?? '');
   const [listingId, setListingId] = useState<number | null>(existing?.listing?.id ?? null);
 
@@ -332,12 +341,20 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
     queryFn: () => Listings.mine('all'),
     enabled: isOpen,
   });
-  const attachable = useMemo(
-    () => (myListings || []).filter(
-      (l: Listing) => l.brand === request.brand && (l.status === 'active' || l.status === 'reserved'),
-    ),
-    [myListings, request.brand],
-  );
+  const attachable = useMemo(() => {
+    const wanted = sameModel(request.model);
+    return (myListings || [])
+      .filter((l: Listing) => l.brand === request.brand && (l.status === 'active' || l.status === 'reserved'))
+      // Same brand is the filter, but the exact device the buyer asked for
+      // sorts first. A same-brand alternative is a legitimate offer — an
+      // iPhone 11 volunteering itself as the default answer to an iPhone 15
+      // Pro request is not.
+      .sort((a: Listing, b: Listing) => {
+        const ea = sameModel(a.model) === wanted ? 0 : 1;
+        const eb = sameModel(b.model) === wanted ? 0 : 1;
+        return ea - eb || a.asking_price - b.asking_price;
+      });
+  }, [myListings, request.brand, request.model]);
 
   const send = useMutation({
     mutationFn: () => PhoneRequests.offer(request.id, {
@@ -393,15 +410,24 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
             <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginTop: 14, marginBottom: 6, textAlign: 'right' }}>
               اربط أحد إعلاناتك (اختياري)
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
+            {/* Wraps rather than scrolls. As a row-reverse horizontal
+                ScrollView, the FIRST child sits furthest right — so as soon
+                as the seller had two matching listings the row overflowed
+                and «بدون إعلان» slid off-screen, leaving no way to undo an
+                attachment. Wrapping keeps every option reachable. */}
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, paddingHorizontal: 2 }}>
               <Pill active={listingId === null} onPress={() => setListingId(null)}>بدون إعلان</Pill>
               {attachable.map((l: Listing) => (
-                <Pill key={l.id} active={listingId === l.id} onPress={() => setListingId(l.id)}>
+                <Pill key={l.id} active={listingId === l.id} onPress={() => {
+                  setListingId(l.id);
+                  // Only when empty: filling a box the seller already typed
+                  // into would throw away his number.
+                  setPrice((p) => (p.trim() ? p : String(l.asking_price)));
+                }}>
                   {`${l.model} — ${fmtIQD(l.asking_price)}`}
                 </Pill>
               ))}
-            </ScrollView>
+            </View>
           </>
         ) : null}
 
