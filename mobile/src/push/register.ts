@@ -86,6 +86,22 @@ export async function registerPushToken() {
   }
 }
 
+/**
+ * Upload the push token ONLY if the permission is already granted — never
+ * prompts. This is what app start calls: a granted user gets their token kept
+ * fresh (it rotates on reinstall and OS upgrade), and an undecided user is
+ * left alone until a screen can explain what they'd be agreeing to.
+ */
+export async function syncPushTokenIfGranted() {
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    if (!settings.granted) return;
+    await registerPushToken();
+  } catch (e: any) {
+    console.warn('push sync failed', e?.message || e);
+  }
+}
+
 // Single-shot subscription for notification taps. Calling more than once
 // would leak listeners, so we guard with a module-level ref.
 let tapSub: Notifications.Subscription | null = null;

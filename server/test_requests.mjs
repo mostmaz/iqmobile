@@ -16,11 +16,19 @@ async function call(path, { method = 'GET', token, body } = {}) {
   return { status: res.status, body: json };
 }
 const rnd = () => String(Math.floor(Math.random() * 90000000) + 10000000);
+// /auth/register is capped at 5/minute per IP — a real guard, not something
+// the suite should ask the server to relax. This suite needs more actors than
+// that, so it waits out the window instead of failing.
 async function mkUser(name, gov = 'Baghdad', seller_type = 'individual') {
-  const phone = '077' + rnd();
-  const r = await call('/auth/register', { method: 'POST', body: { phone, password: 'test1234', display_name: name, governorate: gov, seller_type } });
-  if (!r.body?.token) throw new Error('register failed: ' + JSON.stringify(r));
-  return { token: r.body.token, id: r.body.user.id, phone, name };
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const phone = '077' + rnd();
+    const r = await call('/auth/register', { method: 'POST', body: { phone, password: 'test1234', display_name: name, governorate: gov, seller_type } });
+    if (r.body?.token) return { token: r.body.token, id: r.body.user.id, phone, name };
+    if (r.status !== 429) throw new Error('register failed: ' + JSON.stringify(r));
+    process.stdout.write('  … auth rate limit, waiting 13s\n');
+    await new Promise((res) => setTimeout(res, 13000));
+  }
+  throw new Error('register kept hitting the rate limit');
 }
 async function notifs(token) { return (await call('/notifications', { token })).body || []; }
 
@@ -61,6 +69,35 @@ ok(match?.payload?.listing_id === listingId, 'the notification names WHICH of hi
 ok(match?.payload?.request_id === reqId, 'and which request');
 const buyerN = await notifs(buyer.token);
 ok(!buyerN.some((n) => n.kind === 'request.match' || n.kind === 'request.new'), 'buyer was not notified about his own request');
+
+console.log('\n— the 20% ceiling slack —');
+// A seller whose exact-model listing sits just OVER the buyer's stated
+// budget is still the best lead the request has; one far over is not.
+{
+  const near = await mkUser('بائع فوق الميزانية بقليل', 'Baghdad');
+  const far  = await mkUser('بائع فوق الميزانية بكثير', 'Baghdad');
+  const budget = 1000000;
+  // 1,150,000 = 15% over → inside the slack. 1,400,000 = 40% over → outside.
+  await call('/listings', { method: 'POST', token: near.token, body: {
+    brand: 'Samsung', model: 'Galaxy S24', condition: 'used', asking_price: 1150000,
+    governorate: 'Baghdad', description: 'test', contact_phone: near.phone } });
+  await call('/listings', { method: 'POST', token: far.token, body: {
+    brand: 'Samsung', model: 'Galaxy S24', condition: 'used', asking_price: 1400000,
+    governorate: 'Baghdad', description: 'test', contact_phone: far.phone } });
+
+  const slackBuyer = await mkUser('مشتري الميزانية', 'Baghdad');
+  const req2 = await call('/phone-requests', { method: 'POST', token: slackBuyer.token, body: {
+    brand: 'Samsung', model: 'Galaxy S24', max_price: budget, governorate: 'Baghdad' } });
+  ok(req2.status === 200, 'request at a 1,000,000 budget created', req2.body);
+  await new Promise((r) => setTimeout(r, 500));
+
+  const nearN = (await notifs(near.token)).find((n) => n.kind === 'request.match');
+  const farN  = (await notifs(far.token)).find((n) => n.kind === 'request.match');
+  ok(!!nearN, '15% over budget IS alerted');
+  ok(nearN?.payload?.above_budget === true, 'and is flagged above_budget so the copy can say so', nearN?.payload);
+  ok(nearN?.payload?.listing_price === 1150000, 'payload carries the seller\'s own price', nearN?.payload?.listing_price);
+  ok(!farN, '40% over budget is NOT alerted', farN?.payload);
+}
 
 console.log('\n— privacy on the public board —');
 const board = await call('/phone-requests');

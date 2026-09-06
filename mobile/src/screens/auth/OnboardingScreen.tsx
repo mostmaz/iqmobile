@@ -27,6 +27,7 @@ import {
 } from '../../components/icons';
 import { detectGovernorate } from '../../lib/locateGov';
 import { GOV_AR_LIST, GOV_AR_TO_EN } from '../../lib/governorates';
+import { NotificationGate } from '../../components/NotificationGate';
 import { Auth } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -42,6 +43,12 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
   // When location is denied / undetectable we force a manual governorate
   // pick before the user can enter the app (obligatory — no skip path).
   const [govPickerOpen, setGovPickerOpen] = useState(false);
+  // Second onboarding beat. Governorate is settled first because it changes
+  // what the app SHOWS; notifications come straight after, because they
+  // decide whether the user ever hears from it again. Asking on the very
+  // first screen — before anything has been shown — is how apps get denied,
+  // and on iOS a denial can never be re-asked from inside the app.
+  const [phase, setPhase] = useState<'location' | 'notify'>('location');
 
   // First-launch gate: ask for location → if granted, reverse-geocode →
   // patch the user's governorate so Browse + Post default to their actual
@@ -65,8 +72,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
           await Auth.patchMe({ governorate: detected.governorate, city: detected.city || undefined });
           await refresh();
         } catch {}
-        try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
-        onDone();
+        setPhase('notify');
       } else {
         // Denied / undetectable → require a manual selection to continue.
         setGovPickerOpen(true);
@@ -94,10 +100,34 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
       if (govEn) {
         try { await Auth.patchMe({ governorate: govEn }); await refresh(); } catch {}
       }
-      try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
       setGovPickerOpen(false);
-      onDone?.();
+      setPhase('notify');
     } finally { setBusy(false); }
+  }
+
+  // Leaving onboarding for real. The ONBOARDED_KEY write lives here alone, so
+  // there is exactly one way out however the user got here.
+  async function finish() {
+    try { await SecureStore.setItem(ONBOARDED_KEY, '1'); } catch {}
+    onDone?.();
+  }
+
+  // The notifications beat. Deliberately NOT obligatory here: a hard block on
+  // first launch, before the user has seen a single listing, trades the whole
+  // install for a permission. Chat and posting a listing do require it — at
+  // the point where the reason is self-evident.
+  if (phase === 'notify') {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <NotificationGate
+          title="لنبقَ على تواصل"
+          intro="أنت جاهز الآن. الخطوة الأخيرة: فعّل الإشعارات حتى لا تفوتك رسالة من مشترٍ أو عرض على طلبك."
+          onGranted={finish}
+          onSkip={finish}
+          skipLabel="ليس الآن"
+        />
+      </View>
+    );
   }
 
   return (

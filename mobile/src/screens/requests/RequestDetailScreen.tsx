@@ -165,7 +165,7 @@ function BuyerView({ request, onStatus, busy, navigation }: {
             ما وصلت عروض بعد
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
-            وصل طلبك للمتاجر التي تبيع هذا الجهاز. عادةً تجي أول العروض خلال ساعات.
+            وصل طلبك إلى المتاجر التي تبيع هذا الجهاز. تصل العروض الأولى عادةً خلال ساعات.
           </Text>
         </View>
       ) : (
@@ -176,14 +176,14 @@ function BuyerView({ request, onStatus, busy, navigation }: {
         <View style={{ marginTop: 22, gap: 8 }}>
           <Btn kind="primary" full busy={busy} onPress={() => Alert.alert(
             'حصلت على الجهاز؟',
-            'راح نغلق الطلب ونوقف وصول عروض جديدة.',
+            'سنغلق الطلب ونوقف وصول عروض جديدة.',
             [{ text: 'لا', style: 'cancel' }, { text: 'نعم، حصلت عليه', onPress: () => onStatus('fulfilled') }],
           )}>
             حصلت على الجهاز
           </Btn>
           <Btn kind="ghost" full onPress={() => Alert.alert(
             'إغلاق الطلب',
-            'ما راح توصلك عروض جديدة على هذا الطلب.',
+            'لن تصلك عروض جديدة على هذا الطلب.',
             [{ text: 'إلغاء', style: 'cancel' }, { text: 'أغلق', style: 'destructive', onPress: () => onStatus('closed') }],
           )}>
             أغلق الطلب
@@ -364,14 +364,14 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
     }),
     onSuccess: () => {
       onDone();
-      Alert.alert(existing ? 'تم تحديث عرضك ✅' : 'أُرسل عرضك ✅', 'وصل إشعار للمشتري، وراح يتواصل وياك إذا ناسبه.');
+      Alert.alert(existing ? 'تم تحديث عرضك ✅' : 'أُرسل عرضك ✅', 'وصل إشعار إلى المشتري، وسيتواصل معك إذا ناسبه العرض.');
     },
     onError: (e: any) => {
       const code = String(e?.message || '');
       Alert.alert('تعذّر إرسال العرض',
         code.includes('request_closed') ? 'أُغلق هذا الطلب.'
-        : code.includes('too_many_offers_today') ? 'أرسلت عروضاً كثيرة اليوم. جرّب بكرة.'
-        : code.includes('guest_not_allowed') ? 'سجّل الدخول برقم هاتفك حتى يتمكن المشتري من الوصول إليك.'
+        : code.includes('too_many_offers_today') ? 'أرسلت عروضاً كثيرة اليوم. حاول غداً.'
+        : code.includes('guest_not_allowed') ? 'سجّل الدخول برقم هاتفك ليتمكن المشتري من الوصول إليك.'
         : code.includes('bad_price') ? 'اكتب سعراً صحيحاً.'
         : 'حاول مرة أخرى.');
     },
@@ -392,8 +392,8 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
       </Text>
       <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginBottom: 12, lineHeight: 20 }}>
         {existing
-          ? 'تقدر تعدّل سعرك — راح يوصل المشتري إشعار بالتحديث بدل عرض جديد.'
-          : 'اكتب سعرك للمشتري. يوصله إشعار فوراً، ويشوف تقييمك ورقمك.'}
+          ? 'يمكنك تعديل سعرك — وسيصل المشتري إشعار بالتحديث بدلاً من عرض جديد.'
+          : 'اكتب سعرك للمشتري. يصله إشعار فوراً، ويرى تقييمك ورقمك.'}
       </Text>
 
       <View style={{
@@ -447,7 +447,7 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
           {existing ? (
             <Btn kind="ghost" full busy={withdraw.isPending} onPress={() => Alert.alert(
               'سحب العرض',
-              'راح يختفي عرضك من قائمة المشتري.',
+              'سيختفي عرضك من قائمة المشتري.',
               [{ text: 'إلغاء', style: 'cancel' }, { text: 'اسحب', style: 'destructive', onPress: () => withdraw.mutate() }],
             )}>
               اسحب العرض

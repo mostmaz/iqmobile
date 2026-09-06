@@ -43,6 +43,14 @@ const MAX_OFFERS_PER_DAY = 30;
 // matching demand to supply, we are sending everyone in the country a push.
 const MAX_BROADCAST = 40;
 
+// A seller holding the exact device, priced a little over the buyer's
+// ceiling, is still the best lead this request has — a stated budget is an
+// opening position, not a wall, and "800k when he asked for ≤700k" is a
+// conversation. Below the ceiling stays the clean match; up to 20% above it
+// gets the same alert, flagged so the copy can say so rather than pretend
+// the price fits. Past that the two of them genuinely want different things.
+const CEILING_SLACK = 1.2;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // ─── shaping ─────────────────────────────────────────────────────────
@@ -156,20 +164,28 @@ function priceLine(request) {
 // and their offer arrives with a real device attached.
 function sellersWithMatchingListing(request) {
   const rows = db.prepare(
-    `SELECT l.id AS listing_id, l.model, l.seller_id
+    `SELECT l.id AS listing_id, l.model, l.seller_id, l.asking_price
        FROM phone_listings l
       WHERE l.brand=? AND l.asking_price<=? AND l.status IN ('active','reserved')
         AND COALESCE(l.is_draft,0)=0
       ORDER BY l.asking_price ASC`,
-  ).all(request.brand, request.max_price);
+  ).all(request.brand, Math.round(request.max_price * CEILING_SLACK));
 
   const wanted = norm(request.model);
   const seen = new Map();
   for (const row of rows) {
     if (row.seller_id === request.buyer_id) continue;
     if (norm(row.model) !== wanted) continue;
-    // Cheapest match per seller — that is the one he'd quote anyway.
-    if (!seen.has(row.seller_id)) seen.set(row.seller_id, row.listing_id);
+    // Cheapest match per seller — that is the one he'd quote anyway, and
+    // because the query is ordered by price it is also the one most likely
+    // to be inside the budget rather than over it.
+    if (!seen.has(row.seller_id)) {
+      seen.set(row.seller_id, {
+        listing_id: row.listing_id,
+        price: row.asking_price,
+        above_budget: row.asking_price > request.max_price,
+      });
+    }
   }
   return seen;
 }
@@ -214,12 +230,24 @@ export function broadcastRequest(request) {
     const body = priceLine(request);
 
     const matches = sellersWithMatchingListing(request);
-    for (const [sellerId, listingId] of matches) {
+    for (const [sellerId, m] of matches) {
       notify(
         sellerId,
         'request.match',
-        { request_id: request.id, listing_id: listingId, brand: request.brand, model: request.model, max_price: request.max_price, governorate: request.governorate },
-        { title: 'عندك جهاز مطلوب 🎯', body: `${title} — ${body}` },
+        {
+          request_id: request.id, listing_id: m.listing_id, brand: request.brand, model: request.model,
+          max_price: request.max_price, governorate: request.governorate,
+          listing_price: m.price, above_budget: m.above_budget,
+        },
+        {
+          title: m.above_budget ? 'جهاز قريب من طلب مشترٍ' : 'لديك جهاز مطلوب 🎯',
+          // Say the gap out loud. A seller who opens this expecting a clean
+          // match and finds his price is over the budget learns we wasted
+          // his time; one who is told up front can decide to negotiate.
+          body: m.above_budget
+            ? `${title} — ميزانيته ${Number(request.max_price).toLocaleString('en-US')} د.ع وسعرك ${Number(m.price).toLocaleString('en-US')} · ${request.governorate}`
+            : `${title} — ${body}`,
+        },
       );
     }
 
@@ -246,11 +274,13 @@ export function alertRequestsOnListing(listing) {
   try {
     if (!listing || listing.status !== 'active' || listing.is_draft) return;
     const t = now();
+    // Same 20% slack as the outgoing broadcast, so the two directions never
+    // disagree about whether this listing answers this request.
     const open = db.prepare(
       `SELECT * FROM phone_requests
-        WHERE status='open' AND expires_at > ? AND brand=? AND max_price >= ?
+        WHERE status='open' AND expires_at > ? AND brand=? AND (max_price * ?) >= ?
         ORDER BY created_at DESC LIMIT 200`,
-    ).all(t, listing.brand, listing.asking_price);
+    ).all(t, listing.brand, CEILING_SLACK, listing.asking_price);
 
     const model = norm(listing.model);
     let sent = 0;
@@ -260,13 +290,20 @@ export function alertRequestsOnListing(listing) {
       // Once per (seller, request): re-posting or editing the listing must
       // not re-nag the seller about the same open request.
       if (hasNotified(listing.seller_id, 'request.match', listing.id)) break;
+      const aboveBudget = Number(listing.asking_price) > Number(request.max_price);
       notify(
         listing.seller_id,
         'request.match',
-        { request_id: request.id, listing_id: listing.id, brand: request.brand, model: request.model, max_price: request.max_price, governorate: request.governorate },
         {
-          title: 'في مشتري يدور على هذا الجهاز 🎯',
-          body: `${request.brand} ${request.model} — ${priceLine(request)}`,
+          request_id: request.id, listing_id: listing.id, brand: request.brand, model: request.model,
+          max_price: request.max_price, governorate: request.governorate,
+          listing_price: listing.asking_price, above_budget: aboveBudget,
+        },
+        {
+          title: aboveBudget ? 'مشترٍ يبحث عن هذا الجهاز' : 'مشترٍ يبحث عن هذا الجهاز 🎯',
+          body: aboveBudget
+            ? `${request.brand} ${request.model} — ميزانيته ${Number(request.max_price).toLocaleString('en-US')} د.ع وسعرك ${Number(listing.asking_price).toLocaleString('en-US')} · ${request.governorate}`
+            : `${request.brand} ${request.model} — ${priceLine(request)}`,
         },
       );
       // One push per new listing, however many requests it answers; the

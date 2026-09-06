@@ -18,6 +18,8 @@ import { ar } from '../../i18n/ar';
 import { useKeyboardHeight, bottomBarPadding } from '../../lib/useKeyboard';
 import { subscribeSSE } from '../../sse/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useNotificationPermission } from '../../push/permission';
+import { NotificationGate } from '../../components/NotificationGate';
 
 // Hide the propose-price / accept / counter / seller-confirm flow for v1.
 // The phone numbers are now public on each listing, so we don't need the
@@ -41,6 +43,19 @@ export default function ChatScreen({ route, navigation }: any) {
   const [warning, setWarning] = useState<string | null>(null);
 
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  // Obligatory notification gate.
+  //
+  // A chat nobody is told about is worse than no chat: the buyer asks "متوفر؟",
+  // the seller never sees it, and both of them conclude the app is dead. So the
+  // conversation does not open until notifications are on.
+  //
+  // Gating HERE rather than at each call site is deliberate — the screen is
+  // reachable from the listing page, the inbox, a notification tap and a deep
+  // link, and a gate on one of those is a gate on none. The hooks above stay
+  // mounted (the queries keep the thread warm) and only the render is
+  // swapped, so granting drops the user straight into a loaded conversation.
+  const perm = useNotificationPermission();
 
   const { data: chat } = useQuery<Chat>({
     queryKey: ['chat', id],
@@ -197,6 +212,34 @@ export default function ChatScreen({ route, navigation }: any) {
   const counterpartyName = counterparty?.display_name || 'مستخدم';
   const listingId = chat.listing?.id;
   const listingLabel = chat.listing ? `${chat.listing.brand} ${chat.listing.model}` : null;
+
+  // The gate. Rendered instead of the conversation until the OS says yes.
+  // `loading` renders blank rather than the gate so a granted user never sees
+  // a flash of "turn on notifications" while we read the real state.
+  if (perm.loading) return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
+  if (!perm.granted) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <View style={{ flexDirection: 'row-reverse', paddingHorizontal: 12, paddingVertical: 8 }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={10}
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={{ transform: [{ scaleX: -1 }] }}>
+              <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <NotificationGate
+          required
+          compactReasons
+          title="فعّل الإشعارات لبدء المحادثة"
+          intro={`ستراسل ${counterpartyName}. من دون الإشعارات لن تعرف أنه ردّ عليك، والرد يصل عادةً بعد دقائق لا ثوانٍ.`}
+        />
+      </View>
+    );
+  }
 
   function openListing() {
     if (!listingId) return;

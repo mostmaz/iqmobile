@@ -60,7 +60,7 @@ import { NotificationBanner } from '../components/NotificationBanner';
 import { navigationRef } from './ref';
 import { handleInstallReferrer } from '../lib/installReferrer';
 import { connectSSE, disconnectSSE } from '../sse/client';
-import { registerPushToken } from '../push/register';
+import { syncPushTokenIfGranted } from '../push/register';
 import { theme } from '../theme';
 
 const BrowseStack = createNativeStackNavigator();
@@ -346,7 +346,15 @@ export default function RootNav() {
     // SSE channel keys off the JWT.
     if (user) {
       connectSSE();
-      registerPushToken();
+      // Sync the token, but never ASK here. This used to call
+      // registerPushToken(), which fires the OS permission dialog the moment
+      // a user exists — i.e. cold, on first launch, over the browse feed,
+      // with nothing on screen explaining why. That is the single worst
+      // moment to ask, and on iOS a "Don't Allow" there can never be undone
+      // from inside the app. The ask now belongs to the three screens that
+      // can justify it: onboarding, the chat gate, and the last step of
+      // posting a listing.
+      syncPushTokenIfGranted();
     } else {
       disconnectSSE();
     }

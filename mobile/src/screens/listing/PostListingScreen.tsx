@@ -2,7 +2,7 @@ import { AskingPriceGuidance } from '../../components/AskingPriceGuidance';
 import { listingQuality } from '../../lib/listingQuality';
 import { ListingQualityChecklist } from '../../components/ListingQualityChecklist';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler, Modal } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,6 +29,8 @@ import { compressForListing } from '../../lib/imageCompress';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, DEFAULT_GOV_AR } from '../../lib/governorates';
 import { digitsOnly, parsePrice, deviceTitle } from '../../lib/format';
 import { useAuth } from '../../auth/AuthContext';
+import { useNotificationPermission } from '../../push/permission';
+import { NotificationGate } from '../../components/NotificationGate';
 
 // Fallback brand list used only if the /brands fetch fails (offline first
 // launch). The live list comes from the server so new brands (Infinix,
@@ -54,6 +56,13 @@ export default function PostListingScreen({ navigation }: any) {
   const [step, setStep] = useState(0);
   const qualityScrollRef = useRef<ScrollView>(null);
   useEffect(() => { qualityScrollRef.current?.scrollTo({ y: 0, animated: false }); }, [step]);
+  // Obligatory notification gate, at the LAST step rather than the first.
+  // A seller who publishes and then never hears the buyer ask "متوفر؟" has
+  // an ad, not a sale — and by step 6 he has spent real effort, so the ask
+  // reads as protecting that work instead of taxing it. Shown between
+  // "نشر" and the actual create() call.
+  const [notifyGateOpen, setNotifyGateOpen] = useState(false);
+  const perm = useNotificationPermission();
   // Which field the current error belongs to, so it can be outlined instead
   // of leaving the user to guess which of five inputs the banner means.
   const [fieldErr, setFieldErr] = useState<string | null>(null);
@@ -429,7 +438,13 @@ export default function PostListingScreen({ navigation }: any) {
         ? 'أضف 3 صور على الأقل للمتابعة.'
         : `أضفت ${images.length} من 3 — بقيت ${missing === 1 ? 'صورة واحدة' : `${missing} صور`}.`);
     }
-    if (step === 5) { create.mutate(); return; }
+    if (step === 5) {
+      // Don't block on `loading` — an unresolved read shouldn't stop a
+      // publish; the gate simply doesn't appear that once.
+      if (!perm.loading && !perm.granted) { setNotifyGateOpen(true); return; }
+      create.mutate();
+      return;
+    }
     setFieldErr(null);
     setStep(step + 1);
   }
@@ -1054,6 +1069,28 @@ export default function PostListingScreen({ navigation }: any) {
         onConfirm={discardDraft}
         onCancel={() => setExitAsk(false)}
       />
+
+      {/* Last-step notification gate. Full-screen rather than a sheet, because
+          this is a step and not a question — and the draft stays mounted
+          underneath, so nothing the seller typed is at risk. Granting
+          publishes immediately: he already pressed «نشر» once, and making him
+          press it twice for the same intent is just a toll. */}
+      <Modal visible={notifyGateOpen} animationType="slide" onRequestClose={() => setNotifyGateOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+          <Header
+            title="خطوة أخيرة"
+            eyebrow="قبل النشر"
+            onBack={() => setNotifyGateOpen(false)}
+          />
+          <NotificationGate
+            required
+            compactReasons
+            title="فعّل الإشعارات ليصل إليك المشتري"
+            intro="سيُنشر إعلانك بعد هذه الخطوة. يراسلك المشترون عبر التطبيق — ومن دون إشعارات لن تعرف بهم، وسيتجهون إلى إعلان آخر."
+            onGranted={() => { setNotifyGateOpen(false); create.mutate(); }}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }

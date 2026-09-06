@@ -1,7 +1,7 @@
 // طلبات الأجهزة — the request board.
 //
 // This tab is the active half of the marketplace: instead of a buyer
-// hunting through listings, he publishes «أدور على…» and the sellers come
+// hunting through listings, he publishes «اطلب جهازاً» and the sellers come
 // to him. Three views behind one segmented control, because the same board
 // serves two very different people:
 //
@@ -83,7 +83,7 @@ export default function RequestsScreen({ navigation }: any) {
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header
         title="طلبات الأجهزة"
-        eyebrow="أدور على جهاز"
+        eyebrow="اطلب الجهاز الذي تبحث عنه"
         right={(
           <TouchableOpacity
             onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
@@ -180,7 +180,7 @@ export default function RequestsScreen({ navigation }: any) {
       {tab !== 'offers' ? (
         <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 + insets.bottom }}>
           <Btn kind="primary" full onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}>
-            أدور على جهاز
+            اطلب جهازاً
           </Btn>
         </View>
       ) : null}
@@ -296,10 +296,10 @@ function SentOfferRow({ offer, onPress }: { offer: SentOffer; onPress: () => voi
 
 function Empty({ tab, onCompose }: { tab: Tab; onCompose: () => void }) {
   const copy = tab === 'board'
-    ? { title: 'ما في طلبات مفتوحة', body: 'كن أول من ينشر طلباً — المتاجر تشوفه وترد عليك بعروض.' }
+    ? { title: 'ما في طلبات مفتوحة', body: 'كن أول من ينشر طلباً — تراه المتاجر وترد عليك بعروضها.' }
     : tab === 'mine'
-      ? { title: 'ما عندك طلبات', body: 'انشر الجهاز الذي تدور عليه وميزانيتك، وخلّ البائعين يجونك.' }
-      : { title: 'ما قدّمت أي عرض', body: 'افتح «كل الطلبات» وشوف المشترين الذين يدورون على أجهزة عندك.' };
+      ? { title: 'ما عندك طلبات', body: 'انشر الجهاز الذي تبحث عنه وميزانيتك، ودع البائعين يأتون إليك.' }
+      : { title: 'ما قدّمت أي عرض', body: 'افتح «كل الطلبات» واطّلع على المشترين الذين يبحثون عن أجهزة لديك.' };
   return (
     <View style={{ padding: 40, alignItems: 'center' }}>
       <IconRequest size={30} color={theme.subtle} sw={1.5} />
@@ -311,7 +311,7 @@ function Empty({ tab, onCompose }: { tab: Tab; onCompose: () => void }) {
       </Text>
       {tab !== 'offers' ? (
         <View style={{ marginTop: 16 }}>
-          <Btn kind="accent" onPress={onCompose}>أدور على جهاز</Btn>
+          <Btn kind="accent" onPress={onCompose}>اطلب جهازاً</Btn>
         </View>
       ) : null}
     </View>
@@ -322,7 +322,7 @@ function SignedOut({ navigation }: any) {
   return (
     <View style={{ padding: 32, alignItems: 'center' }}>
       <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: theme.subtle, textAlign: 'center', lineHeight: 22, marginBottom: 16 }}>
-        سجّل الدخول لتنشر طلبك — البائعون يشوفونه ويرسلون لك عروضهم مباشرة.
+        سجّل الدخول لتنشر طلبك — يراه البائعون ويرسلون إليك عروضهم مباشرة.
       </Text>
       <Btn kind="accent" onPress={() => navigation.getParent()?.getParent?.()?.navigate('AuthGate') ?? navigation.navigate('AuthGate')}>
         تسجيل الدخول
@@ -376,16 +376,16 @@ function ComposeSheet({ visible, onClose, defaultGovAr, onCreated }: {
       // live, and re-broadcasting it to the same shops is exactly what the
       // server refused to do.
       if (code.includes('already_open')) {
-        Alert.alert('عندك طلب مفتوح لنفس الجهاز', 'افتح «طلباتي» لتشوف العروض التي وصلتك عليه.');
+        Alert.alert('لديك طلب مفتوح للجهاز نفسه', 'افتح «طلباتي» لترى العروض التي وصلتك.');
         onClose();
         return;
       }
       Alert.alert('تعذّر نشر الطلب', code.includes('too_many_open')
-        ? 'عندك 5 طلبات مفتوحة. أغلق واحداً قبل نشر طلب جديد.'
+        ? 'لديك 5 طلبات مفتوحة. أغلق واحداً قبل نشر طلب جديد.'
         : code.includes('too_many_today')
-          ? 'نشرت طلبات كثيرة اليوم. جرّب بكرة.'
+          ? 'نشرت طلبات كثيرة اليوم. حاول غداً.'
           : code.includes('guest_not_allowed')
-            ? 'سجّل الدخول برقم هاتفك حتى يتمكن البائعون من الوصول إليك.'
+            ? 'سجّل الدخول برقم هاتفك ليتمكن البائعون من الوصول إليك.'
             : 'حاول مرة أخرى.');
     },
   });
@@ -401,7 +401,7 @@ function ComposeSheet({ visible, onClose, defaultGovAr, onCreated }: {
             flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
             paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderColor: theme.line,
           }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>أدور على جهاز</Text>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>اطلب جهازاً</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <IconClose size={18} color={theme.subtle} sw={1.8} />
             </TouchableOpacity>
@@ -409,7 +409,7 @@ function ComposeSheet({ visible, onClose, defaultGovAr, onCreated }: {
 
           <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
             <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', lineHeight: 20, marginBottom: 14 }}>
-              طلبك يوصل للمتاجر التي عندها الجهاز أو تبيع نفس الماركة في محافظتك — ويردون عليك بعروضهم.
+              يصل طلبك إلى المتاجر التي لديها الجهاز أو تبيع الماركة نفسها في محافظتك — فترد عليك بعروضها.
             </Text>
 
             <Label>الماركة</Label>
