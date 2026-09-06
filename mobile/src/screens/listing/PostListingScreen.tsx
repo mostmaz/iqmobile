@@ -1,3 +1,4 @@
+import { AskingPriceGuidance } from '../../components/AskingPriceGuidance';
 import { listingQuality } from '../../lib/listingQuality';
 import { ListingQualityChecklist } from '../../components/ListingQualityChecklist';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -700,6 +701,8 @@ export default function PostListingScreen({ navigation }: any) {
             <View style={{ marginTop: 12, marginBottom: 12 }}>
               <GovPicker label="موقع الإعلان · المحافظة" valueAr={govAr} onChangeAr={setGovAr} />
             </View>
+            <AskingPriceGuidance brand={brand} model={model} storage={storage}
+              condition={condition} governorate={GOV_AR_TO_EN[govAr]} askingPrice={Number(askingPrice)} />
             <FieldLabel>{ar.auth.city}</FieldLabel>
             <Input value={city} onChangeText={setCity} placeholder={districtHint(govAr)} />
             <FieldLabel style={{ marginTop: 12 }}>وصف حالة الجهاز</FieldLabel>

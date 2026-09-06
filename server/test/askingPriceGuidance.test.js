@@ -1,0 +1,35 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
+import { askingPriceGuidance } from '../src/askingPriceGuidance.js';
+const now=1800000000000;
+const filters={brand:'Apple',model:'iPhone 16 Pro',storage:'1TB',condition:'used',governorate:'Baghdad'};
+function fixture() {
+ const db=new Database(':memory:');
+ db.exec('CREATE TABLE users(id INTEGER,shop_hidden INTEGER); INSERT INTO users VALUES(1,0),(2,0),(3,1); CREATE TABLE phone_listings(seller_id INTEGER,brand TEXT,model TEXT,storage TEXT,condition TEXT,governorate TEXT,status TEXT,created_at INTEGER,expires_at INTEGER,stock_qty INTEGER,price_on_request INTEGER,asking_price INTEGER)');
+ const add=(overrides={})=>{
+  const row={seller_id:2,...filters,status:'active',created_at:now,expires_at:now+1000,stock_qty:1,price_on_request:0,asking_price:500000,...overrides};
+  const keys=Object.keys(row);
+  db.prepare(`INSERT INTO phone_listings(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(row));
+ };
+ return {db,add};
+}
+test('exact comparison, normalized storage, even median and asking-price labeling',()=>{
+ const {db,add}=fixture();[400000,500000,600000,900000].forEach(asking_price=>add({asking_price,storage:'1024 GB'}));
+ const r=askingPriceGuidance(db,filters,1,now);
+ assert.equal(r.count,4);assert.equal(r.median,550000);assert.equal(r.low,400000);assert.equal(r.high,900000);assert.equal(r.basis,'asking_prices');db.close();
+});
+test('excludes mismatches, unavailable inventory, own ads, hidden shops and stale rows',()=>{
+ const {db,add}=fixture();
+ for(const overrides of [{model:'iPhone 16 Pro Max'},{storage:'256GB'},{condition:'new'},{governorate:'Basra'},{status:'sold'},{status:'reserved'},{seller_id:1},{seller_id:3},{stock_qty:0},{price_on_request:1},{asking_price:1},{created_at:now-31*86400000},{created_at:now+1}])add(overrides);
+ add();add();
+ const r=askingPriceGuidance(db,filters,1,now);assert.equal(r.count,2);assert.equal(r.median,null);assert.equal(r.low,null);db.close();
+});
+test('honors expiration setting and validates required comparison fields',()=>{
+ const {db,add}=fixture();for(let i=0;i<3;i++)add({expires_at:now-1});
+ assert.equal(askingPriceGuidance(db,filters,1,now,false).count,0);
+ assert.equal(askingPriceGuidance(db,filters,1,now,true).count,3);
+ assert.equal(askingPriceGuidance(db,{...filters,model:''},1,now),null);
+ assert.equal(askingPriceGuidance(db,{...filters,condition:'excellent'},1,now),null);
+ db.close();
+});

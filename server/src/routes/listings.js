@@ -1,3 +1,4 @@
+import { askingPriceGuidance } from '../askingPriceGuidance.js';
 import { canonicalSearch, suggestionsFor } from '../searchQuality.js';
 import { Router } from 'express';
 import { scalePriceIfThousands } from '../priceScale.js';
@@ -26,6 +27,13 @@ import { uploadLimiter, createLimiter } from '../limits.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 
 const r = Router();
+
+r.get('/price-guidance', requireAuth(), (req, res) => {
+  const result = askingPriceGuidance(db, req.query, req.user.id, Date.now(),
+    getSetting('listings_never_expire') !== '0');
+  if (!result) return res.status(400).json({ error: 'invalid_comparison_fields' });
+  res.json(result);
+});
 
 const UP = path.resolve('./uploads');
 fs.mkdirSync(UP, { recursive: true });
