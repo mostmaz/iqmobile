@@ -1504,3 +1504,67 @@ CREATE INDEX IF NOT EXISTS idx_users_registered_at ON users(registered_at);
 CREATE INDEX IF NOT EXISTS idx_users_guest_created_at ON users(guest_created_at);
 `);
 db.prepare("INSERT OR IGNORE INTO analytics_metadata(key,value) VALUES('registration_tracking_start',?)").run(Date.now());
+
+// ─── phone requests («أدور على…») ──────────────────────────────────────
+//
+// The active counterpart to wishlist_items. A wish is private and passive:
+// the buyer waits for a listing to appear. A REQUEST is published — it goes
+// out to shops that can plausibly fill it, lands on a public board, and
+// sellers answer with offers. The buyer then picks.
+//
+// Why offers are their own table rather than chats: `chats.listing_id` is
+// NOT NULL and UNIQUE(listing_id, buyer_id), so a conversation cannot exist
+// without a listing, and a request that no one has listed yet has none. An
+// offer therefore carries its own price + note, and OPTIONALLY points at a
+// listing the seller already has — which is what gives the buyer a route
+// into the normal listing → chat/call flow.
+//
+// max_price is a ceiling, mirroring wishlist_items.max_price, so the same
+// "is this listing within budget" comparison works for both.
+db.exec(`
+CREATE TABLE IF NOT EXISTS phone_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  buyer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  brand TEXT NOT NULL,
+  model TEXT NOT NULL,
+  -- NULL = any condition. Not a CHECK: route-level validation owns the
+  -- vocabulary, same reasoning as phone_listings.condition.
+  condition TEXT,
+  max_price INTEGER NOT NULL,
+  governorate TEXT NOT NULL,
+  note TEXT,
+  -- open      = live, accepting offers
+  -- fulfilled = buyer got the device (from here or elsewhere)
+  -- closed    = buyer withdrew it
+  -- expired   = passed expires_at with no close
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','fulfilled','closed','expired')),
+  -- Denormalised so the board can sort and render without a per-row COUNT.
+  -- Maintained by the offer create/withdraw paths only.
+  offer_count INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  closed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_requests_buyer ON phone_requests(buyer_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_requests_board ON phone_requests(status, expires_at, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_requests_gov ON phone_requests(governorate, status);
+CREATE INDEX IF NOT EXISTS idx_requests_model ON phone_requests(brand, model);
+
+CREATE TABLE IF NOT EXISTS request_offers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  request_id INTEGER NOT NULL REFERENCES phone_requests(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- Optional. ON DELETE SET NULL, not CASCADE: a seller deleting the
+  -- listing must not silently retract an offer the buyer is looking at.
+  listing_id INTEGER REFERENCES phone_listings(id) ON DELETE SET NULL,
+  price INTEGER NOT NULL,
+  note TEXT,
+  status TEXT NOT NULL DEFAULT 'sent' CHECK(status IN ('sent','withdrawn')),
+  created_at INTEGER NOT NULL,
+  -- One offer per seller per request: a second POST edits the first, so a
+  -- shop can correct its price without spamming the buyer's list.
+  UNIQUE(request_id, seller_id)
+);
+CREATE INDEX IF NOT EXISTS idx_offers_request ON request_offers(request_id, price ASC);
+CREATE INDEX IF NOT EXISTS idx_offers_seller ON request_offers(seller_id, created_at DESC);
+`);

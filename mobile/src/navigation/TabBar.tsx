@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { StackActions } from '@react-navigation/native';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
-import { IconHome, IconSearch, IconPlus, IconPerson, IconChat } from '../components/icons';
+import { IconHome, IconSearch, IconPlus, IconPerson, IconChat, IconRequest } from '../components/icons';
 import { ar } from '../i18n/ar';
 
 // Labels come from the live i18n dictionary — read per render, not at
@@ -18,6 +18,7 @@ const LABELS = (): Record<string, string> => ({
   Browse: ar.tabs.browse,
   Search: ar.tabs.search,
   Sell: ar.tabs.sell,
+  Requests: ar.tabs.requests,
   Chats: ar.tabs.chats,
   Profile: ar.tabs.profile,
 });
@@ -26,6 +27,7 @@ const ICONS: Record<string, (p: { size?: number; color?: string; sw?: number; fi
   Browse: IconHome,
   Search: IconSearch,
   Sell: IconPlus,
+  Requests: IconRequest,
   Chats: IconChat,
   Profile: IconPerson,
 };

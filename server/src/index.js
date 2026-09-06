@@ -34,6 +34,7 @@ import eventsRoutes from './routes/events.js';
 import savedSearchRoutes from './routes/savedSearches.js';
 import priceWatchRoutes from './routes/priceWatches.js';
 import wishlistRoutes from './routes/wishlist.js';
+import phoneRequestRoutes from './routes/phoneRequests.js';
 import deviceCatalogRoutes from './routes/deviceCatalog.js';
 import ordersRoutes from './routes/orders.js';
 import shopAdminRoutes from './routes/shopAdmin.js';
@@ -229,6 +230,7 @@ app.use('/events', eventsRoutes);
 app.use('/', savedSearchRoutes); // mounts /saved-searches
 app.use('/', priceWatchRoutes);  // mounts /listings/:id/price-watch
 app.use('/', wishlistRoutes);    // mounts /wishlist
+app.use('/', phoneRequestRoutes); // mounts /phone-requests (+ /:id/offers)
 app.use('/', deviceCatalogRoutes); // mounts /device-catalog/*, /device-suggestions
 app.use('/', ordersRoutes);        // mounts /orders, /orders/mine, /orders/:id
 app.use('/', shopAdminRoutes);     // merchant panel: /shop-admin/*

@@ -22,6 +22,7 @@ const AR = {
     search: 'بحث',
     saved: 'المفضلة',
     sell: 'بيع',
+    requests: 'طلبات',
     chats: 'المحادثات',
     profile: 'حسابي',
   },

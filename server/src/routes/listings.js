@@ -15,6 +15,7 @@ import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
 import { pushToAdmins } from '../adminPush.js';
 import { alertWishlistOnListing } from './wishlist.js';
+import { alertRequestsOnListing } from './phoneRequests.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import { inspectListingAsync } from '../listingInspect.js';
 import { newPriceFor } from '../newPriceRef.js';
@@ -433,7 +434,7 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   ).run(row.id, req.user.id, row.model);
   // Fire saved-search + wish-list alerts after the response is sent, so
   // notification fan-out never adds latency to (or can fail) listing creation.
-  setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); });
+  setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); alertRequestsOnListing(row); });
   // Operators watch new listings for junk names, wrong prices and worse.
   setImmediate(() => {
     pushToAdmins(

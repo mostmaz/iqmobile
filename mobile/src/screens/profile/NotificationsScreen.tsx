@@ -28,6 +28,12 @@ const KIND_LABEL: Record<string, string> = {
   'saved_search.match': 'إعلان جديد يطابق بحثك المحفوظ',
   'wishlist.match': 'جهاز من قائمة رغباتك متوفر 🎯',
   'price.drop': 'انخفض سعر إعلان تراقبه 🔻',
+  // Phone requests. request.match goes to a SELLER ("a buyer wants what
+  // you have"), request.new to a shop that could stock it, request.offer
+  // back to the buyer.
+  'request.match': 'مشتري يدور على جهاز عندك 🎯',
+  'request.new': 'طلب جديد يناسب متجرك',
+  'request.offer': 'وصلك عرض على طلبك 💬',
   // Storefront orders. Without these the inbox rendered the raw kind
   // ("order.confirmed") — the notifications were firing all along, they just
   // arrived looking like a bug.
@@ -173,6 +179,14 @@ export default function NotificationsScreen({ navigation }: any) {
     // Fall through to the listing instead.
     if (SHOW_PROMOTE && item.kind === 'feature.reminder' && item.payload?.listing_id) {
       navigation.navigate('FeatureListing', { id: item.payload.listing_id });
+      return;
+    }
+    // Before the generic listing_id branch: request.match carries a
+    // listing_id too (it names WHICH of the seller's listings fits), so
+    // falling through would drop him on his own ad instead of the request
+    // he is being asked to answer.
+    if (item.payload?.request_id) {
+      navigation.navigate('RequestDetail', { id: item.payload.request_id });
       return;
     }
     if (item.payload?.listing_id) {

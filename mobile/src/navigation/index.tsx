@@ -50,6 +50,8 @@ import DealsScreen from '../screens/deal/DealsScreen';
 import RateUserScreen from '../screens/deal/RateUserScreen';
 import SavedScreen from '../screens/profile/SavedScreen';
 import WishlistScreen from '../screens/profile/WishlistScreen';
+import RequestsScreen from '../screens/requests/RequestsScreen';
+import RequestDetailScreen from '../screens/requests/RequestDetailScreen';
 import NotificationsScreen from '../screens/profile/NotificationsScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import ProfileScreen from '../screens/common/ProfileScreen';
@@ -88,6 +90,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
+      <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
     </BrowseStack.Navigator>
   );
@@ -139,8 +142,21 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
+      <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <BrowseStack.Screen name="EditProfile" component={EditProfileScreen} />
       <BrowseStack.Screen name="HowItWorks" component={OnboardingScreen} />
+    </BrowseStack.Navigator>
+  );
+}
+// طلبات — the request board. RequestDetail needs ListingDetail locally
+// because an offer can attach a listing, and that tap must not dead-end.
+function RequestsStackNav() {
+  return (
+    <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
+      <BrowseStack.Screen name="RequestsHome" component={RequestsScreen} />
+      <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
+      <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
+      <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -257,6 +273,14 @@ function MainTabs() {
         // reset even at root to defeat component-instance reuse: without it,
         // leftover form state from a canceled wizard would persist.
         listeners={resetToRootOnTabPress('Sell', 'SellHome', { always: true })}
+      />
+      {/* Placed after Sell on purpose: the bar hides Chats, so the visible
+          row is Browse · Search · Sell · Requests · Profile and Sell keeps
+          the centre slot its elevated treatment is designed around. */}
+      <Tabs.Screen
+        name="Requests"
+        component={RequestsStackNav}
+        listeners={resetToRootOnTabPress('Requests', 'RequestsHome')}
       />
       <Tabs.Screen
         name="Chats"

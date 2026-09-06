@@ -361,6 +361,97 @@ export const Wishlist = {
   remove: (id: number) => api(`/wishlist/${id}`, { method: 'DELETE' }),
 };
 
+// ─── Phone requests («أدور على…») ───────────────────────────────────────
+// The active counterpart to the wish list. A wish waits silently for a
+// listing to appear; a REQUEST is published — it reaches sellers holding a
+// matching device, then shops that plausibly stock it, and sits on a public
+// board. Sellers answer with offers and the buyer picks.
+//
+// Who sees what is decided server-side: the buyer gets `offers`, a seller
+// gets only `my_offer` (never a rival's price), and an anonymous viewer
+// gets neither — nor the buyer's phone number.
+export type RequestStatus = 'open' | 'fulfilled' | 'closed' | 'expired';
+
+export interface RequestSeller {
+  id: number;
+  name: string;
+  is_shop: boolean;
+  governorate: string;
+  city: string | null;
+  profile_image_path: string | null;
+  shop_image_path: string | null;
+  rating_avg: number;
+  rating_count: number;
+  verified: boolean;
+  phone: string | null;
+  whatsapp: string | null;
+  channels: { call: boolean; whatsapp: boolean; chat: boolean };
+}
+
+export interface RequestOffer {
+  id: number;
+  request_id: number;
+  price: number;
+  note: string | null;
+  created_at: number;
+  seller: RequestSeller | null;
+  listing: {
+    id: number; brand: string; model: string; storage: string | null; color: string | null;
+    condition: string; asking_price: number; status: string; governorate: string;
+    image_path: string | null;
+  } | null;
+}
+
+export interface PhoneRequest {
+  id: number;
+  brand: string;
+  model: string;
+  condition: string | null;
+  max_price: number;
+  governorate: string;
+  note: string | null;
+  status: RequestStatus;
+  offer_count: number;
+  created_at: number;
+  expires_at: number;
+  is_mine: boolean;
+  buyer: { id: number; display_name: string; profile_image_path: string | null } | null;
+  /** Buyer's view only. */
+  offers?: RequestOffer[];
+  /** A seller's view of his OWN offer on this request. */
+  my_offer?: RequestOffer | null;
+}
+
+export interface SentOffer extends RequestOffer {
+  request: { id: number; brand: string; model: string; max_price: number; governorate: string; status: RequestStatus };
+}
+
+export const PhoneRequests = {
+  /** The public board. `mineToAnswer` narrows to brands this seller has listed. */
+  board: (opts: { governorate?: string; brand?: string; mineToAnswer?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.governorate) q.set('governorate', opts.governorate);
+    if (opts.brand) q.set('brand', opts.brand);
+    if (opts.mineToAnswer) q.set('mine_to_answer', '1');
+    const qs = q.toString();
+    return api<PhoneRequest[]>(`/phone-requests${qs ? `?${qs}` : ''}`);
+  },
+  mine: () => api<PhoneRequest[]>('/phone-requests/mine'),
+  sentOffers: () => api<SentOffer[]>('/phone-requests/offers/mine'),
+  get: (id: number) => api<PhoneRequest>(`/phone-requests/${id}`),
+  create: (body: {
+    brand: string; model: string; max_price: number;
+    governorate?: string; condition?: string | null; note?: string | null;
+  }) => api<PhoneRequest>('/phone-requests', { method: 'POST', body: JSON.stringify(body) }),
+  setStatus: (id: number, status: 'open' | 'closed' | 'fulfilled') =>
+    api<PhoneRequest>(`/phone-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  remove: (id: number) => api(`/phone-requests/${id}`, { method: 'DELETE' }),
+  /** Re-offering EDITS the seller's existing offer rather than adding one. */
+  offer: (id: number, body: { price: number; note?: string | null; listing_id?: number | null }) =>
+    api<RequestOffer>(`/phone-requests/${id}/offers`, { method: 'POST', body: JSON.stringify(body) }),
+  withdrawOffer: (id: number) => api(`/phone-requests/${id}/offers/mine`, { method: 'DELETE' }),
+};
+
 // ─── Device catalog (brand → model) ─────────────────────────────────────
 // Powers the post-listing model dropdown and the filter-based search, so a
 // seller and a buyer pick the SAME device name. Devices come per brand and

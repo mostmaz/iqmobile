@@ -130,6 +130,17 @@ export const IconTag = (p: IP) => (
     <Circle cx="15.5" cy="8.5" r="1.4" />
   </Stroke>
 );
+// «أدور على…» — a phone outline with a magnifier over it: the buyer is
+// LOOKING for a device rather than selling one, which is the whole
+// distinction the requests tab has to carry in one glyph.
+export const IconRequest = (p: IP) => (
+  <Stroke {...p}>
+    <Rect x="4" y="2.5" width="10" height="19" rx="2.4" />
+    <Path d="M7.6 18.6h2.8" />
+    <Circle cx="16.5" cy="11" r="4" />
+    <Path d="M19.5 14l2.2 2.2" />
+  </Stroke>
+);
 export const IconChevronDown = (p: IP) => (
   <Stroke {...p} sw={p.sw ?? 2}><Path d="M6 9l6 6 6-6" /></Stroke>
 );
