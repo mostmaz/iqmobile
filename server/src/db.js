@@ -1568,3 +1568,7 @@ CREATE TABLE IF NOT EXISTS request_offers (
 CREATE INDEX IF NOT EXISTS idx_offers_request ON request_offers(request_id, price ASC);
 CREATE INDEX IF NOT EXISTS idx_offers_seller ON request_offers(seller_id, created_at DESC);
 `);
+
+// Idempotency for explicit search submissions (refresh and pagination are not new intent).
+addColumnIfMissing('events', 'search_request_id TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_search_request ON events(search_request_id) WHERE search_request_id IS NOT NULL');

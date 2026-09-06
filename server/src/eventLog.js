@@ -9,14 +9,15 @@
 import { db, now } from './db.js';
 
 const insEvent = db.prepare(
-  `INSERT INTO events(type, listing_id, user_id, brand, governorate, query, result_count, shop_id, banner_id, created_at)
-   VALUES(@type, @listing_id, @user_id, @brand, @governorate, @query, @result_count, @shop_id, @banner_id, @created_at)`,
+  `INSERT OR IGNORE INTO events(type, listing_id, user_id, brand, governorate, query, result_count, shop_id, banner_id, created_at, search_request_id)
+   VALUES(@type, @listing_id, @user_id, @brand, @governorate, @query, @result_count, @shop_id, @banner_id, @created_at, @search_request_id)`,
 );
 
 export function logEvent(e) {
   try {
     insEvent.run({
       type: e.type,
+      search_request_id: e.search_request_id ?? null,
       listing_id: e.listing_id ?? null,
       user_id: e.user_id ?? null,
       brand: e.brand ?? null,

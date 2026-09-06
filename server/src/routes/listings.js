@@ -1,3 +1,4 @@
+import { canonicalSearch, suggestionsFor } from '../searchQuality.js';
 import { Router } from 'express';
 import { scalePriceIfThousands } from '../priceScale.js';
 import multer from 'multer';
@@ -465,6 +466,15 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
 // feed never reads as all-ads.
 const FEATURED_CAP = 2;
 
+// Suggestions are explicit alternatives; the browse route never substitutes a model.
+r.get('/search-suggestions', optionalAuth(), (req, res) => {
+  const gov = isGovernorate(String(req.query.governorate || '')) ? String(req.query.governorate) : null;
+  const candidates = db.prepare(`SELECT DISTINCT l.brand,l.model FROM phone_listings l JOIN users u ON u.id=l.seller_id
+    WHERE l.status IN ('active','reserved') AND u.seller_type='shop' AND COALESCE(u.shop_hidden,0)=0
+      AND (@gov IS NULL OR l.governorate=@gov) ORDER BY l.brand,l.model`).all({gov});
+  res.json(suggestionsFor(String(req.query.q || ''), candidates));
+});
+
 r.get('/', optionalAuth(), (req, res) => {
   const { brand, model, governorate, condition, storage, color, verified_only, q, seller_type } = req.query;
   const minPrice = Number(req.query.min_price);
@@ -583,7 +593,7 @@ r.get('/', optionalAuth(), (req, res) => {
     const HAYSTACK = arabicNormalizeSql(
       "l.brand || ' ' || l.model || ' ' || COALESCE(l.description,'')",
     );
-    const tokens = queryTokens(String(q));
+    const tokens = queryTokens(canonicalSearch(q));
     if (tokens.length) {
       where += ' AND (' + tokens.map(() => `${HAYSTACK} LIKE ?`).join(' AND ') + ')';
       for (const t of tokens) params.push('%' + t + '%');
@@ -654,15 +664,16 @@ r.get('/', optionalAuth(), (req, res) => {
   // (separate COUNT over the same filter, not the paginated page size) so the
   // dashboard can surface zero-result searches — real demand with no supply.
   if (q && String(q).trim() && offset === 0) {
-    let resultCount = 0;
+    let resultCount = null;
     try {
       resultCount = db.prepare(
         `SELECT COUNT(*) AS n FROM phone_listings l JOIN users u ON u.id = l.seller_id WHERE ${where}`,
       ).get(...params).n;
-    } catch { /* count is best-effort; fall back to 0 */ }
+    } catch { /* Unknown is not a zero-result search. */ }
     logEvent({
-      type: 'search',
-      query: String(q).trim().slice(0, 100),
+      type: req.query.search_mode === 'submit' && /^[a-zA-Z0-9_-]{8,100}$/.test(String(req.query.search_request_id || '')) ? 'search_submit' : req.query.search_mode === 'preview' ? 'search_preview' : 'search',
+      search_request_id: req.query.search_mode === 'submit' && /^[a-zA-Z0-9_-]{8,100}$/.test(String(req.query.search_request_id || '')) ? `${req.user?.id ?? 'anonymous'}:${req.query.search_request_id}` : null,
+      query: canonicalSearch(q).slice(0, 100),
       result_count: resultCount,
       brand: brand && isBrand(String(brand)) ? String(brand) : null,
       governorate: governorate && isGovernorate(String(governorate)) ? String(governorate) : null,

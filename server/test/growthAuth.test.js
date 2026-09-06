@@ -12,7 +12,8 @@ test('registration timestamps survive login and guest promotion preserves creati
   const { default: express } = await import('express');
   const { db } = await import('../src/db.js');
   const { default: auth } = await import('../src/routes/auth.js');
-  const app = express(); app.use(express.json()); app.use('/auth', auth);
+  const { default: listings } = await import('../src/routes/listings.js');
+  const app = express(); app.use(express.json()); app.use('/auth', auth); app.use('/listings', listings);
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   async function post(route, body, token) {
@@ -34,6 +35,19 @@ test('registration timestamps survive login and guest promotion preserves creati
     assert.equal(db.prepare('SELECT registered_at FROM users WHERE id=?').get(after.id).registered_at, after.registered_at);
     const fresh = await post('phone-login', { phone: '07700000022' });
     assert.ok(db.prepare('SELECT registered_at FROM users WHERE id=?').get(fresh.user.id).registered_at);
+    // Explicit submissions are deduplicated; previews and old clients stay separate.
+    async function search(params) {
+      const response = await fetch(`http://127.0.0.1:${server.address().port}/listings?q=reaalme&${params}`, { headers: { authorization: `Bearer ${fresh.token}` } });
+      assert.equal(response.status, 200); return response.json();
+    }
+    await search('search_mode=preview'); await search('');
+    await search('search_mode=submit&search_request_id=regression_search_01');
+    await search('search_mode=submit&search_request_id=regression_search_01');
+    await search('search_mode=submit&search_request_id=regression_search_01&offset=15');
+    const submitted = db.prepare("SELECT * FROM events WHERE type='search_submit'").all();
+    assert.equal(submitted.length,1); assert.equal(submitted[0].query,'realme'); assert.equal(submitted[0].result_count,0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE type='search_preview'").get().n,1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE type='search'").get().n,1);
     const password = await post('register', { phone: '07700000023', password: 'pw1234', display_name: 'Test', governorate: 'Baghdad' });
     assert.ok(db.prepare('SELECT registered_at FROM users WHERE id=?').get(password.user.id).registered_at);
   } finally {

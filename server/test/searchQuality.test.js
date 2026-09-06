@@ -1,0 +1,30 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import Database from 'better-sqlite3';
+import { canonicalSearch, suggestionsFor, searchQuality } from '../src/searchQuality.js';
+test('conservative aliases preserve model numbers and recognize mixed-language terms',()=>{
+ assert.equal(canonicalSearch('reaalme جي تي ٧'),'realme gt7');
+ assert.equal(canonicalSearch('ايفون ١٣ برو'),'iphone 13 pro');
+ assert.equal(canonicalSearch('ريد ماجيك 11'),'redmagic 11');
+ assert.equal(canonicalSearch('ون بلس 12'),'oneplus 12');
+ assert.equal(canonicalSearch('A57'),'a57');
+ const candidates=[{brand:'Samsung',model:'S23 Ultra'},{brand:'Samsung',model:'S24 Ultra'}];
+ assert.deepEqual(suggestionsFor('samsun s23',candidates),['Samsung S23 Ultra']);
+ assert.deepEqual(suggestionsFor('samsun s25',candidates),[]);
+ assert.deepEqual(suggestionsFor('sa',candidates),[]);
+});
+test('submitted denominator excludes previews/legacy/unknown counts and outcomes stop at next search',()=>{
+ const db=new Database(':memory:');
+ db.exec(`CREATE TABLE events(type TEXT,user_id INTEGER,created_at INTEGER,result_count INTEGER);
+ CREATE TABLE chats(id INTEGER,buyer_id INTEGER,seller_id INTEGER);
+ CREATE TABLE chat_messages(chat_id INTEGER,sender_id INTEGER,created_at INTEGER);`);
+ const insert=db.prepare('INSERT INTO events VALUES(?,?,?,?)');
+ insert.run('search_submit',1,1000,0); insert.run('search_submit',1,2000,2);
+ insert.run('view',1,3000,null); insert.run('contact_call',1,4000,null);
+ insert.run('search_submit',null,5000,null);insert.run('search_preview',1,500,null);insert.run('search',1,600,0);
+ const r=searchQuality(db,0,2000000);
+ assert.equal(r.submitted,3);assert.equal(r.measured,2);assert.equal(r.zero_pct,50);
+ assert.equal(r.previews,1);assert.equal(r.legacy,1);
+ assert.deepEqual(r.outcomes,{eligible:2,viewed:1,contacted:1});
+ assert.equal(searchQuality(db,3000000,4000000).zero_pct,null);db.close();
+});

@@ -35,6 +35,7 @@ interface Analytics {
   listings_without_contact: NoContactRow[];
   listings_without_contact_total: number;
   demand: {
+    search_quality: { submitted: number; measured: number; zero_results: number; zero_pct: number | null; previews: number; legacy: number; outcomes: { eligible: number; viewed: number; contacted: number } };
     top_searches: Array<{ query: string; n: number }>;
     zero_result_searches: Array<{ query: string; n: number }>;
     most_viewed: Array<{ id: number; brand: string; model: string; governorate: string; views: number }>;
@@ -149,15 +150,26 @@ export function AnalyticsPage() {
             )}
           </div>
 
+          <div className="card">
+            <h3>جودة البحث — عمليات البحث المرسلة فقط</h3>
+            <div className="kpi-row">
+              <Kpi label="بحث مرسل" value={String(data!.demand.search_quality.submitted)} />
+              <Kpi label="بحث بلا نتائج" value={data!.demand.search_quality.zero_pct === null ? 'غير متاح' : `${data!.demand.search_quality.zero_pct}%`} sub={`${data!.demand.search_quality.zero_results} من ${data!.demand.search_quality.measured} بحث بنتيجة معروفة`} />
+              <Kpi label="تبعه فتح إعلان" value={String(data!.demand.search_quality.outcomes.viewed)} sub={`من ${data!.demand.search_quality.outcomes.eligible} بحث مؤهل`} />
+              <Kpi label="تبعه تواصل" value={String(data!.demand.search_quality.outcomes.contacted)} sub={`من ${data!.demand.search_quality.outcomes.eligible} بحث مؤهل`} />
+            </div>
+            <p className="muted">إحصاءات البحث عامة للفترة المختارة، ولا تتبع فلتر الماركة أو المحافظة. المعاينات أثناء الكتابة: {data!.demand.search_quality.previews}؛ طلبات الإصدارات القديمة غير المصنفة: {data!.demand.search_quality.legacy}. كلاهما خارج نسبة البحث بلا نتائج. يبدأ القياس الصريح بعد تحديث التطبيق؛ لا يعني غياب البيانات عدم وجود طلب.</p>
+            <p className="muted">المتابعة للحساب المعروف خلال ٣٠ دقيقة أو حتى البحث المرسل التالي، ونستبعد آخر ٣٠ دقيقة غير المكتملة. فتح إعلان/التواصل اللاحق ارتباط زمني وليس إثباتاً أن البحث سببه أو أن الإعلان من نتائجه. لا تُحسب الحسابات المجهولة في المتابعة. أخطاء العد ليست نتائج صفرية.</p>
+          </div>
           {/* Demand */}
           <div className="chart-row">
             <div className="card chart-card">
-              <div className="chart-title">أكثر الكلمات بحثاً</div>
+              <div className="chart-title">أكثر عمليات البحث المرسلة</div>
               <RankList rows={data!.demand.top_searches.map((s) => ({ label: s.query, n: s.n }))} empty="لا عمليات بحث في هذه الفترة." />
             </div>
             <div className="card chart-card">
-              <div className="chart-title">بحث بدون نتائج · طلب بلا عرض 🎯</div>
-              <RankList rows={data!.demand.zero_result_searches.map((s) => ({ label: s.query, n: s.n }))} empty="لا يوجد — كل عمليات البحث لها نتائج." accent="#f59e0b" />
+              <div className="chart-title">بحث مرسل بدون نتائج · يحتاج مراجعة</div>
+              <RankList rows={data!.demand.zero_result_searches.map((s) => ({ label: s.query, n: s.n }))} empty="لا يوجد بحث مرسل بلا نتائج مسجّل في هذه الفترة." accent="#f59e0b" />
             </div>
             <div className="card chart-card">
               <div className="chart-title">الأكثر مشاهدة</div>

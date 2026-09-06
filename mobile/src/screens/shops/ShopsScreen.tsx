@@ -92,6 +92,14 @@ export default function ShopsScreen({ navigation }: any) {
   // debounced term actually sent, so a keystroke doesn't fire a request.
   const [search, setSearch] = useState('');
   const [q, setQ] = useState('');
+  const [submission, setSubmission] = useState<{ q: string; id: string; gov: string | undefined } | null>(null);
+  const submitSearch = (text = search) => {
+    const value = text.trim();
+    if (!value) return;
+    setSearch(value); setQ(value);
+    setSubmission({ q: value, gov: govEn, id: `search_${Date.now()}_${Math.random().toString(36).slice(2)}` });
+  };
+  const submitted = submission?.q === q && submission?.gov === govEn ? submission : null;
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 350);
     return () => clearTimeout(t);
@@ -101,8 +109,9 @@ export default function ShopsScreen({ navigation }: any) {
     data: devData, isLoading: devLoading, isError: devError, refetch: devRefetch,
     fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['shop-device-search', q, govEn ?? '__all__'],
+    queryKey: ['shop-device-search', q, govEn ?? '__all__', submitted?.id ?? 'preview'],
     queryFn: ({ pageParam = 0 }) => Listings.browse({
+      search_mode: submitted ? 'submit' : 'preview', search_request_id: submitted?.id,
       q, seller_type: 'shop', sort: 'rank', available_only: true,
       ...(govEn ? { governorate: govEn } : {}),
       limit: DEVICE_PAGE, offset: pageParam as number,
@@ -112,6 +121,11 @@ export default function ShopsScreen({ navigation }: any) {
     enabled: searchActive,
   });
   const devices = useMemo(() => devData?.pages.flat() ?? [], [devData]);
+  const { data: suggestions = [] } = useQuery({
+    queryKey: ['shop-search-suggestions', q, govEn],
+    queryFn: () => Listings.suggestions(q, govEn),
+    enabled: searchActive && !devLoading && !devError && devices.length === 0,
+  });
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['shops', govEn ?? '__all__'],
@@ -196,14 +210,16 @@ export default function ShopsScreen({ navigation }: any) {
           <IconSearch size={17} color={theme.subtle} sw={1.8} />
           <TextInput
             value={search}
-            onChangeText={setSearch}
+            onChangeText={value => { setSubmission(null); setSearch(value); }}
+            onSubmitEditing={() => submitSearch()}
             returnKeyType="search"
             placeholder="ابحث عن جهاز في المتاجر…"
             placeholderTextColor={theme.subtle}
             style={{ flex: 1, fontFamily: fonts.ar, fontSize: 14, color: theme.ink, textAlign: 'right', paddingVertical: 0 }}
           />
+          {search.trim() ? <TouchableOpacity accessibilityLabel="تنفيذ البحث" onPress={() => submitSearch()}><Text style={{ color: theme.accent, fontFamily: fonts.arBold }}>بحث</Text></TouchableOpacity> : null}
           {search ? (
-            <TouchableOpacity onPress={() => { setSearch(''); setQ(''); }} activeOpacity={0.6} style={{ padding: 2 }}>
+            <TouchableOpacity onPress={() => { setSubmission(null); setSearch(''); setQ(''); }} activeOpacity={0.6} style={{ padding: 2 }}>
               <IconClose size={15} color={theme.subtle} sw={2} />
             </TouchableOpacity>
           ) : null}
@@ -298,6 +314,7 @@ export default function ShopsScreen({ navigation }: any) {
                 <IconSearch size={28} color={theme.subtle} sw={1.6} />
               </View>
               <Text style={{ marginTop: 14, fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>لا توجد أجهزة تطابق بحثك</Text>
+              {suggestions.map(s => <TouchableOpacity key={s} onPress={() => submitSearch(s)} style={{ padding: 10 }}><Text style={{ color: theme.accent, fontFamily: fonts.ar }}>هل تقصد: {s}؟</Text></TouchableOpacity>)}
               <Text style={{ marginTop: 5, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, lineHeight: 21, textAlign: 'center' }}>
                 جرّب اسم موديل آخر{govAr ? ' أو غيّر المحافظة' : ''}
               </Text>

@@ -261,6 +261,8 @@ export interface BrowseFilters {
   // refresh/filter/focus so which featured listings hold the slots rotates,
   // while staying stable across pages of one pagination session.
   seed?: number;
+  search_mode?: 'preview' | 'submit';
+  search_request_id?: string;
 }
 function qs(params: BrowseFilters) {
   const u = new URLSearchParams();
@@ -273,6 +275,7 @@ function qs(params: BrowseFilters) {
 }
 
 export const Listings = {
+  suggestions: (q: string, governorate?: string) => api<string[]>('/listings/search-suggestions' + qs({q, governorate})),
   create: (body: any) => api<Listing>('/listings', { method: 'POST', body: JSON.stringify(body) }),
   browse: (f: BrowseFilters = {}) => api<Listing[]>('/listings' + qs(f)),
   mine: (status: 'all' | ListingStatus = 'all') => api<Listing[]>(`/listings/mine?status=${status}`),

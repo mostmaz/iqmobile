@@ -1,3 +1,4 @@
+import { searchQuality } from '../../searchQuality.js';
 import { listingContactAnalytics } from '../../listingContactAnalytics.js';
 import { growthAnalytics } from '../../growthAnalytics.js';
 import { Router } from 'express';
@@ -2530,10 +2531,10 @@ r.get('/analytics', requireAdmin, (req, res) => {
 
   // ── Demand (global, period only) ──
   const top_searches = db.prepare(
-    "SELECT query, COUNT(*) AS n FROM events WHERE type='search' AND created_at >= ? AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
+    "SELECT query, COUNT(*) AS n FROM events WHERE type='search_submit' AND created_at >= ? AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
   ).all(since);
   const zero_result_searches = db.prepare(
-    "SELECT query, COUNT(*) AS n FROM events WHERE type='search' AND created_at >= ? AND result_count = 0 AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
+    "SELECT query, COUNT(*) AS n FROM events WHERE type='search_submit' AND created_at >= ? AND result_count = 0 AND query IS NOT NULL AND query != '' GROUP BY query ORDER BY n DESC LIMIT 25",
   ).all(since);
 
   // Most-viewed — join view events back to current listings, honouring the
@@ -2571,7 +2572,7 @@ r.get('/analytics', requireAdmin, (req, res) => {
     contact_per_listing,
     listings_without_contact,
     listings_without_contact_total: noContactAll.length,
-    demand: { top_searches, zero_result_searches, most_viewed },
+    demand: { search_quality: searchQuality(db, since, Date.now()), top_searches, zero_result_searches, most_viewed },
     sellers_without_listings: sellersWithout,
     sellers_without_listings_total: sellersWithoutTotal,
   });
@@ -2659,7 +2660,7 @@ r.get('/analytics/daily', requireAdmin, (req, res) => {
   // Distinct users per day, so a set per day rather than a running count —
   // one person searching twenty times is one engaged user.
   const engaged = blank();
-  const ENGAGED_TYPES = "('search','view','contact_call','contact_whatsapp')";
+  const ENGAGED_TYPES = "('search','search_submit','view','contact_call','contact_whatsapp')";
   const engagedSets = new Map(axis.map((d) => [d, new Set()]));
   for (const r2 of db.prepare(
     `SELECT created_at, user_id FROM events
