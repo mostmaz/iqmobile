@@ -52,7 +52,7 @@ export function PromotionPayment({ request, supportPhone }: { request: FeatureRe
         حوّلت المبلغ — تحقق من الدفع
       </Btn>
     </> : request.payment_reference ? <Text selectable style={textStyle}>مرجع التحويل: {request.payment_reference}</Text> : null}
-    {supportPhone ? <Btn full kind="ghost" onPress={()=>Linking.openURL('tel:'+supportPhone).catch(()=>Alert.alert('اتصل بالدعم',supportPhone))}>أحتاج مساعدة · طلب #{request.id}</Btn> : null}
+    {supportPhone ? <Btn full kind="ghost" onPress={()=>Linking.openURL('tel:'+supportPhone).catch(()=>Alert.alert('اتصل بالدعم',supportPhone))}>{`أحتاج مساعدة · طلب #${request.id}`}</Btn> : null}
     <Btn full kind="ghost" onPress={refresh}>تحديث حالة الطلب</Btn>
   </View>;
 }

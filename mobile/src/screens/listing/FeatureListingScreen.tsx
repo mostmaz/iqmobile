@@ -1,7 +1,7 @@
 import { PromotionPayment } from '../../components/PromotionPayment';
 // Promotion checkout: save payment instructions, report a transfer, then await verified activation.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -67,6 +67,8 @@ export default function FeatureListingScreen({ navigation, route }: any) {
     [mine, listingId],
   );
   const hasPending = existing?.status === 'pending';
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ y: 0, animated: false }); }, [existing?.id, existing?.status, existing?.payment_state]);
   const selectedAmount = useMemo(
     () => data?.tiers.find((x) => x.key === tier)?.amount ?? 0,
     [data, tier],
@@ -155,7 +157,7 @@ export default function FeatureListingScreen({ navigation, route }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <Header title="ميّز إعلانك" badge="SHOP" onBack={() => navigation.goBack()} />
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 40 }}>
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 40 }}>
         {label ? (
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right', marginBottom: 12 }}>{label}</Text>
         ) : null}
