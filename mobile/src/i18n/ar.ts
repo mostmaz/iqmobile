@@ -22,7 +22,7 @@ const AR = {
     search: 'بحث',
     saved: 'المفضلة',
     sell: 'بيع',
-    requests: 'طلبات',
+    requests: 'اطلب جهاز',
     chats: 'المحادثات',
     profile: 'حسابي',
   },

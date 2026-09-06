@@ -271,6 +271,27 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
     contact_phone, contact_whatsapp,
   } = req.body || {};
 
+  // Idempotency (see db.js idx_listings_client_key), checked BEFORE the
+  // hourly cap below — order matters and the obvious order is wrong.
+  //
+  // A repeat of a key this seller already used is a retry of a create that
+  // already succeeded and whose reply was lost, not a second listing. It
+  // creates nothing, so the per-account cap has nothing to protect against.
+  // Checking the cap first meant the one case this whole mechanism exists
+  // for — the wizard re-sending its stored draft after a dropped response —
+  // came back "you can only post once an hour" for a listing the seller had
+  // in fact already posted, with no way to reach it.
+  const clientKey = typeof req.body?.client_key === 'string' && req.body.client_key.trim()
+    ? req.body.client_key.trim().slice(0, 64) : null;
+  if (clientKey) {
+    const prior = db.prepare('SELECT id FROM phone_listings WHERE seller_id=? AND client_key=?')
+      .get(req.user.id, clientKey);
+    if (prior) {
+      const [existing] = attachImages([loadListing(prior.id)]);
+      return res.json({ ...existing, replayed: true });
+    }
+  }
+
   // Per-ACCOUNT throttle: at most one new listing per hour. The IP-based
   // createLimiter above catches burst scripting, but a single spammer on
   // one account posting a listing every few minutes stays under it; this
@@ -411,8 +432,8 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         seller_id, brand, model, storage, color, condition, battery_health,
         warranty_status, accessories_json, asking_price, governorate, city,
         description, status, contact_phone, contact_whatsapp,
-        created_at, expires_at, updated_at
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        created_at, expires_at, updated_at, client_key
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       req.user.id, finalBrand, model, storage || null, color || null, condition,
@@ -429,7 +450,7 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       JSON.stringify(Array.isArray(accessories) ? accessories : []),
       price, governorate, city || null, description || null,
       'active', phone, wa,
-      created, expires, created,
+      created, expires, created, clientKey,
     );
   const row = loadListing(ins.lastInsertRowid);
   // A device suggestion filed from the picker predates the listing, so it

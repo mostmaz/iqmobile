@@ -295,6 +295,12 @@ export const Listings = {
   similar: (id: number) => api<Listing[]>(`/listings/${id}/similar`),
   patch: (id: number, body: any) => api<Listing>(`/listings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   remove: (id: number) => api(`/listings/${id}`, { method: 'DELETE' }),
+  // Media management on an EXISTING listing. The wizard's publish path can
+  // now succeed with photos still missing (a flaky link no longer costs the
+  // whole listing), so the seller needs somewhere to finish the job.
+  removeImage: (id: number, imageId: number) =>
+    api<{ ok: boolean }>(`/listings/${id}/images/${imageId}`, { method: 'DELETE' }),
+  removeVideo: (id: number) => api<{ ok: boolean }>(`/listings/${id}/video`, { method: 'DELETE' }),
   renew: (id: number) => api<Listing>(`/listings/${id}/renew`, { method: 'POST' }),
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),

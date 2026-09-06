@@ -13,8 +13,38 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-async function postForm<T>(url: string, fd: FormData): Promise<T> {
-  const res = await fetch(url, { method: 'POST', headers: authHeaders(), body: fd });
+// Uploads used to call bare fetch(), which meant they were the ONE request
+// family in the app with no deadline: client.ts gives every JSON call an
+// AbortController + 20s timeout precisely because an Iraqi mobile connection
+// routinely has "signal" but no working data path. A stalled multipart POST
+// left the promise pending forever and the wizard spinning with no error.
+// Photos are bigger than JSON, so the budget is longer — but finite.
+const UPLOAD_TIMEOUT_MS = 60000;
+
+async function postForm<T>(url: string, fd: FormData, timeoutMs = UPLOAD_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST', headers: authHeaders(), body: fd, signal: controller.signal,
+    });
+  } catch (e: any) {
+    // Same two codes client.ts produces, so callers and the ar.errors map
+    // don't need a second vocabulary for uploads.
+    if (timedOut || e?.name === 'AbortError') {
+      const err: any = new Error('network_timeout');
+      err.isTimeout = true;
+      throw err;
+    }
+    const err: any = new Error('network_error');
+    err.isNetwork = true;
+    err.cause = e;
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await res.text();
   let data: any = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
@@ -54,13 +84,55 @@ export async function sendChatImage(chatId: number, localUri: string, body?: str
   return postForm(`${getBaseUrl()}/chats/${chatId}/messages`, fd);
 }
 
-export async function uploadListingImages(listingId: number, localUris: string[]): Promise<ListingImage[]> {
+/** One photo's fate. `uri` is the local URI so a failure can be retried by identity. */
+export interface PhotoUploadResult {
+  uri: string;
+  ok: boolean;
+  image?: ListingImage;
+  error?: string;
+}
+
+/** Upload exactly one photo. Exported so a retry can target a single failure. */
+export async function uploadListingImage(listingId: number, uri: string): Promise<ListingImage[]> {
+  const filename = uri.split('/').pop() || 'photo.jpg';
   const fd = new FormData();
-  for (const uri of localUris) {
-    const filename = uri.split('/').pop() || 'photo.jpg';
-    fd.append('images', { uri, name: filename, type: mimeFromExt(filename) } as any);
-  }
+  fd.append('images', { uri, name: filename, type: mimeFromExt(filename) } as any);
   return postForm(`${getBaseUrl()}/listings/${listingId}/images`, fd);
+}
+
+/**
+ * Upload photos ONE REQUEST AT A TIME, reporting each outcome.
+ *
+ * This used to be a single multipart POST carrying every photo, which meant
+ * "photo 3 of 5 failed" did not exist as a state: the whole batch succeeded
+ * or the whole batch died, and the caller responded by deleting the listing.
+ * On a marginal connection that turned a five-step form into nothing.
+ *
+ * Sequential, not parallel: the server counts existing images to enforce
+ * MAX_IMAGES and assigns `position` from that count, so concurrent requests
+ * would race on both. Sequential also keeps the order the seller chose, which
+ * decides the cover photo.
+ *
+ * Never throws — a rejected photo is data, not an exception. The caller
+ * decides what a partial success means.
+ */
+export async function uploadListingImages(
+  listingId: number,
+  localUris: string[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<PhotoUploadResult[]> {
+  const out: PhotoUploadResult[] = [];
+  for (let i = 0; i < localUris.length; i++) {
+    const uri = localUris[i];
+    try {
+      const [image] = await uploadListingImage(listingId, uri);
+      out.push({ uri, ok: true, image });
+    } catch (e: any) {
+      out.push({ uri, ok: false, error: e?.message || 'network_error' });
+    }
+    onProgress?.(i + 1, localUris.length);
+  }
+  return out;
 }
 
 // Shop price-list images (uploaded by the shop owner). Appends to the shop's

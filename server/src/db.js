@@ -1086,6 +1086,15 @@ addColumnIfMissing('users', 'shop_offer_dismissed_until INTEGER');
 addColumnIfMissing('phone_listings', 'is_draft INTEGER NOT NULL DEFAULT 0');
 // Actual transacted price (§10) — the dataset the marketplace has never had.
 addColumnIfMissing('phone_listings', 'sale_price INTEGER');
+// Idempotency for POST /listings. The mobile wizard generates one key per
+// draft and sends it with the create; a retry of a create whose RESPONSE
+// was lost on a flaky link (the listing exists, the phone never heard) hits
+// the unique index and gets the existing row back instead of making a
+// twin. Scoped per seller so keys never have to be globally unique, and
+// partial so the years of rows that predate it don't collide on NULL.
+addColumnIfMissing('phone_listings', 'client_key TEXT');
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_client_key
+  ON phone_listings(seller_id, client_key) WHERE client_key IS NOT NULL`);
 addColumnIfMissing('chats', 'closed_at INTEGER');
 
 db.exec(`

@@ -22,7 +22,11 @@ import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { BrandListModal } from '../../components/BrandListModal';
 import { useTrack } from '../../analytics/track';
 import { logMetaEvent } from '../../analytics/meta';
-import { uploadListingImages, uploadListingVideo } from '../../api/upload';
+import { uploadListingImages, uploadListingVideo, uploadListingImage, type PhotoUploadResult } from '../../api/upload';
+import {
+  loadDraft, saveDraft, clearDraft, persistDraftImage, newClientKey, draftIsSubstantial,
+  setWizardDirty,
+} from '../../lib/listingDraft';
 import { compressVideo } from '../../lib/videoCompress';
 import { ar } from '../../i18n/ar';
 import { compressForListing } from '../../lib/imageCompress';
@@ -66,6 +70,21 @@ export default function PostListingScreen({ navigation }: any) {
   // Which field the current error belongs to, so it can be outlined instead
   // of leaving the user to guess which of five inputs the banner means.
   const [fieldErr, setFieldErr] = useState<string | null>(null);
+
+  // ── draft recovery ───────────────────────────────────────────────────
+  // `draftReady` is the same gate cart.tsx documents: until the stored draft
+  // has been read, every save is suppressed. Without it the first render's
+  // empty state is written over the stored draft before the load resolves,
+  // and the recovery destroys the thing it exists to recover.
+  const [draftReady, setDraftReady] = useState(false);
+  const [restoreAsk, setRestoreAsk] = useState<null | { lostImages: number }>(null);
+  const pendingDraft = useRef<any>(null);
+  // Survives the whole draft so a retried create can't make a second listing.
+  const clientKey = useRef<string>(newClientKey());
+  // Photos the server refused, by local URI. Retryable one at a time.
+  const [failedPhotos, setFailedPhotos] = useState<string[]>([]);
+  const [publishedId, setPublishedId] = useState<number | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
 
   // Posting requires a real (non-guest) account. Auto-provisioned guests
   // get bounced to the AuthGate on first entry to this screen, then
@@ -160,10 +179,81 @@ export default function PostListingScreen({ navigation }: any) {
   // dirty) confirm before nuking the wizard. Without this, an accidental
   // back tap at step 4 (after compressing 10 photos) destroys their work
   // with zero recovery — a common Play Store complaint pattern.
+  // `brand` belongs here. It was omitted, so a seller who picked only a brand
+  // had a form that reported itself clean — no exit confirm, and (now) no
+  // draft worth saving.
   const isDirty =
-    !!model || !!color || !!batteryHealth || accessories.length > 0 ||
+    !!brand || !!model || !!color || !!batteryHealth || accessories.length > 0 ||
     !!askingPrice || !!city || !!description || images.length > 0 ||
     !!contactPhone || !!contactWhatsapp;
+
+  // Read the stored draft exactly once. We do NOT apply it silently — a form
+  // that fills itself in is indistinguishable from one the user filled in and
+  // forgot, so the restore is always offered.
+  useEffect(() => {
+    let alive = true;
+    loadDraft()
+      .then((res) => {
+        if (!alive) return;
+        if (res && draftIsSubstantial(res.draft)) {
+          pendingDraft.current = res.draft;
+          setRestoreAsk({ lostImages: res.lostImages });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setDraftReady(true); });
+    return () => { alive = false; };
+  }, []);
+
+  // Persist on every change once the load has settled. Cheap: AsyncStorage
+  // writes are async and the payload is a few hundred bytes plus URIs.
+  useEffect(() => {
+    if (!draftReady || restoreAsk) return;
+    if (!isDirty) return;
+    saveDraft({
+      step, brand, model, condition, storage, color, batteryHealth, warranty,
+      accessories, askingPrice, govAr, city, description, images,
+      contactPhone, contactWhatsapp, waSameAsPhone,
+      clientKey: clientKey.current,
+    });
+  }, [
+    draftReady, restoreAsk, isDirty, step, brand, model, condition, storage, color,
+    batteryHealth, warranty, accessories, askingPrice, govAr, city, description,
+    images, contactPhone, contactWhatsapp, waSameAsPhone,
+  ]);
+
+  // Tell the navigator whether a Sell tab tap would be destroying anything.
+  useEffect(() => { setWizardDirty(isDirty); }, [isDirty]);
+
+  const applyDraft = useCallback(() => {
+    const d = pendingDraft.current;
+    pendingDraft.current = null;
+    setRestoreAsk(null);
+    if (!d) return;
+    setStep(typeof d.step === 'number' ? Math.min(Math.max(d.step, 0), 5) : 0);
+    setBrand(d.brand || ''); setModel(d.model || '');
+    setCondition(d.condition || 'used'); setStorage(d.storage || '128GB');
+    setColor(d.color || ''); setBatteryHealth(d.batteryHealth || '');
+    setWarranty(d.warranty || 'بدون ضمان');
+    setAccessories(Array.isArray(d.accessories) ? d.accessories : []);
+    setAskingPrice(d.askingPrice || '');
+    if (d.govAr) setGovAr(d.govAr);
+    setCity(d.city || ''); setDescription(d.description || '');
+    setImages(Array.isArray(d.images) ? d.images : []);
+    setContactPhone(d.contactPhone || ''); setContactWhatsapp(d.contactWhatsapp || '');
+    setWaSameAsPhone(!!d.waSameAsPhone);
+    // Carrying the key over is the point: if the previous attempt actually
+    // created the listing and only the response was lost, reusing it returns
+    // that listing instead of making a twin.
+    if (d.clientKey) clientKey.current = d.clientKey;
+  }, []);
+
+  const dropDraft = useCallback(() => {
+    pendingDraft.current = null;
+    setRestoreAsk(null);
+    clientKey.current = newClientKey();
+    clearDraft();
+  }, []);
 
   // Wipe the wizard back to a blank step 1.
   const resetForm = useCallback(() => {
@@ -176,6 +266,11 @@ export default function PostListingScreen({ navigation }: any) {
     setImages([]);
     setVideo(null); setVideoBusy(false);
     setContactPhone(''); setContactWhatsapp(''); setWaSameAsPhone(false);
+    setFailedPhotos([]); setPublishedId(null);
+    // A new form is a new listing: never reuse the old idempotency key, or the
+    // server would hand back the previous listing instead of creating this one.
+    clientKey.current = newClientKey();
+    clearDraft();
   }, []);
 
   // useFocusEffect, NOT useEffect. BackHandler is app-global and this screen
@@ -188,9 +283,19 @@ export default function PostListingScreen({ navigation }: any) {
   // Discard for real. goBack() alone was a no-op from a tab root, so the
   // form kept its values, isDirty stayed true, and the guard re-armed
   // itself on the very next back press.
+  // Leaving the wizard no longer destroys the work. resetForm() clears the
+  // on-screen state (so the tab is clean when re-entered) but the stored
+  // draft stays, and the restore prompt offers it back. The one path that
+  // really forgets is dropDraft(), behind an explicit "ابدأ من جديد".
   const discardDraft = useCallback(() => {
     setExitAsk(false);
-    resetForm();
+    setStep(0); setErr(''); setBusy(false);
+    setBrand(''); setModel('');
+    setCondition('used'); setStorage('128GB'); setColor(''); setBatteryHealth('');
+    setWarranty('بدون ضمان'); setAccessories([]);
+    setAskingPrice(''); setCity(''); setDescription('');
+    setImages([]); setVideo(null); setVideoBusy(false);
+    setContactPhone(''); setContactWhatsapp(''); setWaSameAsPhone(false);
     const parent = navigation.getParent?.();
     if (parent) parent.navigate('Browse');
     else if (navigation.canGoBack()) navigation.goBack();
@@ -289,8 +394,30 @@ export default function PostListingScreen({ navigation }: any) {
       );
       for (const u of settled) if (u) compressed.push(u);
     }
-    setImages((cur) => [...cur, ...compressed].slice(0, 10));
+    // compressForListing() writes into the app CACHE directory, which the OS
+    // may purge between launches — persisting those URIs alone would restore
+    // a draft with broken images. Copy into documentDirectory first; a failed
+    // copy falls back to the cache URI, which still works this session.
+    const durable = await Promise.all(compressed.map((u) => persistDraftImage(u)));
+    setImages((cur) => [...cur, ...durable].slice(0, 10));
   }
+
+  // Retry a single photo against the listing that already exists. This is
+  // only reachable after a publish that partially failed, which is why it
+  // takes publishedId rather than creating anything.
+  const retryPhoto = useCallback(async (uri: string) => {
+    if (!publishedId || retrying) return;
+    setRetrying(uri);
+    try {
+      await uploadListingImage(publishedId, uri);
+      setFailedPhotos((cur) => cur.filter((u) => u !== uri));
+      qc.invalidateQueries({ queryKey: ['listing', publishedId] });
+    } catch (e: any) {
+      Alert.alert('لم تُرفع الصورة', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    } finally {
+      setRetrying(null);
+    }
+  }, [publishedId, retrying, qc]);
 
   function removeImg(i: number) {
     setImages((s) => s.filter((_, idx) => idx !== i));
@@ -312,32 +439,39 @@ export default function PostListingScreen({ navigation }: any) {
         description: description || null,
         contact_phone: effectivePhone,
         contact_whatsapp: wa,
+        // Makes a retry of THIS create idempotent. If a previous attempt
+        // reached the server and only the reply was lost, the server returns
+        // that listing rather than creating a second one.
+        client_key: clientKey.current,
       });
-      // Roll back the listing if image upload fails — otherwise we leave
-      // a phantom no-image listing on the server, the user sees an error
-      // and re-submits, and we end up with duplicates. Best-effort:
-      // if the rollback itself fails, log and surface the original
-      // upload error so the user knows what went wrong.
+      setPublishedId(listing.id);
+
+      // Photos upload one at a time and their failures are REPORTED, not
+      // fatal. This used to roll the listing back with Listings.remove() on
+      // any upload error — the reasoning was sound (don't leave a phantom
+      // image-less listing) but the cost was not: a single dropped packet on
+      // the last step destroyed a six-step form, and the seller's only
+      // recourse was to do the whole thing again over the same bad
+      // connection. The video path next door already had the better answer —
+      // publish, report, let them retry the media — so images now match it.
+      let failed: string[] = [];
       if (images.length > 0) {
-        try {
-          await uploadListingImages(listing.id, images);
-        } catch (uploadErr) {
-          try { await Listings.remove(listing.id); } catch {}
-          throw uploadErr;
-        }
+        const results: PhotoUploadResult[] = await uploadListingImages(listing.id, images);
+        failed = results.filter((r) => !r.ok).map((r) => r.uri);
       }
+      setFailedPhotos(failed);
       // Video is OPTIONAL and review-gated — its failure must never cost
       // the seller a five-step listing. Post without it and say so.
       if (video) {
         try {
           await uploadListingVideo(listing.id, video.uri);
         } catch {
-          Alert.alert('الفيديو لم يُرفع', 'إعلانك منشور بدون الفيديو. يمكنك المحاولة لاحقاً.');
+          Alert.alert('الفيديو لم يُرفع', 'إعلانك منشور بدون الفيديو. يمكنك تجربة رفعه لاحقاً من تعديل الإعلان.');
         }
       }
-      return listing;
+      return { listing, failedCount: failed.length };
     },
-    onSuccess: (listing) => {
+    onSuccess: ({ listing, failedCount }) => {
       qc.invalidateQueries({ queryKey: ['mine'] });
       qc.invalidateQueries({ queryKey: ['browse'] });
       // safeTrack so a PostHog throw can't block navigation.replace —
@@ -362,6 +496,20 @@ export default function PostListingScreen({ navigation }: any) {
         condition: listing.condition,
         governorate: listing.governorate,
       });
+      // The draft has done its job. Clearing it here and not in the mutation
+      // body means a create that threw keeps its draft — which is exactly
+      // when the seller needs it.
+      clearDraft();
+      clientKey.current = newClientKey();
+
+      if (failedCount > 0) {
+        // Say it plainly and point at the one place it can be fixed. The old
+        // code would have deleted the listing rather than admit this.
+        Alert.alert(
+          'نُشر الإعلان، وبعض الصور لم تُرفع',
+          `${failedCount} من الصور لم تُرفع بسبب الاتصال. إعلانك منشور، وتقدر ترفع الصور الباقية من تعديل الإعلان.`,
+        );
+      }
       navigation.replace('ListingDetail', { id: listing.id });
     },
     // `reason` first: the server sends a widely-understood `error` code for
@@ -1059,11 +1207,35 @@ export default function PostListingScreen({ navigation }: any) {
         </View>
       </View>
 
+      {/* Restore, never silently. A form that fills itself in is
+          indistinguishable from one the user filled in and forgot. The count
+          of purged photos is stated up front so the seller isn't surprised by
+          a short gallery at step 5. */}
+      <ConfirmSheet
+        visible={!!restoreAsk}
+        title="نكمل إعلانك السابق؟"
+        body={
+          restoreAsk && restoreAsk.lostImages > 0
+            ? `عندك إعلان لم تكمله. ${restoreAsk.lostImages} من صوره لم تعد موجودة على الجهاز وسيلزم اختيارها من جديد.`
+            : 'عندك إعلان لم تكمله. نقدر نكمل من حيث توقفت.'
+        }
+        // Inverted on purpose. ConfirmSheet gives the FILLED button to
+        // `cancel` because it is built for destructive confirms where
+        // cancelling is the safe path — and it routes a scrim tap there too.
+        // Here the safe path is keeping the draft, so continuing takes the
+        // cancel slot: it gets the emphasis, and a stray tap outside the
+        // sheet restores rather than discards.
+        confirmText="ابدأ من جديد"
+        cancelText="أكمل"
+        onConfirm={dropDraft}
+        onCancel={applyDraft}
+      />
+
       <ConfirmSheet
         visible={exitAsk}
         title="تترك الإعلان؟"
-        body="ستفقد ما كتبته حتى الآن. لا يمكن التراجع."
-        confirmText="حذف المسودة"
+        body="سنحتفظ بما كتبته كمسودة، وتقدر تكمله لاحقاً."
+        confirmText="اترك الآن"
         cancelText="متابعة الكتابة"
         destructive
         onConfirm={discardDraft}

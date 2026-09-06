@@ -50,6 +50,7 @@ import DealsScreen from '../screens/deal/DealsScreen';
 import RateUserScreen from '../screens/deal/RateUserScreen';
 import SavedScreen from '../screens/profile/SavedScreen';
 import WishlistScreen from '../screens/profile/WishlistScreen';
+import { isWizardDirty } from '../lib/listingDraft';
 import RequestsScreen from '../screens/requests/RequestsScreen';
 import RequestDetailScreen from '../screens/requests/RequestDetailScreen';
 import NotificationsScreen from '../screens/profile/NotificationsScreen';
@@ -234,7 +235,14 @@ function resetToRootOnTabPress(tabName: string, rootRoute: string, opts?: { alwa
           // ROUTE'S NAME, not by index: a deep-linked stack can hold a
           // non-root screen at index 0 with nothing beneath it.
           const focused = route.state.routes?.[route.state.index ?? route.state.routes.length - 1];
-          if (opts?.always || (focused && focused.name !== rootRoute)) doReset(route.state.key);
+          // `always` exists to force a fresh PostListingScreen instance so a
+          // cancelled wizard can't leak into the next one. But it also fired
+          // on a half-filled form, silently destroying it — the single worst
+          // loss path in the app, because it needed no crash and no mistake,
+          // just a tap on Browse and back. A dirty wizard is now left alone;
+          // the seller's own back/cancel path still resets it.
+          const forced = opts?.always && !(tabName === 'Sell' && isWizardDirty());
+          if (forced || (focused && focused.name !== rootRoute)) doReset(route.state.key);
           return;
         }
 

@@ -21,7 +21,7 @@ export const ku = {
     search: 'گەڕان',
     saved: 'دڵخوازەکان',
     sell: 'فرۆشتن',
-    requests: 'داواکاری',
+    requests: 'ئامێرێک داوا بکە',
     chats: 'گفتوگۆکان',
     profile: 'هەژمارەکەم',
   },
