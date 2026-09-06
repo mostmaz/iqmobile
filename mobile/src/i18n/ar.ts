@@ -217,6 +217,11 @@ const AR = {
     // Generic
     rate_limited: 'محاولات كثيرة جداً — حاول لاحقاً',
     internal: 'حدث خطأ غير متوقع. حاول مرة أخرى.',
+    // client.ts produces these two deliberately, so a stalled connection can
+    // be told apart from a dead one. Both used to collapse to `network`,
+    // which threw that distinction away at the last step.
+    network_timeout: 'الاتصال بطيء أو متوقف. تحقّق من الإنترنت وحاول مرة أخرى.',
+    network_error: 'تعذّر الاتصال بالخادم. تحقّق من الإنترنت وحاول مرة أخرى.',
     network: 'خطأ في الاتصال',
   },
 };

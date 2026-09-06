@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Img } from '../../components/Img';
 import { DeviceSpecs } from '../../components/DeviceSpecs';
+import { LoadFailed } from '../../components/LoadFailed';
 import { CompareTray } from '../../components/CompareTray';
 import { deviceTitle, ltrNum } from '../../lib/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,7 +57,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // Full-screen image viewer: holds the tapped image index, or null when closed.
   const [viewerIdx, setViewerIdx] = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['listing', id],
     queryFn: () => Listings.get(id),
   });
@@ -197,6 +198,36 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // once the page has scrolled far enough that text is passing under the
   // clock. Native-driven so it never lags the finger.
   const scrollY = React.useRef(new Animated.Value(0)).current;
+
+  // `isLoading || !data` used to cover BOTH "still loading" and "the request
+  // failed", so a dropped connection shimmered forever — no error, no retry,
+  // nothing to do but go back. It also made the server's own `not_found`
+  // unreachable: a deleted listing shimmered too.
+  if (isError && !data) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
+        <View style={{ flexDirection: 'row-reverse', paddingHorizontal: 12, paddingVertical: 8 }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+            style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <View style={{ transform: [{ scaleX: -1 }] }}>
+              <IconArrowLeft size={22} color={theme.ink} sw={1.7} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <LoadFailed
+          error={error}
+          retrying={isFetching}
+          onRetry={() => refetch()}
+          title={(error as any)?.message === 'not_found' ? 'هذا الإعلان لم يعد موجوداً' : undefined}
+        />
+      </View>
+    );
+  }
 
   if (isLoading || !data) {
     // Skeleton mirrors the real page (320pt gallery → title/price card →

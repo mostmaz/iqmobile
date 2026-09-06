@@ -38,6 +38,36 @@ export function arOf(en?: string | null): string {
   return GOV_EN_TO_AR[en] || en;
 }
 
+// ─── neighbours ───────────────────────────────────────────────────────
+// Mirrored from server/src/governorates.js, the same way GOV_AR_TO_EN is
+// mirrored the other way. The server decides which neighbours to offer; this
+// copy exists so the app can label them in Arabic without a round trip.
+export const GOV_NEIGHBOURS: Record<string, string[]> = {
+  Baghdad: ['Anbar', 'Babil', 'Diyala', 'Salahuddin', 'Wasit'],
+  Basra: ['Dhi Qar', 'Maysan', 'Muthanna'],
+  Erbil: ['Duhok', 'Kirkuk', 'Mosul', 'Sulaymaniyah', 'Salahuddin'],
+  Sulaymaniyah: ['Diyala', 'Erbil', 'Kirkuk', 'Salahuddin'],
+  Duhok: ['Erbil', 'Mosul'],
+  Kirkuk: ['Diyala', 'Erbil', 'Salahuddin', 'Sulaymaniyah'],
+  Najaf: ['Anbar', 'Babil', 'Diwaniyah', 'Karbala', 'Muthanna'],
+  Karbala: ['Anbar', 'Babil', 'Najaf'],
+  Mosul: ['Anbar', 'Duhok', 'Erbil', 'Salahuddin'],
+  Anbar: ['Baghdad', 'Karbala', 'Mosul', 'Najaf', 'Salahuddin'],
+  Babil: ['Baghdad', 'Diwaniyah', 'Karbala', 'Najaf', 'Wasit'],
+  Diyala: ['Baghdad', 'Kirkuk', 'Salahuddin', 'Sulaymaniyah', 'Wasit'],
+  Diwaniyah: ['Babil', 'Dhi Qar', 'Muthanna', 'Najaf', 'Wasit'],
+  'Dhi Qar': ['Basra', 'Diwaniyah', 'Maysan', 'Muthanna', 'Wasit'],
+  Maysan: ['Basra', 'Dhi Qar', 'Wasit'],
+  Muthanna: ['Basra', 'Dhi Qar', 'Diwaniyah', 'Najaf'],
+  Salahuddin: ['Anbar', 'Baghdad', 'Diyala', 'Erbil', 'Kirkuk', 'Mosul', 'Sulaymaniyah'],
+  Wasit: ['Babil', 'Baghdad', 'Dhi Qar', 'Diwaniyah', 'Diyala', 'Maysan'],
+};
+
+export function neighboursOf(en?: string | null): string[] {
+  if (!en) return [];
+  return GOV_NEIGHBOURS[en] || [];
+}
+
 // New default governorate
 export const DEFAULT_GOV_AR = 'نينوى';
 export const DEFAULT_GOV_EN = GOV_AR_TO_EN[DEFAULT_GOV_AR];

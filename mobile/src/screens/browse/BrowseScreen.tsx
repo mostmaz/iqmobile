@@ -13,6 +13,8 @@ import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag,
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
+import { LoadFailed } from '../../components/LoadFailed';
+import { EmptySearch } from '../../components/EmptySearch';
 import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
 import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
@@ -173,7 +175,7 @@ export default function BrowseScreen({ navigation }: any) {
   );
 
   const {
-    data, isLoading, refetch, isRefetching,
+    data, isLoading, refetch, isRefetching, isError, error, isFetching,
     fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
     // bannerTick doubles as the featured-slot rotation seed: it's part of
@@ -354,8 +356,16 @@ export default function BrowseScreen({ navigation }: any) {
     const upgrade = (tierStatus && tierStatus.tier !== 'advanced'
       && (tierStatus.eligible || tierStatus.state === 'pending_review'))
       ? [{ __shopUpgrade: tierStatus }] : [];
-    if (bannerPool.length === 0) return [...hub, ...upgrade, ...out];
-    return [{ __bannerPool: bannerPool }, ...hub, ...upgrade, ...out];
+    // The "nothing found" state has to ride in the data, not in
+    // ListEmptyComponent: this list almost always carries chrome (the banner
+    // pool, the home hub), so `data` is rarely empty even when zero listings
+    // matched — and FlatList only renders ListEmptyComponent for a genuinely
+    // empty array. That is why a zero-result filter used to show a blank
+    // screen rather than «لا توجد إعلانات»: the message existed, but the list
+    // was never empty enough to reach it.
+    const tail = out.length === 0 ? [{ __noResults: true }] : [];
+    if (bannerPool.length === 0) return [...hub, ...upgrade, ...out, ...tail];
+    return [{ __bannerPool: bannerPool }, ...hub, ...upgrade, ...out, ...tail];
   }, [items, bannerPool, feedBanners, storefront, homeShops, tierStatus]);
 
   return (
@@ -669,7 +679,17 @@ export default function BrowseScreen({ navigation }: any) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => { setBannerTick((t) => t + 1); refetch(); }} />}
         renderItem={({ item }) => (
-          item.__bannerPool ? (
+          item.__noResults ? (
+            isLoading ? <ListingListSkeleton count={6} />
+              : isError ? <LoadFailed error={error} retrying={isFetching} onRetry={() => refetch()} />
+              : (
+                <EmptySearch
+                  filters={filters}
+                  govWasAutoApplied={govAutoApplied.current}
+                  onApply={(patchFilters) => patch(patchFilters as any)}
+                />
+              )
+          ) : item.__bannerPool ? (
             <BannerCarousel
               banners={item.__bannerPool}
               onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
@@ -737,12 +757,25 @@ export default function BrowseScreen({ navigation }: any) {
         // "there is nothing here". Pull-to-refresh and pagination keep
         // their own affordances (RefreshControl / footer spinner), so
         // this only fires on a genuinely cold list.
+        // Kept for the genuinely-empty case (no banners, no hub); the
+        // __noResults sentinel above covers the common one.
         ListEmptyComponent={isLoading ? (
           <ListingListSkeleton count={6} />
+        ) : isError ? (
+          // This branch is the whole point of the change. `isError` was never
+          // destructured, so once the retries were spent `data` was undefined
+          // and the list fell through to «لا توجد إعلانات» — telling a user
+          // whose phone had no signal that the marketplace was empty. Offline
+          // and zero-results were byte-identical, and the only escape was a
+          // pull-to-refresh nobody thinks to try on a screen that looks
+          // legitimately empty.
+          <LoadFailed error={error} retrying={isFetching} onRetry={() => refetch()} />
         ) : (
-          <View style={{ padding: 40, alignItems: 'center' }}>
-            <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14 }}>{ar.browse.none}</Text>
-          </View>
+          <EmptySearch
+            filters={filters}
+            govWasAutoApplied={govAutoApplied.current}
+            onApply={(patchFilters) => patch(patchFilters)}
+          />
         )}
       />
     </View>

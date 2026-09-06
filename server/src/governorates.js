@@ -20,6 +20,46 @@ export const GOVERNORATES = [
   'Wasit',
 ];
 
+// ─── neighbours ───────────────────────────────────────────────────────
+//
+// Which governorates actually border each other. Used by the zero-results
+// path to offer "try a nearby governorate" — an explicit, tappable
+// alternative, never a silent widening of the filter.
+//
+// Authored by hand from Iraq's provincial map; there is no source for this
+// in the codebase or the database. Two naming traps worth remembering when
+// editing: `Mosul` is the key for نينوى (the province is Nineveh, the value
+// we store is the city), and `Dhi Qar` contains a space.
+//
+// Symmetric by construction — the test asserts it. A one-way edge would make
+// a suggestion appear from Basra to Maysan but not back, which reads as a bug
+// to the one user who notices and is invisible to everyone else.
+export const GOV_NEIGHBOURS = {
+  Baghdad: ['Anbar', 'Babil', 'Diyala', 'Salahuddin', 'Wasit'],
+  Basra: ['Dhi Qar', 'Maysan', 'Muthanna'],
+  Erbil: ['Duhok', 'Kirkuk', 'Mosul', 'Sulaymaniyah', 'Salahuddin'],
+  Sulaymaniyah: ['Diyala', 'Erbil', 'Kirkuk', 'Salahuddin'],
+  Duhok: ['Erbil', 'Mosul'],
+  Kirkuk: ['Diyala', 'Erbil', 'Salahuddin', 'Sulaymaniyah'],
+  Najaf: ['Anbar', 'Babil', 'Diwaniyah', 'Karbala', 'Muthanna'],
+  Karbala: ['Anbar', 'Babil', 'Najaf'],
+  Mosul: ['Anbar', 'Duhok', 'Erbil', 'Salahuddin'],
+  Anbar: ['Baghdad', 'Karbala', 'Mosul', 'Najaf', 'Salahuddin'],
+  Babil: ['Baghdad', 'Diwaniyah', 'Karbala', 'Najaf', 'Wasit'],
+  Diyala: ['Baghdad', 'Kirkuk', 'Salahuddin', 'Sulaymaniyah', 'Wasit'],
+  Diwaniyah: ['Babil', 'Dhi Qar', 'Muthanna', 'Najaf', 'Wasit'],
+  'Dhi Qar': ['Basra', 'Diwaniyah', 'Maysan', 'Muthanna', 'Wasit'],
+  Maysan: ['Basra', 'Dhi Qar', 'Wasit'],
+  Muthanna: ['Basra', 'Dhi Qar', 'Diwaniyah', 'Najaf'],
+  Salahuddin: ['Anbar', 'Baghdad', 'Diyala', 'Erbil', 'Kirkuk', 'Mosul', 'Sulaymaniyah'],
+  Wasit: ['Babil', 'Baghdad', 'Dhi Qar', 'Diwaniyah', 'Diyala', 'Maysan'],
+};
+
+/** Neighbours of a canonical English governorate name; [] when unknown. */
+export function neighboursOf(en) {
+  return GOV_NEIGHBOURS[en] || [];
+}
+
 // Brand list moved to the DB — see `brands.js`. isBrand() lives there too.
 // Kept this comment as a discovery hint for anyone searching `BRANDS`.
 

@@ -238,6 +238,19 @@ export const Auth = {
 // device search. Not offered as a user-picked sort on the main search.
 export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed' | 'rank';
 
+/** One labelled, counted way out of a zero-result search. */
+export interface SearchAlternative {
+  kind: 'storage' | 'governorate' | 'budget' | 'all_governorates';
+  label_key: 'other_storage' | 'nearby_governorate' | 'wider_budget' | 'all_governorates';
+  value: string | number | null;
+  count: number;
+  /**
+   * Merge into the current filters to apply it. A `null` value CLEARS that
+   * filter — `undefined` would not survive JSON, and qs() drops both.
+   */
+  apply: Partial<Record<keyof BrowseFilters, string | number | null>>;
+}
+
 export interface BrowseFilters {
   q?: string;
   sort?: BrowseSort;
@@ -305,6 +318,16 @@ export const Listings = {
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),
   saved: () => api<Listing[]>('/listings/saved/mine'),
+  // What ELSE exists, for a search that found nothing. Every option arrives
+  // counted and with the exact filter patch to apply, so the number shown is
+  // the number the buyer lands on and the client can't assemble a patch that
+  // drifts from what the server counted. Applying one is always a tap.
+  searchAlternatives: (f: BrowseFilters) =>
+    api<{ alternatives: SearchAlternative[] }>('/listings/search-alternatives' + qs({
+      brand: f.brand, model: f.model, governorate: f.governorate,
+      condition: f.condition, storage: f.storage,
+      min_price: f.min_price, max_price: f.max_price,
+    } as BrowseFilters)),
   // Report a call/WhatsApp tap. This is what fills the dashboard's contact
   // columns — a tap deep-links out of the app, so the POST is the only signal
   // the server can ever get. Fire-and-forget: never block opening the dialler.

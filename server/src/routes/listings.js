@@ -1,5 +1,6 @@
 import { askingPriceGuidance } from '../askingPriceGuidance.js';
 import { canonicalSearch, suggestionsFor } from '../searchQuality.js';
+import { searchAlternatives } from '../searchAlternatives.js';
 import { Router } from 'express';
 import { scalePriceIfThousands } from '../priceScale.js';
 import multer from 'multer';
@@ -502,6 +503,38 @@ r.get('/search-suggestions', optionalAuth(), (req, res) => {
     WHERE l.status IN ('active','reserved') AND u.seller_type='shop' AND COALESCE(u.shop_hidden,0)=0
       AND (@gov IS NULL OR l.governorate=@gov) ORDER BY l.brand,l.model`).all({gov});
   res.json(suggestionsFor(String(req.query.q || ''), candidates));
+});
+
+// ─── alternatives for a search that found nothing ────────────────────
+//
+// Same contract as the spelling suggestions above, extended past "did you
+// mean": a different storage, a bordering governorate, a slightly higher
+// ceiling. Each is counted first and returned with the exact filter patch to
+// apply, so the number the buyer is shown is the number they land on — and
+// so the app can't assemble a patch that drifts from what was counted.
+//
+// Nothing here changes the caller's filters. The route only answers "here is
+// what else exists"; applying it is a tap.
+r.get('/search-alternatives', optionalAuth(), (req, res) => {
+  const gov = normalizeGovernorate(String(req.query.governorate || ''));
+  const brandRaw = String(req.query.brand || '');
+  const minPrice = Number(req.query.min_price);
+  const maxPrice = Number(req.query.max_price);
+  const conditionRaw = String(req.query.condition || '');
+  const filters = {
+    // Unknown brand/governorate values are silently IGNORED by the browse
+    // route rather than rejected, so an un-normalised value here would count
+    // a wider set than the label promises. Canonicalise or drop.
+    brand: isBrand(brandRaw) ? brandRaw : null,
+    model: String(req.query.model || '').trim() || null,
+    governorate: gov && isGovernorate(gov) ? gov : null,
+    condition: CONDITIONS.includes(conditionRaw) ? conditionRaw : null,
+    storage: String(req.query.storage || '').trim() || null,
+    min_price: Number.isFinite(minPrice) ? minPrice : undefined,
+    max_price: Number.isFinite(maxPrice) ? maxPrice : undefined,
+  };
+  const neverExpire = getSetting('listings_never_expire') !== '0';
+  res.json({ alternatives: searchAlternatives(db, filters, { now: Date.now(), neverExpire }) });
 });
 
 r.get('/', optionalAuth(), (req, res) => {
