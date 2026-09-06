@@ -20,6 +20,7 @@ import { api } from '../api';
 type Row = { day: string; opened: number; engaged: number; signups: number; registrations: number; guests: number; listings: number };
 type Totals = { dau: number; engaged_today: number; wau: number; mau: number; dau_mau_pct: number };
 type Resp = {
+  retention_experiment: { group: string; enrolled: number; opted_out: number; d7: {eligible:number;returned:number;pct:number|null}; d30:{eligible:number;returned:number;pct:number|null}; contacted_7d:number }[];
   growth: {
     tracking_start: number;
     active_today: { total: number; guests: number; registered: number; returning: number };
@@ -116,6 +117,13 @@ export function DailyUsersPage() {
         <p className="muted">بدأ تسجيل تواريخ التسجيل وإنشاء الضيوف في {new Date(data.growth.tracking_start).toLocaleString('en-GB', { timeZone: 'Asia/Baghdad' })} بتوقيت بغداد. التواريخ السابقة غير معروفة وليست صفراً؛ لا تُحتسب الحسابات المستوردة كتسجيلات. اختر ٩٠ يوماً لمتابعة D30. الضيوف حسابات وليست جلسات أو أشخاصاً فريدين. حالة ضيف/مسجل هي الحالة الحالية. قياس الاتصال وواتساب يعتمد على إصدار التطبيق.</p>
       </div>
 
+      <div className="card">
+        <h3>تقييم الملخص الأسبوعي الاختياري</h3>
+        <p className="muted">مقارنة المشاركين في الملخص مع مجموعة بدون الملخص الجديد فقط. تخص المشاركين الاختياريين منذ الانضمام ولا تتبع الفترة أعلاه. تنبيهات المطابقة والأسعار والمحادثات لا تدخل التجربة. النتائج وصفية، وليست إثباتاً لفرق مؤكد إحصائياً.</p>
+        <div style={{overflowX:'auto'}}><table className="data-table"><thead><tr><th>المجموعة</th><th>انضموا</th><th>انسحبوا / أوقفوا الملخص</th><th>D7</th><th>D30</th><th>بائعون وصلهم تواصل في أول ٧ أيام</th></tr></thead>
+        <tbody>{data.retention_experiment.map(r=><tr key={r.group}><td>{r.group==='summary'?'مع الملخص':'بدون الملخص'}</td><td>{r.enrolled}</td><td>{r.opted_out}</td><td>{r.d7.pct===null?'غير متاح':`${r.d7.pct}%`} ({r.d7.returned}/{r.d7.eligible})</td><td>{r.d30.pct===null?'غير متاح':`${r.d30.pct}%`} ({r.d30.returned}/{r.d30.eligible})</td><td>{r.contacted_7d}/{r.d7.eligible}</td></tr>)}</tbody></table></div>
+        <p className="muted">نحتفظ بالمجموعة الأصلية بعد الانسحاب لتجنب انتقاء النتائج. العودة في اليوم المحدد بالضبط بتوقيت بغداد؛ لا تُحسب الأيام غير المكتملة. بيانات التواصل قد تكون ناقصة في الإصدارات القديمة. المحاولات المسموح بها للإشعار ليست ضماناً لوصوله للجهاز.</p>
+      </div>
       {!everOpened ? (
         <div className="card" style={{ borderInlineStart: '3px solid var(--warn)' }}>
           <span style={{ color: 'var(--warn)', fontWeight: 650 }}>«فتح التطبيق» يبدأ من تاريخ تفعيل التتبّع.</span>

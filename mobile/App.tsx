@@ -97,6 +97,15 @@ function AppInner() {
   useEffect(() => {
     setupPushTapHandler((data) => {
       switch (data?.kind) {
+        case 'seller.weekly':
+          go('Main', { screen: 'Profile', params: { screen: 'MyListings' } });
+          break;
+        case 'chat.message':
+          go('Main', { screen: 'Profile', params: { screen: 'Notifications' } });
+          break;
+        case 'saved_search.match':
+        case 'wishlist.match':
+        case 'price.drop':
         case 'listing.expired':
         case 'listing.sold':
         case 'listing.saved':

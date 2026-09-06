@@ -586,7 +586,10 @@ export interface ShopTierStatus {
   signals: { active_listings: number; listings_30d: number; contacts_30d: number };
 }
 
+export type NotificationPreferences = { matches: number; prices: number; chat_push: number; seller_summary: number; daily_limit: number; experiment: number; experiment_group: string | null };
 export const Notifications = {
+  preferences: () => api<NotificationPreferences>('/notifications/preferences'),
+  updatePreferences: (preferences: Record<string, boolean | number>) => api<NotificationPreferences>('/notifications/preferences', { method: 'PATCH', body: JSON.stringify(preferences) }),
   list: () => api<NotificationRow[]>('/notifications'),
   readAll: () => api('/notifications/read-all', { method: 'POST' }),
   read: (id: number) => api(`/notifications/${id}/read`, { method: 'POST' }),

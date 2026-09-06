@@ -1,3 +1,4 @@
+import { NotificationPreferencesPanel } from '../../components/NotificationPreferences';
 import React from 'react';
 import { View, Text, SectionList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { ar } from '../../i18n/ar';
 import { SHOW_PROMOTE } from '../../config/flags';
 
 const KIND_LABEL: Record<string, string> = {
+  'seller.weekly': 'ملخص أداء إعلاناتك الأسبوعي',
   'chat.message': 'رسالة جديدة',
   'deal.proposed': 'سعر نهائي مقترح',
   'deal.buyer_accepted': 'وافق المشتري على السعر',
@@ -31,7 +33,7 @@ const KIND_LABEL: Record<string, string> = {
   // Phone requests. request.match goes to a SELLER ("a buyer wants what
   // you have"), request.new to a shop that could stock it, request.offer
   // back to the buyer.
-  'request.match': 'مشتري يدور على جهاز عندك 🎯',
+  'request.match': 'مشترٍ يبحث عن جهاز لديك 🎯',
   'request.new': 'طلب جديد يناسب متجرك',
   'request.offer': 'وصلك عرض على طلبك 💬',
   // Storefront orders. Without these the inbox rendered the raw kind
@@ -81,6 +83,7 @@ function labelOf(item: NotificationRow): string {
 // Falls back gracefully when the server enrichment came back empty
 // (chat deleted, listing removed, …) so the row never looks broken.
 function subline(item: NotificationRow): string | null {
+  if(item.kind==='seller.weekly')return item.payload?.body || null;
   // Order notifications carry their code in the payload but never showed it,
   // so "تم توصيل طلبك" never said WHICH order — useless to anyone with more
   // than one in flight.
@@ -139,6 +142,7 @@ export default function NotificationsScreen({ navigation }: any) {
   //   - otherwise → just mark-read silently
   function onTap(item: NotificationRow) {
     Notifications.read(item.id);
+    if(item.kind==='seller.weekly') { navigation.navigate('MyListings'); return; }
     // A tier decision is not a review thread — opening one would show the
     // shop an unrelated conversation. The row says what happened and the
     // dashboard it points at is on the web, so tapping just marks it read.
@@ -200,6 +204,7 @@ export default function NotificationsScreen({ navigation }: any) {
         <TouchableOpacity onPress={readAll}><Text style={{ fontFamily: fonts.ar, color: theme.accent }}>قراءة الكل</Text></TouchableOpacity>
       } />
       <SectionList
+        ListHeaderComponent={<NotificationPreferencesPanel />}
         sections={groupByDay(data || []).map((g) => ({ title: g.day, data: g.rows }))}
         keyExtractor={(it) => String(it.id)}
         stickySectionHeadersEnabled={false}

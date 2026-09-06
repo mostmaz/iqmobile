@@ -1,3 +1,4 @@
+import { retentionExperimentReport } from '../../retentionPolicy.js';
 import { searchQuality } from '../../searchQuality.js';
 import { listingContactAnalytics } from '../../listingContactAnalytics.js';
 import { growthAnalytics } from '../../growthAnalytics.js';
@@ -2695,6 +2696,7 @@ r.get('/analytics/daily', requireAdmin, (req, res) => {
   const dau = opened[today] || 0;
   const mau = windowUsers(30);
   res.json({
+    retention_experiment: retentionExperimentReport(db, Date.now()),
     growth,
     series,
     totals: {

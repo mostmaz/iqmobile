@@ -1,3 +1,4 @@
+import { sendSellerSummaries } from './sellerSummaries.js';
 import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
@@ -134,6 +135,9 @@ export function startExpirer() {
   // Every 15 minutes, not every 30 seconds: the threshold is a day, so
   // quarter-hour granularity is already far finer than the question needs,
   // and each pass may send push notifications.
+  const summaryTick = () => { try { sendSellerSummaries(); } catch(e) { console.error('[retention] summary failed', e?.message); } };
+  setTimeout(summaryTick, 90 * 1000);
+  setInterval(summaryTick, 60 * 60 * 1000);
   setTimeout(nudgeTick, 60 * 1000);
   setInterval(nudgeTick, 15 * 60 * 1000);
 }

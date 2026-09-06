@@ -1,3 +1,4 @@
+import { reserveRetention } from './retentionPolicy.js';
 import { db, now } from './db.js';
 import { emitTo } from './sse.js';
 import { pushTo } from './push.js';
@@ -21,6 +22,9 @@ export function hasNotified(userId, kind, listingId) {
 }
 
 function deliver(userId, kind, payload, push) {
+  const decision = reserveRetention(db, userId, kind, payload || {}, !!push, now());
+  if (!decision.deliver) return;
+  if (!decision.push) push = null;
   db.prepare(
     'INSERT INTO notifications(user_id, kind, payload_json, read, created_at) VALUES(?,?,?,?,?)',
   ).run(userId, kind, JSON.stringify(payload || {}), 0, now());

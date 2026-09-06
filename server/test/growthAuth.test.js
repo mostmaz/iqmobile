@@ -13,7 +13,8 @@ test('registration timestamps survive login and guest promotion preserves creati
   const { db } = await import('../src/db.js');
   const { default: auth } = await import('../src/routes/auth.js');
   const { default: listings } = await import('../src/routes/listings.js');
-  const app = express(); app.use(express.json()); app.use('/auth', auth); app.use('/listings', listings);
+  const { default: notifications } = await import('../src/routes/notifications.js');
+  const app = express(); app.use(express.json()); app.use('/auth', auth); app.use('/listings', listings); app.use('/notifications',notifications);
   const server = app.listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   async function post(route, body, token) {
@@ -48,6 +49,19 @@ test('registration timestamps survive login and guest promotion preserves creati
     assert.equal(submitted.length,1); assert.equal(submitted[0].query,'realme'); assert.equal(submitted[0].result_count,0);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE type='search_preview'").get().n,1);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE type='search'").get().n,1);
+    const preferenceUrl = `http://127.0.0.1:${server.address().port}/notifications/preferences`;
+    assert.equal((await fetch(preferenceUrl)).status,401);
+    const savedPrefs = await fetch(preferenceUrl,{method:'PATCH',headers:{authorization:`Bearer ${fresh.token}`,'content-type':'application/json'},body:JSON.stringify({matches:false,seller_summary:true})});
+    assert.equal(savedPrefs.status,200); assert.equal((await savedPrefs.json()).matches,0);
+    const otherPrefs=await fetch(preferenceUrl,{headers:{authorization:`Bearer ${guest.token}`}});
+    assert.equal((await otherPrefs.json()).matches,1);
+    const invalidPrefs=await fetch(preferenceUrl,{method:'PATCH',headers:{authorization:`Bearer ${fresh.token}`,'content-type':'application/json'},body:JSON.stringify({user_id:guest.user.id})});
+    assert.equal(invalidPrefs.status,400);
+    const {notify}=await import('../src/notify.js');
+    notify(fresh.user.id,'saved_search.match',{listing_id:123},null);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id=? AND kind='saved_search.match'").get(fresh.user.id).n,0);
+    const {sellerSummary}=await import('../src/sellerSummaries.js');
+    assert.deepEqual(sellerSummary(db,fresh.user.id,Date.now()),{active:0,views:0,contacted:0,without_contact:0});
     const password = await post('register', { phone: '07700000023', password: 'pw1234', display_name: 'Test', governorate: 'Baghdad' });
     assert.ok(db.prepare('SELECT registered_at FROM users WHERE id=?').get(password.user.id).registered_at);
   } finally {

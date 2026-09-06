@@ -1572,3 +1572,26 @@ CREATE INDEX IF NOT EXISTS idx_offers_seller ON request_offers(seller_id, create
 // Idempotency for explicit search submissions (refresh and pagination are not new intent).
 addColumnIfMissing('events', 'search_request_id TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_search_request ON events(search_request_id) WHERE search_request_id IS NOT NULL');
+
+// Retention preferences preserve explicitly watched buyer alerts. Seller
+// summaries and participation in their evaluation require separate opt-ins.
+db.exec(`
+CREATE TABLE IF NOT EXISTS notification_preferences (
+ user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+ matches INTEGER NOT NULL DEFAULT 1, prices INTEGER NOT NULL DEFAULT 1,
+ chat_push INTEGER NOT NULL DEFAULT 1, seller_summary INTEGER NOT NULL DEFAULT 0,
+ daily_limit INTEGER NOT NULL DEFAULT 3, experiment INTEGER NOT NULL DEFAULT 0,
+ summary_since INTEGER, experiment_since INTEGER, experiment_group TEXT,
+ updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS retention_deliveries (
+ id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ dedupe_key TEXT NOT NULL, kind TEXT NOT NULL, created_at INTEGER NOT NULL,
+ push_requested INTEGER NOT NULL, UNIQUE(user_id,dedupe_key)
+);
+CREATE INDEX IF NOT EXISTS idx_retention_user_time ON retention_deliveries(user_id,created_at);
+CREATE TABLE IF NOT EXISTS notification_preference_events (
+ id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ created_at INTEGER NOT NULL, preferences_json TEXT NOT NULL
+);
+`);

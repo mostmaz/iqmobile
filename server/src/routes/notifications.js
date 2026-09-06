@@ -1,3 +1,4 @@
+import { notificationPreferences, saveNotificationPreferences } from '../retentionPolicy.js';
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireAuth } from '../auth.js';
@@ -43,6 +44,12 @@ function enrich(row, viewerId) {
 
   return { ...row, chat_summary, listing_summary };
 }
+
+r.get('/preferences', requireAuth(), (req, res) => res.json(notificationPreferences(db,req.user.id)));
+r.patch('/preferences', requireAuth(), (req, res) => {
+  try { res.json(saveNotificationPreferences(db,req.user.id,req.body,Date.now())); }
+  catch(e) { if(['invalid_preferences','summary_required'].includes(e.message)) return res.status(400).json({error:e.message}); throw e; }
+});
 
 r.get('/', requireAuth(), (req, res) => {
   const rows = db.prepare(
