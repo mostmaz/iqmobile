@@ -148,9 +148,17 @@ export function NotificationGate({
           </View>
         ) : null}
 
-        <Btn kind="primary" full busy={busy} onPress={enable}>
-          {blocked ? 'افتح الإعدادات' : 'تفعيل الإشعارات'}
-        </Btn>
+        {/* Wrapped, not bare. `full` sets flex:1 on the button, which in a
+            ROW distributes it evenly with siblings but in this COLUMN made
+            it swallow every leftover pixel the centred content container
+            had — rendering the CTA as a black slab a third of the screen
+            tall. The wrapper's height is its content, so the button gets
+            its natural size and still spans the width. */}
+        <View>
+          <Btn kind="primary" full busy={busy} onPress={enable}>
+            {blocked ? 'افتح الإعدادات' : 'تفعيل الإشعارات'}
+          </Btn>
+        </View>
 
         {!required && onSkip ? (
           <View style={{ marginTop: 8 }}>
