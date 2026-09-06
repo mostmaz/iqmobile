@@ -1,3 +1,4 @@
+import { FirstContactPanel, type FirstContactData } from './FirstContactPanel';
 import React, { useEffect, useState } from 'react';
 import {api, listingUrl, listingLinkStyle} from '../api';
 
@@ -23,6 +24,7 @@ interface NoContactRow {
   seller_name: string; seller_phone: string; created_at: number;
 }
 interface Analytics {
+  first_contact: FirstContactData;
   filters: { period: string; governorate: string | null; brand: string | null };
   kpis: {
     total_listings: number; listings_with_contact: number; listings_with_contact_pct: number;
@@ -43,6 +45,7 @@ interface Analytics {
 
 export function AnalyticsPage() {
   const [period, setPeriod] = useState('7d');
+  const [viewThreshold, setViewThreshold] = useState(25);
   const [gov, setGov] = useState('');
   const [brand, setBrand] = useState('');
   const [brands, setBrands] = useState<string[]>([]);
@@ -57,17 +60,19 @@ export function AnalyticsPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true); setErr('');
-    const qs = new URLSearchParams({ period });
+    const qs = new URLSearchParams({ period, view_threshold: String(viewThreshold) });
     if (gov) qs.set('governorate', gov);
     if (brand) qs.set('brand', brand);
     api<Analytics>(`/admin/analytics?${qs.toString()}`)
-      .then(setData)
-      .catch((e) => setErr(e?.message || 'failed'))
-      .finally(() => setLoading(false));
-  }, [period, gov, brand]);
+      .then(result => { if (!cancelled) setData(result); })
+      .catch((e) => { if (!cancelled) setErr(e?.message || 'failed'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [period, gov, brand, viewThreshold]);
 
-  const k = data?.kpis;
+  const k = !loading && !err ? data?.kpis : null;
 
   return (
     <div dir="rtl" style={{ textAlign: 'right' }}>
@@ -77,6 +82,9 @@ export function AnalyticsPage() {
           {PERIODS.map((p) => (
             <button key={p.k} className={period === p.k ? '' : 'secondary'} onClick={() => setPeriod(p.k)}>{p.label}</button>
           ))}
+          <label>حد المشاهدات للتشخيص <select value={viewThreshold} onChange={e => setViewThreshold(Number(e.target.value))}>
+            {[10,25,50].map(n => <option key={n} value={n}>{n}</option>)}
+          </select></label>
           <select value={gov} onChange={(e) => setGov(e.target.value)}>
             <option value="">كل المحافظات</option>
             {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -96,10 +104,11 @@ export function AnalyticsPage() {
       </div>
 
       {err ? <div className="card" style={{ color: '#dc2626' }}>خطأ في التحميل: {err}</div> : null}
-      {loading && !data ? <div className="card empty">جارٍ التحميل…</div> : null}
+      {loading ? <div className="card empty">جارٍ التحميل…</div> : null}
 
       {k ? (
         <>
+          <FirstContactPanel data={data!.first_contact} />
           <div className="kpi-row">
             <Kpi label="إعلانات وصلها تواصل" value={`${k.listings_with_contact}`} sub={`${k.listings_with_contact_pct}% من ${k.total_listings} إعلان`} color="#10b981" />
             <Kpi label="إعلانات بدون أي تواصل" value={`${k.listings_without_contact}`} sub="بائعون قد ينسحبون" color="#ef4444" />

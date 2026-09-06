@@ -26,3 +26,13 @@ Validation: server tests include exact-day retention, immature cohorts, Baghdad 
 3. Inspection: inspect stored error categories before attributing all 373 failures to credentials. Pause retries on authentication/billing failures and alert the operator. Retry transient rate-limit/network failures with capped exponential backoff, jitter, attempt counts, and concurrency limits. Resume a small batch after the cause is fixed; retain manual review and do not auto-reject devices because the inspection service is unavailable.
 4. Retention: test opt-in saved-search, price-drop and matching-inventory notifications for buyers; relevant contact and listing-performance notifications for sellers. Evaluate D7/D30 by acquisition source and buyer/seller behavior, plus notification opt-outs.
 5. Sales reporting: collect an explicit sold outcome with an on-platform/off-platform distinction and optional reason for removal. Treat contact attempts and marked-sold outcomes as separate funnel stages; neither proves paid transactions.
+
+## Seven-day listing contact panel
+
+The demand dashboard now includes a creation-cohort panel. For a selected duration N, the cohort is [now − 7 days − N days, now − 7 days). Each listing is observed for [creation, creation + 7 days). Recent immature listings are excluded, and removed/sold/expired listings remain included to avoid survivorship bias. This is based on record creation because a distinct publication timestamp is unavailable; imported inventory and delayed approvals can distort historical comparisons.
+
+Success is at least one recorded call/WhatsApp tap or buyer-sent chat message in that window. Empty chats, seller replies, known seller taps/views, events before creation, and events at/after the seven-day endpoint are excluded. Anonymous taps are included as listing-level evidence, not deduplicated people. No completed sale is inferred.
+
+For listings with no first-week contact, the panel separates views below versus at/above an adjustable 10/25/50 threshold (default 25). Views are event counts, not unique viewers. These are investigation categories, not proven causes or industry benchmarks. City/model/price/seller-type breakdowns show denominators and use current attributes; governorate and brand filters apply throughout the panel. The investigation list is capped at 100 with its total shown and includes current status, since listings may have received contact later.
+
+No ranking, price, customer messaging, or inspection behavior is changed. Deploy the server response change before the matching admin bundle. Verification includes mature-window boundaries, empty cohorts, buyer-versus-seller message semantics, views within the window, threshold changes, and filter/breakdown consistency.

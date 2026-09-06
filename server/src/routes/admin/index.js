@@ -1,3 +1,4 @@
+import { listingContactAnalytics } from '../../listingContactAnalytics.js';
 import { growthAnalytics } from '../../growthAnalytics.js';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
@@ -2564,6 +2565,7 @@ r.get('/analytics', requireAdmin, (req, res) => {
   ).get().n;
 
   res.json({
+    first_contact: listingContactAnalytics(db, Date.now(), { days: DAYS[period], governorate: gov, brand, threshold: [10,25,50].includes(Number(req.query.view_threshold)) ? Number(req.query.view_threshold) : 25 }),
     filters: { period, governorate: gov, brand },
     kpis,
     contact_per_listing,
