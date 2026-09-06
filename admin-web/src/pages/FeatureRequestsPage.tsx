@@ -6,12 +6,6 @@ import React, { useEffect, useState } from 'react';
 import { api, API_BASE } from '../api';
 
 type FeatureRequest = {
-  payment_state?: string;
-  payment_reference?: string | null;
-  payment_reported_at?: number | null;
-  payment_verified_at?: number | null;
-  payment_verified_by?: string | null;
-  payment_destination_json?: string | null;
   id: number;
   listing_id: number;
   user_id: number;
@@ -58,7 +52,7 @@ export function FeatureRequestsPage() {
   async function approve(f: FeatureRequest) {
     if (!confirm(`Approve "${f.brand} ${f.model}" — ${tierLabel(f)}?\nConfirm you received ${fmtIQD(f.amount)} from ${f.sender_name || f.sender_phone || '—'} (${f.carrier}).`)) return;
     setBusy(true);
-    try { await api(`/admin/feature-requests/${f.id}/approve`, { method: 'POST', body: JSON.stringify({payment_verified:true}) }); await load(); }
+    try { await api(`/admin/feature-requests/${f.id}/approve`, { method: 'POST' }); await load(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
   async function reject(f: FeatureRequest) {
@@ -81,7 +75,8 @@ export function FeatureRequestsPage() {
           </select>
         </div>
         <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
-          Requests can be unpaid. A seller report is not proof of payment. Match the actual incoming transfer before verifying and activating.
+          No payment gateway — the seller sends airtime to your number, then submits this.
+          Reconcile the transfer (amount + sender number + carrier), then Approve to pin the listing.
         </div>
         {loading ? <div className="muted">Loading…</div> : (
           <table className="data-table">
@@ -89,7 +84,7 @@ export function FeatureRequestsPage() {
               <tr>
                 <th>Listing</th>
                 <th>Tier</th>
-                <th>Payment</th>
+                <th>Paid via</th>
                 <th>Sender</th>
                 <th>Seller</th>
                 <th>Submitted</th>
@@ -118,19 +113,13 @@ export function FeatureRequestsPage() {
                     </div>
                   </td>
                   <td>{tierLabel(f)}</td>
-                  <td>
-                    <div>{f.carrier} · {f.status === 'approved' ? 'Verified / activated' : f.payment_state === 'reported' ? 'Seller reported payment — verify receipt' : f.payment_state === 'awaiting_payment' ? 'Awaiting payment' : 'Legacy — payment unconfirmed'}</div>
-                    {f.payment_reference ? <div>Reference: {f.payment_reference}</div> : null}
-                    {f.payment_reported_at ? <div>Reported: {fmtDate(f.payment_reported_at)}</div> : null}
-                    {f.payment_verified_at ? <div>Verified: {fmtDate(f.payment_verified_at)} · {f.payment_verified_by}</div> : null}
-                    {f.payment_destination_json ? <div className="muted">Destination: {destinationLabel(f.payment_destination_json)}</div> : null}
-                  </td>
+                  <td style={{ textTransform: 'capitalize' }}>{f.carrier}</td>
                   <td style={{ fontFamily: 'monospace' }}>{f.sender_name || f.sender_phone || '—'}</td>
                   <td>{f.user_name}<div className="muted" style={{ fontSize: 12, fontFamily: 'monospace' }}>{f.user_phone || '—'}</div></td>
                   <td className="muted" style={{ fontSize: 12 }}>{fmtDate(f.created_at)}</td>
                   {status === 'pending' ? (
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="primary" disabled={busy} onClick={() => approve(f)}>Payment received — activate</button>{' '}
+                      <button className="primary" disabled={busy} onClick={() => approve(f)}>Approve</button>{' '}
                       <button className="danger" disabled={busy} onClick={() => reject(f)}>Reject</button>
                     </td>
                   ) : (
@@ -150,9 +139,4 @@ export function FeatureRequestsPage() {
 function tierLabel(f: FeatureRequest): string {
   const cap = f.tier.charAt(0).toUpperCase() + f.tier.slice(1);
   return `${cap} · ${fmtIQD(f.amount)} · ${f.days}d · ${f.boosts_per_day}×/day`;
-}
-
-function destinationLabel(raw: string): string {
-  try { const value = JSON.parse(raw); return [value.number, value.name].filter(Boolean).join(' · ') || '—'; }
-  catch { return '—'; }
 }

@@ -1848,33 +1848,23 @@ r.post('/feature-requests/:id(\\d+)/approve', requireAdmin, (req, res) => {
   if (!fr) return res.status(404).json({ error: 'not_found' });
   if (fr.status !== 'pending') return res.status(400).json({ error: 'not_pending' });
 
-  if (req.body?.payment_verified !== true)
-    return res.status(400).json({ error: 'payment_verification_required' });
-  const listing = db.prepare('SELECT status FROM phone_listings WHERE id=?').get(fr.listing_id);
-  if (!listing || !['active', 'reserved'].includes(listing.status))
-    return res.status(409).json({ error: 'listing_unavailable' });
+  const applied = applyFeature(fr);
+  if (!applied) return res.status(404).json({ error: 'listing_gone' });
+  const { featured_until, at: t } = applied;
+  db.prepare('UPDATE feature_requests SET status=?, reviewed_at=? WHERE id=?')
+    .run('approved', t, fr.id);
 
-  // Verification, activation and bonus are committed together.
-  const activation = db.transaction(() => {
-    // Recheck under a write lock so two admin workers cannot activate twice.
-    if (db.prepare('SELECT status FROM feature_requests WHERE id=?').get(fr.id)?.status !== 'pending')
-      return null;
-    const applied = applyFeature(fr);
-    const { featured_until, at: t } = applied;
-    db.prepare(`UPDATE feature_requests SET status='approved', reviewed_at=?,
-      payment_state='verified', payment_verified_at=?, payment_verified_by=? WHERE id=?`)
-      .run(t, t, `admin:${req.admin.id ?? ''}`, fr.id);
-    const tierDef = tierFor(fr.tier);
-    const bonus = (tierDef?.bonus > 0 && fr.carrier !== 'balance') ? tierDef.bonus : 0;
-    const credited = bonus > 0 && walletPost({
-      userId: fr.user_id, delta: bonus, reason: 'promo_bonus',
-      refType: 'feature_request', refId: fr.id, note: tierDef.label_ar,
-      actor: `admin:${req.admin.id ?? ''}`,
-    });
-    return { featured_until, bonus, credited };
-  }).immediate();
-  if (!activation) return res.status(409).json({ error: 'not_pending' });
-  const { featured_until, bonus, credited } = activation;
+  // Promotion bonus, credited on approval. Only for a request paid by real
+  // transfer: crediting a wallet-funded purchase would let 5000 of credit buy
+  // 10000 of credit, and then do it again. walletPost is idempotent on
+  // (feature_request, id, promo_bonus), so a re-approval cannot double it.
+  const tierDef = tierFor(fr.tier);
+  const bonus = (tierDef?.bonus > 0 && fr.carrier !== 'balance') ? tierDef.bonus : 0;
+  const credited = bonus > 0 && walletPost({
+    userId: fr.user_id, delta: bonus, reason: 'promo_bonus',
+    refType: 'feature_request', refId: fr.id, note: tierDef.label_ar,
+    actor: `admin:${req.admin?.id ?? ''}`,
+  });
 
   notify(fr.user_id, 'feature.approved',
     { listing_id: fr.listing_id, tier: fr.tier, featured_until, bonus: credited ? bonus : 0 },

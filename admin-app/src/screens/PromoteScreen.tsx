@@ -14,8 +14,6 @@ import { ScreenHeader, Card, Action, ActionRow, ListState, Meta, Title } from '.
 
 type Req = {
   id: number; listing_id: number; tier?: string | null;
-  amount: number; carrier: string; sender_phone?: string | null; sender_name?: string | null;
-  payment_state?: string; payment_reference?: string | null;
   brand: string; model: string; asking_price: number; governorate: string;
   user_name: string | null; user_phone: string | null; created_at: number;
 };
@@ -31,7 +29,7 @@ export default function PromoteScreen({ navigation }: any) {
 
   const decide = useMutation({
     mutationFn: ({ id, action }: { id: number; action: 'approve' | 'reject' }) =>
-      api(`/admin/feature-requests/${id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'approve' ? {payment_verified:true} : {}) }),
+      api(`/admin/feature-requests/${id}/${action}`, { method: 'POST' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-feature-requests'] });
       qc.invalidateQueries({ queryKey: ['work-queue'] });
@@ -62,17 +60,14 @@ export default function PromoteScreen({ navigation }: any) {
             <Title>{deviceTitle(r.brand, r.model)}</Title>
             <Meta>{iqd(r.asking_price)} د.ع · {r.governorate} · إعلان #{r.listing_id}</Meta>
             <Meta>{r.user_name || '—'}{r.user_phone ? ` · ${r.user_phone}` : ''}{r.tier ? ` · ${r.tier}` : ''}</Meta>
-            <Meta>{r.payment_state === 'reported' ? 'أبلغ البائع عن الدفع — يلزم التحقق' : r.payment_state === 'awaiting_payment' ? 'بانتظار الدفع' : 'طلب سابق — الدفع غير مؤكد'}</Meta>
-            <Meta>{iqd(r.amount)} د.ع · {r.carrier} · المرسل: {r.sender_name || r.sender_phone || '—'}</Meta>
-            {r.payment_reference ? <Meta>مرجع التحويل: {r.payment_reference}</Meta> : null}
             <ActionRow>
               {/* Approving puts the listing in paid placement on the home
                   feed, so it confirms first. */}
               <Action
-                label="استلمت الدفع — تفعيل"
+                label="موافقة"
                 tone="primary"
                 busy={decide.isPending}
-                confirm={{ title: 'هل تحققت من وصول المبلغ؟', body: `أؤكد استلام ${iqd(r.amount)} د.ع من ${r.sender_name || r.sender_phone || 'المرسل'} عبر ${r.carrier}. بلاغ البائع وحده ليس إثباتاً للدفع.` }}
+                confirm={{ title: 'ترويج الإعلان؟', body: deviceTitle(r.brand, r.model) }}
                 onPress={() => decide.mutate({ id: r.id, action: 'approve' })}
               />
               <Action

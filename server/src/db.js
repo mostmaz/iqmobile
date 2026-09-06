@@ -1006,14 +1006,6 @@ addColumnIfMissing('feature_requests', 'sender_name TEXT');
 // exactly once no matter how often the sweep runs or how long the request
 // then sits in the queue.
 addColumnIfMissing('feature_requests', 'nudged_at INTEGER');
-// Legacy pending requests cannot tell us whether a transfer happened.
-addColumnIfMissing('feature_requests', "payment_state TEXT NOT NULL DEFAULT 'legacy_unconfirmed'");
-addColumnIfMissing('feature_requests', 'payment_reported_at INTEGER');
-addColumnIfMissing('feature_requests', 'payment_reference TEXT');
-addColumnIfMissing('feature_requests', 'payment_verified_at INTEGER');
-addColumnIfMissing('feature_requests', 'payment_verified_by TEXT');
-addColumnIfMissing('feature_requests', 'payment_destination_json TEXT');
-
 
 // Shop-level paid featuring + verification, both requested from the
 // merchant panel and approved by the admin. Statuses route-validated

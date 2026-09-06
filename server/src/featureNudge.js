@@ -1,8 +1,19 @@
 // "Are you still interested in featuring your phone?"
 //
-// Only explicitly unpaid requests get the one-time reminder. Seller-reported
-// transfers and legacy unknown payments must not be chased for a second
-// payment. Opening the notification returns to the saved checkout.
+// Featuring is paid out of band: the seller picks a tier, transfers airtime
+// or Qi balance to the owner's number, and then submits the request. Nothing
+// in that chain is enforced — a seller can open the dialer, get distracted,
+// and submit anyway, or submit first and never send the money. Either way
+// the request sits at 'pending' and the owner has nothing to match it
+// against, so it is never approved and nobody tells the seller why.
+//
+// A day is the right wait. Shorter and it nags people whose transfer is
+// genuinely still being reconciled; longer and the intent has gone cold.
+//
+// The reminder is a question, not a chase. It is aimed at the seller who
+// never completed the transfer, and the screen it opens leads with the
+// "لم أحوّل الرصيد بعد" retry rather than with the pending state — being
+// told to keep waiting is exactly what is NOT useful to them.
 import { db, now } from './db.js';
 import { notify, versionAtLeast } from './notify.js';
 import { pushTo } from './push.js';
@@ -41,7 +52,6 @@ export async function nudgeStalePromotions() {
        JOIN users u ON u.id = f.user_id
        JOIN phone_listings l ON l.id = f.listing_id
       WHERE f.status = 'pending'
-        AND f.payment_state = 'awaiting_payment'
         AND f.nudged_at IS NULL
         AND f.created_at <= ?
         -- Only a listing that could still BE featured. A phone that sold or
