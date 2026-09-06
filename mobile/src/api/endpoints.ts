@@ -92,6 +92,13 @@ export interface Listing {
   has_video?: boolean;
   // Seller-facing engagement counts, attached only by GET /listings/mine.
   stats?: { views: number; contacts: number; saves: number } | null;
+  /**
+   * What those stats mean, for the owner only. The server never sends a
+   * metric without a `reason` and (unless severity is 'ok') an `action`, and
+   * ListingAdvice takes the whole object as a required prop so a bare number
+   * cannot reach the screen.
+   */
+  advice?: ListingAdviceData | null;
   // Featured-listing revenue fields. `is_featured` is the server-computed
   // (clock-safe) flag the card badges off; the rest describe the window.
   is_featured?: boolean;
@@ -236,6 +243,17 @@ export const Auth = {
 // the default feed carries for market context.
 // 'rank' = featured first, then seller rating, then cheapest — the Shops-tab
 // device search. Not offered as a user-picked sort on the main search.
+/** Seller-facing verdict on one listing. See server/src/listingAdvice.js. */
+export interface ListingAdviceData {
+  id: 'unanswered_inquiries' | 'low_views' | 'views_no_inquiry' | 'ok';
+  severity: 'urgent' | 'warn' | 'ok';
+  /** The number that prompted it — never rendered without `reason`. */
+  metric: Record<string, number | null>;
+  reason: string;
+  /** null only when severity is 'ok'. */
+  action: string | null;
+}
+
 export type BrowseSort = 'new' | 'price_asc' | 'price_desc' | 'viewed' | 'rank';
 
 /** One labelled, counted way out of a zero-result search. */

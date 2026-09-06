@@ -1,6 +1,7 @@
 import { askingPriceGuidance } from '../askingPriceGuidance.js';
 import { canonicalSearch, suggestionsFor } from '../searchQuality.js';
 import { searchAlternatives } from '../searchAlternatives.js';
+import { listingAdviceFor } from '../listingAdvice.js';
 import { Router } from 'express';
 import { scalePriceIfThousands } from '../priceScale.js';
 import multer from 'multer';
@@ -782,6 +783,17 @@ r.get('/mine', requireAuth(), (req, res) => {
         saves: sv.get(r2.id) || 0,
       };
     }
+    // …and what those numbers MEAN. The seller has been shown bare counts
+    // since launch — "12 views, 0 contacts" is a verdict with no verb. The
+    // operator dashboard has never been allowed to do that (see the rule at
+    // the top of shopDiagnostics.js); this closes the same gap in the app.
+    // Advice is only attached to listings still worth acting on: a sold or
+    // expired ad cannot be improved, and advising it would be noise.
+    const advice = listingAdviceFor(
+      db,
+      withImgs.filter((r2) => r2.status === 'active' || r2.status === 'reserved'),
+    );
+    for (const r2 of withImgs) r2.advice = advice[r2.id] || null;
   }
   res.json(withImgs);
 });

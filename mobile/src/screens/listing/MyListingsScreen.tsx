@@ -7,6 +7,7 @@ import { theme, fonts } from '../../theme';
 import { Btn, Header, Pill } from '../../components/ui';
 import { IconSpark, IconTag } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
+import { ListingAdvice } from '../../components/ListingAdvice';
 import { EmptyState } from '../../components/EmptyState';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { SHOW_PROMOTE } from '../../config/flags';
@@ -84,6 +85,26 @@ export default function MyListingsScreen({ navigation }: any) {
               {/* Engagement at a glance — views lead (the headline metric),
                   then contacts and saves. Only shown once the server has
                   attached stats (GET /listings/mine). */}
+              {/* The verdict comes FIRST, above the raw counts. The counts on
+                  their own are what the operator dashboard has never been
+                  allowed to render — "12 views, 0 contacts" states a problem
+                  and offers nothing. When the server has an opinion, lead
+                  with it. */}
+              {item.advice ? (
+                <View style={{ marginTop: -4, marginBottom: 10, paddingHorizontal: 4 }}>
+                  <ListingAdvice
+                    advice={item.advice}
+                    compact
+                    onAct={(action) => {
+                      if (action === 'reply') {
+                        navigation.getParent()?.navigate('Chats', { screen: 'ChatsHome' });
+                      } else {
+                        navigation.navigate('EditListing', { id: item.id });
+                      }
+                    }}
+                  />
+                </View>
+              ) : null}
               {item.stats ? (
                 <View style={{
                   marginTop: -6, marginBottom: 12, flexDirection: 'row-reverse',
