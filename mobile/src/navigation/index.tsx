@@ -53,6 +53,7 @@ import WishlistScreen from '../screens/profile/WishlistScreen';
 import RequestsScreen from '../screens/requests/RequestsScreen';
 import RequestDetailScreen from '../screens/requests/RequestDetailScreen';
 import NotificationsScreen from '../screens/profile/NotificationsScreen';
+import NotificationSettingsScreen from '../screens/profile/NotificationSettingsScreen';
 import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import ProfileScreen from '../screens/common/ProfileScreen';
 import { TabBar } from './TabBar';
@@ -87,6 +88,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
+      <BrowseStack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
@@ -139,6 +141,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
       <BrowseStack.Screen name="Notifications" component={NotificationsScreen} />
+      <BrowseStack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
       <BrowseStack.Screen name="SavedSearches" component={SavedSearchesScreen} />
       <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />

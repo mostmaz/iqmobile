@@ -96,6 +96,7 @@ export default function ProfileScreen({ navigation }: any) {
     { Icon: IconStore, label: user.seller_type === 'shop' ? ar.profile.shopManage : ar.profile.shopRegister, onPress: () => navigation.navigate('ShopRegister') },
     { Icon: IconSpark, label: ar.profile.advertise, onPress: () => navigation.navigate('Advertise') },
     { Icon: IconBell, label: ar.profile.notifications, onPress: () => navigation.navigate('Notifications') },
+    { Icon: IconBell, label: 'إعدادات الإشعارات', onPress: () => navigation.navigate('NotificationSettings') },
     { Icon: IconID, label: ar.profile.edit, onPress: () => navigation.navigate('EditProfile') },
     { Icon: IconShield, label: ar.profile.how, onPress: () => navigation.navigate('HowItWorks') },
     { Icon: IconChat, label: 'اللغة / زمان', onPress: () => {

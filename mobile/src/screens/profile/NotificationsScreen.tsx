@@ -1,4 +1,3 @@
-import { NotificationPreferencesPanel } from '../../components/NotificationPreferences';
 import React from 'react';
 import { View, Text, SectionList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -204,7 +203,6 @@ export default function NotificationsScreen({ navigation }: any) {
         <TouchableOpacity onPress={readAll}><Text style={{ fontFamily: fonts.ar, color: theme.accent }}>قراءة الكل</Text></TouchableOpacity>
       } />
       <SectionList
-        ListHeaderComponent={<NotificationPreferencesPanel />}
         sections={groupByDay(data || []).map((g) => ({ title: g.day, data: g.rows }))}
         keyExtractor={(it) => String(it.id)}
         stickySectionHeadersEnabled={false}

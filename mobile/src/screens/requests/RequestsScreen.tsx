@@ -161,7 +161,7 @@ export default function RequestsScreen({ navigation }: any) {
         <FlatList
           data={(active.data as any[]) || []}
           keyExtractor={(it: any) => String(it.id)}
-          contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: 120 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 4, paddingBottom: 96 }}
           refreshing={active.isFetching}
           onRefresh={() => active.refetch()}
           renderItem={({ item }) => (tab === 'offers'
@@ -178,7 +178,11 @@ export default function RequestsScreen({ navigation }: any) {
 
       {/* Primary CTA — always reachable, even mid-scroll. */}
       {tab !== 'offers' ? (
-        <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 + insets.bottom }}>
+        // `bottom: 16` alone. The screen already ends above the tab bar, so
+        // adding insets.bottom on top of that double-counted the home
+        // indicator and left the button floating ~50pt clear of the bar,
+        // reading as a stray element rather than the screen's action.
+        <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
           <Btn kind="primary" full onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}>
             اطلب جهازاً
           </Btn>
