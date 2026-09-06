@@ -1,3 +1,5 @@
+import { listingQuality } from '../../lib/listingQuality';
+import { ListingQualityChecklist } from '../../components/ListingQualityChecklist';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler } from 'react-native';
 import { Img } from '../../components/Img';
@@ -49,6 +51,8 @@ export default function PostListingScreen({ navigation }: any) {
   const { user } = useAuth();
   const track = useTrack();
   const [step, setStep] = useState(0);
+  const qualityScrollRef = useRef<ScrollView>(null);
+  useEffect(() => { qualityScrollRef.current?.scrollTo({ y: 0, animated: false }); }, [step]);
   // Which field the current error belongs to, so it can be outlined instead
   // of leaving the user to guess which of five inputs the banner means.
   const [fieldErr, setFieldErr] = useState<string | null>(null);
@@ -119,6 +123,7 @@ export default function PostListingScreen({ navigation }: any) {
   const [city, setCity] = useState('');
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const qualityIssues = listingQuality({ brand, model, condition, description, images });
   // Optional video: local uri after compression, plus a busy flag while the
   // compressor runs (it can take a few seconds on a long clip).
   const [video, setVideo] = useState<{ uri: string; sizeMB: number | null; compressed: boolean } | null>(null);
@@ -462,6 +467,7 @@ export default function PostListingScreen({ navigation }: any) {
           without it the battery keypad opened directly over its own field
           and the seller typed blind. */}
       <ScrollView
+        ref={qualityScrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
@@ -698,7 +704,7 @@ export default function PostListingScreen({ navigation }: any) {
             <Input value={city} onChangeText={setCity} placeholder={districtHint(govAr)} />
             <FieldLabel style={{ marginTop: 12 }}>وصف حالة الجهاز</FieldLabel>
             <Input value={description} onChangeText={setDescription}
-              placeholder="مثلاً: شخوط، نظيف، مثل الجديد…" multiline />
+              placeholder="حالة الشاشة والهيكل، أي إصلاح أو قطع مبدلة، والعيوب إن وجدت. اذكر ما لا تعرفه بوضوح." multiline />
           </>
         )}
         {step === 3 && (
@@ -981,12 +987,17 @@ export default function PostListingScreen({ navigation }: any) {
             }}>
               <IconCheck size={16} color={theme.success} sw={2.2} />
               <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13, color: theme.success, textAlign: 'right', lineHeight: 20 }}>
-                جاهز للنشر. اضغط "نشر" بالأسفل لإطلاق إعلانك.
+                {qualityIssues.length ? 'راجع الملاحظات أدناه لتحسين إعلانك. يمكنك النشر بعد مراجعتها.' : 'جاهز للنشر. اضغط "نشر" بالأسفل لإطلاق إعلانك.'}
               </Text>
             </View>
           </>
         )}
 
+        {[0,2,4,5].includes(step) ? <ListingQualityChecklist
+          issues={step === 5 ? qualityIssues : qualityIssues.filter(issue => issue.step === step)}
+          review={step === 5}
+          onEdit={target => { setErr(''); setFieldErr(null); setStep(target); qualityScrollRef.current?.scrollTo({ y: 0, animated: true }); }}
+        /> : null}
       </ScrollView>
 
       {/* Sticky footer — soft elevation instead of a hard border so it floats
