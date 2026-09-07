@@ -9,6 +9,7 @@ import { IconSpark, IconTag } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingAdvice } from '../../components/ListingAdvice';
 import { InspectionNotes } from '../../components/InspectionNotes';
+import { PromotionPerformance } from '../../components/PromotionPerformance';
 import { EmptyState } from '../../components/EmptyState';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { SHOW_PROMOTE } from '../../config/flags';
@@ -91,6 +92,15 @@ export default function MyListingsScreen({ navigation }: any) {
                   allowed to render — "12 views, 0 contacts" states a problem
                   and offers nothing. When the server has an opinion, lead
                   with it. */}
+              {/* Promotion results. Gated on SHOW_PROMOTE with the rest of
+                  the paid flow — it is off on iOS, and a results card for a
+                  feature the build does not sell makes no sense. */}
+              {SHOW_PROMOTE && (item as any).promotion ? (
+                <View style={{ marginTop: -4, marginBottom: 10, paddingHorizontal: 4 }}>
+                  <PromotionPerformance promotion={(item as any).promotion} />
+                </View>
+              ) : null}
+
               {/* Photo-check notes, below the advice card. Renders nothing at
                   all when there is no verdict — which is most installs, since
                   both inspection switches default off. */}

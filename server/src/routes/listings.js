@@ -15,6 +15,7 @@ import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
 import { checkListingQuality, reviewListingQuality } from '../listingQuality.js';
 import { flagListingForReview } from '../listingFlag.js';
+import { promotionPerformance } from '../promotionPerformance.js';
 import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
 import { pushToAdmins } from '../adminPush.js';
@@ -791,8 +792,16 @@ r.get('/mine', requireAuth(), (req, res) => {
       `SELECT listing_id,
               SUM(CASE WHEN type='view' THEN 1 ELSE 0 END) AS views,
               SUM(CASE WHEN type IN ('contact_call','contact_whatsapp') THEN 1 ELSE 0 END) AS contacts
-         FROM events WHERE listing_id IN (${ph}) GROUP BY listing_id`,
-    ).all(...ids)) ev.set(e.listing_id, e);
+         FROM events
+        WHERE listing_id IN (${ph})
+          -- Exclude the seller's own activity. Without this a seller who
+          -- refreshes their listing to see how it is doing inflates the very
+          -- number they are checking, and then pays to promote a listing
+          -- whose views were largely their own. sellerSummaries.js:8 has had
+          -- this exclusion all along; the seller-facing route did not.
+          AND (user_id IS NULL OR user_id <> ?)
+        GROUP BY listing_id`,
+    ).all(...ids, req.user.id)) ev.set(e.listing_id, e);
     const sv = new Map();
     for (const e of db.prepare(
       `SELECT listing_id, COUNT(*) AS saves FROM saved_listings WHERE listing_id IN (${ph}) GROUP BY listing_id`,
@@ -854,6 +863,13 @@ r.get('/mine', requireAuth(), (req, res) => {
       };
     }
   }
+  // Promotion performance, for listings that have been promoted. Reports what
+  // happened during the window and never a lift — see promotionPerformance.js
+  // for why "after > before" is not evidence here.
+  for (const r2 of withImgs) {
+    try { r2.promotion = promotionPerformance(db, r2); } catch { r2.promotion = null; }
+  }
+
   res.json(withImgs);
 });
 
