@@ -72,11 +72,20 @@ suffix, label = sys.argv[1], sys.argv[2]
 
 # 1. applicationIdSuffix + a distinct launcher label.
 g = open('android/app/build.gradle').read()
+# Anchored on the versionCode line, which moves on every release. Read it
+# from the file instead of hardcoding it — a stale anchor makes str.replace a
+# silent no-op, so the build "succeeds" and produces an APK with the REAL
+# package id that overwrites the user's installed app.
+import re as _re
+_m = _re.search(r"^        versionCode (\d+)$", g, _re.M)
+if not _m:
+    raise SystemExit("build-test-apk: could not find the versionCode line in build.gradle")
+_anchor = _m.group(0)
 g = g.replace(
-    "        versionCode 54",
+    _anchor,
     f'        applicationIdSuffix "{suffix}"\n'
     f'        resValue "string", "app_name_test", "{label}"\n'
-    "        versionCode 54", 1)
+    + _anchor, 1)
 open('android/app/build.gradle', 'w').write(g)
 
 # 2. Point the launcher label at the test string, and allow plain HTTP so a
