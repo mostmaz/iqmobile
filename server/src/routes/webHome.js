@@ -152,6 +152,16 @@ r.get('/', (req, res) => {
 <meta property="og:title" content="iQ Mobile — سوق الموبايلات في العراق">
 <meta property="og:description" content="بيع واشترِ الموبايلات في العراق — مجاناً، بمحافظتك.">
 <meta property="og:url" content="https://iqmobile.org/">
+<!-- iqmobile.org itself previewed with no image and no twitter:card, so every
+     share of the HOME page — the one most likely to be posted into a group —
+     rendered as a bare link. -->
+<meta property="og:image" content="https://api.iqmobile.org/app-icon.png">
+<meta property="og:image:alt" content="iQ Mobile">
+<meta property="og:locale" content="ar_IQ">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="iQ Mobile — سوق الموبايلات في العراق">
+<meta name="twitter:description" content="بيع واشترِ الموبايلات في العراق — مجاناً، بمحافظتك.">
+<meta name="twitter:image" content="https://api.iqmobile.org/app-icon.png">
 <style>
   :root{--accent:#D9583A;--deep:#B23F25;--cream:#ECE6DA;--ink:#1B1A18;--line:#e5ddd0;--sub:#6b7280}
   *{box-sizing:border-box}

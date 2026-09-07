@@ -28,6 +28,11 @@
           "data": [
             {
               "scheme": "https",
+              "host": "iqmobile.org",
+              "pathPrefix": "/l"
+            },
+            {
+              "scheme": "https",
               "host": "api.iqmobile.org",
               "pathPrefix": "/l"
             }
@@ -44,6 +49,7 @@
       "supportsTablet": false,
       "icon": "./assets/icon.png",
       "associatedDomains": [
+        "applinks:iqmobile.org",
         "applinks:api.iqmobile.org"
       ],
       "infoPlist": {

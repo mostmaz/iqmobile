@@ -397,13 +397,28 @@ export default function RootNav() {
   // (`needsProfileCompletion` is computed once at the top of this
   //  component and reused here for the navigator's conditional render.)
 
-  // Deep linking: an https://api.iqmobile.org/l/:id link (App Link on
+  // Deep linking. THE bug this list existed to have: the share button emits
+  // https://iqmobile.org/l/:id, and every registration named only
+  // api.iqmobile.org — so a shared listing tapped WITH THE APP INSTALLED
+  // opened the browser. All three layers have to agree (this list,
+  // app.json's android intentFilters, and ios.associatedDomains); fixing one
+  // fixes nothing, and the app.json half needs a native rebuild.
+  //
+  // Deep linking: an https://iqmobile.org/l/:id link (App Link on
   // Android / Universal Link on iOS, verified via the server's
   // .well-known association files) — or the iqmobile://l/:id scheme —
   // opens ListingDetail inside the Browse tab. The path mirrors the nested
   // navigator hierarchy: Root → Main → Browse tab → ListingDetail(id).
   const linking = {
-    prefixes: ['https://api.iqmobile.org', 'iqmobile://'],
+    prefixes: [
+      // The domain the share button actually writes, first.
+      'https://iqmobile.org',
+      // No www. — it does not resolve, and an applinks: entry for a host that
+      // cannot serve its association file is a fetch failure Apple caches.
+      // Kept: older shares are already out there carrying this host.
+      'https://api.iqmobile.org',
+      'iqmobile://',
+    ],
     config: {
       screens: {
         Main: {

@@ -8,6 +8,7 @@
 // the app to make contact (which is also where the contact analytics live).
 
 import { Router } from 'express';
+import sharp from 'sharp';
 import { db } from '../db.js';
 
 const r = Router();
@@ -48,7 +49,7 @@ function notAvailablePage(res) {
 </body></html>`);
 }
 
-r.get('/:id(\\d+)', (req, res) => {
+r.get('/:id(\\d+)', async (req, res) => {
   const l = db.prepare(
     `SELECT l.*, u.display_name AS seller_name, u.rating_avg, u.rating_count, u.verified
      FROM phone_listings l JOIN users u ON u.id = l.seller_id
@@ -62,12 +63,41 @@ r.get('/:id(\\d+)', (req, res) => {
     'SELECT image_path FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC',
   ).all(l.id);
   const imgUrls = images.map((im) => PUBLIC_BASE + im.image_path);
-  const cover = imgUrls[0] || `${PUBLIC_BASE}/uploads/`;
+  // A listing with no images used to emit og:image="…/uploads/" — a
+  // DIRECTORY. Crawlers fetch it, get a listing page or a 403, and render the
+  // share as a bare blue link with no picture, which is the single worst
+  // outcome for something shared into a WhatsApp group. webShop.js has always
+  // handled this by omitting the tag; here we can do better and fall back to
+  // the app icon, which is already served (express.static mounts ./static at the ROOT, so it is /app-icon.png and not /static/…).
+  const cover = imgUrls[0] || `${PUBLIC_BASE}/app-icon.png`;
 
-  const title = `${esc(l.brand)} ${esc(l.model)} — ${fmtPrice(l.asking_price)} د.ع`;
+  // The status has to be in the SHARED text, not only in the page's <h1>.
+  // A sold phone previewed as available at full price, so every forward of
+  // that link sent someone to a seller with nothing to sell — and the badge
+  // was sitting right there, one line below, in the heading nobody sees in a
+  // chat preview.
+  const statusAr = l.status === 'sold' ? 'تم البيع'
+    : l.status === 'reserved' ? 'محجوز'
+    : l.status === 'expired' ? 'انتهى الإعلان' : '';
+  const statusPrefix = statusAr ? `[${statusAr}] ` : '';
+  // A call-for-price listing carries a sentinel asking_price of 1; printing
+  // it as a price is the same bug #9 fixed in the app.
+  const priceAr = l.price_on_request ? 'السعر عند الطلب' : `${fmtPrice(l.asking_price)} د.ع`;
+  const title = `${statusPrefix}${esc(l.brand)} ${esc(l.model)} — ${priceAr}`;
   const locality = [govAr(l.governorate), esc(l.city)].filter(Boolean).join(' - ');
   const condAr = COND_AR[l.condition] || esc(l.condition || '');
-  const desc = `${condAr}${l.storage ? ' · ' + esc(l.storage) : ''} · ${locality}`;
+  const desc = `${statusAr ? statusAr + ' · ' : ''}${condAr}${l.storage ? ' · ' + esc(l.storage) : ''} · ${locality}`;
+  // Metadata only — sharp reads the header, not the pixels. Wrapped because a
+  // missing or corrupt file must cost the share its dimensions, never the
+  // whole page: this route exists so a link previews at all.
+  let coverDims = null;
+  if (images[0]?.image_path) {
+    try {
+      const meta = await sharp('.' + images[0].image_path).metadata();
+      if (meta?.width && meta?.height) coverDims = { width: meta.width, height: meta.height };
+    } catch { coverDims = null; }
+  }
+
   const pageUrl = `${PUBLIC_BASE}/l/${l.id}`;
   const soldBadge = l.status === 'sold' ? '<span class="sold">تم البيع</span>'
     : l.status === 'reserved' ? '<span class="sold" style="background:#f59e0b">محجوز</span>' : '';
@@ -94,8 +124,20 @@ r.get('/:id(\\d+)', (req, res) => {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${esc(cover)}">
+${coverDims ? `<!-- WhatsApp is picky without dimensions: with none it often falls back to
+     a small square thumbnail or skips the image on a slow fetch. Measured
+     from the actual file rather than assumed — uploads are not a fixed size
+     (a sampled one is 1280x960, not the square you might guess), and WRONG
+     dimensions are worse than none because crawlers lay out from them. -->
+<meta property="og:image:width" content="${coverDims.width}">
+<meta property="og:image:height" content="${coverDims.height}">` : ''}
+<meta property="og:image:alt" content="${esc(`${l.brand} ${l.model}`)}">
+<meta property="og:locale" content="ar_IQ">
 <meta property="og:url" content="${pageUrl}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${title}">
+<meta name="twitter:description" content="${esc(desc)}">
+<meta name="twitter:image" content="${esc(cover)}">
 <style>
   :root{--accent:#D9583A;--deep:#B23F25;--cream:#ECE6DA;--ink:#1B1A18;--line:#e5ddd0}
   *{box-sizing:border-box}

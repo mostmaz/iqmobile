@@ -421,6 +421,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 // into the app if installed). WhatsApp/FB groups are where
                 // Iraqi phone trading actually happens, so this is free reach.
                 const url = `https://iqmobile.org/l/${id}`;
+                // Sharing was completely unmeasurable — no event anywhere —
+                // so "is the share button worth its place on the image?" had
+                // no answer. Fired on INTENT, before the sheet: iOS reports
+                // the chosen activity but Android does not, so counting
+                // completions would silently undercount the larger platform.
+                track('listing.share', {
+                  listing_id: id,
+                  brand: data.brand,
+                  seller_type: (data as any).seller_type ?? null,
+                });
                 Share.share({
                   message: `${deviceTitle(data.brand, data.model)} · ${isOnRequest(data as any) ? ON_REQUEST_LABEL : `${fmtIQD(data.asking_price)} د.ع`}\n${url}`,
                 }).catch(() => {});
