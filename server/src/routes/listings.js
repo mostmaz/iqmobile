@@ -809,6 +809,44 @@ r.get('/mine', requireAuth(), (req, res) => {
     );
     for (const r2 of withImgs) r2.advice = advice[r2.id] || null;
   }
+
+  // What the photo inspector found, in the seller's own words.
+  //
+  // `evidence` has always been generated as "one short Arabic sentence a
+  // seller would understand" (listingInspect.js) — authored for a
+  // seller-facing surface that was never built. Until now the seller's only
+  // feedback was silent removal on auto-reject: a listing vanished and
+  // nothing said why. A named, specific reason is the difference between
+  // "your ad was rejected" and "the back photo shows a crack you didn't
+  // mention".
+  //
+  // Only for the seller's OWN listings, and only where a verdict exists.
+  // Both inspection switches default off, so on most installs this attaches
+  // nothing at all and the UI must render nothing — never an empty card.
+  if (withImgs.length) {
+    const ids = withImgs.map((r2) => r2.id);
+    const rowsIns = db.prepare(
+      `SELECT listing_id, verdict, confidence, defects_json FROM listing_inspections
+        WHERE listing_id IN (${ids.map(() => '?').join(',')}) AND status='done'`,
+    ).all(...ids);
+    const byId = new Map(rowsIns.map((i) => [i.listing_id, i]));
+    for (const r2 of withImgs) {
+      const ins = byId.get(r2.id);
+      if (!ins) { r2.inspection = null; continue; }
+      let defects = [];
+      try { defects = JSON.parse(ins.defects_json || '[]'); } catch { defects = []; }
+      r2.inspection = {
+        verdict: ins.verdict,
+        confidence: ins.confidence,
+        // Only the sentence and the kind. `source` says whether we read it in
+        // their description or saw it in a photo, which is an operator's
+        // concern and reads as an accusation to a seller.
+        notes: defects
+          .filter((d) => d && d.evidence)
+          .map((d) => ({ kind: d.kind, evidence: String(d.evidence).slice(0, 300) })),
+      };
+    }
+  }
   res.json(withImgs);
 });
 

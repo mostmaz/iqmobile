@@ -8,6 +8,7 @@ import { Btn, Header, Pill } from '../../components/ui';
 import { IconSpark, IconTag } from '../../components/icons';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingAdvice } from '../../components/ListingAdvice';
+import { InspectionNotes } from '../../components/InspectionNotes';
 import { EmptyState } from '../../components/EmptyState';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { SHOW_PROMOTE } from '../../config/flags';
@@ -90,6 +91,15 @@ export default function MyListingsScreen({ navigation }: any) {
                   allowed to render — "12 views, 0 contacts" states a problem
                   and offers nothing. When the server has an opinion, lead
                   with it. */}
+              {/* Photo-check notes, below the advice card. Renders nothing at
+                  all when there is no verdict — which is most installs, since
+                  both inspection switches default off. */}
+              {(item as any).inspection?.notes?.length ? (
+                <View style={{ marginTop: -4, marginBottom: 10, paddingHorizontal: 4 }}>
+                  <InspectionNotes inspection={(item as any).inspection} />
+                </View>
+              ) : null}
+
               {item.advice ? (
                 <View style={{ marginTop: -4, marginBottom: 10, paddingHorizontal: 4 }}>
                   <ListingAdvice

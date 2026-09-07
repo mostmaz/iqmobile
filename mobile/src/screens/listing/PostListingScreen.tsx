@@ -14,6 +14,7 @@ import { GovPicker } from '../../components/GovPicker';
 import { districtHint } from '../../lib/governorates';
 import { CONDITIONS } from '../../lib/conditions';
 import { fieldsFor, type ConditionDetails } from '../../lib/conditionDetails';
+import { slotAt, nextSlot } from '../../lib/photoSlots';
 import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
@@ -973,19 +974,45 @@ export default function PostListingScreen({ navigation }: any) {
                 {images.length} / 3
               </Text>
             </View>
+            {/* Labelled slots, not a wall of identical squares. The label is
+                positional — we cannot verify what a photo actually shows, so
+                it reads as "photo three is usually the side", a prompt rather
+                than a claim about the picture above it. Past the fourth,
+                photos are unlabelled instead of wrongly labelled. */}
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
               {images.map((uri, i) => (
-                <View key={i} style={{ position: 'relative' }}>
+                <View key={i} style={{ position: 'relative', width: 100 }}>
                   <Img source={{ uri }} style={{ width: 100, height: 100, borderRadius: radius.md, backgroundColor: theme.surface }} />
                   <TouchableOpacity onPress={() => removeImg(i)} style={{ position: 'absolute', top: -6, left: -6, width: 22, height: 22, borderRadius: 999, backgroundColor: theme.danger, alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ color: '#fff' }}>×</Text>
                   </TouchableOpacity>
+                  {slotAt(i) ? (
+                    <Text numberOfLines={1} style={{
+                      fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle,
+                      textAlign: 'center', marginTop: 3,
+                    }}>
+                      {slotAt(i)!.label}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
               {images.length < 10 ? (
-                <TouchableOpacity onPress={pickImages} style={{ width: 100, height: 100, borderRadius: radius.md, borderWidth: 2, borderColor: theme.line, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>+ {ar.post.addImages}</Text>
-                </TouchableOpacity>
+                <View style={{ width: 100 }}>
+                  <TouchableOpacity onPress={pickImages} style={{ width: 100, height: 100, borderRadius: radius.md, borderWidth: 2, borderColor: theme.line, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                    {nextSlot(images.length) ? (
+                      <>
+                        <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.ink, textAlign: 'center' }}>
+                          + {nextSlot(images.length)!.label}
+                        </Text>
+                        <Text numberOfLines={2} style={{ fontFamily: fonts.ar, fontSize: 9.5, color: theme.subtle, textAlign: 'center', marginTop: 2 }}>
+                          {nextSlot(images.length)!.hint}
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>+ {ar.post.addImages}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               ) : null}
             </View>
 
