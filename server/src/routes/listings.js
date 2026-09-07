@@ -884,8 +884,12 @@ r.get('/compare', optionalAuth(), (req, res) => {
   // for and didn't get.
   const rows = db.prepare(`
     SELECT l.id, l.brand, l.model, l.storage, l.color, l.condition, l.battery_health,
-           l.asking_price, l.price_on_request, l.governorate, l.city, l.status,
+           l.asking_price, l.price_on_request, l.price_mode, l.governorate, l.city, l.status,
            l.created_at, l.seller_id,
+           -- Warranty was missing from compare entirely, and not merely
+           -- unrendered: it was never SELECTed, so the screen could not have
+           -- shown it. Accessories likewise. Both are things a buyer weighs.
+           l.warranty_status, l.accessories_json, l.condition_details_json,
            (SELECT i.image_path FROM listing_images i
              WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS image_path,
            u.display_name AS seller_name, u.shop_name, u.seller_type, u.verified

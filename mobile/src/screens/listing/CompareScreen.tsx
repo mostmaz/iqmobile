@@ -11,6 +11,8 @@
 // never stated. Show the differences; the buyer decides what they are worth.
 import React, { useEffect, useMemo, useState } from 'react';
 import { ON_REQUEST_LABEL } from '../../lib/priceMode';
+import { differs as rowDiffers, visibleRows, cellText, cellIsUnknown } from '../../lib/compareRows';
+import { conditionRows } from '../../lib/conditionDetails';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -34,6 +36,12 @@ type Row = {
   ltr?: boolean;
   /** Index of the best value, when "best" is unambiguous (price only). */
   best?: number | null;
+  /**
+   * Who was supposed to know. A `seller` row renders even when every column
+   * is empty — "neither said" is exactly the kind of thing this screen is
+   * for — while an empty `spec` row is our own catalogue gap and is noise.
+   */
+  kind?: 'seller' | 'spec';
 };
 
 export default function CompareScreen({ navigation }: any) {
@@ -75,23 +83,49 @@ export default function CompareScreen({ navigation }: any) {
     const out: Row[] = [
       {
         label: 'السعر',
+        kind: 'seller',
         values: items.map((i: any) => (
           i.price_on_request ? ON_REQUEST_LABEL : `${fmtIQD(i.asking_price)} د.ع`
         )),
         best: cheapest >= 0 ? cheapest : null,
       },
-      { label: 'الحالة', values: items.map((i: any) => (ar.listing as any)[i.condition] || i.condition) },
-      { label: 'السعة', values: items.map((i: any) => i.storage || null) },
-      { label: 'اللون', values: items.map((i: any) => i.color || null) },
+      { label: 'الحالة', kind: 'seller', values: items.map((i: any) => (ar.listing as any)[i.condition] || i.condition) },
+      { label: 'السعة', kind: 'seller', values: items.map((i: any) => i.storage || null) },
+      { label: 'اللون', kind: 'seller', values: items.map((i: any) => i.color || null) },
       {
         label: 'صحة البطارية',
+        kind: 'seller',
         values: items.map((i: any) => (i.battery_health ? `${arNum(i.battery_health)}٪` : null)),
       },
+      // Warranty was not merely unrendered — it was never SELECTed, so this
+      // screen could not have shown it. It is one of the first things a buyer
+      // weighs, and "neither seller said" is itself worth knowing.
+      { label: 'الضمان', kind: 'seller', values: items.map((i: any) => i.warranty_status || null) },
+      {
+        label: 'الملحقات',
+        kind: 'seller',
+        values: items.map((i: any) => {
+          try {
+            const a = JSON.parse(i.accessories_json || '[]');
+            return Array.isArray(a) && a.length ? a.join('، ') : null;
+          } catch { return null; }
+        }),
+      },
+      // The seller's own structured answers (#7), one row per question that
+      // at least one of the listings answered.
+      ...Array.from(new Set(
+        items.flatMap((i: any) => conditionRows(i.condition_details_json).map((c) => c.spec)),
+      )).map((spec) => ({
+        label: spec as string,
+        kind: 'seller' as const,
+        values: items.map((i: any) =>
+          conditionRows(i.condition_details_json).find((c) => c.spec === spec)?.label || null),
+      })),
       // The server stores governorates in English ("Baghdad"); every other
       // screen prints them in Arabic, and this table was the one place a
       // Latin word sat in the middle of an Arabic column.
-      { label: 'المحافظة', values: items.map((i: any) => (i.governorate ? arOf(i.governorate) : null)) },
-      { label: 'البائع', values: items.map((i: any) => i.seller_name || null) },
+      { label: 'المحافظة', kind: 'seller', values: items.map((i: any) => (i.governorate ? arOf(i.governorate) : null)) },
+      { label: 'البائع', kind: 'seller', values: items.map((i: any) => i.seller_name || null) },
       // ── the device itself ──
       {
         label: 'الشاشة',
@@ -116,12 +150,15 @@ export default function CompareScreen({ navigation }: any) {
       },
     ];
 
-    // Drop rows nobody has a value for — an empty row is noise in a table
-    // this narrow.
-    return out.filter((r) => r.values.some((v) => v != null && v !== ''));
+    // A seller row survives being empty ("neither said"); a catalogue row
+    // does not, because that blank is our gap rather than the listing's.
+    return visibleRows(out as any) as Row[];
   }, [items]);
 
-  const differs = (r: Row) => new Set(r.values.map((v) => v ?? '—')).size > 1;
+  // Unknown is a third state, not a value. Comparing `v ?? '—'` made
+  // "89%" versus "didn't say" a difference and tinted it as one, so "show
+  // only what differs" filled with rows that differ only in how much we know.
+  const differs = (r: Row) => rowDiffers(r as any);
 
   // "Show only what differs" — on two phones of the same model most rows
   // are identical, and scrolling past eight matching rows to find the two
@@ -303,12 +340,12 @@ export default function CompareScreen({ navigation }: any) {
                         style={{
                           fontFamily: r.best === vi ? fonts.arBold : (r.ltr ? fonts.ltr : fonts.ar),
                           fontSize: 12,
-                          color: r.best === vi ? theme.success : (v ? theme.ink : theme.subtle),
+                          color: r.best === vi ? theme.success : (cellIsUnknown(v) ? theme.subtle : theme.ink),
                           textAlign: r.ltr ? 'left' : 'right',
                           writingDirection: r.ltr ? 'ltr' : 'rtl',
                         }}
                       >
-                        {v ?? '—'}
+                        {cellText(v)}
                       </Text>
                       {r.best === vi ? (
                         <Text style={{ fontFamily: fonts.ar, fontSize: 9.5, color: theme.success, textAlign: 'right' }}>
