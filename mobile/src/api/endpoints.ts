@@ -52,6 +52,12 @@ export interface ListingImage {
 }
 
 export interface Listing {
+  /** Sentinel-priced: no public price, contact the seller (#9). */
+  price_on_request?: number | boolean | null;
+  /** 'fixed' | 'negotiable'. Absent on rows written before #9. */
+  price_mode?: string | null;
+  /** Structured condition answers (#7). */
+  condition_details?: Record<string, string> | null;
   id: number;
   seller_id: number;
   brand: string;

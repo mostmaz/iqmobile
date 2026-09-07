@@ -1103,6 +1103,12 @@ addColumnIfMissing('phone_listings', 'client_key TEXT');
 // Default '{}' so every existing listing reads as "asked nothing", which is
 // true, and is distinct from a seller who answered «غير معروف».
 addColumnIfMissing('phone_listings', "condition_details_json TEXT NOT NULL DEFAULT '{}'");
+
+// Is the asking price firm or open to an offer? `price_on_request` already
+// covered the third state (no public price) but is a supplier-import concept
+// the mobile wizard could never set; this is the everyday one. Default
+// 'fixed' so every existing listing keeps meaning exactly what it meant.
+addColumnIfMissing('phone_listings', "price_mode TEXT NOT NULL DEFAULT 'fixed'");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_client_key
   ON phone_listings(seller_id, client_key) WHERE client_key IS NOT NULL`);
 addColumnIfMissing('chats', 'closed_at INTEGER');

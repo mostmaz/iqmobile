@@ -1,4 +1,5 @@
 import React from 'react';
+import { isOnRequest, isNegotiable, ON_REQUEST_LABEL, NEGOTIABLE_LABEL } from '../lib/priceMode';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Img } from './Img';
 import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT, FONT_SCALE_RELAXED } from '../theme';
@@ -149,6 +150,7 @@ export function ListingCard({
         {!compact ? (
           <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
             <ChipTag>{(ar.listing as any)[listing.condition]}</ChipTag>
+            {isNegotiable(listing as any) ? <ChipTag>{NEGOTIABLE_LABEL}</ChipTag> : null}
             {listing.storage ? <ChipTag>{listing.storage}</ChipTag> : null}
             {listing.color ? <ChipTag>{listing.color}</ChipTag> : null}
           </View>
@@ -159,14 +161,26 @@ export function ListingCard({
               neighbours kept them inline, because a longer location on the
               same row competed for the width. The price is the thing that
               must never wrap; the location shrinks instead. */}
-          <Text
-            numberOfLines={1}
-            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-            style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3, flexShrink: 0 }}
-          >
-            {fmtIQD(listing.asking_price)}
-            <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
-          </Text>
+          {/* Same sentinel bug as the detail page: without this branch a
+              call-for-price listing showed «١ د.ع» on every card in the feed. */}
+          {isOnRequest(listing as any) ? (
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+              style={{ fontFamily: fonts.arBold, fontSize: compact ? 12.5 : 14, color: theme.ink, flexShrink: 0 }}
+            >
+              {ON_REQUEST_LABEL}
+            </Text>
+          ) : (
+            <Text
+              numberOfLines={1}
+              maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+              style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3, flexShrink: 0 }}
+            >
+              {fmtIQD(listing.asking_price)}
+              <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
+            </Text>
+          )}
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
             <IconPin size={12} color={theme.subtle} />
             {/* The location wins the shrink contest and the timestamp keeps

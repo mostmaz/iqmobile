@@ -16,6 +16,7 @@ import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIco
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { conditionRows } from '../../lib/conditionDetails';
+import { isOnRequest, isNegotiable, ON_REQUEST_LABEL, NEGOTIABLE_LABEL } from '../../lib/priceMode';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
@@ -399,7 +400,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 // Iraqi phone trading actually happens, so this is free reach.
                 const url = `https://iqmobile.org/l/${id}`;
                 Share.share({
-                  message: `${deviceTitle(data.brand, data.model)} · ${fmtIQD(data.asking_price)} د.ع\n${url}`,
+                  message: `${deviceTitle(data.brand, data.model)} · ${isOnRequest(data as any) ? ON_REQUEST_LABEL : `${fmtIQD(data.asking_price)} د.ع`}\n${url}`,
                 }).catch(() => {});
               }}>
                 <IconShare size={16} color="#fff" sw={1.7} />
@@ -463,12 +464,26 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
             <View>
               <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle }}>
-                {stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
+                {isOnRequest(data as any) ? 'السعر' : stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
               </Text>
-              <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: stale ? theme.subtle : theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
-                {fmtIQD(data.asking_price)}
-                <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
-              </Text>
+              {/* A call-for-price listing carries a SENTINEL asking_price of 1.
+                  There was no branch here, so it rendered «١ د.ع» — an iPhone
+                  advertised at one dinar. Say what is true instead. */}
+              {isOnRequest(data as any) ? (
+                <Text style={{ marginTop: 2, fontFamily: fonts.arBold, fontSize: 20, color: theme.ink }}>
+                  {ON_REQUEST_LABEL}
+                </Text>
+              ) : (
+                <Text style={{ marginTop: 2, fontFamily: fonts.ltrBold, fontSize: 30, color: stale ? theme.subtle : theme.accentDeep, fontWeight: '700', letterSpacing: -0.5 }}>
+                  {fmtIQD(data.asking_price)}
+                  <Text style={{ fontSize: 14, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
+                </Text>
+              )}
+              {isNegotiable(data as any) ? (
+                <Text style={{ marginTop: 2, fontFamily: fonts.ar, fontSize: 11.5, color: theme.success }}>
+                  {NEGOTIABLE_LABEL}
+                </Text>
+              ) : null}
 
               {/* What the same device costs new, at the same capacity. Sent
                   only on a confident match, so there is nothing to guard here

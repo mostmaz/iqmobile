@@ -10,6 +10,7 @@
 // a worse price — and a winner would be inventing a preference the buyer
 // never stated. Show the differences; the buyer decides what they are worth.
 import React, { useEffect, useMemo, useState } from 'react';
+import { ON_REQUEST_LABEL } from '../../lib/priceMode';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -75,7 +76,7 @@ export default function CompareScreen({ navigation }: any) {
       {
         label: 'السعر',
         values: items.map((i: any) => (
-          i.price_on_request ? 'اتصل للسعر' : `${fmtIQD(i.asking_price)} د.ع`
+          i.price_on_request ? ON_REQUEST_LABEL : `${fmtIQD(i.asking_price)} د.ع`
         )),
         best: cheapest >= 0 ? cheapest : null,
       },

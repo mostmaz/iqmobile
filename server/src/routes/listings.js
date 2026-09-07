@@ -444,8 +444,9 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         seller_id, brand, model, storage, color, condition, battery_health,
         warranty_status, accessories_json, asking_price, governorate, city,
         description, status, contact_phone, contact_whatsapp,
-        created_at, expires_at, updated_at, client_key, condition_details_json
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        created_at, expires_at, updated_at, client_key, condition_details_json,
+        price_mode
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       req.user.id, finalBrand, model, storage || null, color || null, condition,
@@ -467,6 +468,7 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       // dropped rather than rejected, so a newer app asking one more question
       // cannot make a listing fail to save.
       serializeConditionDetails(req.body.condition_details),
+      req.body.price_mode === 'negotiable' ? 'negotiable' : 'fixed',
     );
   const row = loadListing(ins.lastInsertRowid);
   // A device suggestion filed from the picker predates the listing, so it
@@ -1108,7 +1110,10 @@ r.get('/:id(\\d+)/similar', optionalAuth(), (req, res) => {
 });
 
 // ─── update listing ──────────────────────────────────────────────────
-const EDITABLE = ['storage','color','battery_health','warranty_status','asking_price','description','city','status'];
+// price_mode joins the list; price_on_request deliberately does NOT. It is
+// set by the import and the shop panel, and letting a phone edit toggle it
+// would let a seller blank a public price after buyers had seen it.
+const EDITABLE = ['storage','color','battery_health','warranty_status','asking_price','description','city','status','price_mode'];
 
 // Per-field max-length cap on PATCH. POST already has these via trim();
 // without the matching guard on PATCH, a seller could edit the listing
@@ -1169,6 +1174,13 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
     const cap = EDIT_CAPS[k];
     const value = cap ? trim(req.body[k], cap) : req.body[k];
     params.push(value);
+  }
+  // Only the two known values. An unvalidated PATCH here would let any
+  // string into the column and every `=== 'negotiable'` check downstream
+  // would silently read it as fixed.
+  if (req.body.price_mode !== undefined
+      && req.body.price_mode !== 'fixed' && req.body.price_mode !== 'negotiable') {
+    return res.status(400).json({ error: 'bad_price_mode' });
   }
   if (Array.isArray(req.body.accessories)) {
     fields.push('accessories_json=?');

@@ -15,6 +15,7 @@ import { districtHint } from '../../lib/governorates';
 import { CONDITIONS } from '../../lib/conditions';
 import { fieldsFor, type ConditionDetails } from '../../lib/conditionDetails';
 import { slotAt, nextSlot } from '../../lib/photoSlots';
+import { NEGOTIABLE_LABEL, type PriceMode } from '../../lib/priceMode';
 import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
@@ -142,6 +143,7 @@ export default function PostListingScreen({ navigation }: any) {
   const [color, setColor] = useState('');
   const [batteryHealth, setBatteryHealth] = useState('');
   const [conditionDetails, setConditionDetails] = useState<ConditionDetails>({});
+  const [priceMode, setPriceMode] = useState<PriceMode>('fixed');
   // Warranty defaults to "no warranty" — the most common case for used
   // resale listings, so the user only has to change it for the minority
   // case where official/shop warranty applies.
@@ -215,14 +217,14 @@ export default function PostListingScreen({ navigation }: any) {
     if (!draftReady || restoreAsk) return;
     if (!isDirty) return;
     saveDraft({
-      step, brand, model, condition, storage, color, batteryHealth, warranty, conditionDetails,
+      step, brand, model, condition, storage, color, batteryHealth, warranty, conditionDetails, priceMode,
       accessories, askingPrice, govAr, city, description, images,
       contactPhone, contactWhatsapp, waSameAsPhone,
       clientKey: clientKey.current,
     });
   }, [
     draftReady, restoreAsk, isDirty, step, brand, model, condition, storage, color,
-    batteryHealth, warranty, accessories, askingPrice, govAr, city, description, conditionDetails,
+    batteryHealth, warranty, accessories, askingPrice, govAr, city, description, conditionDetails, priceMode,
     images, contactPhone, contactWhatsapp, waSameAsPhone,
   ]);
 
@@ -239,6 +241,7 @@ export default function PostListingScreen({ navigation }: any) {
     setCondition(d.condition || 'used'); setStorage(d.storage || '128GB');
     setColor(d.color || ''); setBatteryHealth(d.batteryHealth || '');
     setConditionDetails(d.conditionDetails || {});
+    setPriceMode((d.priceMode as PriceMode) || 'fixed');
     setWarranty(d.warranty || 'بدون ضمان');
     setAccessories(Array.isArray(d.accessories) ? d.accessories : []);
     setAskingPrice(d.askingPrice || '');
@@ -435,6 +438,7 @@ export default function PostListingScreen({ navigation }: any) {
         brand, model, storage: storage || null, color: canonicalColor(color) || null,
         condition,
         condition_details: conditionDetails,
+        price_mode: priceMode,
         // Server ignores null; only Apple listings carry a battery value.
         battery_health: showBattery && batteryHealth ? Number(batteryHealth) : null,
         warranty_status: warranty,
@@ -900,6 +904,15 @@ export default function PostListingScreen({ navigation }: any) {
             ) : null}
             <View style={{ marginTop: 12, marginBottom: 12 }}>
               <GovPicker label="موقع الإعلان · المحافظة" valueAr={govAr} onChangeAr={setGovAr} />
+            </View>
+            {/* Is that price firm? The most common first message in the chat
+                thread is asking exactly this, so saying it here saves both
+                sides the exchange. Beside the guidance, because they answer
+                the same question — what the number means. */}
+            <FieldLabel style={{ marginTop: 12 }}>نوع السعر</FieldLabel>
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              <Pill active={priceMode === 'fixed'} onPress={() => setPriceMode('fixed')}>سعر ثابت</Pill>
+              <Pill active={priceMode === 'negotiable'} onPress={() => setPriceMode('negotiable')}>{NEGOTIABLE_LABEL}</Pill>
             </View>
             <AskingPriceGuidance brand={brand} model={model} storage={storage}
               condition={condition} governorate={GOV_AR_TO_EN[govAr]} askingPrice={Number(askingPrice)} />

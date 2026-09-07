@@ -7,6 +7,7 @@
 // height, so the feed below doesn't jump.
 
 import React, { useState } from 'react';
+import { ON_REQUEST_LABEL } from '../lib/priceMode';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { theme, fonts, FONT_SCALE_TIGHT } from '../theme';
 import { Img } from './Img';
@@ -79,7 +80,7 @@ export function HomeHubCard({
                 </Text>
                 <Text numberOfLines={1} maxFontSizeMultiplier={FONT_SCALE_TIGHT}
                   style={{ alignSelf: 'stretch', textAlign: 'center', marginTop: 1, fontFamily: fonts.ltrBold, fontSize: 10.5, color: theme.accentDeep }}>
-                  {p.price_on_request ? 'اتصل للسعر' : fmtIQD(p.asking_price)}
+                  {p.price_on_request ? ON_REQUEST_LABEL : fmtIQD(p.asking_price)}
                 </Text>
               </TouchableOpacity>
             ))}

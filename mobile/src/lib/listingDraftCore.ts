@@ -18,6 +18,8 @@ export interface ListingDraft {
   batteryHealth: string;
   /** Structured condition answers; absent on drafts saved before #7. */
   conditionDetails?: Record<string, string>;
+  /** 'fixed' | 'negotiable'; absent on drafts saved before #9. */
+  priceMode?: string;
   warranty: string;
   accessories: string[];
   askingPrice: string;
