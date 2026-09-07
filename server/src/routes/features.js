@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { FEATURED_CAP } from './listings.js';
 import { db, now } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
@@ -27,6 +28,14 @@ function normalizeIraqiPhone(input) {
 r.get('/features/tiers', (_req, res) => {
   res.json({
     tiers: OFFERED_TIERS,
+    // How featuring actually behaves, so the app can describe it instead of
+    // promising something vaguer and larger. `featured_cap` is the number of
+    // pinned slots at the top of a view; the rest of the featured pool is
+    // DEMOTED to its natural recency position, never hidden. Slots apply only
+    // to the default 'new' sort and only to page 1.
+    featured_cap: FEATURED_CAP,
+    featured_sort: 'new',
+    featured_first_page_only: true,
     carriers: CARRIERS,
     owner_phone: OWNER_PHONE,
     transfer_numbers: TRANSFER_NUMBERS,

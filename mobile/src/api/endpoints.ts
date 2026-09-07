@@ -686,6 +686,19 @@ export interface FeatureTiersResponse {
   ussd_templates: Partial<Record<FeatureCarrier, string>>;
   qi_card?: { account: string; name: string };
   carrier_prefixes?: Partial<Record<FeatureCarrier, string>>;
+  /**
+   * How featuring actually works, served rather than hardcoded.
+   *
+   * `featured_cap` is the number of pinned slots at the top of a view — the
+   * rest of the featured pool is DEMOTED to its natural recency position,
+   * never hidden. Slots apply only to the default 'new' sort and only to
+   * page 1. Optional because an older server does not send them; the UI
+   * falls back to describing rotation without a number rather than printing
+   * a 2 that may have drifted.
+   */
+  featured_cap?: number;
+  featured_sort?: string;
+  featured_first_page_only?: boolean;
 }
 export interface FeatureRequest {
   id: number;

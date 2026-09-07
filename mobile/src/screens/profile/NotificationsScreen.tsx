@@ -26,6 +26,12 @@ const KIND_LABEL: Record<string, string> = {
   'phone.unlocked': 'تم فتح رقم البائع',
   'rating.received': 'وصلك تقييم جديد',
   'listing.expired': 'انتهى إعلانك',
+  // Promotion review. admin/index.js has been sending these since featuring
+  // shipped; without a label the inbox rendered the literal string
+  // "feature.approved" — the notification worked, it just arrived looking
+  // like a bug at the moment the seller had just paid us.
+  'feature.approved': 'تمت الموافقة على ترويج إعلانك ✅',
+  'feature.rejected': 'لم تتم الموافقة على طلب الترويج',
   'saved_search.match': 'إعلان جديد يطابق بحثك المحفوظ',
   'wishlist.match': 'جهاز من قائمة رغباتك متوفر 🎯',
   'price.drop': 'انخفض سعر إعلان تراقبه 🔻',

@@ -750,7 +750,10 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                   ميّز إعلانك
                 </Text>
                 <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: 'rgba(255,255,255,0.9)', marginTop: 2, textAlign: 'right' }}>
-                  اظهر في أعلى النتائج وبِع أسرع — ابتداءً من 2,000 د.ع
+                  {/* Was «اظهر في أعلى النتائج وبِع أسرع». We cannot promise
+                      a faster sale, and "top of results" overstates two
+                      rotating slots. */}
+                  مكان مميّز في أعلى التصفّح — ابتداءً من 2,000 د.ع
                 </Text>
               </View>
               <View style={{ transform: [{ scaleX: -1 }] }}>

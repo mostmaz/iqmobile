@@ -512,6 +512,11 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
 // of the featured pool falls back to its natural recency position so the
 // feed never reads as all-ads.
 const FEATURED_CAP = 2;
+// Exported so /features/tiers can tell the app the real number. The
+// alternative was the client hardcoding a 2 that silently becomes a lie the
+// day this changes — and the whole point of #19 is copy that matches the
+// mechanism.
+export { FEATURED_CAP };
 
 // Suggestions are explicit alternatives; the browse route never substitutes a model.
 r.get('/search-suggestions', optionalAuth(), (req, res) => {

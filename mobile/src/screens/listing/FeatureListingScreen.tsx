@@ -8,6 +8,7 @@
 // the request from the dashboard after the airtime lands.
 
 import React, { useMemo, useState } from 'react';
+import { HowFeaturingWorks } from '../../components/HowFeaturingWorks';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -121,7 +122,9 @@ export default function FeatureListingScreen({ navigation, route }: any) {
       if (res?.paid_from_balance) {
         qc.invalidateQueries({ queryKey: ['wallet'] });
         qc.invalidateQueries({ queryKey: ['listing', listingId] });
-        Alert.alert('تم التمييز ✨', 'انخصم المبلغ من رصيدك وإعلانك هسه بأعلى القائمة.');
+        // Was: «إعلانك هسه بأعلى القائمة» — unqualified, and the mechanism
+        // cannot deliver it. There are two pinned slots and they rotate.
+        Alert.alert('تم التمييز ✨', 'انخصم المبلغ من رصيدك ودخل إعلانك ضمن الإعلانات المميّزة.');
         return;
       }
       // Straight to the dialer — the pending card renders when they return.
@@ -239,9 +242,15 @@ export default function FeatureListingScreen({ navigation, route }: any) {
           <StatusCard
             tone="ok"
             title="إعلانك مميّز ✨"
-            body={`سيظل في أعلى القائمة حتى ${new Date(existing.featured_until).toLocaleDateString('en-GB')}.`}
+            // Was: «سيظل في أعلى القائمة حتى …», which the rotation does not
+            // guarantee for a single refresh, let alone for a fortnight.
+            body={`ضمن الإعلانات المميّزة حتى ${new Date(existing.featured_until).toLocaleDateString('en-GB')}.`}
           />
         ) : null}
+
+        {/* What the seller is actually buying. Sits above the tier list so it
+            is read before the price, not after the payment. */}
+        <HowFeaturingWorks cap={data?.featured_cap} />
 
         {isLoading ? (
           <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
