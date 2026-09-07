@@ -15,6 +15,21 @@
 //   takes (messageId, code). Nothing on their side maps a phone back to its
 //   pending code.
 //
+// Their responses are HTTP 200 for almost everything, and come in TWO
+// shapes — reading only one of them is what broke the first live sign-in:
+//
+//   business outcome   { success: true,  messageId, status, cost, channel }
+//                      { success: false, message: 'Invalid OTP code' }
+//                      { success: false, message: 'Invalid message ID' }
+//   input validation   { error: 'OTP code must be exactly 6 digits',
+//                        code: 'INVALID_OTP_FORMAT' }
+//
+// So `success` is the verdict and `message` is the reason, EXCEPT when the
+// request never got as far as being a verdict, where it is `code`. There is
+// no `verified` field anywhere; an earlier version of this file looked for
+// one, matched nothing on a CORRECT code, and reported "we couldn't send the
+// code" on the verify step.
+//
 // Our own two-step flow (POST /auth/phone-login, then POST /auth/otp/verify)
 // only ever carries the phone — the app never sees a messageId, and it should
 // not: handing the client an opaque id to echo back adds a way to get it
@@ -40,6 +55,10 @@ const PENDING_TTL_MS = 10 * 60 * 1000;
 // only thing standing between an attacker and a six-digit space.
 const MAX_ATTEMPTS = 5;
 
+// ARQAM rejects anything but six digits with INVALID_OTP_FORMAT. Checking it
+// here turns a confusing round trip into an immediate, accurate answer.
+const CODE_RE = /^\d{6}$/;
+
 // Network deadline. A hung provider must not hold a signup request open.
 const TIMEOUT_MS = 15000;
 
@@ -61,8 +80,15 @@ function toE164(iraqiPhone) {
 export function otpConfigured() { return !!API_KEY; }
 export function otpRequired() { return process.env.OTP_REQUIRED === 'true'; }
 
-/** Their error codes → ours, so routes and the app keep one vocabulary. */
-function mapError(code, httpStatus) {
+/**
+ * Their failure vocabulary → ours, so routes and the app keep one.
+ *
+ * Takes both fields because they use both: `code` on a validation error and
+ * `message` on a business one. The message strings are prose and could be
+ * reworded by them at any time, so they are matched loosely and every
+ * unrecognised answer falls through to a generic failure — never to success.
+ */
+function mapError({ code, message, httpStatus }) {
   switch (code) {
     case 'INVALID_PHONE': return 'bad_phone';
     case 'RATE_LIMIT_PHONE':
@@ -71,11 +97,26 @@ function mapError(code, httpStatus) {
     case 'INVALID_CODE': return 'bad_code';
     case 'EXPIRED_CODE': return 'otp_expired';
     case 'MESSAGE_NOT_FOUND': return 'otp_expired';
+    case 'INVALID_OTP_FORMAT': return 'bad_code';
     case 'UNKNOWN_AUTH_TEMPLATE': return 'otp_send_failed';
-    default: return httpStatus === 401 || httpStatus === 403
-      ? 'otp_not_configured'
-      : 'otp_send_failed';
   }
+  const m = String(message || '').toLowerCase();
+  if (m.includes('invalid otp') || m.includes('incorrect')) return 'bad_code';
+  // "Invalid message ID" means the id we hold is unknown to them — spent,
+  // aged out, or never theirs. From the caller's side that is an expired
+  // code, and telling them to request a new one is the useful answer.
+  if (m.includes('message id') || m.includes('expired') || m.includes('not found')) return 'otp_expired';
+  if (m.includes('credit') || m.includes('balance')) return 'otp_unavailable';
+  if (m.includes('rate limit') || m.includes('too many')) return 'otp_rate_limited';
+  if (m.includes('phone')) return 'bad_phone';
+  return httpStatus === 401 || httpStatus === 403
+    ? 'otp_not_configured'
+    : 'otp_send_failed';
+}
+
+/** Pull the reason out of whichever shape came back. */
+function reasonOf(data) {
+  return { code: data?.code || data?.error || null, message: data?.message || null };
 }
 
 async function arqam(path, body) {
@@ -115,14 +156,14 @@ export async function sendCode(iraqiPhone) {
   // who must control the value, and we are not one.
   const r = await arqam('/sms/otp', { phoneNumber: to, templateName: TEMPLATE });
 
-  if (!r.ok || !r.data?.success || !r.data?.messageId) {
+  if (!r.ok || r.data?.success !== true || !r.data?.messageId) {
     if (r.transport) {
       console.warn('[otp] send transport failure:', r.transport);
       return { ok: false, error: 'otp_send_failed' };
     }
-    const code = r.data?.error || r.data?.code || null;
-    console.warn('[otp] send rejected:', r.httpStatus, code);
-    return { ok: false, error: mapError(code, r.httpStatus) };
+    const { code, message } = reasonOf(r.data);
+    console.warn('[otp] send rejected:', r.httpStatus, code, message);
+    return { ok: false, error: mapError({ code, message, httpStatus: r.httpStatus }) };
   }
 
   // One pending code per phone. A second request replaces the first, which
@@ -135,12 +176,20 @@ export async function sendCode(iraqiPhone) {
        message_id=excluded.message_id, attempts=0, created_at=excluded.created_at`,
   ).run(iraqiPhone, String(r.data.messageId), now());
 
-  return { ok: true, channel: 'whatsapp', status: r.data.status || 'sent' };
+  // They choose the channel (SMS fallback for a number with no WhatsApp), so
+  // report the one they actually used. Saying «واتساب» over an SMS sends the
+  // user hunting through the wrong app for a code that is already in their
+  // inbox.
+  return {
+    ok: true,
+    channel: r.data.channel === 'sms' ? 'sms' : 'whatsapp',
+    status: r.data.status || 'sent',
+  };
 }
 
 export async function checkCode(iraqiPhone, code) {
   if (!API_KEY) return { ok: false, error: 'otp_not_configured' };
-  if (typeof code !== 'string' || !/^\d{4,10}$/.test(code)) {
+  if (typeof code !== 'string' || !CODE_RE.test(code)) {
     return { ok: false, error: 'bad_code' };
   }
 
@@ -166,23 +215,28 @@ export async function checkCode(iraqiPhone, code) {
     return { ok: false, error: 'otp_check_failed' };
   }
 
-  if (r.ok && r.data?.verified === true) {
+  if (r.ok && r.data?.success === true) {
     // Consume it. Without this a code stays valid for its full window and can
     // be replayed to mint a second session.
     db.prepare('DELETE FROM otp_pending WHERE phone=?').run(iraqiPhone);
     return { ok: true, approved: true };
   }
 
-  const errCode = r.data?.error || r.data?.code || null;
+  const { code: errCode, message } = reasonOf(r.data);
+  const mapped = mapError({ code: errCode, message, httpStatus: r.httpStatus });
+
   // A wrong code is a normal answer, not a provider failure: report it as
-  // "not approved" so the route replies 401 rather than 502.
-  if (errCode === 'INVALID_CODE' || r.data?.verified === false) {
-    return { ok: true, approved: false };
-  }
-  if (errCode === 'EXPIRED_CODE' || errCode === 'MESSAGE_NOT_FOUND') {
+  // "not approved" so the route replies 401 rather than 502. The row stays,
+  // so the attempt counter above still governs how many guesses they get.
+  if (mapped === 'bad_code') return { ok: true, approved: false };
+
+  if (mapped === 'otp_expired') {
     db.prepare('DELETE FROM otp_pending WHERE phone=?').run(iraqiPhone);
     return { ok: false, error: 'otp_expired' };
   }
-  console.warn('[otp] verify rejected:', r.httpStatus, errCode);
-  return { ok: false, error: mapError(errCode, r.httpStatus) };
+  // Log the body's own words, not just our translation of them — the first
+  // failure of this integration was invisible precisely because the log said
+  // `null` where the answer was sitting in a field nobody read.
+  console.warn('[otp] verify rejected:', r.httpStatus, errCode, message);
+  return { ok: false, error: mapped };
 }

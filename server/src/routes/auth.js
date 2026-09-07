@@ -289,7 +289,9 @@ r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
   const phone = normalizePhone(req.body?.phone);
   const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
   if (!phone) return res.status(400).json({ error: 'bad_phone' });
-  if (!/^\d{4,10}$/.test(code)) return res.status(400).json({ error: 'bad_code' });
+  // Six exactly — ARQAM's own validator rejects any other length, so a
+  // looser check here just buys a slower, vaguer answer.
+  if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'bad_code' });
   if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
 
   const check = await checkCode(phone, code);
