@@ -202,6 +202,25 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // clock. Native-driven so it never lags the finger.
   const scrollY = React.useRef(new Animated.Value(0)).current;
 
+  // Remember this device locally for the "recently viewed" rail. Cached
+  // fields only (brand, model, first image) so the rail renders on a cold
+  // start without a fetch.
+  //
+  // MUST stay above the early returns below. Placed after them it runs only
+  // once `data` has arrived, so the second render calls one more hook than
+  // the first — "Rendered more hooks than during the previous render", which
+  // is a hard crash, not a warning. `data?.id` in the deps and the guard
+  // inside are what make it safe to run on the loading render too.
+  useEffect(() => {
+    if (!data?.id) return;
+    noteViewed({
+      id: data.id,
+      brand: data.brand,
+      model: data.model,
+      image_path: data.images?.[0]?.image_path ?? null,
+    });
+  }, [data?.id]);
+
   // `isLoading || !data` used to cover BOTH "still loading" and "the request
   // failed", so a dropped connection shimmered forever — no error, no retry,
   // nothing to do but go back. It also made the server's own `not_found`
@@ -355,19 +374,6 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const statusLabel = (ar.listing as any)[status] || status;
   // "Last known price" — a price-aggregator device that dropped off the
   // sources' lists. Grey the price + show an unavailable banner.
-  // Remember this device locally for the "recently viewed" rail. Cached
-  // fields only (brand, model, first image) so the rail renders on a cold
-  // start without a fetch.
-  useEffect(() => {
-    if (!data?.id) return;
-    noteViewed({
-      id: data.id,
-      brand: data.brand,
-      model: data.model,
-      image_path: data.images?.[0]?.image_path ?? null,
-    });
-  }, [data?.id]);
-
   const stale = !!(data as any).stale_since;
 
   return (

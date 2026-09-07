@@ -17,10 +17,19 @@ export default function RateUserScreen({ route, navigation }: any) {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // No deal id = nothing to rate; leave on the next tick rather than during
+  // render, which would trip "cannot update component during render".
+  //
+  // The hook is OUTSIDE the `if` and guards internally. It used to sit inside
+  // it, which is a conditional hook: the render with no dealId called one more
+  // hook than the render with one, and React aborts on that mismatch with
+  // "Rendered more hooks than during the previous render". Same defect that
+  // crashed 0.4.0 on the listing page — found by the new lint rule, not by us.
+  React.useEffect(() => {
+    if (!dealId) navigation.goBack();
+  }, [dealId, navigation]);
+
   if (!dealId) {
-    // No deal id = nothing to rate. goBack on next tick to avoid the
-    // "cannot update component during render" warning.
-    React.useEffect(() => { navigation.goBack(); }, [navigation]);
     return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
   }
 
