@@ -68,6 +68,19 @@ export function getBaseUrl() {
   return baseUrl;
 }
 
+// Every finished request is a free measurement of whether our server is
+// reachable, so hand the outcome to whoever is keeping score. A sink rather
+// than a direct import because reachability.ts needs getBaseUrl() from here,
+// and two modules importing each other is a cycle Metro resolves in whichever
+// order it feels like. See lib/reachability.ts.
+let outcomeSink: ((reachable: boolean) => void) | null = null;
+export function setRequestOutcomeSink(fn: ((reachable: boolean) => void) | null) {
+  outcomeSink = fn;
+}
+function reportOutcome(reachable: boolean) {
+  try { outcomeSink?.(reachable); } catch {}
+}
+
 export async function api<T = any>(
   path: string,
   init: RequestInit = {},
@@ -111,6 +124,7 @@ export async function api<T = any>(
     // An abort we caused is a timeout as far as callers are concerned; give
     // it a stable code so screens can tell "slow network" from "server said
     // no". Anything else is a genuine transport failure.
+    reportOutcome(false);
     if (timedOut || e?.name === 'AbortError') {
       const err: any = new Error('network_timeout');
       err.isTimeout = true;
@@ -123,6 +137,10 @@ export async function api<T = any>(
   } finally {
     clearTimeout(timer);
   }
+  // We have a response. Whatever its status says, the server answered — that
+  // is the only thing reachability is asking about.
+  reportOutcome(true);
+
   const text = await res.text();
   let data: any = null;
   try {

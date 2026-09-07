@@ -36,7 +36,7 @@ if (sentryDsn) {
 }
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { PostHogProvider } from 'posthog-react-native';
 
 // PostHog — product analytics (DAU, funnels, retention, screen views,
@@ -54,13 +54,21 @@ import {
 import { Inter_500Medium, Inter_700Bold } from '@expo-google-fonts/inter';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { AuthProvider } from './src/auth/AuthContext';
+import { queryClient, persister, CACHE_MAX_AGE } from './src/lib/queryClient';
+import { shouldPersistQuery } from './src/lib/queryCachePolicy';
+import { startReachability } from './src/lib/reachability';
+import { OfflineBanner } from './src/components/OfflineBanner';
 import { CartProvider } from './src/lib/cart';
 import { CompareProvider } from './src/lib/compare';
 import RootNav from './src/navigation';
 import { loadLang, onLangChange } from './src/i18n/ar';
 import { theme } from './src/theme';
 
-const queryClient = new QueryClient();
+// Reachability must be running before the first query fires, or react-query
+// starts out assuming it is online and the first offline launch spends two
+// full deadlines finding out otherwise. Module scope, not an effect: effects
+// run after the tree renders, and the tree renders queries.
+startReachability();
 
 // allowRTL is fine — it just permits opt-in writingDirection where used.
 // We do NOT call forceRTL(true) because the codebase relies on explicit
@@ -139,19 +147,36 @@ function AppInner() {
 
   const body = (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister,
+          maxAge: CACHE_MAX_AGE,
+          // Bump this to throw away every restored cache — needed whenever a
+          // response shape changes, since a persisted old shape would be
+          // rendered by new code that expects the new one.
+          buster: 'v1',
+          dehydrateOptions: {
+            shouldDehydrateQuery: (q) =>
+              q.state.status === 'success' && shouldPersistQuery(q.queryKey),
+          },
+        }}
+      >
         <AuthProvider>
           <CartProvider>
             <CompareProvider>
             {/* key={langKey} remounts the whole nav tree when the language
                 changes, so every screen re-reads the (in-place swapped)
                 string dictionary in the new language. */}
+            {/* Above the nav tree, not over it: this pushes content down
+                for the few seconds it is up rather than hiding a row of it. */}
+            <OfflineBanner />
             <RootNav key={langKey} />
             <StatusBar style="dark" />
             </CompareProvider>
           </CartProvider>
         </AuthProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </SafeAreaProvider>
   );
 

@@ -20,6 +20,11 @@ import { subscribeSSE } from '../../sse/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useNotificationPermission } from '../../push/permission';
 import { NotificationGate } from '../../components/NotificationGate';
+import { useOnline } from '../../components/OfflineBanner';
+import {
+  useOutbox, queueMessage, markSent, markFailed, markPending, drop, peekNext,
+} from '../../lib/chatOutbox';
+import { isAcknowledged, type OutboxEntry } from '../../lib/chatOutboxCore';
 
 // Hide the propose-price / accept / counter / seller-confirm flow for v1.
 // The phone numbers are now public on each listing, so we don't need the
@@ -56,6 +61,8 @@ export default function ChatScreen({ route, navigation }: any) {
   // mounted (the queries keep the thread warm) and only the render is
   // swapped, so granting drops the user straight into a loaded conversation.
   const perm = useNotificationPermission();
+  const online = useOnline();
+  const outbox = useOutbox(id);
 
   const { data: chat } = useQuery<Chat>({
     queryKey: ['chat', id],
@@ -70,9 +77,20 @@ export default function ChatScreen({ route, navigation }: any) {
     // updates working even when SSE silently fails; React Query dedupes
     // against the SSE-triggered invalidation. Stops automatically when
     // the screen unmounts (no observer = no fetch).
-    refetchInterval: 3000,
+    // 3s while we can actually reach the server; nothing at all when we
+    // cannot. On a dead connection this was 20 requests a minute, each
+    // burning a full 20s deadline — pure battery for guaranteed failures.
+    // Reachability re-dials SSE and refetches the moment it returns.
+    refetchInterval: online ? 3000 : false,
   });
   const { data: quick } = useQuery({ queryKey: ['quickMessages'], queryFn: Chats.quickMessages });
+
+  // Queued messages render after everything the server knows about — they
+  // are, by definition, the newest thing in the conversation.
+  const feed: any[] = [
+    ...(messages || []),
+    ...outbox.map((e) => ({ __outbox: e })),
+  ];
 
   const refresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['chat', id] });
@@ -104,18 +122,54 @@ export default function ChatScreen({ route, navigation }: any) {
     };
   }, [messages?.length]);
 
+  /**
+   * Queue, then send. The input clears immediately and the message appears
+   * as a pending bubble, because on a slow link the old flow gave twenty
+   * seconds of nothing and people retyped.
+   *
+   * No Alert on failure any more: the bubble carries its own failed state
+   * and its own retry, which survives leaving the screen. A modal cannot.
+   */
   async function send() {
-    if (!body.trim() || sending) return;
-    setSending(true); setWarning(null);
+    const text = body.trim();
+    if (!text || !user) return;
+    const entry = queueMessage(id, text);
+    setBody('');
+    setWarning(null);
+    deliver(entry.key, text);
+  }
+
+  async function deliver(key: string, text: string) {
+    markPending(key);
     try {
-      const r = await Chats.sendText(id, body);
-      setBody('');
+      const r = await Chats.sendText(id, text);
+      markSent(key);
       if (r.blocked) setWarning(ar.chat.blockedHint);
       refresh();
     } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
-    } finally { setSending(false); }
+      markFailed(key, e?.message || 'network_error');
+    }
   }
+
+  // Drain on reconnect: send the oldest queued message for this chat, one at
+  // a time. Sequential rather than parallel because a conversation delivered
+  // out of order is worse than one delivered late.
+  useEffect(() => {
+    if (!online) return;
+    const next = peekNext(id);
+    if (!next || next.state === 'pending') return;
+    deliver(next.key, next.body);
+  }, [online, outbox.length, outbox.map((e) => e.state).join(), id]);
+
+  // A send whose RESPONSE was lost leaves an entry queued for a message that
+  // really did arrive. Once the thread shows it, drop the duplicate rather
+  // than offering the user a retry that would post it twice.
+  useEffect(() => {
+    if (!messages || !user) return;
+    for (const e of outbox) {
+      if (isAcknowledged(e, messages as any, user.id)) drop(e.key);
+    }
+  }, [messages, outbox.length, user?.id]);
 
   async function sendQuick(s: string) {
     // Early-return when already sending — rapid taps on a quick-reply chip
@@ -321,20 +375,28 @@ export default function ChatScreen({ route, navigation }: any) {
 
       <FlatList
         ref={listRef}
-        data={messages || []}
-        keyExtractor={(it) => String(it.id)}
+        data={feed}
+        keyExtractor={(it: any) => (it.__outbox ? `ob:${it.__outbox.key}` : String(it.id))}
         // contentContainerStyle uses flexGrow:1 so the empty-state View
         // can `flex:1` to center itself vertically inside the list area
         // (without it the empty state hugs the top because the
         // ListEmptyComponent only gets the minimum height it asks for).
         contentContainerStyle={{ padding: 12, paddingBottom: 16, gap: 6, flexGrow: 1 }}
-        renderItem={({ item }) => <MessageBubble m={item} mine={item.sender_id === user?.id} />}
+        renderItem={({ item }: any) => (item.__outbox
+          ? (
+            <PendingBubble
+              entry={item.__outbox}
+              onRetry={() => deliver(item.__outbox.key, item.__outbox.body)}
+              onDiscard={() => drop(item.__outbox.key)}
+            />
+          )
+          : <MessageBubble m={item} mine={item.sender_id === user?.id} />)}
         // Empty state for a fresh chat — no messages yet. Sender opens
         // the chat from a listing detail (POST /listings/:id/chat
         // either reuses or creates), so the most useful prompt is "say
         // hi" rather than just blank space.
         ListEmptyComponent={
-          messages === undefined ? null : (
+          messages === undefined || feed.length > 0 ? null : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
               <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center', marginBottom: 6 }}>
                 {ar.chat.noMessagesTitle}
@@ -403,6 +465,66 @@ export default function ChatScreen({ route, navigation }: any) {
         onCancel={() => setCounterOpen(false)} onSubmit={counterOffer}
       />
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * A message the user has sent that the server has not accepted yet.
+ *
+ * Shaped like their own bubble on purpose — it IS their message, and drawing
+ * it differently would read as "this didn't send" for the ordinary second it
+ * spends in flight. Only the footer changes: a clock while pending, and a
+ * retry when it has actually failed.
+ *
+ * The retry is per message. A single "retry all" would re-send messages the
+ * user may have given up on, and offers no way to abandon just one.
+ */
+function PendingBubble({
+  entry, onRetry, onDiscard,
+}: { entry: OutboxEntry; onRetry: () => void; onDiscard: () => void }) {
+  const failed = entry.state === 'failed';
+  return (
+    <View style={{
+      alignSelf: 'flex-start',
+      maxWidth: '78%',
+      backgroundColor: theme.ink,
+      borderRadius: 16,
+      borderBottomLeftRadius: 6,
+      borderBottomRightRadius: 16,
+      paddingHorizontal: 13, paddingVertical: 10,
+      opacity: failed ? 1 : 0.6,
+    }}>
+      <Text style={{
+        fontFamily: fonts.ar, fontSize: 14, color: theme.bg,
+        lineHeight: 20, textAlign: 'right',
+      }}>
+        {entry.body}
+      </Text>
+      {failed ? (
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginTop: 6 }}>
+          <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.dangerInk }}>
+            لم تُرسل
+          </Text>
+          <TouchableOpacity onPress={onRetry} accessibilityRole="button">
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.bg }}>
+              إعادة الإرسال
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onDiscard} accessibilityRole="button">
+            <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: 'rgba(245,240,230,0.6)' }}>
+              حذف
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Text style={{
+          marginTop: 4, fontFamily: fonts.mono, fontSize: 10,
+          color: 'rgba(245,240,230,0.6)', textAlign: 'left', writingDirection: 'ltr',
+        }}>
+          ⏳
+        </Text>
+      )}
+    </View>
   );
 }
 
