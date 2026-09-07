@@ -2,7 +2,7 @@
   "expo": {
     "name": "IQ Mobile",
     "slug": "iqmobile",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "scheme": "iqmobile",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ECE6DA"
       },
-      "versionCode": 55,
+      "versionCode": 56,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -55,7 +55,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "45"
+      "buildNumber": "46"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
