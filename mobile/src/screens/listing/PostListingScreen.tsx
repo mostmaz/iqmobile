@@ -13,6 +13,7 @@ import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/u
 import { GovPicker } from '../../components/GovPicker';
 import { districtHint } from '../../lib/governorates';
 import { CONDITIONS } from '../../lib/conditions';
+import { fieldsFor, type ConditionDetails } from '../../lib/conditionDetails';
 import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
@@ -139,6 +140,7 @@ export default function PostListingScreen({ navigation }: any) {
   const [storage, setStorage] = useState('128GB');
   const [color, setColor] = useState('');
   const [batteryHealth, setBatteryHealth] = useState('');
+  const [conditionDetails, setConditionDetails] = useState<ConditionDetails>({});
   // Warranty defaults to "no warranty" — the most common case for used
   // resale listings, so the user only has to change it for the minority
   // case where official/shop warranty applies.
@@ -152,7 +154,7 @@ export default function PostListingScreen({ navigation }: any) {
   const [city, setCity] = useState('');
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<string[]>([]);
-  const qualityIssues = listingQuality({ brand, model, condition, description, images });
+  const qualityIssues = listingQuality({ brand, model, condition, description, images, conditionDetails });
   // Optional video: local uri after compression, plus a busy flag while the
   // compressor runs (it can take a few seconds on a long clip).
   const [video, setVideo] = useState<{ uri: string; sizeMB: number | null; compressed: boolean } | null>(null);
@@ -184,6 +186,7 @@ export default function PostListingScreen({ navigation }: any) {
   // draft worth saving.
   const isDirty =
     !!brand || !!model || !!color || !!batteryHealth || accessories.length > 0 ||
+    Object.keys(conditionDetails).length > 0 ||
     !!askingPrice || !!city || !!description || images.length > 0 ||
     !!contactPhone || !!contactWhatsapp;
 
@@ -211,14 +214,14 @@ export default function PostListingScreen({ navigation }: any) {
     if (!draftReady || restoreAsk) return;
     if (!isDirty) return;
     saveDraft({
-      step, brand, model, condition, storage, color, batteryHealth, warranty,
+      step, brand, model, condition, storage, color, batteryHealth, warranty, conditionDetails,
       accessories, askingPrice, govAr, city, description, images,
       contactPhone, contactWhatsapp, waSameAsPhone,
       clientKey: clientKey.current,
     });
   }, [
     draftReady, restoreAsk, isDirty, step, brand, model, condition, storage, color,
-    batteryHealth, warranty, accessories, askingPrice, govAr, city, description,
+    batteryHealth, warranty, accessories, askingPrice, govAr, city, description, conditionDetails,
     images, contactPhone, contactWhatsapp, waSameAsPhone,
   ]);
 
@@ -234,6 +237,7 @@ export default function PostListingScreen({ navigation }: any) {
     setBrand(d.brand || ''); setModel(d.model || '');
     setCondition(d.condition || 'used'); setStorage(d.storage || '128GB');
     setColor(d.color || ''); setBatteryHealth(d.batteryHealth || '');
+    setConditionDetails(d.conditionDetails || {});
     setWarranty(d.warranty || 'بدون ضمان');
     setAccessories(Array.isArray(d.accessories) ? d.accessories : []);
     setAskingPrice(d.askingPrice || '');
@@ -429,6 +433,7 @@ export default function PostListingScreen({ navigation }: any) {
       const listing = await Listings.create({
         brand, model, storage: storage || null, color: canonicalColor(color) || null,
         condition,
+        condition_details: conditionDetails,
         // Server ignores null; only Apple listings carry a battery value.
         battery_health: showBattery && batteryHealth ? Number(batteryHealth) : null,
         warranty_status: warranty,
@@ -734,6 +739,37 @@ export default function PostListingScreen({ navigation }: any) {
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
               {CONDITIONS.map((c) => <Pill key={c} active={condition === c} onPress={() => setCondition(c)}>{(ar.listing as any)[c]}</Pill>)}
             </View>
+
+            {/* Structured condition. Skipped entirely for new/sealed — a
+                boxed phone has no repair history to ask about, and asking
+                anyway teaches sellers the form is not paying attention.
+                These are SUGGESTIONS, never a gate: leaving them blank still
+                publishes. What they buy is the prose nags standing down and
+                a listing page that answers the buyer's first three questions
+                without a paragraph. */}
+            {fieldsFor(condition).map((f) => (
+              <View key={f.id}>
+                <FieldLabel>{f.question}</FieldLabel>
+                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                  {f.options.map((o) => (
+                    <Pill
+                      key={o.value}
+                      active={conditionDetails[f.id] === o.value}
+                      onPress={() => setConditionDetails((prev) => (
+                        // Tapping the chosen answer again clears it: an answer
+                        // given by accident must be retractable, and «غير
+                        // معروف» is a different statement from saying nothing.
+                        prev[f.id] === o.value
+                          ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== f.id))
+                          : { ...prev, [f.id]: o.value }
+                      ))}
+                    >
+                      {o.label}
+                    </Pill>
+                  ))}
+                </View>
+              </View>
+            ))}
             <FieldLabel>{ar.listing.storage}</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
               {STORAGE_CHOICES.map((s) => <Pill key={s} active={storage === s} onPress={() => setStorage(s)}>{s}</Pill>)}

@@ -16,6 +16,8 @@ export interface ListingDraft {
   storage: string;
   color: string;
   batteryHealth: string;
+  /** Structured condition answers; absent on drafts saved before #7. */
+  conditionDetails?: Record<string, string>;
   warranty: string;
   accessories: string[];
   askingPrice: string;

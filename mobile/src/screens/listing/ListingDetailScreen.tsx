@@ -15,6 +15,7 @@ import { Btn, Card, fmtIQD } from '../../components/ui';
 import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock, IconCompare } from '../../components/icons';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
 import { ChipTag, SpecRow } from '../../components/marketplace';
+import { conditionRows } from '../../lib/conditionDetails';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
@@ -750,7 +751,25 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               <SpecRow label={ar.listing.battery} value={`${data.battery_health}%`} />
             ) : null}
             {data.warranty_status ? <SpecRow label="الضمان" value={data.warranty_status} /> : null}
-            {data.accessories?.length ? <SpecRow label={ar.listing.accessories} value={data.accessories.join('، ')} last /> : null}
+            {data.accessories?.length ? (
+              <SpecRow
+                label={ar.listing.accessories}
+                value={data.accessories.join('، ')}
+                last={conditionRows((data as any).condition_details).length === 0}
+              />
+            ) : null}
+            {/* The seller's own answers about condition. `last` moved here
+                off the accessories row: it was hardcoded there, so adding any
+                row below it left a stray divider under the final entry. */}
+            {conditionRows((data as any).condition_details).map((r, i, all) => (
+              <SpecRow
+                key={r.id}
+                label={r.spec}
+                value={r.label}
+                muted={r.label === 'غير معروف'}
+                last={i === all.length - 1}
+              />
+            ))}
           </Card>
         </View>
 
@@ -868,6 +887,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             warranty_status: data.warranty_status,
           }}
           conditionLabel={(ar.listing as any)[data.condition] || data.condition}
+          conditionDetails={(data as any).condition_details}
         />
 
         {/* The compare shortcut, spelled out. The icon over the photo is

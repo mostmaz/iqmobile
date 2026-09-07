@@ -1093,6 +1093,16 @@ addColumnIfMissing('phone_listings', 'sale_price INTEGER');
 // twin. Scoped per seller so keys never have to be globally unique, and
 // partial so the years of rows that predate it don't collide on NULL.
 addColumnIfMissing('phone_listings', 'client_key TEXT');
+
+// Structured condition answers (screen / body / repairs / water). One JSON
+// column rather than four, following accessories_json: the question set will
+// grow, and a migration per question is not a plan. Values are validated
+// against conditionDetails.js, which draws them from the SAME vocabulary the
+// AI inspector uses — that is what makes a seller's declaration and the
+// photo verdict directly comparable instead of prose versus an enum.
+// Default '{}' so every existing listing reads as "asked nothing", which is
+// true, and is distinct from a seller who answered «غير معروف».
+addColumnIfMissing('phone_listings', "condition_details_json TEXT NOT NULL DEFAULT '{}'");
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_client_key
   ON phone_listings(seller_id, client_key) WHERE client_key IS NOT NULL`);
 addColumnIfMissing('chats', 'closed_at INTEGER');

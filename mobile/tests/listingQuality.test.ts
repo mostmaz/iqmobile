@@ -29,3 +29,43 @@ test('repaired/refurbished listings receive specific repair disclosure guidance'
   assert.ok(issue?.advice.includes('الجزء المصلح'));
  }
 });
+
+// ── Structured answers silence the prose nags ───────────────────────────
+// Added with #7. The three rules below used to fire regardless of what the
+// seller had ticked, so a form that had just collected «الشاشة بلا خدوش»
+// went on to demand a paragraph about the screen. That is the app not
+// listening, and it is why these were the most ignored issues on the form.
+
+const base = {
+  brand: 'Apple', model: 'iPhone 13 Pro', condition: 'used',
+  description: 'جهاز نظيف بالكامل مع علبته الأصلية والشاحن.',
+  images: ['a.jpg', 'b.jpg', 'c.jpg'],
+};
+const idsOf = (d: any) => listingQuality(d).map((i) => i.id);
+
+test('an answered screen question silences the screen nag', () => {
+  assert.ok(idsOf(base).includes('screen'), 'precondition: it fires without an answer');
+  assert.ok(!idsOf({ ...base, conditionDetails: { screen: 'clean' } }).includes('screen'));
+});
+
+test('«غير معروف» silences it too — they were asked and they answered', () => {
+  assert.ok(!idsOf({ ...base, conditionDetails: { screen: 'unknown' } }).includes('screen'));
+});
+
+test('answering one question does not silence the others', () => {
+  const ids = idsOf({ ...base, conditionDetails: { screen: 'clean' } });
+  assert.ok(!ids.includes('screen'));
+  assert.ok(ids.includes('body'), 'body was never asked');
+  assert.ok(ids.includes('repairs'));
+});
+
+test('no structured answers leaves every prose rule exactly as it was', () => {
+  assert.deepEqual(idsOf({ ...base, conditionDetails: {} }), idsOf(base));
+  assert.deepEqual(idsOf({ ...base, conditionDetails: undefined }), idsOf(base));
+});
+
+test('a description that already covers the screen still silences it', () => {
+  // The prose route must keep working for sellers who write rather than tick.
+  const ids = idsOf({ ...base, description: 'الشاشة بلا خدوش والزجاج سليم.' });
+  assert.ok(!ids.includes('screen'));
+});

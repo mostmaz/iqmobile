@@ -27,6 +27,7 @@ import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
+import { parseConditionDetails, serializeConditionDetails, annotateDisclosure } from '../conditionDetails.js';
 
 const r = Router();
 
@@ -153,6 +154,9 @@ function attachImages(rows) {
       has_video: video_status === 'approved',
       images: [],
       accessories: JSON.parse(r.accessories_json || '[]'),
+      // Parsed on the way out, never handed over raw: a row written by an
+      // older/newer client must not reach the app as a value it cannot render.
+      condition_details: parseConditionDetails(r.condition_details_json),
     }];
   }));
   for (const im of imgs) byId.get(im.listing_id)?.images.push(im);
@@ -398,7 +402,13 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   // Disclosed damage is a different answer: the listing goes live and an
   // operator sees it. Held until the row exists, since the queue is keyed
   // on the listing id.
-  const damage = reviewListingQuality(model, description);
+  // Annotated with what the seller already ticked, so the operator can tell
+  // a seller confessing a crack from one hiding it. Both still reach the
+  // queue; only the framing differs.
+  const damage = annotateDisclosure(
+    reviewListingQuality(model, description),
+    req.body.condition_details,
+  );
   const rawPrice = Number(asking_price);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) return res.status(400).json({ error: 'bad_price' });
   // "500" means 500,000 — see priceScale.js. Applied here rather than in the
@@ -434,8 +444,8 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         seller_id, brand, model, storage, color, condition, battery_health,
         warranty_status, accessories_json, asking_price, governorate, city,
         description, status, contact_phone, contact_whatsapp,
-        created_at, expires_at, updated_at, client_key
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        created_at, expires_at, updated_at, client_key, condition_details_json
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       req.user.id, finalBrand, model, storage || null, color || null, condition,
@@ -453,6 +463,10 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       price, governorate, city || null, description || null,
       'active', phone, wa,
       created, expires, created, clientKey,
+      // Validated, not trusted: unknown questions and unknown answers are
+      // dropped rather than rejected, so a newer app asking one more question
+      // cannot make a listing fail to save.
+      serializeConditionDetails(req.body.condition_details),
     );
   const row = loadListing(ins.lastInsertRowid);
   // A device suggestion filed from the picker predates the listing, so it
@@ -1122,6 +1136,17 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
     fields.push('accessories_json=?');
     params.push(JSON.stringify(req.body.accessories));
   }
+  // Merged, not replaced. The edit screen sends only the questions it shows,
+  // and a straight overwrite would silently erase an answer given on a
+  // version of the form the current one does not render.
+  if (req.body.condition_details && typeof req.body.condition_details === 'object') {
+    const merged = {
+      ...parseConditionDetails(row.condition_details_json),
+      ...parseConditionDetails(req.body.condition_details),
+    };
+    fields.push('condition_details_json=?');
+    params.push(serializeConditionDetails(merged));
+  }
   if (fields.length === 0) return res.json(attachImages([row])[0]);
   // Stamp the moment of sale. Without this, "sold" is only a current-state
   // flag and no report can ask how many sold in a window — which is exactly
@@ -1146,7 +1171,10 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   // description that changes after an operator approved it is new
   // information — flagListingForReview decides whether that reopens the row.
   if (textChanged) {
-    const damage = reviewListingQuality(updatedRow.model, updatedRow.description);
+    const damage = annotateDisclosure(
+      reviewListingQuality(updatedRow.model, updatedRow.description),
+      updatedRow.condition_details_json,
+    );
     if (damage) flagListingForReview(updatedRow.id, damage.defects);
   }
   res.json(attachImages([updatedRow])[0]);

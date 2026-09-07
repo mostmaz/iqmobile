@@ -16,6 +16,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
+import { conditionRows } from '../lib/conditionDetails';
 
 const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 const arNum = (n: number | string) => String(n).replace(/\d/g, (d) => AR_DIGITS[+d]);
@@ -108,11 +109,15 @@ function Group({ title, chips, footnote }: { title: string; chips: Chip[]; footn
   );
 }
 
-export function DeviceSpecs({ specs, seller, conditionLabel }: {
+export function DeviceSpecs({ specs, seller, conditionLabel, conditionDetails }: {
   specs?: Specs | null;
   seller?: SellerFacts | null;
   /** Arabic label for the condition code, from the caller's dictionary. */
   conditionLabel?: string | null;
+  /** Structured condition answers (#7). Rendered in the seller's group, since
+      they are things the seller said about THIS unit, not facts about the
+      model — the same split the file is built around. */
+  conditionDetails?: any;
 }) {
   // What the seller says about this unit.
   const own: Chip[] = [];
@@ -120,6 +125,11 @@ export function DeviceSpecs({ specs, seller, conditionLabel }: {
   if (seller?.storage) own.push({ label: 'السعة', value: seller.storage, ltr: true });
   if (seller?.color) own.push({ label: 'اللون', value: seller.color });
   if (seller?.warranty_status) own.push({ label: 'الضمان', value: seller.warranty_status });
+  // The seller's own answers, rendered here as well as in the spec table so
+  // the two surfaces cannot disagree about the same device.
+  for (const r of conditionRows(conditionDetails)) {
+    own.push({ label: r.spec, value: r.label });
+  }
   // Battery health is the one number a used-phone buyer asks for first, so
   // it reads as a positive when it is one.
   if (seller?.battery_health) {

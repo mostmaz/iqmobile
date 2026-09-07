@@ -40,7 +40,9 @@ export function ChipTag({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Spec row (label · value) ────────────────────────────────────────
-export function SpecRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+export function SpecRow({
+  label, value, last, muted,
+}: { label: string; value: string; last?: boolean; muted?: boolean }) {
   return (
     <View style={{
       flexDirection: 'row-reverse', justifyContent: 'space-between',
@@ -48,7 +50,13 @@ export function SpecRow({ label, value, last }: { label: string; value: string; 
       borderBottomWidth: last ? 0 : 1, borderColor: theme.line,
     }}>
       <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle }}>{label}</Text>
-      <Text style={{ fontFamily: fonts.ltrBold, fontSize: 13, color: theme.ink, fontWeight: '600' }}>{value}</Text>
+      {/* `muted` is for a value that is genuinely "we do not know" rather than
+          a fact — «غير معروف» typed in the same weight as a real spec reads
+          as one, which is the exact confusion this row exists to remove. */}
+      <Text style={{
+        fontFamily: muted ? fonts.ar : fonts.ltrBold, fontSize: 13,
+        color: muted ? theme.subtle : theme.ink, fontWeight: muted ? '400' : '600',
+      }}>{value}</Text>
     </View>
   );
 }
