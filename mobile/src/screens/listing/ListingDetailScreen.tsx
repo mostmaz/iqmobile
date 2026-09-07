@@ -262,8 +262,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
       return;
     }
     try {
-      await Reports.submit('listing', id, reason);
-      Alert.alert('شكراً', 'تم إرسال البلاغ. سنراجعه قريباً.');
+      // Acknowledge from the RESPONSE, not optimistically. The old code fired
+      // this alert after any 200 without knowing whether a row was written,
+      // and quoted no reference the user could follow up with.
+      const r = await Reports.submit('listing', id, reason);
+      Alert.alert(
+        'شكراً',
+        r.duplicate
+          ? `سبق أن أرسلت هذا البلاغ (رقم ${r.id}). هو قيد المراجعة.`
+          : `تم استلام البلاغ رقم ${r.id}. سنراجعه.`,
+      );
     } catch (e: any) {
       Alert.alert('خطأ', (ar.errors as any)[e?.message] || ar.errors.network);
     }

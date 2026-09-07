@@ -9,8 +9,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, fmtIQD } from '../../components/ui';
-import { IconArrowLeft } from '../../components/icons';
-import { Chats, Deals, type Chat, type ChatMessage } from '../../api/endpoints';
+import { IconArrowLeft, IconFlag } from '../../components/icons';
+import { Chats, Deals, Reports, type Chat, type ChatMessage } from '../../api/endpoints';
 import { sendChatImage, fullImageUrl } from '../../api/upload';
 import { compressForChatBubble } from '../../lib/imageCompress';
 import { parsePrice } from '../../lib/format';
@@ -295,6 +295,44 @@ export default function ChatScreen({ route, navigation }: any) {
     );
   }
 
+  /**
+   * Report this conversation.
+   *
+   * ChatScreen had no report button and no overflow menu at all — the ONE
+   * report entry point in the whole app was on the listing page. So the place
+   * where abuse actually happens was the one place you could not report it,
+   * and `inappropriate_chat` + target_kind 'chat' were valid server-side and
+   * unreachable from the app.
+   *
+   * Blocking is NOT offered here, deliberately. `chat_blocks` is shop-scoped
+   * and directional — a shop blocks a buyer, from the merchant panel — so a
+   * buyer cannot block a seller and an individual seller cannot block anyone.
+   * Making that work is a schema change, not a button, and half-adding a
+   * one-sided block would be worse than saying so. See docs/reporting.md.
+   */
+  function reportChat() {
+    if (!user || user.is_guest) return;
+    Alert.alert('إبلاغ عن المحادثة', 'ما نوع المشكلة؟', [
+      { text: 'رسائل مسيئة', onPress: () => submitChatReport('inappropriate_chat') },
+      { text: 'محاولة احتيال', onPress: () => submitChatReport('scam_attempt') },
+      { text: 'إلغاء', style: 'cancel' },
+    ]);
+  }
+
+  async function submitChatReport(reason: string) {
+    try {
+      const r = await Reports.submit('chat', id, reason);
+      Alert.alert(
+        'شكراً',
+        r.duplicate
+          ? `سبق أن أرسلت هذا البلاغ (رقم ${r.id}). هو قيد المراجعة.`
+          : `تم استلام البلاغ رقم ${r.id}. سنراجع المحادثة.`,
+      );
+    } catch (e: any) {
+      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+    }
+  }
+
   function openListing() {
     if (!listingId) return;
     // Local stack has its own ListingDetail (registered in navigation/index.tsx
@@ -356,6 +394,21 @@ export default function ChatScreen({ route, navigation }: any) {
             </TouchableOpacity>
           ) : null}
         </View>
+        {/* The only way to report abuse from where abuse happens. */}
+        <TouchableOpacity
+          onPress={reportChat}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="إبلاغ عن المحادثة"
+          hitSlop={8}
+          style={{
+            width: 38, height: 38, borderRadius: 999,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            alignItems: 'center', justifyContent: 'center', marginLeft: 6,
+          }}
+        >
+          <IconFlag size={17} color={theme.subtle} />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
           width: 38, height: 38, borderRadius: 999,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,

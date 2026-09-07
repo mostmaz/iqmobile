@@ -569,8 +569,18 @@ export const Users = {
 };
 
 export const Reports = {
+  /**
+   * Returns the report's real id. The route used to answer a bare
+   * `{ok:true}`, so the app acknowledged optimistically after any 200 and
+   * the user was left with nothing to quote if they followed up. `duplicate`
+   * is true when this complaint was already open — tapping إبلاغ twice is
+   * one report, not two.
+   */
   submit: (target_kind: 'listing' | 'user' | 'chat', target_id: number, reason: string, detail?: string) =>
-    api('/reports', { method: 'POST', body: JSON.stringify({ target_kind, target_id, reason, detail }) }),
+    api<{ ok: boolean; id: number; duplicate?: boolean }>(
+      '/reports',
+      { method: 'POST', body: JSON.stringify({ target_kind, target_id, reason, detail }) },
+    ),
 };
 
 // ─── Brands ──────────────────────────────────────────────────────────
