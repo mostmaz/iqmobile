@@ -40,10 +40,16 @@
         <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
+        <!-- iqmobile.org is the host the share button actually emits; only
+             api.iqmobile.org was registered, so a shared listing opened the
+             browser. android/ is checked in, so app.json alone does not
+             reach the build — this file has to say it too. -->
+        <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/l"/>
         <data android:scheme="https" android:host="api.iqmobile.org" android:pathPrefix="/l"/>
       </intent-filter>
       <intent-filter android:autoVerify="true" data-generated="true">
         <action android:name="android.intent.action.VIEW"/>
+        <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/l"/>
         <data android:scheme="https" android:host="api.iqmobile.org" android:pathPrefix="/l"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
