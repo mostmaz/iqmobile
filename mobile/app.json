@@ -55,7 +55,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "44"
+      "buildNumber": "45"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
