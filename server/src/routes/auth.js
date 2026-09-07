@@ -102,7 +102,21 @@ function publicUser(row) {
 // Minimal signup — phone + password + account type. Display name and
 // governorate get sensible defaults so users can finish onboarding without
 // a long form; they refine them later in EditProfile. (OTP comes later.)
-r.post('/register', authLimiter, (req, res) => {
+// Password auth is CLOSED while OTP is the required path.
+//
+// Nothing in the app calls /register or /login — AuthGate is passwordless and
+// goes through /phone-login. But they stayed live and unauthenticated, and
+// each one mints a session for whatever phone you name. With OTP switched on
+// that is not a legacy endpoint, it is a way around the verification: post a
+// phone and a password, get a token for a number you do not own, and the OTP
+// gate never runs. So while OTP is required, these answer 403 rather than
+// quietly remaining the easier door.
+function passwordAuthClosed(req, res, next) {
+  if (otpRequired()) return res.status(403).json({ error: 'otp_required' });
+  next();
+}
+
+r.post('/register', authLimiter, passwordAuthClosed, (req, res) => {
   const { password, display_name, governorate, city, seller_type, shop_years } = req.body || {};
   const phone = normalizePhone(req.body?.phone);
   if (!phone || !password) return res.status(400).json({ error: 'missing_fields' });
@@ -184,7 +198,7 @@ r.post('/guest', guestLimiter, (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
-r.post('/login', authLimiter, (req, res) => {
+r.post('/login', authLimiter, passwordAuthClosed, (req, res) => {
   const { password } = req.body || {};
   const phone = normalizePhone(req.body?.phone);
   if (!phone || !password) return res.status(400).json({ error: 'missing_fields' });
@@ -233,17 +247,15 @@ function upsertPhoneAccount(req, phone) {
 // Two modes, gated by the OTP_REQUIRED env flag:
 //   1. flag off  → legacy trust-on-first-use: immediately upsert the account
 //                  and return { token, user }.
-//   2. flag on   → send a code via Twilio Verify and respond with
-//                  { otp_required: true, channel }, echoing back the channel
-//                  actually used. The client collects the code and POSTs it
-//                  to /auth/otp/verify.
+//   2. flag on   → send a code over WhatsApp via ARQAM and respond with
+//                  { otp_required: true, channel: 'whatsapp' }. The client
+//                  collects the code and POSTs it to /auth/otp/verify.
 //
-// Channel: WhatsApp is the default. An Iraqi SMS costs ~10× a WhatsApp
-// auth message on Twilio and WhatsApp lands more reliably on this audience,
-// so we only send SMS when the client explicitly asks (the OTP screen's
-// "send via SMS instead" fallback) OR when a WhatsApp dispatch hard-fails,
-// in which case we transparently retry over SMS so nobody is left without a
-// code. The returned `channel` tells the client which one actually went out.
+// Channel: WhatsApp, and only WhatsApp as far as this codebase is concerned.
+// An Iraqi SMS costs three to ten times a WhatsApp auth message and lands
+// less reliably on this audience. ARQAM will substitute an SMS of its own
+// accord for a number with no WhatsApp — that is their fallback, not a knob
+// we turn, and it is the reason nobody gets locked out.
 //
 // Note: when OTP is on we do NOT upsert on this call, so a bad phone can't
 // squat on a row before verification.
@@ -253,20 +265,15 @@ r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
 
   if (otpRequired()) {
     if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
-    const requested = req.body?.channel === 'sms' ? 'sms' : 'whatsapp';
-    let channel = requested;
-    let send = await sendCode(phone, channel);
-    // WhatsApp couldn't be dispatched (channel misconfig / provider error) —
-    // fall back to SMS rather than blocking sign-in. A *silent* WhatsApp
-    // non-delivery (recipient has no WhatsApp) can't be detected here since
-    // Twilio returns 'pending'; that case is covered by the client's manual
-    // "send via SMS instead" button.
-    if (!send.ok && requested === 'whatsapp') {
-      channel = 'sms';
-      send = await sendCode(phone, channel);
-    }
+    // One channel, no choice offered. The old code asked the caller for
+    // sms|whatsapp and retried over SMS when WhatsApp failed — that made
+    // sense against Twilio, where the two are separate channels we drive.
+    // ARQAM is WhatsApp-first and decides for itself whether a number without
+    // WhatsApp needs an SMS instead, so a channel argument here would be a
+    // promise we cannot keep.
+    const send = await sendCode(phone);
     if (!send.ok) return res.status(400).json({ error: send.error });
-    return res.json({ otp_required: true, channel });
+    return res.json({ otp_required: true, channel: send.channel });
   }
 
   const user = upsertPhoneAccount(req, phone);
@@ -274,8 +281,8 @@ r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
-// Verify a Twilio-issued OTP and complete sign-in.
-// Rate-limited via authLimiter — Twilio has its own per-service rate limits
+// Verify the code and complete sign-in.
+// Rate-limited via authLimiter — ARQAM has its own per-phone and per-IP limits
 // but a cheap 429 at our edge stops the loudest abusers before they hit
 // the API. optionalAuth so a guest can be promoted in place on success.
 r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
@@ -286,7 +293,17 @@ r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
   if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
 
   const check = await checkCode(phone, code);
-  if (!check.ok) return res.status(502).json({ error: check.error });
+  if (!check.ok) {
+    // Not every failure is a gateway failure. An expired or spent code, and a
+    // caller who has burned their attempts, are ordinary answers about THIS
+    // request — returning 502 for them told the client our server was broken
+    // and put a provider-outage shape on what is really a user retrying.
+    const status = check.error === 'otp_expired' ? 401
+      : check.error === 'otp_rate_limited' ? 429
+      : check.error === 'otp_not_configured' ? 500
+      : 502;
+    return res.status(status).json({ error: check.error });
+  }
   if (!check.approved) return res.status(401).json({ error: 'bad_code' });
 
   const user = upsertPhoneAccount(req, phone);

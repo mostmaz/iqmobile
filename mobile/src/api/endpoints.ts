@@ -196,13 +196,12 @@ export const Auth = {
     api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ phone, password }) }),
   // Passwordless phone entry. Two possible responses:
   //   - { token, user } → OTP disabled server-side, sign-in complete.
-  //   - { otp_required: true, channel } → server queued a Twilio Verify
-  //     code and expects the client to collect it and POST /auth/otp/verify.
-  // Optional `channel` lets the client force WhatsApp; defaults to SMS.
-  phoneLogin: (phone: string, channel?: 'sms' | 'whatsapp') =>
-    api<{ token?: string; user?: User; otp_required?: boolean; channel?: 'sms' | 'whatsapp' }>(
+  //   - { otp_required: true, channel } → server sent a WhatsApp code via
+  //     ARQAM and expects the client to collect it and POST /auth/otp/verify.
+  phoneLogin: (phone: string) =>
+    api<{ token?: string; user?: User; otp_required?: boolean; channel?: 'whatsapp' }>(
       '/auth/phone-login',
-      { method: 'POST', body: JSON.stringify({ phone, channel }) },
+      { method: 'POST', body: JSON.stringify({ phone }) },
     ),
   otpVerify: (phone: string, code: string) =>
     api<{ token: string; user: User }>('/auth/otp/verify', {

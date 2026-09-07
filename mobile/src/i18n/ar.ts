@@ -171,6 +171,8 @@ const AR = {
     otp_check_failed: 'تعذّر التحقق من الرمز، حاول مرة أخرى',
     otp_rate_limited: 'تم إرسال عدة محاولات، انتظر قليلاً ثم أعد المحاولة',
     otp_not_configured: 'خدمة التحقق غير متاحة حالياً',
+    otp_expired: 'انتهت صلاحية الرمز. اطلب رمزاً جديداً.',
+    otp_unavailable: 'خدمة التحقق غير متاحة حالياً. حاول بعد قليل.',
     bad_contact_phone: 'رقم التواصل غير صحيح',
     bad_contact_whatsapp: 'رقم واتساب غير صحيح',
     name_too_short: 'الاسم قصير جداً',

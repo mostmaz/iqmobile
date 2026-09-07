@@ -22,9 +22,9 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { phoneLogin, otpVerify } = useAuth();
   const phone: string = route.params?.phone || '';
-  const initialChannel: 'sms' | 'whatsapp' = route.params?.channel === 'whatsapp' ? 'whatsapp' : 'sms';
-
-  const [channel, setChannel] = useState<'sms' | 'whatsapp'>(initialChannel);
+  // No channel state any more. The server sends over WhatsApp and decides
+  // for itself whether a number without WhatsApp needs an SMS instead, so
+  // offering the user a switch would be offering a control we do not have.
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -59,19 +59,18 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
     } finally { setBusy(false); }
   }
 
-  async function resend(nextChannel: 'sms' | 'whatsapp') {
+  async function resend() {
     if (cooldown > 0) return;
     setBusy(true); setErr('');
     try {
-      await phoneLogin(phone, nextChannel);
-      setChannel(nextChannel);
+      await phoneLogin(phone);
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (e: any) {
       setErr((ar.errors as any)[e.message] || ar.errors.network);
     } finally { setBusy(false); }
   }
 
-  const channelLabel = channel === 'whatsapp' ? 'واتساب' : 'رسالة نصية';
+  const channelLabel = 'واتساب';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -157,13 +156,14 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
           </Btn>
         </View>
 
-        {/* Resend + channel switch. Grouped so a user with delivery
-            trouble can retry SMS or hop to WhatsApp with one tap. */}
+        {/* Resend only. The "send by SMS instead" button is gone: it
+            promised a channel switch the provider does not expose, so it
+            re-sent the identical WhatsApp message under a different label. */}
         <View style={{ marginTop: 22, gap: 8 }}>
           <TouchableOpacity
             activeOpacity={0.7}
             disabled={cooldown > 0 || busy}
-            onPress={() => resend(channel)}
+            onPress={() => resend()}
             style={{ paddingVertical: 8 }}
           >
             <Text style={{
@@ -172,16 +172,6 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
               textAlign: 'center',
             }}>
               {cooldown > 0 ? `إعادة إرسال الرمز بعد ${cooldown} ثانية` : 'إعادة إرسال الرمز'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            disabled={busy}
-            onPress={() => resend(channel === 'whatsapp' ? 'sms' : 'whatsapp')}
-            style={{ paddingVertical: 8 }}
-          >
-            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center' }}>
-              {channel === 'whatsapp' ? 'إرسال عبر رسالة نصية بدلاً من ذلك' : 'إرسال عبر واتساب بدلاً من ذلك'}
             </Text>
           </TouchableOpacity>
         </View>

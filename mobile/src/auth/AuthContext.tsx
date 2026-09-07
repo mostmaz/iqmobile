@@ -27,7 +27,7 @@ interface AuthState {
   // if `otpRequired`, the caller must collect the code and call
   // `otpVerify` to complete sign-in. If false, the token was persisted
   // and the caller can navigate as if sign-in succeeded.
-  phoneLogin: (phone: string, channel?: 'sms' | 'whatsapp') =>
+  phoneLogin: (phone: string) =>
     Promise<{ otpRequired: boolean; channel?: 'sms' | 'whatsapp' }>;
   otpVerify: (phone: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -176,7 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const phoneLogin = useCallback(
     async (phone: string, channel?: 'sms' | 'whatsapp') => {
-      const r = await Auth.phoneLogin(phone, channel);
+      const r = await Auth.phoneLogin(phone);
       // OTP path — server sent a code and is waiting for verify. The
       // account isn't upserted yet; nothing to persist.
       if (r.otp_required) return { otpRequired: true as const, channel: r.channel };
