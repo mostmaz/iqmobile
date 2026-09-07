@@ -179,17 +179,32 @@ app.get('/mod/manifest.webmanifest', (_req, res) => {
 // it's installed (and falls back to the /l/:id web page otherwise). Android
 // verifies against the Play app-signing key; iOS needs the Apple Team ID
 // (set APPLE_TEAM_ID in .env to enable the iOS side — Android works without).
+
+// Play re-signs uploads, so a Play install presents Google's app-signing key
+// while an APK we hand out directly presents our own release key. They are
+// different certificates for the same app, and Android matches on the exact
+// (package, fingerprint) pair — so an entry for one does nothing for the
+// other. Listing both is how a directly-distributed APK gets working links.
+const PLAY_SIGNING_SHA256 =
+  '9B:1F:3F:7A:FE:66:48:32:6E:D9:FF:12:84:AE:B8:C6:60:74:B5:7A:BE:A6:EA:33:52:22:36:3C:55:43:4E:4E';
+const LOCAL_RELEASE_SHA256 =
+  '07:36:E0:E2:F8:AF:BA:FF:20:C4:4D:DA:70:64:E5:F7:5D:29:07:BA:75:97:62:0C:A8:1A:A6:1D:19:EC:17:3F';
+
+const androidLink = (pkg, fps) => ({
+  relation: ['delegate_permission/common.handle_all_urls'],
+  target: { namespace: 'android_app', package_name: pkg, sha256_cert_fingerprints: fps },
+});
+
 app.get('/.well-known/assetlinks.json', (_req, res) => {
-  res.json([{
-    relation: ['delegate_permission/common.handle_all_urls'],
-    target: {
-      namespace: 'android_app',
-      package_name: 'org.iqmobile.app',
-      sha256_cert_fingerprints: [
-        '9B:1F:3F:7A:FE:66:48:32:6E:D9:FF:12:84:AE:B8:C6:60:74:B5:7A:BE:A6:EA:33:52:22:36:3C:55:43:4E:4E',
-      ],
-    },
-  }]);
+  res.json([
+    androidLink('org.iqmobile.app', [PLAY_SIGNING_SHA256, LOCAL_RELEASE_SHA256]),
+    // The side-by-side test build (build-test-apk.sh adds `.test`). Without
+    // this entry a test APK can never verify — different package AND a
+    // different signing key from the Play entry, either of which is enough
+    // for Android to refuse — so tapping a shared link opened Chrome and
+    // there was no way to test deep links before shipping them.
+    androidLink('org.iqmobile.app.test', [LOCAL_RELEASE_SHA256]),
+  ]);
 });
 app.get('/.well-known/apple-app-site-association', (_req, res) => {
   const team = process.env.APPLE_TEAM_ID;
