@@ -16,6 +16,7 @@ import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIco
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
 import { ChipTag, SpecRow } from '../../components/marketplace';
 import { conditionRows } from '../../lib/conditionDetails';
+import { noteViewed } from '../../lib/recentlyViewed';
 import { isOnRequest, isNegotiable, ON_REQUEST_LABEL, NEGOTIABLE_LABEL } from '../../lib/priceMode';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
 import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
@@ -346,6 +347,19 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const statusLabel = (ar.listing as any)[status] || status;
   // "Last known price" — a price-aggregator device that dropped off the
   // sources' lists. Grey the price + show an unavailable banner.
+  // Remember this device locally for the "recently viewed" rail. Cached
+  // fields only (brand, model, first image) so the rail renders on a cold
+  // start without a fetch.
+  useEffect(() => {
+    if (!data?.id) return;
+    noteViewed({
+      id: data.id,
+      brand: data.brand,
+      model: data.model,
+      image_path: data.images?.[0]?.image_path ?? null,
+    });
+  }, [data?.id]);
+
   const stale = !!(data as any).stale_since;
 
   return (

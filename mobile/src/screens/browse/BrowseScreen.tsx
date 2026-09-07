@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
+import { RecentlyViewedRail } from '../../components/RecentlyViewedRail';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -349,6 +350,12 @@ export default function BrowseScreen({ navigation }: any) {
     // Home-hub card (storefront + shops segments) — right after the promo
     // banner, before the first listing (design §A ordering).
     const hub = (storefront || homeShops.length) ? [{ __homeHub: true }] : [];
+    // Rails belong IN the feed, not in the fixed header — the same reasoning
+    // as the home hub: a header rail is always on screen and steals space
+    // from listings on every scroll, while a feed rail scrolls away. The
+    // component renders null when there is nothing to show, so this sentinel
+    // is cheap when the list is empty.
+    const recent = [{ __recentlyViewed: true }];
     // "Your shop qualifies" takes the first listing's slot, for the shop
     // owner only. It is the one place the offer reaches shops that never
     // open the merchant dashboard — but it costs a listing, so it shows
@@ -364,8 +371,8 @@ export default function BrowseScreen({ navigation }: any) {
     // screen rather than «لا توجد إعلانات»: the message existed, but the list
     // was never empty enough to reach it.
     const tail = out.length === 0 ? [{ __noResults: true }] : [];
-    if (bannerPool.length === 0) return [...hub, ...upgrade, ...out, ...tail];
-    return [{ __bannerPool: bannerPool }, ...hub, ...upgrade, ...out, ...tail];
+    if (bannerPool.length === 0) return [...hub, ...recent, ...upgrade, ...out, ...tail];
+    return [{ __bannerPool: bannerPool }, ...hub, ...recent, ...upgrade, ...out, ...tail];
   }, [items, bannerPool, feedBanners, storefront, homeShops, tierStatus]);
 
   return (
@@ -667,6 +674,7 @@ export default function BrowseScreen({ navigation }: any) {
         keyExtractor={(item) => (
           item.__bannerPool ? 'banner-carousel'
             : item.__homeHub ? 'home-hub'
+            : item.__recentlyViewed ? 'recently-viewed'
             : item.__shopUpgrade ? 'shop-upgrade'
             : item.__feedBanner ? `feed-banner-${item.__slot}`
               : String(item.id)
@@ -695,6 +703,8 @@ export default function BrowseScreen({ navigation }: any) {
               onOpenListing={(id) => navigation.navigate('ListingDetail', { id })}
               onOpenShop={(id) => navigation.navigate('ShopDetail', { id })}
             />
+          ) : item.__recentlyViewed ? (
+            <RecentlyViewedRail onOpen={(id) => navigation.navigate('ListingDetail', { id })} />
           ) : item.__homeHub ? (
             <HomeHubCard
               storefront={storefront}

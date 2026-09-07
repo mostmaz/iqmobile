@@ -54,6 +54,7 @@ const Ctx = createContext<CompareCtx>({
 
 export function CompareProvider({ children }: { children: React.ReactNode }) {
   const [entries, setEntries] = useState<CompareEntry[]>([]);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)
@@ -68,12 +69,20 @@ export function CompareProvider({ children }: { children: React.ReactNode }) {
           );
         }
       })
-      .catch(() => { /* unreadable store — start empty rather than crash */ });
+      .catch(() => { /* unreadable store — start empty rather than crash */ })
+      .finally(() => setReady(true));
   }, []);
 
   useEffect(() => {
+    // `ready` gate, missing here since this file was written: the save effect
+    // runs on the first render with the initial empty array, BEFORE the load
+    // above resolves, and writes `[]` over the stored list. It usually loses
+    // the race, which is why it was never noticed — but it is exactly the bug
+    // cart.tsx documents guarding against, and "usually" is not a guarantee
+    // on a cold start with a slow disk.
+    if (!ready) return;
     AsyncStorage.setItem(KEY, JSON.stringify(entries)).catch(() => {});
-  }, [entries]);
+  }, [entries, ready]);
 
   const toggle = useCallback((entry: CompareEntry) => {
     // Computed inside the updater so the answer reflects the list as it
