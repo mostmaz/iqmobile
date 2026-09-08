@@ -25,7 +25,10 @@ import { ListingListSkeleton } from '../../components/Skeleton';
 import { LoadFailed } from '../../components/LoadFailed';
 import { BrandListModal } from '../../components/BrandListModal';
 import { RequestComposeSheet } from '../../components/RequestComposeSheet';
-import { Listings, Brands, type BrandRow } from '../../api/endpoints';
+import { Listings, Brands, type BrandRow, type BrowseSort, type Condition } from '../../api/endpoints';
+import { SortPills } from '../../components/SortPills';
+import { CONDITIONS } from '../../lib/conditions';
+import { ar } from '../../i18n/ar';
 import { orderBrandsForFunnel, brandLabel } from '../../lib/requestFunnel';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
@@ -44,6 +47,11 @@ export default function RequestBrowseScreen({ navigation }: any) {
   const [brand, setBrand] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Kept across a model change on purpose, the way SearchScreen keeps its
+  // sort: a buyer who asked for cheapest-first means it for the next device
+  // too, and re-picking it every time is the annoyance the control removes.
+  const [sort, setSort] = useState<BrowseSort | undefined>(undefined);
+  const [condition, setCondition] = useState<Condition | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
 
   // ── step 1: brands ──────────────────────────────────────────────────
@@ -77,10 +85,12 @@ export default function RequestBrowseScreen({ navigation }: any) {
   // ── step 3: that model's listings, same window ──────────────────────
   const listEnabled = !!brand && !!model;
   const list = useInfiniteQuery({
-    queryKey: ['request-funnel', brand, model, WINDOW_DAYS],
+    queryKey: ['request-funnel', brand, model, WINDOW_DAYS, sort ?? 'new', condition ?? 'any'],
     queryFn: ({ pageParam = 0 }) => Listings.browse({
       brand: brand!, model: model!, model_exact: true,
-      max_age_days: WINDOW_DAYS, sort: 'new', available_only: true,
+      max_age_days: WINDOW_DAYS, available_only: true,
+      ...(sort ? { sort } : {}),
+      ...(condition ? { condition } : {}),
       limit: PAGE_SIZE, offset: pageParam as number,
     }),
     initialPageParam: 0,
@@ -156,12 +166,42 @@ export default function RequestBrowseScreen({ navigation }: any) {
         )
       ) : null}
 
+      {/* Order and condition, once there is a list to apply them to. An
+          inert control above nothing reads as a broken one — the same reason
+          SearchScreen gates its sort on a chosen brand. */}
       {listEnabled ? (
-        <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right' }}>
-          {items.length > 0 && (topModels.data?.find((m) => m.model === model)?.min_price ?? null) != null
-            ? `المعروض خلال ${WINDOW_DAYS} يوماً · يبدأ من ${fmtIQD(topModels.data!.find((m) => m.model === model)!.min_price!)} د.ع`
-            : `المعروض خلال ${WINDOW_DAYS} يوماً`}
-        </Text>
+        <View style={{ gap: 4 }}>
+          <SortPills value={sort} onChange={setSort} label={null} />
+
+          <ScrollView
+            horizontal showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+          >
+            <Pill active={!condition} onPress={() => setCondition(null)}>كل الحالات</Pill>
+            {/* All FOUR conditions, from the shared taxonomy. Offering three
+                is what once made a مصلح device postable but unfindable —
+                see lib/conditions.ts. */}
+            {CONDITIONS.map((c) => (
+              <Pill
+                key={c}
+                active={condition === c}
+                onPress={() => setCondition(condition === c ? null : c)}
+              >
+                {(ar.listing as any)[c] || c}
+              </Pill>
+            ))}
+          </ScrollView>
+
+          <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
+            {/* «يبدأ من» comes from the UNFILTERED top-models row, so it is
+                only true while no condition is selected. Showing it beside a
+                filtered list would quote a price the list does not contain. */}
+            {!condition && items.length > 0
+              && (topModels.data?.find((m) => m.model === model)?.min_price ?? null) != null
+              ? `المعروض خلال ${WINDOW_DAYS} يوماً · يبدأ من ${fmtIQD(topModels.data!.find((m) => m.model === model)!.min_price!)} د.ع`
+              : `المعروض خلال ${WINDOW_DAYS} يوماً`}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -214,11 +254,22 @@ export default function RequestBrowseScreen({ navigation }: any) {
             ) : (
               <View style={{ padding: 40, alignItems: 'center', gap: 6 }}>
                 <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center' }}>
-                  لا يوجد {model} معروض حالياً
+                  {condition ? `لا يوجد ${model} ${(ar.listing as any)[condition]} معروض حالياً` : `لا يوجد ${model} معروض حالياً`}
                 </Text>
+                {/* A filter that empties the list must say so, or the buyer
+                    reads "this device does not exist here" and leaves. */}
                 <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'center', lineHeight: 20 }}>
-                  اطلبه — يصل طلبك للمتاجر التي تبيع {brand} وترد عليك بعروضها.
+                  {condition
+                    ? 'جرّب حالة أخرى، أو اطلبه وتصلك عروض المتاجر.'
+                    : `اطلبه — يصل طلبك للمتاجر التي تبيع ${brand} وترد عليك بعروضها.`}
                 </Text>
+                {condition ? (
+                  <TouchableOpacity onPress={() => setCondition(null)} hitSlop={8} style={{ marginTop: 4 }}>
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
+                      اعرض كل الحالات
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )
         }
