@@ -72,6 +72,9 @@ export default function RequestsScreen({ navigation }: any) {
       <Header
         title="طلبات الأجهزة"
         eyebrow="اطلب الجهاز الذي تبحث عنه"
+        // Pushed from the funnel now, not the tab root: without this, iOS —
+        // which has no system back button — has no way to leave this screen.
+        onBack={() => navigation.goBack()}
         right={(
           <TouchableOpacity
             onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
