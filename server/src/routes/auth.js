@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { normalizeIraqiMobile } from '../iraqiPhone.js';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -48,18 +49,15 @@ const profileUpload = multer({
 // Display-name cap. Without it, a long name DoSes every browse-row payload.
 const MAX_DISPLAY_NAME = 50;
 
-// Iraqi mobile: 11 digits starting 07XXXXXXXXX. Accept loose user input
-// (spaces, dashes, +964, 00964) and normalise to the local form.
-function normalizePhone(input) {
-  if (typeof input !== 'string') return null;
-  let d = input.replace(/\D/g, '');
-  if (!d) return null;
-  if (d.startsWith('00964')) d = d.slice(5);
-  else if (d.startsWith('964')) d = d.slice(3);
-  if (!d.startsWith('0')) d = '0' + d;
-  if (d.length < 10 || d.length > 12) return null;
-  return d;
-}
+// Iraqi mobile: 11 digits starting 07XXXXXXXXX. Accepts loose user input
+// (spaces, dashes, +964, 00964, Arabic-Indic digits).
+//
+// This used to check only `length >= 10 && length <= 12` — never the leading
+// 7 its own comment promised — so landlines, short codes and arbitrary
+// 10-12 digit strings all passed and became paid messages. The real check
+// lives in iraqiPhone.js and is shared with otp.js's toE164 so no path can
+// disagree with another about what a billable number is.
+const normalizePhone = normalizeIraqiMobile;
 
 function publicUser(row) {
   return {
@@ -271,8 +269,17 @@ r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
     // ARQAM is WhatsApp-first and decides for itself whether a number without
     // WhatsApp needs an SMS instead, so a channel argument here would be a
     // promise we cannot keep.
-    const send = await sendCode(phone);
-    if (!send.ok) return res.status(400).json({ error: send.error });
+    const send = await sendCode(phone, { ip: req.ip });
+    if (!send.ok) {
+      // Two sends an hour is tight enough that real users will hit it, so say
+      // WHEN it clears. «انتظر قليلاً» with no number is what makes someone
+      // uninstall rather than wait.
+      const body = { error: send.error };
+      if (send.retryAfterMs != null) {
+        body.retry_after_s = Math.ceil(send.retryAfterMs / 1000);
+      }
+      return res.status(400).json(body);
+    }
     return res.json({ otp_required: true, channel: send.channel });
   }
 

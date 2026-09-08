@@ -818,6 +818,63 @@ r.get('/bypass-attempts', requireAdmin, (_req, res) => {
   res.json(rows);
 });
 
+// OTP activity — somewhere to look when the [otp][ALERT] line fires.
+//
+// There is no global spend ceiling by design (a breaker that misfires during
+// real growth locks out every new user), so this view IS the global control:
+// it is how a distributed flood becomes visible. Per-phone limits cannot see
+// that shape — every number stays under its own cap while the total climbs.
+r.get('/otp-activity', requireAdmin, (_req, res) => {
+  const t = Date.now();
+  const HOUR = 3600000;
+
+  const perHour = db.prepare(
+    `SELECT (created_at / ?) AS bucket,
+            SUM(CASE WHEN outcome='sent' THEN 1 ELSE 0 END) AS sent,
+            SUM(CASE WHEN outcome LIKE 'blocked%' THEN 1 ELSE 0 END) AS blocked
+       FROM otp_send_log WHERE created_at > ?
+      GROUP BY bucket ORDER BY bucket DESC`,
+  ).all(HOUR, t - 48 * HOUR)
+    .map((r2) => ({ hour_start: r2.bucket * HOUR, sent: r2.sent, blocked: r2.blocked }));
+
+  // Phone shown in full: an operator investigating abuse needs to know WHICH
+  // number is being hammered, and this route is already behind requireAdmin.
+  const topPhones = db.prepare(
+    `SELECT phone, COUNT(*) AS n,
+            SUM(CASE WHEN outcome LIKE 'blocked%' THEN 1 ELSE 0 END) AS blocked
+       FROM otp_send_log WHERE created_at > ?
+      GROUP BY phone ORDER BY n DESC LIMIT 25`,
+  ).all(t - 24 * HOUR);
+
+  const topIps = db.prepare(
+    `SELECT ip, COUNT(*) AS n, COUNT(DISTINCT phone) AS distinct_phones
+       FROM otp_send_log WHERE created_at > ? AND ip IS NOT NULL
+      GROUP BY ip ORDER BY n DESC LIMIT 25`,
+  ).all(t - 24 * HOUR);
+
+  const totals = db.prepare(
+    `SELECT SUM(CASE WHEN outcome='sent' THEN 1 ELSE 0 END) AS sent_24h,
+            SUM(CASE WHEN outcome LIKE 'blocked%' THEN 1 ELSE 0 END) AS blocked_24h,
+            SUM(CASE WHEN outcome='sent' AND channel='sms' THEN 1 ELSE 0 END) AS sms_24h
+       FROM otp_send_log WHERE created_at > ?`,
+  ).get(t - 24 * HOUR);
+
+  // Indicative only — the real figure is ARQAM's. WhatsApp $0.02, SMS
+  // $0.08-$0.18 depending on carrier; $0.13 is a mid estimate, so treat this
+  // as an order of magnitude and check the provider for the truth.
+  const estSpend = ((totals.sent_24h || 0) - (totals.sms_24h || 0)) * 0.02
+    + (totals.sms_24h || 0) * 0.13;
+
+  res.json({
+    ...totals,
+    est_spend_24h_usd: Math.round(estSpend * 100) / 100,
+    alert_threshold_per_hour: 60,
+    per_hour: perHour,
+    top_phones: topPhones,
+    top_ips: topIps,
+  });
+});
+
 // ─── push notifications ──────────────────────────────────────────────
 // Send a one-off test push to a specific user. Useful for verifying
 // the pipeline end-to-end after device pairing — admin curls this with

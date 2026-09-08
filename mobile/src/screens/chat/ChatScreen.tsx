@@ -311,7 +311,15 @@ export default function ChatScreen({ route, navigation }: any) {
    * one-sided block would be worse than saying so. See docs/reporting.md.
    */
   function reportChat() {
-    if (!user || user.is_guest) return;
+    // A guest tapping this used to hit a bare `return` — the flag icon did
+    // nothing at all, silently. Guests can open and hold conversations, so
+    // the person most exposed to a scammer was the one person with no way to
+    // report it. Route to sign-in the way ListingDetailScreen already does.
+    if (!user || user.is_guest) {
+      (navigation as any).getParent()?.getParent?.()?.navigate('AuthGate')
+        ?? navigation.navigate('AuthGate' as never);
+      return;
+    }
     Alert.alert('إبلاغ عن المحادثة', 'ما نوع المشكلة؟', [
       { text: 'رسائل مسيئة', onPress: () => submitChatReport('inappropriate_chat') },
       { text: 'محاولة احتيال', onPress: () => submitChatReport('scam_attempt') },

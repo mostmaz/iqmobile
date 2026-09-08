@@ -40,6 +40,10 @@
 // mode; every call then answers { ok:false, error:'otp_not_configured' }.
 
 import { db, now } from './db.js';
+import { toE164 as toE164Strict, normalizeIraqiMobile } from './iraqiPhone.js';
+import {
+  createSendLogTable, checkSendAllowed, recordSend, sendsInLastHour, ALERT_PER_HOUR,
+} from './otpRate.js';
 
 const API_KEY = process.env.ARQAM_API_KEY || '';
 const BASE_URL = (process.env.ARQAM_BASE_URL || 'https://otp.arqam.tech/api').replace(/\/+$/, '');
@@ -70,12 +74,11 @@ CREATE TABLE IF NOT EXISTS otp_pending (
   created_at INTEGER NOT NULL
 );
 `);
+createSendLogTable(db);
 
-/** Iraqi 07XXXXXXXXX → E.164 +9647XXXXXXXXX. */
-function toE164(iraqiPhone) {
-  if (typeof iraqiPhone !== 'string' || !iraqiPhone.startsWith('0')) return null;
-  return '+964' + iraqiPhone.slice(1);
-}
+// Was: `startsWith('0')` and nothing else, so any 10-12 digit string reached
+// the paid provider as +964…. iraqiPhone.js checks it is an actual mobile.
+const toE164 = toE164Strict;
 
 export function otpConfigured() { return !!API_KEY; }
 export function otpRequired() { return process.env.OTP_REQUIRED === 'true'; }
@@ -146,10 +149,27 @@ async function arqam(path, body) {
  * first and decides for itself whether a number without WhatsApp needs an SMS
  * instead. We do not offer the caller a choice we cannot honour.
  */
-export async function sendCode(iraqiPhone) {
+export async function sendCode(iraqiPhone, opts = {}) {
   if (!API_KEY) return { ok: false, error: 'otp_not_configured' };
   const to = toE164(iraqiPhone);
   if (!to) return { ok: false, error: 'bad_phone' };
+
+  // Key everything on the CANONICAL form, never on the string we were handed.
+  // The rate limit and the pending row are both keyed by phone, so if
+  // '+9647701234567' and '07701234567' produced two keys they would get two
+  // separate budgets — the same number buying double the sends. The route
+  // normalises before calling us today, but a limit that depends on every
+  // caller remembering to normalise is a limit waiting to be bypassed.
+  const phone = normalizeIraqiMobile(iraqiPhone);
+
+  // Checked BEFORE the network call — the whole point is not to spend the
+  // money. A refusal is logged too, so the admin view shows attack pressure
+  // and not just the sends that got through.
+  const gate = checkSendAllowed(db, phone, { now: opts.now });
+  if (!gate.allowed) {
+    recordSend(db, { phone: phone, ip: opts.ip, outcome: `blocked_${gate.rule}`, now: opts.now });
+    return { ok: false, error: gate.error, retryAfterMs: gate.retryAfterMs };
+  }
 
   // Let ARQAM generate the code. Passing our own would mean holding a live
   // secret in our logs and memory for no gain — `otpCode` exists for callers
@@ -174,20 +194,31 @@ export async function sendCode(iraqiPhone) {
      VALUES(?,?,0,?)
      ON CONFLICT(phone) DO UPDATE SET
        message_id=excluded.message_id, attempts=0, created_at=excluded.created_at`,
-  ).run(iraqiPhone, String(r.data.messageId), now());
+  ).run(phone, String(r.data.messageId), now());
 
   // They choose the channel (SMS fallback for a number with no WhatsApp), so
   // report the one they actually used. Saying «واتساب» over an SMS sends the
   // user hunting through the wrong app for a code that is already in their
   // inbox.
-  return {
-    ok: true,
-    channel: r.data.channel === 'sms' ? 'sms' : 'whatsapp',
-    status: r.data.status || 'sent',
-  };
+  const channel = r.data.channel === 'sms' ? 'sms' : 'whatsapp';
+  recordSend(db, { phone: phone, ip: opts.ip, channel, outcome: 'sent', now: opts.now });
+
+  // The only signal that a distributed flood is happening. Per-phone limits
+  // cannot see it — each number stays under its own cap while the total
+  // climbs. console.error rather than Sentry because a 400 is not a throw and
+  // Sentry only captures throws.
+  const lastHour = sendsInLastHour(db, { now: opts.now });
+  if (lastHour >= ALERT_PER_HOUR) {
+    console.error(`[otp][ALERT] ${lastHour} codes sent in the last hour (threshold ${ALERT_PER_HOUR}) — check /admin/otp-activity`);
+  }
+
+  return { ok: true, channel, status: r.data.status || 'sent' };
 }
 
-export async function checkCode(iraqiPhone, code) {
+export async function checkCode(rawPhone, code) {
+  // Same canonicalisation as sendCode, or a verify would miss the row a send
+  // wrote under a differently-spelled version of the same number.
+  const iraqiPhone = normalizeIraqiMobile(rawPhone) ?? rawPhone;
   if (!API_KEY) return { ok: false, error: 'otp_not_configured' };
   if (typeof code !== 'string' || !CODE_RE.test(code)) {
     return { ok: false, error: 'bad_code' };

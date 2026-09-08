@@ -46,7 +46,7 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
 
   async function verify() {
     const clean = digitsOnly(code);
-    if (clean.length < 4) { setErr(ar.errors.bad_code || 'رمز غير صحيح'); return; }
+    if (clean.length !== 6) { setErr(ar.errors.bad_code || 'رمز غير صحيح'); return; }
     setBusy(true); setErr('');
     try {
       await otpVerify(phone, clean);
@@ -124,7 +124,7 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
           <TextInput
             ref={inputRef}
             value={code}
-            onChangeText={(v) => setCode(digitsOnly(v).slice(0, 8))}
+            onChangeText={(v) => setCode(digitsOnly(v).slice(0, 6))}
             placeholder="- - - - - -"
             placeholderTextColor={theme.subtle}
             keyboardType="number-pad"
@@ -142,6 +142,29 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
               paddingVertical: 12,
             }}
           />
+        </View>
+
+        {/* The whole defence against the commonest marketplace scam: a
+            "buyer" says they will send a code to check the seller is real,
+            then asks them to read it out. We cannot put this line in the
+            WhatsApp message — that body is a Meta template on the provider's
+            side — so this screen is where it has to live. Always visible,
+            never dismissible. */}
+        <View style={{
+          marginTop: 16, padding: 12, borderRadius: radius.lg,
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+        }}>
+          <Text style={{
+            fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right',
+          }}>
+            لا تشارك هذا الرمز مع أي شخص
+          </Text>
+          <Text style={{
+            marginTop: 4, fontFamily: fonts.ar, fontSize: 11.5,
+            color: theme.subtle, textAlign: 'right', lineHeight: 18,
+          }}>
+            لن يطلبه منك موظفو iQ Mobile ولا أي مشترٍ أو بائع. من يطلب الرمز يحاول سرقة حسابك.
+          </Text>
         </View>
 
         {err ? (

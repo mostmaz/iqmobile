@@ -52,6 +52,7 @@ beforeEach(() => {
   // as a mysterious transport failure two tests later.
   responder = () => DEFAULT_SEND;
   db.prepare('DELETE FROM otp_pending').run();
+  db.prepare('DELETE FROM otp_send_log').run();
   global.fetch = async (url, init) => {
     const body = JSON.parse(init.body);
     calls.push({ url: String(url), headers: init.headers, body });
@@ -88,10 +89,32 @@ test('send posts an E.164 number with the key in the header, and remembers the m
 });
 
 test('a bad local number never reaches the network', async () => {
-  const r = await sendCode('9647701234567');
+  // '9647701234567' used to live here as the "bad" input, because the old
+  // toE164 rejected anything not starting with 0. It is the same number in
+  // international form and is now accepted deliberately — so the case has to
+  // be a string that is genuinely not an Iraqi mobile.
+  const r = await sendCode('0123456789');
   assert.equal(r.ok, false);
   assert.equal(r.error, 'bad_phone');
   assert.equal(calls.length, 0);
+});
+
+test('every spelling of a number shares ONE rate-limit budget', async () => {
+  // Otherwise the limit is decorative: send twice as 07…, then twice more as
+  // +964…, and a caller has four sends an hour instead of two.
+  const t = Date.parse('2026-09-07T12:00:00+03:00');
+  const MIN = 60 * 1000;
+  assert.equal((await sendCode('07701234567', { now: t })).ok, true);
+  assert.equal((await sendCode('+9647701234567', { now: t + 2 * MIN })).ok, true);
+
+  const spent = calls.length;
+  const r = await sendCode('00964 770 123 4567', { now: t + 4 * MIN });
+  assert.equal(r.ok, false, 'a third spelling bought a third send');
+  assert.equal(r.error, 'otp_rate_limited');
+  assert.equal(calls.length, spent, 'the blocked send still cost money');
+
+  // And the pending row is stored under the canonical form either way.
+  assert.equal(pending().phone, '07701234567');
 });
 
 test('resending replaces the pending code and resets attempts', async () => {
@@ -99,7 +122,9 @@ test('resending replaces the pending code and resets attempts', async () => {
   db.prepare('UPDATE otp_pending SET attempts=3 WHERE phone=?').run(PHONE);
 
   responder = () => ({ status: 200, body: { success: true, messageId: 'msg-2', status: 'sent' } });
-  await sendCode(PHONE);
+  // Past the 60s cooldown: this test is about the row being replaced, not
+  // about the rate limit, so it must not trip over it.
+  await sendCode(PHONE, { now: Date.now() + 2 * 60 * 1000 });
 
   const p = pending();
   assert.equal(p.message_id, 'msg-2', 'the newest code is the one that works');
@@ -276,4 +301,56 @@ test('a code of the wrong length never reaches the network', async () => {
   const r = await checkCode(PHONE, '12345');
   assert.equal(r.error, 'bad_code');
   assert.equal(calls.length, before);
+});
+
+// ── The spend guard ─────────────────────────────────────────────────────
+// The point of the per-phone limit is not that the caller gets an error, it
+// is that NO MONEY IS SPENT. `calls` is the stubbed fetch's record, so
+// asserting it did not grow is asserting ARQAM was never billed.
+
+test('a number that is not an Iraqi mobile never reaches the provider', () => {
+  // The old toE164 accepted anything starting with 0, so a landline or a
+  // 12-digit string became a paid message at up to $0.18.
+  return (async () => {
+    for (const bad of ['0123456789', '012345678901', '01812345678', '0751234567']) {
+      const before = calls.length;
+      const r = await sendCode(bad);
+      assert.equal(r.ok, false);
+      assert.equal(r.error, 'bad_phone');
+      assert.equal(calls.length, before, `${bad} cost a request`);
+    }
+  })();
+});
+
+test('the third send in an hour is refused WITHOUT paying for it', async () => {
+  const t = Date.parse('2026-09-07T12:00:00+03:00');
+  const HOUR_MIN = 60 * 1000;
+
+  assert.equal((await sendCode(PHONE, { now: t })).ok, true);
+  assert.equal((await sendCode(PHONE, { now: t + 2 * HOUR_MIN })).ok, true);
+  const spent = calls.length;
+
+  const r = await sendCode(PHONE, { now: t + 4 * HOUR_MIN });
+  assert.equal(r.ok, false);
+  assert.equal(r.error, 'otp_rate_limited');
+  assert.equal(calls.length, spent, 'the blocked send still hit the network');
+  assert.ok(r.retryAfterMs > 0, 'the caller cannot tell the user when it clears');
+});
+
+test('the cooldown blocks a double-tap without paying twice', async () => {
+  const t = Date.parse('2026-09-07T12:00:00+03:00');
+  assert.equal((await sendCode(PHONE, { now: t })).ok, true);
+  const spent = calls.length;
+  const r = await sendCode(PHONE, { now: t + 5000 });
+  assert.equal(r.error, 'otp_rate_limited');
+  assert.equal(calls.length, spent, 'a rapid second tap cost money');
+});
+
+test('one number being rate-limited does not block a different number', async () => {
+  const t = Date.parse('2026-09-07T12:00:00+03:00');
+  await sendCode(PHONE, { now: t });
+  await sendCode(PHONE, { now: t + 2 * 60 * 1000 });
+  assert.equal((await sendCode(PHONE, { now: t + 3 * 60 * 1000 })).ok, false);
+  // A shared IP must never let one user lock out everyone behind it.
+  assert.equal((await sendCode('07801111111', { now: t + 3 * 60 * 1000 })).ok, true);
 });

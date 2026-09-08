@@ -10,6 +10,7 @@
 // Everything is wrapped: a failing aggregate must never take the server
 // down, and a slow week must never stack two runs on top of each other.
 import { db, now, getSetting, setSettingValue } from './db.js';
+import { purgeSendLog } from './otpRate.js';
 import { refreshAllShopSignals } from './shopSignals.js';
 import { refreshAllDiagnostics, refreshDemandQueries, demandForShop } from './shopDiagnostics.js';
 import { notify } from './notify.js';
@@ -65,6 +66,10 @@ function weeklyJobs() {
   }
 }
 
+// Mirrors PENDING_TTL_MS in otp.js. Duplicated rather than imported to keep
+// this job free of a cycle back into the OTP module.
+const OTP_PENDING_TTL_MS = 10 * 60 * 1000;
+
 function hourlyJobs() {
   const t = now();
   // Chat retention (spec §9): 90 days, then the messages go. The thread row
@@ -79,6 +84,18 @@ function hourlyJobs() {
   // Undo windows are 30 seconds; keep an hour of history for support, then
   // drop it. The table would otherwise grow with every bulk edit forever.
   db.prepare('DELETE FROM bulk_undo WHERE created_at < ?').run(t - 3600000);
+
+  // OTP send log: 30 days is plenty to investigate an abuse spike, and a
+  // flood must not be able to grow the table without bound.
+  const purged = purgeSendLog(db, { now: t });
+  if (purged) console.log(`[shopJobs] otp send log: ${purged} rows purged`);
+
+  // otp_pending had no scheduled reaper at all — the only sweep lives inside
+  // checkCode, which a send-only flood never calls. Rows for codes nobody
+  // verified accumulated one per number, forever.
+  const stale = db.prepare('DELETE FROM otp_pending WHERE created_at < ?')
+    .run(t - OTP_PENDING_TTL_MS).changes;
+  if (stale) console.log(`[shopJobs] otp_pending: ${stale} unverified rows swept`);
 }
 
 function tick() {
