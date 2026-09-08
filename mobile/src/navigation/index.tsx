@@ -52,6 +52,7 @@ import SavedScreen from '../screens/profile/SavedScreen';
 import WishlistScreen from '../screens/profile/WishlistScreen';
 import { isWizardDirty } from '../lib/listingDraft';
 import RequestsScreen from '../screens/requests/RequestsScreen';
+import RequestBrowseScreen from '../screens/requests/RequestBrowseScreen';
 import RequestDetailScreen from '../screens/requests/RequestDetailScreen';
 import NotificationsScreen from '../screens/profile/NotificationsScreen';
 import NotificationSettingsScreen from '../screens/profile/NotificationSettingsScreen';
@@ -152,12 +153,16 @@ function ProfileStackNav() {
     </BrowseStack.Navigator>
   );
 }
-// طلبات — the request board. RequestDetail needs ListingDetail locally
+// طلبات — opens on the browse-first funnel (brand → most-listed models →
+// last-60-day listings); the three-tab board sits behind «طلباتي» as
+// RequestBoard. resetToRootOnTabPress targets RequestsHome, so the tab
+// always returns to the funnel. RequestDetail needs ListingDetail locally
 // because an offer can attach a listing, and that tap must not dead-end.
 function RequestsStackNav() {
   return (
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
-      <BrowseStack.Screen name="RequestsHome" component={RequestsScreen} />
+      <BrowseStack.Screen name="RequestsHome" component={RequestBrowseScreen} />
+      <BrowseStack.Screen name="RequestBoard" component={RequestsScreen} />
       <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />

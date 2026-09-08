@@ -281,6 +281,12 @@ export interface BrowseFilters {
   max_age_days?: number;
   brand?: string;
   model?: string;
+  /**
+   * Match `model` exactly (after the server's Arabic/case/space fold) instead
+   * of LIKE '%…%'. The request funnel needs this: a chip for "iPhone 13"
+   * must not return every "iPhone 13 Pro Max". Search and browse keep LIKE.
+   */
+  model_exact?: boolean;
   governorate?: string;
   condition?: Condition;
   storage?: string;
@@ -310,7 +316,25 @@ function qs(params: BrowseFilters) {
   return s ? '?' + s : '';
 }
 
+/** One row of GET /listings/top-models — a model with stock, ranked by it. */
+export interface TopModel {
+  /** The spelling sellers use most; what the chip shows and what step 3 filters on. */
+  model: string;
+  model_key: string;
+  count: number;
+  /** Lowest real asking price in the window, or null if every listing is call-for-price. */
+  min_price: number | null;
+  image_path: string | null;
+}
+
 export const Listings = {
+  /**
+   * A brand's most-listed models over the last `days`, active/reserved only.
+   * Ranked by supply in the SAME window the funnel's next step shows, so a
+   * chip can never open onto an empty list.
+   */
+  topModels: (brand: string, days = 60) =>
+    api<TopModel[]>(`/listings/top-models?brand=${encodeURIComponent(brand)}&days=${days}`),
   suggestions: (q: string, governorate?: string) => api<string[]>('/listings/search-suggestions' + qs({q, governorate})),
   create: (body: any) => api<Listing>('/listings', { method: 'POST', body: JSON.stringify(body) }),
   browse: (f: BrowseFilters = {}) => api<Listing[]>('/listings' + qs(f)),

@@ -1,5 +1,6 @@
 import { askingPriceGuidance } from '../askingPriceGuidance.js';
 import { canonicalSearch, suggestionsFor } from '../searchQuality.js';
+import { groupTopModels } from '../topModels.js';
 import { searchAlternatives } from '../searchAlternatives.js';
 import { listingAdviceFor } from '../listingAdvice.js';
 import { Router } from 'express';
@@ -528,6 +529,40 @@ r.get('/search-suggestions', optionalAuth(), (req, res) => {
   res.json(suggestionsFor(String(req.query.q || ''), candidates));
 });
 
+// ─── what a brand actually has for sale ──────────────────────────────
+//
+// The request funnel's second step. Ranked by listings posted inside the
+// same window the next step displays, so a chip can never open onto nothing
+// — the one failure this ranking exists to prevent. The catalogue cannot do
+// this job: it ranks membership, and a model with no listings sorts level
+// with one that has fifty.
+//
+// Sold and expired are excluded on purpose. The funnel answers "what can I
+// buy", and dead stock in the top ten is the dead end again by another road.
+r.get('/top-models', optionalAuth(), (req, res) => {
+  const brand = String(req.query.brand || '');
+  // An unknown brand is an empty answer, not an error — the same treatment
+  // GET /listings gives it.
+  if (!isBrand(brand)) return res.json([]);
+  const days = Math.min(365, Math.max(1, Math.floor(Number(req.query.days)) || 60));
+  const limit = Math.min(20, Math.max(1, Math.floor(Number(req.query.limit)) || 10));
+  const since = Date.now() - days * 86400000;
+
+  // model_key is computed HERE, in SQL, with the fold model_exact filters on.
+  // groupTopModels never derives a key of its own — one function, one truth.
+  const rows = db.prepare(`
+    SELECT l.model, ${arabicNormalizeSql('l.model')} AS model_key,
+           l.asking_price, l.price_on_request, l.created_at,
+           (SELECT i.image_path FROM listing_images i
+             WHERE i.listing_id = l.id ORDER BY i.position, i.id LIMIT 1) AS image_path
+      FROM phone_listings l
+     WHERE l.brand = ? AND l.status IN ('active','reserved') AND COALESCE(l.is_draft,0) = 0
+       AND l.created_at >= ? AND l.model IS NOT NULL AND TRIM(l.model) != ''
+  `).all(brand, since);
+
+  res.json(groupTopModels(rows, { limit }));
+});
+
 // ─── alternatives for a search that found nothing ────────────────────
 //
 // Same contract as the spelling suggestions above, extended past "did you
@@ -638,7 +673,19 @@ r.get('/', optionalAuth(), (req, res) => {
     params.push(Date.now());
   }
   if (brand && isBrand(String(brand))) { where += ' AND l.brand=?'; params.push(brand); }
-  if (model) { where += ' AND l.model LIKE ?'; params.push('%' + String(model) + '%'); }
+  if (model) {
+    if (String(req.query.model_exact) === '1') {
+      // The request funnel's third step. LIKE '%iPhone 13%' also returns every
+      // "iPhone 13 Pro Max", which is precisely what a buyer who tapped a chip
+      // for one model did not ask for. Both sides go through the SAME SQL fold
+      // that /top-models grouped on, so a chip can never point at a filter
+      // that finds nothing. The default LIKE path stays for search/browse.
+      where += ` AND ${arabicNormalizeSql('l.model')} = ${arabicNormalizeSql('?')}`;
+      params.push(String(model));
+    } else {
+      where += ' AND l.model LIKE ?'; params.push('%' + String(model) + '%');
+    }
+  }
   if (governorate && isGovernorate(String(governorate))) { where += ' AND l.governorate=?'; params.push(governorate); }
   if (condition && CONDITIONS.includes(String(condition))) { where += ' AND l.condition=?'; params.push(condition); }
   if (storage) { where += ' AND l.storage=?'; params.push(storage); }
