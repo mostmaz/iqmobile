@@ -1,7 +1,7 @@
 # Request tab: look before you ask
 
 The «اطلب جهاز» tab opens on a funnel — **brand → that brand's most-listed
-models → those models' listings from the last 60 days** — with a floating
+models → those models' listings from the last year** — with a floating
 «اطلب جهاز آخر» that opens the request form pre-filled with whatever the buyer
 was just looking at. The three-tab board (كل الطلبات / طلباتي / عروضي) is
 unchanged and sits one tap away behind «طلباتي» in the header.
@@ -11,7 +11,7 @@ cheaper for everyone than a request nobody needed.
 
 ## The two things that had to be built
 
-**`GET /listings/top-models?brand=&days=60&limit=10`.** The catalogue could
+**`GET /listings/top-models?brand=&days=365&limit=10`.** The catalogue could
 not do this job: `/device-catalog/devices` ranks membership, so a model with no
 listings sorts level with one that has fifty, and tapping it lands on nothing.
 This ranks by listings posted in the **same window the next step displays**,
@@ -53,7 +53,7 @@ pinned.
 - **Rank by demand.** Supply-based by decision. The views/contacts query
   exists at `shopAdmin.js` `/top-devices` if that is ever wanted.
 - **Include sold listings as price references.** See above. Revisit if the
-  60-day active pool proves thin for smaller brands: the Samsung sample had
+  active pool proves thin for smaller brands: the Samsung sample had
   34 distinct models across its last 50 listings, so rank 10 is often a
   single listing.
 - **Touch the board.** `RequestsScreen.tsx` moved behind a link; the compose
@@ -80,6 +80,21 @@ written down.
   extra request, and a buyer recognises the phone by sight long before they
   parse "Galaxy S24 Ultra".
 - **Listings** — filters, the price line, the cards.
+
+**The window is a year, for the ranking and the list alike.** Which devices a
+brand is known for is a slow fact, and a 60-day ranking let one busy fortnight
+decide the top ten. Both steps use the same number on purpose: a device card
+opening onto an empty list is the one failure this ranking exists to prevent,
+and two different windows is exactly how that happens. Listings stay
+active-or-reserved only, so a wider window means more stock, not stale stock.
+
+**The device card carries a price range**, from `min_price`/`max_price` on the
+same ranking response — the same real-price filter, so a call-for-price row
+cannot become either end, and both null means no line rather than a dash
+between two blanks. The figures are abbreviated (`1.07م – 1.7م`): two full IQD
+prices do not fit the ~146pt of usable width on a half-width card and wrap
+under the device name. Equal ends print once; "900ألف – 900ألف" reads as a
+bug.
 
 **Back is the header's own arrow**, in the slot the iQ badge normally holds:
 leading edge, beside the title, with «طلباتي» keeping the other side. It walks
