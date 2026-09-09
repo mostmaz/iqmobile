@@ -11,6 +11,13 @@
 // being compared against repaired ones. AskingPriceGuidance.tsx says so in
 // as many words — if this filter ever changes back, that sentence changes
 // with it.
+//
+// LOCATION does not narrow it either, for the same reason and by the same
+// decision. Iraq is one market for phones: a Galaxy in Basra and the same
+// Galaxy in Erbil are not different products, and splitting eighteen
+// governorates was the single biggest reason a seller reached the 3-listing
+// floor in Baghdad and nowhere else. `location_scope: 'country'` is what the
+// client renders the wording from, so the two cannot drift.
 // 90 days, not 30. Thirty was too short to reach the 3-listing floor for
 // anything but the most common phones, so most sellers saw no guidance at all.
 import { isCondition } from './conditions.js';
@@ -20,6 +27,9 @@ const WINDOW_DAYS = 90;
 export function askingPriceGuidance(db, filters, sellerId, now = Date.now(), neverExpire = true) {
   // `condition` is still required from the caller (the route validates it and
   // the seller has already chosen it) — it just no longer narrows the sample.
+  // `governorate` is still accepted and still required of the caller — the
+  // sell form has it and the route validates it — but it no longer narrows
+  // the sample. See the LOCATION note above.
   const fields = ['brand', 'model', 'storage', 'condition', 'governorate'];
   if (fields.some(key => typeof filters[key] !== 'string' || !filters[key].trim() || filters[key].length > 120))
     return null;
@@ -29,12 +39,12 @@ export function askingPriceGuidance(db, filters, sellerId, now = Date.now(), nev
   const rows = db.prepare(`
     SELECT l.model, l.storage, l.asking_price
     FROM phone_listings l JOIN users u ON u.id=l.seller_id
-    WHERE lower(trim(l.brand))=lower(trim(?)) AND l.governorate=?
+    WHERE lower(trim(l.brand))=lower(trim(?))
       AND l.status='active' AND l.created_at>=? AND l.created_at<=?
       AND (? OR l.expires_at>?) AND l.seller_id!=?
       AND COALESCE(u.shop_hidden,0)=0 AND COALESCE(l.stock_qty,1)>0
       AND COALESCE(l.price_on_request,0)=0 AND l.asking_price>=100000
-  `).all(filters.brand, filters.governorate, now - WINDOW_DAYS*86400000,
+  `).all(filters.brand, now - WINDOW_DAYS*86400000,
     now, neverExpire ? 1 : 0, now, sellerId);
   const prices = rows.filter(row => normalize(row.model) === normalize(filters.model) &&
     capacity(row.storage || '') === capacity(filters.storage))
@@ -42,7 +52,7 @@ export function askingPriceGuidance(db, filters, sellerId, now = Date.now(), nev
   const count = prices.length;
   const enough = count >= 3;
   return {
-    basis: 'asking_prices', window_days: WINDOW_DAYS, location_scope: 'governorate',
+    basis: 'asking_prices', window_days: WINDOW_DAYS, location_scope: 'country',
     // The client renders different copy depending on this — it must never
     // claim the sample is condition-matched when it is not.
     conditions_pooled: true,

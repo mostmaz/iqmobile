@@ -21,12 +21,28 @@ test('exact comparison, normalized storage, even median and asking-price labelin
 });
 test('excludes mismatches, unavailable inventory, own ads, hidden shops and stale rows',()=>{
  const {db,add}=fixture();
- // condition is NOT in this list any more, and the stale row is 91 days old
- // rather than 31 — both deliberate, and pinned by their own tests below.
- for(const overrides of [{model:'iPhone 16 Pro Max'},{storage:'256GB'},{governorate:'Basra'},{status:'sold'},{status:'reserved'},{seller_id:1},{seller_id:3},{stock_qty:0},{price_on_request:1},{asking_price:1},{created_at:now-91*86400000},{created_at:now+1}])add(overrides);
+ // Neither condition NOR governorate is in this list any more, and the stale
+ // row is 91 days old rather than 31 — all three deliberate, and pinned by
+ // their own tests below.
+ for(const overrides of [{model:'iPhone 16 Pro Max'},{storage:'256GB'},{status:'sold'},{status:'reserved'},{seller_id:1},{seller_id:3},{stock_qty:0},{price_on_request:1},{asking_price:1},{created_at:now-91*86400000},{created_at:now+1}])add(overrides);
  add();add();
  const r=askingPriceGuidance(db,filters,1,now);assert.equal(r.count,2);assert.equal(r.median,null);assert.equal(r.low,null);db.close();
 });
+test('every governorate counts toward the sample, not just the seller\'s own',()=>{
+ // Iraq is one market for phones: the same Galaxy in Basra and in Erbil is
+ // not two products, and splitting eighteen governorates was the biggest
+ // single reason a seller hit the 3-listing floor in Baghdad and nowhere
+ // else. `location_scope` is what the client renders its wording from, so
+ // the two can never drift.
+ const {db,add}=fixture();
+ add({governorate:'Basra'});add({governorate:'Erbil'});add({governorate:'Baghdad'});
+ const r=askingPriceGuidance(db,filters,1,now);
+ assert.equal(r.count,3);
+ assert.equal(r.median,500000);
+ assert.equal(r.location_scope,'country');
+ db.close();
+});
+
 test('honors expiration setting and validates required comparison fields',()=>{
  const {db,add}=fixture();for(let i=0;i<3;i++)add({expires_at:now-1});
  assert.equal(askingPriceGuidance(db,filters,1,now,false).count,0);

@@ -15,7 +15,7 @@ import { districtHint } from '../../lib/governorates';
 import { SELLABLE_CONDITIONS } from '../../lib/conditions';
 import { fieldsFor, type ConditionDetails } from '../../lib/conditionDetails';
 import { slotAt, nextSlot } from '../../lib/photoSlots';
-import { NEGOTIABLE_LABEL, type PriceMode } from '../../lib/priceMode';
+import { type PriceMode } from '../../lib/priceMode';
 import { COLOR_CHOICES, canonicalColor, colorProblem } from '../../lib/deviceColors';
 import { ConfirmSheet } from '../../components/ConfirmSheet';
 import { StepDots, ChipTag } from '../../components/marketplace';
@@ -143,6 +143,8 @@ export default function PostListingScreen({ navigation }: any) {
   const [color, setColor] = useState('');
   const [batteryHealth, setBatteryHealth] = useState('');
   const [conditionDetails, setConditionDetails] = useState<ConditionDetails>({});
+  // No longer asked. Kept so the draft round-trips and the payload still
+  // carries a value the API expects; see the note beside the price field.
   const [priceMode, setPriceMode] = useState<PriceMode>('fixed');
   // Warranty defaults to "no warranty" — the most common case for used
   // resale listings, so the user only has to change it for the minority
@@ -935,15 +937,12 @@ export default function PostListingScreen({ navigation }: any) {
             <View style={{ marginTop: 12, marginBottom: 12 }}>
               <GovPicker label="موقع الإعلان · المحافظة" valueAr={govAr} onChangeAr={setGovAr} />
             </View>
-            {/* Is that price firm? The most common first message in the chat
-                thread is asking exactly this, so saying it here saves both
-                sides the exchange. Beside the guidance, because they answer
-                the same question — what the number means. */}
-            <FieldLabel style={{ marginTop: 12 }}>نوع السعر</FieldLabel>
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              <Pill active={priceMode === 'fixed'} onPress={() => setPriceMode('fixed')}>سعر ثابت</Pill>
-              <Pill active={priceMode === 'negotiable'} onPress={() => setPriceMode('negotiable')}>{NEGOTIABLE_LABEL}</Pill>
-            </View>
+            {/* «نوع السعر» (ثابت / قابل للتفاوض) was asked here and is not any
+                more: the owner removed it. Every listing posts as `fixed`,
+                which is what the field defaulted to anyway. The VALUE stays
+                in the API and on the card — shops set it from the panel and
+                the importer, and dropping it from the payload would silently
+                flip those listings. */}
             <AskingPriceGuidance brand={brand} model={model} storage={storage}
               condition={condition} governorate={GOV_AR_TO_EN[govAr]} askingPrice={Number(askingPrice)} />
             <FieldLabel>{ar.auth.city}</FieldLabel>
