@@ -611,6 +611,9 @@ export const Reports = {
 // Brand catalog is server-side now (was hardcoded). BrowseScreen reads
 // from here on focus, cached 5 min via React Query.
 export interface BrandRow {
+  /** Uploaded by an operator; null until then. The brand grid falls back
+   *  to a name+count card rather than showing a broken image. */
+  logo_path?: string | null;
   id: number;
   name: string;
   display_ar: string | null;

@@ -59,3 +59,22 @@ pinned.
 - **Touch the board.** `RequestsScreen.tsx` moved behind a link; the compose
   sheet moved to `components/RequestComposeSheet.tsx` and gained two optional
   `initial*` props. Neither changed behaviour.
+
+## Brand grid and logos
+
+The brand step is a **2-up grid of cards** — logo, name, listing count — from
+the Claude Design prototype. Once a brand is chosen the grid **collapses to a
+pill rail**: the cards are ~96pt tall, and three rows of them would push the
+model chips and every listing below the fold on a 390pt screen. The grid is
+for choosing; the rail is for changing your mind.
+
+**The app ships no brand logos and never will.** They are manufacturer
+trademarks, and which may be used is the operator's decision, not something to
+bake into a binary. So `brands.logo_path` is nullable, an operator uploads
+each one through `POST /admin/brands/:id/logo`, and a brand without a logo
+renders its initial in the same tile — a deliberate-looking card, not an empty
+box or a broken-image glyph. Every brand starts that way.
+
+`PATCH /admin/brands/:id` also accepts `logo_path`, restricted to a
+`/uploads/…` path: an off-site URL there would put a third-party host in every
+buyer's brand grid, and `null` is how a logo is removed.

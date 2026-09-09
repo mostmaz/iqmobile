@@ -21,6 +21,8 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
 import { Btn, Header, Pill, fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
+import { Img } from '../../components/Img';
+import { fullImageUrl } from '../../api/upload';
 import { ListingListSkeleton } from '../../components/Skeleton';
 import { LoadFailed } from '../../components/LoadFailed';
 import { BrandListModal } from '../../components/BrandListModal';
@@ -29,7 +31,7 @@ import { Listings, Brands, type BrandRow, type BrowseSort, type Condition } from
 import { SortPills } from '../../components/SortPills';
 import { CONDITIONS } from '../../lib/conditions';
 import { ar } from '../../i18n/ar';
-import { orderBrandsForFunnel, brandLabel } from '../../lib/requestFunnel';
+import { orderBrandsForFunnel, brandLabel, type FunnelBrand } from '../../lib/requestFunnel';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
@@ -114,22 +116,36 @@ export default function RequestBrowseScreen({ navigation }: any) {
       {/* Brands. Six in the owner's order, then «أخرى». Scrolled to the end
           on layout so RTL lands on the first pill — the fix Browse and
           Search both carry. */}
-      <ScrollView
-        ref={railRef}
-        horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
-        onContentSizeChange={() => railRef.current?.scrollToEnd({ animated: false })}
-      >
-        {head.map((b) => (
-          <Pill key={b.name} active={brand === b.name} onPress={() => pickBrand(b.name)}>
-            {brandLabel(b)}
-          </Pill>
-        ))}
-        {pickedFromRest ? (
-          <Pill active onPress={() => pickBrand(pickedFromRest.name)}>{brandLabel(pickedFromRest)}</Pill>
-        ) : null}
-        <Pill active={false} onPress={() => setMoreOpen(true)}>أخرى…</Pill>
-      </ScrollView>
+      {/* Brand grid, 2-up. Cards rather than a rail so the logo has somewhere
+          to live and the tap target is a whole card.
+          
+          Once a brand is chosen the grid collapses to a single-row rail of
+          pills: the cards are ~96pt tall, and three rows of them would push
+          the model chips and every listing below the fold on a 390pt screen.
+          The grid is for choosing; the rail is for changing your mind. */}
+      {brand ? (
+        <ScrollView
+          ref={railRef}
+          horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+          onContentSizeChange={() => railRef.current?.scrollToEnd({ animated: false })}
+        >
+          {head.map((b) => (
+            <Pill key={b.name} active={brand === b.name} onPress={() => pickBrand(b.name)}>
+              {brandLabel(b)}
+            </Pill>
+          ))}
+          {pickedFromRest ? (
+            <Pill active onPress={() => pickBrand(pickedFromRest.name)}>{brandLabel(pickedFromRest)}</Pill>
+          ) : null}
+          <Pill active={false} onPress={() => setMoreOpen(true)}>أخرى…</Pill>
+        </ScrollView>
+      ) : (
+        <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
+          {head.map((b) => <BrandCard key={b.name} brand={b} onPress={() => pickBrand(b.name)} />)}
+          <BrandCard more onPress={() => setMoreOpen(true)} />
+        </View>
+      )}
 
       {/* Models. Real supply, real counts. */}
       {brand ? (
@@ -303,5 +319,58 @@ export default function RequestBrowseScreen({ navigation }: any) {
         }}
       />
     </View>
+  );
+}
+
+/**
+ * One brand in the chooser grid.
+ *
+ * The logo is optional and always will be: the app ships no brand images —
+ * they are manufacturer trademarks an operator uploads — so a brand without
+ * one must still look deliberate. The fallback is the brand's initial in the
+ * same tile, not an empty box or a broken-image glyph.
+ */
+function BrandCard({ brand, more, onPress }: {
+  brand?: FunnelBrand;
+  /** The «أخرى» card — the rest of the brands, not the catalogue's "Other". */
+  more?: boolean;
+  onPress: () => void;
+}) {
+  const label = more ? 'أخرى' : brandLabel(brand!);
+  const logo = brand?.logo_path ? fullImageUrl(brand.logo_path) : null;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      // Two per row with a 10pt gutter inside 16pt page padding.
+      style={{
+        width: '48%', backgroundColor: theme.surface, borderRadius: radius.lg,
+        borderWidth: 1, borderColor: theme.line, padding: 10, gap: 8,
+      }}
+    >
+      <View style={{
+        height: 64, borderRadius: radius.md, backgroundColor: theme.chipBg,
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      }}>
+        {logo ? (
+          <Img source={{ uri: logo }} contentFit="contain" style={{ width: '78%', height: '72%' }} />
+        ) : (
+          <Text style={{ fontFamily: fonts.ltrBold, fontSize: 22, color: theme.subtle }}>
+            {more ? '⋯' : (brand!.name || '?').trim().charAt(0).toUpperCase()}
+          </Text>
+        )}
+      </View>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
+          {label}
+        </Text>
+        {!more && (brand!.count ?? 0) > 0 ? (
+          <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: theme.subtle, writingDirection: 'ltr' }}>
+            {brand!.count}
+          </Text>
+        ) : null}
+      </View>
+    </TouchableOpacity>
   );
 }

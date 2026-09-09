@@ -1109,6 +1109,13 @@ addColumnIfMissing('phone_listings', "condition_details_json TEXT NOT NULL DEFAU
 // the mobile wizard could never set; this is the everyday one. Default
 // 'fixed' so every existing listing keeps meaning exactly what it meant.
 addColumnIfMissing('phone_listings', "price_mode TEXT NOT NULL DEFAULT 'fixed'");
+
+// Brand logo for the request funnel's brand grid. Nullable and stays that
+// way: the grid falls back to a name+count card, so a brand with no logo is
+// a plainer card rather than a hole. That matters because the logos are
+// manufacturer trademarks supplied by the operator, not something the app
+// ships — brands will be logo-less until someone uploads one.
+addColumnIfMissing('brands', 'logo_path TEXT');
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_listings_client_key
   ON phone_listings(seller_id, client_key) WHERE client_key IS NOT NULL`);
 addColumnIfMissing('chats', 'closed_at INTEGER');

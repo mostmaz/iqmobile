@@ -17,6 +17,7 @@ export interface FunnelBrand {
   display_ar?: string | null;
   count?: number | null;
   position?: number | null;
+  logo_path?: string | null;
 }
 
 /** Owner's order. Compared lowercase against `name`. */

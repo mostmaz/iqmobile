@@ -1171,6 +1171,16 @@ r.patch('/brands/:id(\\d+)', requireAdmin, (req, res) => {
     fields.push('position=?');
     params.push(Math.floor(p));
   }
+  if (req.body?.logo_path !== undefined) {
+    // Only a path we serve. An off-site URL here would put a third-party
+    // host in every buyer's brand grid, and null is how a logo is removed.
+    const lp = req.body.logo_path === null ? null : String(req.body.logo_path).trim();
+    if (lp !== null && !/^\/uploads\/[\w.-]+$/.test(lp)) {
+      return res.status(400).json({ error: 'bad_logo_path' });
+    }
+    fields.push('logo_path=?');
+    params.push(lp);
+  }
   if (fields.length === 0) return res.json(row);
 
   // Atomic rename: when `name` changes, ALSO update every phone_listings
@@ -1186,6 +1196,24 @@ r.patch('/brands/:id(\\d+)', requireAdmin, (req, res) => {
   invalidateBrandsCache();
   const updated = db.prepare('SELECT * FROM brands WHERE id=?').get(id);
   res.json(updated);
+});
+
+// Brand logo for the request funnel's brand grid.
+//
+// Upload only — the app ships no logos and never will: these are
+// manufacturer trademarks, and which ones may be used is the operator's
+// call, not something to bake into the binary. Until one is uploaded the
+// brand renders as a name+count card, which is why logo_path is nullable
+// and the grid has a fallback rather than a broken-image box.
+r.post('/brands/:id(\\d+)/logo', requireAdmin, imageUpload.single('image'), (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT id FROM brands WHERE id=?').get(id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (!req.file) return res.status(400).json({ error: 'missing_file' });
+  const logoPath = `/uploads/${req.file.filename}`;
+  db.prepare('UPDATE brands SET logo_path=? WHERE id=?').run(logoPath, id);
+  invalidateBrandsCache();
+  res.json({ ok: true, logo_path: logoPath });
 });
 
 r.delete('/brands/:id(\\d+)', requireAdmin, (req, res) => {

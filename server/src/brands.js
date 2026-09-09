@@ -17,7 +17,7 @@ let _cache = null;
 export function getBrands() {
   if (!_cache) {
     _cache = db
-      .prepare('SELECT id, name, display_ar, position FROM brands ORDER BY position ASC, id ASC')
+      .prepare('SELECT id, name, display_ar, position, logo_path FROM brands ORDER BY position ASC, id ASC')
       .all();
   }
   return _cache;
