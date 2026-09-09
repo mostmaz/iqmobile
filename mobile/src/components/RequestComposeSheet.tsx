@@ -16,7 +16,8 @@ import { Btn, Pill, Input, fmtIQD } from './ui';
 import { IconPlus, IconMinus, IconChevronDown, IconClose } from './icons';
 import { DevicePickerModal } from './DevicePickerModal';
 import { GovPicker } from './GovPicker';
-import { PhoneRequests, DeviceCatalog, type PhoneRequest } from '../api/endpoints';
+import { PhoneRequests, DeviceCatalog, Listings, type PhoneRequest } from '../api/endpoints';
+import { foldModelKey } from '../lib/requestFunnel';
 import { GOV_AR_TO_EN } from '../lib/governorates';
 
 const PRICE_STEP = 25_000;
@@ -34,12 +35,18 @@ export const CONDITIONS: { key: string | null; label: string }[] = [
 export const conditionLabel = (k?: string | null) => CONDITIONS.find((c) => c.key === k)?.label || 'أي حالة';
 
 export function RequestComposeSheet({
-  visible, onClose, defaultGovAr, onCreated, initialBrand, initialModel,
+  visible, onClose, defaultGovAr, onCreated, initialBrand, initialModel, onSeeAvailable,
 }: {
   visible: boolean;
   onClose: () => void;
   defaultGovAr: string;
   onCreated: (r: PhoneRequest) => void;
+  /**
+   * Called when the buyer taps through to the devices that already exist.
+   * Optional: where a host cannot show them, the availability line still
+   * renders as information — it just is not a link.
+   */
+  onSeeAvailable?: (brand: string, model: string) => void;
   /**
    * What the sheet opens with. The request funnel passes the brand and model
    * the buyer was just looking at, so «اطلب جهاز آخر» after an empty list is
@@ -73,6 +80,21 @@ export function RequestComposeSheet({
     staleTime: 5 * 60 * 1000,
     enabled: visible,
   });
+
+  // Is the thing they are about to ask for already on sale? Reuses the
+  // funnel's top-models endpoint rather than adding a count route: it is one
+  // request per brand and already returns exactly this number.
+  const avail = useQuery({
+    queryKey: ['top-models', brand, 60],
+    queryFn: () => Listings.topModels(brand!, 60),
+    enabled: visible && !!brand,
+    staleTime: 60_000,
+  });
+  const availableCount = React.useMemo(() => {
+    if (!model || !avail.data) return 0;
+    const want = foldModelKey(model);
+    return avail.data.find((m) => foldModelKey(m.model) === want)?.count ?? 0;
+  }, [avail.data, model]);
 
   const create = useMutation({
     mutationFn: () => PhoneRequests.create({
@@ -196,6 +218,37 @@ export function RequestComposeSheet({
               placeholder="مثلاً: أفضّل اللون الأزرق، ذاكرة 256"
               multiline
             />
+
+            {/* Posting a request for a phone that is already on sale wastes
+                the buyer's wait and every shop's reply. Say so before the
+                button, not after — and never block it: their budget or
+                governorate may rule all of these out. */}
+            {availableCount > 0 ? (
+              <View style={{
+                marginTop: 16, padding: 12, borderRadius: radius.lg,
+                backgroundColor: theme.successSoft, borderWidth: 1, borderColor: theme.success, gap: 8,
+              }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.success, textAlign: 'right' }}>
+                  {availableCount === 1
+                    ? `يوجد جهاز ${model} معروض الآن`
+                    : `يوجد ${availableCount} من ${model} معروضة الآن`}
+                </Text>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                  تقدر تشوفها فوراً بدل ما تنتظر عروض المتاجر.
+                </Text>
+                {onSeeAvailable ? (
+                  <TouchableOpacity
+                    onPress={() => { onClose(); onSeeAvailable(brand!, model); }}
+                    accessibilityRole="button"
+                    style={{ alignSelf: 'flex-start', paddingVertical: 4 }}
+                  >
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
+                      شوف المعروض الآن
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
 
             <View style={{ marginTop: 18 }}>
               <Btn kind="primary" full busy={create.isPending} onPress={() => {

@@ -49,3 +49,26 @@ export function orderBrandsForFunnel(brands: FunnelBrand[] | null | undefined): 
 export function brandLabel(b: FunnelBrand): string {
   return (b.display_ar || '').trim() || b.name;
 }
+
+/**
+ * The server's model fold, in JS.
+ *
+ * Mirrors arabicNormalizeSql() in server/src/searchNormalize.js — lowercase,
+ * Arabic orthography collapse, Arabic-Indic digits, strip tatweel and spaces.
+ * Needed because the two sides of a comparison come from different places: a
+ * chip's label is the spelling SELLERS use most, while the model a buyer picks
+ * comes from the CATALOGUE. "Galaxy S24 Ultra" and "galaxy s24  ultra" are the
+ * same phone, and matching raw strings would quietly show no availability for
+ * a device with twenty listings.
+ *
+ * If the SQL fold ever changes, this changes with it.
+ */
+export function foldModelKey(input: string | null | undefined): string {
+  let s = String(input ?? '').toLowerCase();
+  const reps: [RegExp, string][] = [
+    [/[أإآٱ]/g, 'ا'], [/ى/g, 'ي'], [/ؤ/g, 'و'], [/ئ/g, 'ي'], [/ة/g, 'ه'],
+    [/ـ/g, ''], [/\s/g, ''],
+  ];
+  for (const [re, to] of reps) s = s.replace(re, to);
+  return s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+}

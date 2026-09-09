@@ -313,6 +313,8 @@ export default function RequestBrowseScreen({ navigation }: any) {
         defaultGovAr={user?.governorate ? arOf(user.governorate) : ''}
         initialBrand={brand}
         initialModel={model ?? ''}
+        // The funnel IS the place that shows them, so selecting is enough.
+        onSeeAvailable={(b, m) => { setBrand(b); setModel(m); }}
         onCreated={(created) => {
           setComposeOpen(false);
           navigation.navigate('RequestDetail', { id: created.id });

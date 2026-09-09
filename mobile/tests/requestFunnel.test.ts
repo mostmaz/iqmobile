@@ -68,3 +68,30 @@ test('the label prefers Arabic and falls back to the name', () => {
   assert.equal(brandLabel({ name: 'POCO', display_ar: '  ' }), 'POCO');
   assert.equal(HEAD_BRANDS.length, 6);
 });
+
+// ── the fold that decides whether "this device is available" appears ──────
+import { foldModelKey } from '../src/lib/requestFunnel.ts';
+
+test('spelling differences between catalogue and sellers fold together', () => {
+  // A chip's label is the spelling sellers use most; the model a buyer picks
+  // comes from the catalogue. Raw-string matching would show no availability
+  // for a device with twenty listings.
+  const k = foldModelKey('Galaxy S24 Ultra');
+  for (const v of ['galaxy s24 ultra', 'GALAXY  S24ULTRA', 'Galaxy S24 Ultra ']) {
+    assert.equal(foldModelKey(v), k, v);
+  }
+});
+
+test('Arabic orthography and digits fold the same way the SQL does', () => {
+  assert.equal(foldModelKey('ايفون ١٣'), foldModelKey('أيفون 13'));
+  assert.equal(foldModelKey('إيفون١٣'), foldModelKey('ايفون 13'));
+});
+
+test('a real difference is still a difference', () => {
+  assert.notEqual(foldModelKey('Galaxy S24 Ultra'), foldModelKey('Galaxy S24'));
+  assert.notEqual(foldModelKey('iPhone 13'), foldModelKey('iPhone 13 Pro'));
+});
+
+test('junk folds to an empty string rather than throwing', () => {
+  for (const v of [null, undefined, '', '   ']) assert.equal(foldModelKey(v as any), '');
+});
