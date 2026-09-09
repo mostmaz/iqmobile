@@ -113,6 +113,15 @@ export default function RequestBrowseScreen({ navigation }: any) {
 
   const header = (
     <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10, gap: 12 }}>
+      {/* The one line that explains the grid. It has to sit above the cards:
+          below them it lands under the floating button on a 390pt screen,
+          where an instruction nobody scrolls to is an instruction nobody
+          reads. */}
+      {!brand ? (
+        <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 13, lineHeight: 20, textAlign: 'right' }}>
+          اختر الماركة لترى الأجهزة المعروضة الآن — وإن لم تجد ما تريد، اطلبه.
+        </Text>
+      ) : null}
       {/* Brands. Six in the owner's order, then «أخرى». Scrolled to the end
           on layout so RTL lands on the first pill — the fix Browse and
           Search both carry. */}
@@ -256,13 +265,8 @@ export default function RequestBrowseScreen({ navigation }: any) {
           <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
         ) : null}
         ListEmptyComponent={
-          !brand ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
-                اختر الماركة لترى الأجهزة المعروضة الآن — وإن لم تجد ما تريد، اطلبه.
-              </Text>
-            </View>
-          ) : !model ? null
+          !brand ? null
+            : !model ? null
             : list.isError ? (
               <LoadFailed error={list.error} retrying={list.isFetching} onRetry={() => list.refetch()} />
             ) : list.isLoading ? (
