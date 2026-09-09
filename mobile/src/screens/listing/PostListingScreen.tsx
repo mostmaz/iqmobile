@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { theme, fonts, radius } from '../../theme';
+import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { districtHint } from '../../lib/governorates';
@@ -559,6 +559,27 @@ export default function PostListingScreen({ navigation }: any) {
         }
       }
     }
+    // Step 1 — the device's own facts. All required now: a listing that omits
+    // capacity, colour, accessories or the condition answers is the listing
+    // buyers open a chat about and sellers answer the same three questions
+    // for, over and over.
+    if (step === 1) {
+      if (!storage) { setFieldErr('storage'); return setErr('اختر السعة'); }
+      if (!color.trim()) { setFieldErr('color'); return setErr('اختر لون الجهاز'); }
+      if (accessories.length === 0) {
+        setFieldErr('accessories');
+        return setErr('اختر الملحقات — أو «بدون ملحقات» إن لم يكن معها شيء.');
+      }
+      // Only for a device that HAS a history: a sealed phone has no screen
+      // wear, no repairs and no water damage to declare, and asking would be
+      // the form not paying attention.
+      const need = fieldsFor(condition);
+      const missing = need.filter((f) => !conditionDetails[f.id]);
+      if (missing.length) {
+        setFieldErr('conditionDetails');
+        return setErr(`أجب عن ${missing[0].question} — «غير معروف» جواب مقبول.`);
+      }
+    }
     if (step === 2) {
       const priceVal = parsePrice(askingPrice);
       if (priceVal == null) { setFieldErr('price'); return setErr('أدخل سعراً صحيحاً'); }
@@ -576,6 +597,13 @@ export default function PostListingScreen({ navigation }: any) {
         return setErr('تأكد أن السعر أعلى من 100,000 د.ع.');
       }
       lowPriceWarnedRef.current = null;
+      // The description is where a buyer decides whether to call. Thirty
+      // characters is about one honest sentence — enough to have said
+      // something, short enough not to be a wall a seller gives up at.
+      if (description.trim().length < 30) {
+        setFieldErr('description');
+        return setErr('اكتب وصفاً قصيراً لحالة الجهاز (30 حرفاً على الأقل).');
+      }
     }
     if (step === 3) {
       // Accept Arabic-Indic digits (٠١٢…) in phone fields. Iraqi keyboards
@@ -992,6 +1020,19 @@ export default function PostListingScreen({ navigation }: any) {
                 it reads as "photo three is usually the side", a prompt rather
                 than a claim about the picture above it. Past the fourth,
                 photos are unlabelled instead of wrongly labelled. */}
+            {/* Said BEFORE the picker opens, not after upload. A seller who
+                learns about review only when their listing is held reads it
+                as a rejection; here it is just the rule. */}
+            <View style={{
+              flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
+              backgroundColor: theme.accentSoft, borderColor: theme.accent, borderWidth: 1,
+              borderRadius: radius.lg, padding: 11, marginBottom: 12,
+            }}>
+              <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 12.5, color: theme.accentDeep, textAlign: 'right', lineHeight: 20 }}>
+                تُراجَع صور كل إعلان قبل نشره. اختر صوراً واضحة للجهاز نفسه — لا صوراً من الإنترنت ولا صوراً تحتوي أرقاماً أو معلومات شخصية.
+              </Text>
+            </View>
+
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
               {images.map((uri, i) => (
                 <View key={i} style={{ position: 'relative', width: 100 }}>
@@ -1235,9 +1276,13 @@ export default function PostListingScreen({ navigation }: any) {
           </>
         )}
 
-        {[0,2,4,5].includes(step) ? <ListingQualityChecklist
+        {/* `review` used to be true on step 5 unconditionally, so a clean
+            listing still got a «راجع جودة إعلانك» card saying there was
+            nothing to review. A card whose only content is "no content" is
+            noise at the moment of publishing. */}
+        {[0,2,4,5].includes(step) && (step === 5 ? qualityIssues.length > 0 : true) ? <ListingQualityChecklist
           issues={step === 5 ? qualityIssues : qualityIssues.filter(issue => issue.step === step)}
-          review={step === 5}
+          review={false}
           onEdit={target => { setErr(''); setFieldErr(null); setStep(target); qualityScrollRef.current?.scrollTo({ y: 0, animated: true }); }}
         /> : null}
       </ScrollView>
@@ -1267,19 +1312,31 @@ export default function PostListingScreen({ navigation }: any) {
             </Text>
           </View>
         ) : null}
-        <View style={{ flexDirection: 'row-reverse', gap: 8 }}>
-          {/* Step 1 used to show only "التالي", leaving a 30dp top arrow as
-              the sole way out. Every step now pairs forward with back. */}
-          <Btn
-            kind="ghost"
-            full
-            onPress={() => (step > 0 ? setStep(step - 1) : (isDirty ? setExitAsk(true) : navigation.goBack()))}
-          >
-            {step > 0 ? ar.post.back : 'إلغاء'}
-          </Btn>
-          <Btn kind="primary" full onPress={next} busy={create.isPending}>
-            {step === 5 ? ar.post.publish : ar.post.next}
-          </Btn>
+        {/* Floating, not a bar: the two buttons sit on their own rounded
+            surfaces over the form rather than inside a full-width footer
+            slab. Step 1 used to show only "التالي", leaving a 30dp top arrow
+            as the sole way out — every step still pairs forward with back. */}
+        <View style={{ flexDirection: 'row-reverse', gap: 10, alignItems: 'center' }}>
+          <View style={{ flex: 1, borderRadius: radius.pill, overflow: 'hidden', ...shadowSoft }}>
+            <Btn kind="primary" full onPress={next} busy={create.isPending}>
+              {step === 5 ? ar.post.publish : ar.post.next}
+            </Btn>
+          </View>
+          <View style={{
+            borderRadius: radius.pill, overflow: 'hidden',
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            ...shadowSoft,
+          }}>
+            <TouchableOpacity
+              onPress={() => (step > 0 ? setStep(step - 1) : (isDirty ? setExitAsk(true) : navigation.goBack()))}
+              accessibilityRole="button"
+              style={{ paddingHorizontal: 20, paddingVertical: 14 }}
+            >
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
+                {step > 0 ? ar.post.back : 'إلغاء'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 

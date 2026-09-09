@@ -798,8 +798,21 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {/* specs card */}
         <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
           <Card style={{ paddingVertical: 4, paddingHorizontal: 16 }}>
-            {data.storage ? <SpecRow label={ar.listing.storage} value={data.storage} /> : null}
-            {data.color ? <SpecRow label={ar.listing.color} value={data.color} /> : null}
+            {/* Required at posting since the sell form was tightened, so these
+                always render — an ABSENT row reads as "not applicable", while
+                «غير محدد» reads as "the seller didn't say", which is the true
+                statement for a listing posted before the fields were
+                mandatory. Same rule the compare screen follows. */}
+            <SpecRow
+              label={ar.listing.storage}
+              value={data.storage || 'غير محدد'}
+              muted={!data.storage}
+            />
+            <SpecRow
+              label={ar.listing.color}
+              value={data.color || 'غير محدد'}
+              muted={!data.color}
+            />
             {/* Battery: hide for non-Apple listings (no value), for Apple
                 listings the seller skipped, and defensively for legacy
                 rows that the old server bug stored as 0 instead of null. */}
@@ -807,13 +820,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
               <SpecRow label={ar.listing.battery} value={`${data.battery_health}%`} />
             ) : null}
             {data.warranty_status ? <SpecRow label="الضمان" value={data.warranty_status} /> : null}
-            {data.accessories?.length ? (
-              <SpecRow
-                label={ar.listing.accessories}
-                value={data.accessories.join('، ')}
-                last={conditionRows((data as any).condition_details).length === 0}
-              />
-            ) : null}
+            <SpecRow
+              label={ar.listing.accessories}
+              value={data.accessories?.length ? data.accessories.join('، ') : 'غير محدد'}
+              muted={!data.accessories?.length}
+              last={conditionRows((data as any).condition_details).length === 0}
+            />
             {/* The seller's own answers about condition. `last` moved here
                 off the accessories row: it was hardcoded there, so adding any
                 row below it left a stray divider under the final entry. */}

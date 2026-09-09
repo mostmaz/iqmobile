@@ -16,7 +16,13 @@ test('generic model names flagged while valid numeric/short/manual names remain 
 });
 test('vague used condition needs screen/body/repair details with edit destinations',()=>{
  const issues=listingQuality({...draft,description:'نظيف'});
- for(const id of ['description','screen','body','repairs'])assert.ok(issues.some(i=>i.id===id&&i.step===2));
+ // The description note belongs to step 2, where the description is.
+ assert.ok(issues.some(i=>i.id==='description'&&i.step===2));
+ // screen/body/repairs point at step 1, not step 2. They used to send the
+ // seller to the description because prose was the only way to answer them;
+ // since the structured condition answers exist that is where the fix lives,
+ // and a "تعديل" that lands on the wrong screen is worse than none.
+ for(const id of ['screen','body','repairs'])assert.ok(issues.some(i=>i.id===id&&i.step===1),id);
 });
 test('new devices request box/activation details rather than used-condition claims',()=>{
  assert.deepEqual(ids({condition:'new',description:'العلبة مختومة والجهاز غير مفعل.'}),[]);

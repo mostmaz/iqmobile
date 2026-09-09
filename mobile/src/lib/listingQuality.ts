@@ -12,6 +12,11 @@ export type ListingQualityDraft = {
 export type ListingQualityIssue = { id: string; step: number; title: string; advice: string };
 const normalize = (value: string) => value.trim().toLowerCase().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[ـً-ْ]/g,'').replace(/\s+/g,' ');
 // Completeness hints only. Do not infer defects or factual truth from prose.
+//
+// screen/body/repairs point at step 1, not step 2. They used to send the
+// seller to the DESCRIPTION, because prose was the only way to answer them;
+// since #7 there are fixed answers on step 1 and that is where the fix now
+// lives. A "تعديل" that lands on the wrong screen is worse than none.
 export function listingQuality(draft: ListingQualityDraft): ListingQualityIssue[] {
  const issues: ListingQualityIssue[]=[];
  const photoCount=new Set(draft.images.filter(Boolean)).size;
@@ -29,9 +34,9 @@ export function listingQuality(draft: ListingQualityDraft): ListingQualityIssue[
  if(draft.condition==='new') {
   if(!/(مختوم|مفتوح|علب|كارتون|تفعيل|مفعل|sealed|unopened|opened|box|activat)/.test(description))issues.push({id:'new-condition',step:2,title:'وضّح حالة العلبة والتفعيل',advice:'اذكر إن كانت العلبة مختومة أو مفتوحة، وهل الجهاز مفعّل. لا تصفه بأنه مختوم إذا لم تتأكد.'});
  } else {
-  if(!/(شاش|زجاج|عرض|لمس|screen|display|touch|glass)/.test(description))answered.has('screen')||issues.push({id:'screen',step:2,title:'وضّح حالة الشاشة',advice:'اذكر الخدوش أو الكسور وأي مشكلة في اللمس أو العرض، أو اكتب أنها بلا عيوب ظاهرة إذا كان ذلك صحيحاً.'});
-  if(!/(هيكل|ظهر|حاف|جوانب|اطار|خدش|خدوش|شخط|شخوط|body|back|frame|scratch|dent)/.test(description))answered.has('body')||issues.push({id:'body',step:2,title:'وضّح حالة الهيكل',advice:'اذكر حالة الظهر والحواف وأماكن الخدوش أو الضربات، وأرفق صورة واضحة لها.'});
-  if(!/(تصليح|صلح|اصلاح|صيانه|تبديل|تبدل|مبدل|مغير|تغيير|repair|replac|refurb)/.test(description))answered.has('repairs')||issues.push({id:'repairs',step:2,title:'اذكر تاريخ الإصلاح أو تبديل الأجزاء',advice:draft.condition==='repaired'||draft.condition==='refurbished'?'اخترت جهازاً مصلحاً أو مجدداً: اذكر الجزء المصلح أو المبدل وأي عيب باقٍ. إن لم تعرف التفاصيل، قل ذلك بوضوح.':'اذكر إن أُصلح الجهاز أو بُدلت الشاشة أو البطارية. إذا لم تعرف تاريخه، اكتب «تاريخ الإصلاح غير معروف».'});
+  if(!/(شاش|زجاج|عرض|لمس|screen|display|touch|glass)/.test(description))answered.has('screen')||issues.push({id:'screen',step:1,title:'وضّح حالة الشاشة',advice:'اذكر الخدوش أو الكسور وأي مشكلة في اللمس أو العرض، أو اكتب أنها بلا عيوب ظاهرة إذا كان ذلك صحيحاً.'});
+  if(!/(هيكل|ظهر|حاف|جوانب|اطار|خدش|خدوش|شخط|شخوط|body|back|frame|scratch|dent)/.test(description))answered.has('body')||issues.push({id:'body',step:1,title:'وضّح حالة الهيكل',advice:'اذكر حالة الظهر والحواف وأماكن الخدوش أو الضربات، وأرفق صورة واضحة لها.'});
+  if(!/(تصليح|صلح|اصلاح|صيانه|تبديل|تبدل|مبدل|مغير|تغيير|repair|replac|refurb)/.test(description))answered.has('repairs')||issues.push({id:'repairs',step:1,title:'اذكر تاريخ الإصلاح أو تبديل الأجزاء',advice:draft.condition==='repaired'||draft.condition==='refurbished'?'اخترت جهازاً مصلحاً أو مجدداً: اذكر الجزء المصلح أو المبدل وأي عيب باقٍ. إن لم تعرف التفاصيل، قل ذلك بوضوح.':'اذكر إن أُصلح الجهاز أو بُدلت الشاشة أو البطارية. إذا لم تعرف تاريخه، اكتب «تاريخ الإصلاح غير معروف».'});
  }
  return issues;
 }

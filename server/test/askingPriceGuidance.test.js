@@ -21,7 +21,9 @@ test('exact comparison, normalized storage, even median and asking-price labelin
 });
 test('excludes mismatches, unavailable inventory, own ads, hidden shops and stale rows',()=>{
  const {db,add}=fixture();
- for(const overrides of [{model:'iPhone 16 Pro Max'},{storage:'256GB'},{condition:'new'},{governorate:'Basra'},{status:'sold'},{status:'reserved'},{seller_id:1},{seller_id:3},{stock_qty:0},{price_on_request:1},{asking_price:1},{created_at:now-31*86400000},{created_at:now+1}])add(overrides);
+ // condition is NOT in this list any more, and the stale row is 91 days old
+ // rather than 31 — both deliberate, and pinned by their own tests below.
+ for(const overrides of [{model:'iPhone 16 Pro Max'},{storage:'256GB'},{governorate:'Basra'},{status:'sold'},{status:'reserved'},{seller_id:1},{seller_id:3},{stock_qty:0},{price_on_request:1},{asking_price:1},{created_at:now-91*86400000},{created_at:now+1}])add(overrides);
  add();add();
  const r=askingPriceGuidance(db,filters,1,now);assert.equal(r.count,2);assert.equal(r.median,null);assert.equal(r.low,null);db.close();
 });
@@ -31,5 +33,27 @@ test('honors expiration setting and validates required comparison fields',()=>{
  assert.equal(askingPriceGuidance(db,filters,1,now,true).count,3);
  assert.equal(askingPriceGuidance(db,{...filters,model:''},1,now),null);
  assert.equal(askingPriceGuidance(db,{...filters,condition:'excellent'},1,now),null);
+ db.close();
+});
+
+test('every condition counts toward the sample, not just the seller\'s own',()=>{
+ // Deliberate trade: the condition-matched sample was empty for most sellers,
+ // and no guidance helps nobody. The cost — a new phone priced against
+ // repaired ones — is stated in the client copy, not hidden here.
+ const {db,add}=fixture();
+ add({condition:'new'});add({condition:'used'});add({condition:'repaired'});add({condition:'refurbished'});
+ const r=askingPriceGuidance(db,filters,1,now);
+ assert.equal(r.count,4);
+ assert.equal(r.conditions_pooled,true,'the client must be told the sample is mixed');
+ db.close();
+});
+
+test('the window is 90 days, and 91 is still out',()=>{
+ const {db,add}=fixture();
+ add({created_at:now-89*86400000});add({created_at:now-90*86400000+1000});add({created_at:now-30*86400000});
+ add({created_at:now-91*86400000});
+ const r=askingPriceGuidance(db,filters,1,now);
+ assert.equal(r.count,3);
+ assert.equal(r.window_days,90);
  db.close();
 });
