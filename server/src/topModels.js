@@ -22,7 +22,9 @@
  * @param rows  `{ model, model_key, asking_price, price_on_request,
  *               created_at, image_path }` — every listing in the window,
  *               already filtered to brand/status by the caller.
- * @returns `{ model, model_key, count, min_price, image_path }[]`, best first.
+ * @returns `{ model, model_key, count, min_price, max_price, image_path }[]`,
+ *          best first. min/max are the ends of the real-price range and are
+ *          both null when every listing in the group is call-for-price.
  */
 export function groupTopModels(rows, { limit = 10 } = {}) {
   const groups = new Map();
@@ -32,7 +34,7 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
     if (!key) continue;
     let g = groups.get(key);
     if (!g) {
-      g = { model_key: key, count: 0, spellings: new Map(), min_price: null, newest: -Infinity, image_path: null };
+      g = { model_key: key, count: 0, spellings: new Map(), min_price: null, max_price: null, newest: -Infinity, image_path: null };
       groups.set(key, g);
     }
     g.count++;
@@ -44,11 +46,12 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
     if (spelling) g.spellings.set(spelling, (g.spellings.get(spelling) || 0) + 1);
 
     // A call-for-price row carries the sentinel asking_price=1. Letting it
-    // through would put "from 1 د.ع" on the chip — the exact bug #9 fixed on
-    // the cards. Only a real price competes for the minimum.
+    // through would put "from 1 د.ع" on the card — the exact bug #9 fixed on
+    // the cards. Only a real price competes for either end of the range.
     const price = Number(r.asking_price);
     if (!r.price_on_request && Number.isFinite(price) && price > 1) {
       g.min_price = g.min_price == null ? price : Math.min(g.min_price, price);
+      g.max_price = g.max_price == null ? price : Math.max(g.max_price, price);
     }
 
     // The thumbnail is the newest listing's, so it reflects what is on sale
@@ -66,6 +69,7 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
       model_key: g.model_key,
       count: g.count,
       min_price: g.min_price,
+      max_price: g.max_price,
       image_path: g.image_path,
       // kept for ordering only; not part of the response shape
       _newest: g.newest,

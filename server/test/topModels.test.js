@@ -52,8 +52,22 @@ test('a call-for-price row never becomes the minimum price', () => {
     row({ asking_price: 850000 }),
   ]);
   assert.equal(out[0].min_price, 850000);
+  assert.equal(out[0].max_price, 850000, 'the sentinel is not the top of the range either');
   const only = groupTopModels([row({ asking_price: 1, price_on_request: 1 })]);
   assert.equal(only[0].min_price, null, 'no real price means no price, not 1');
+  assert.equal(only[0].max_price, null);
+});
+
+test('the price range spans the real prices in the group', () => {
+  // The device card shows both ends. A range that quietly reported the same
+  // number twice would read as "every one of these costs 900,000".
+  const out = groupTopModels([
+    row({ asking_price: 900000 }),
+    row({ asking_price: 1250000 }),
+    row({ asking_price: 1050000 }),
+  ]);
+  assert.equal(out[0].min_price, 900000);
+  assert.equal(out[0].max_price, 1250000);
 });
 
 test('the thumbnail follows the newest listing in the group', () => {
@@ -70,7 +84,8 @@ test('the cap holds and the internal ordering field does not leak', () => {
   for (let i = 0; i < 25; i++) rows.push(row({ model_key: `k${i}`, model: `M${i}` }));
   const out = groupTopModels(rows, { limit: 10 });
   assert.equal(out.length, 10);
-  assert.deepEqual(Object.keys(out[0]).sort(), ['count', 'image_path', 'min_price', 'model', 'model_key']);
+  assert.deepEqual(Object.keys(out[0]).sort(),
+    ['count', 'image_path', 'max_price', 'min_price', 'model', 'model_key']);
 });
 
 test('rows with no key are skipped rather than merged into one bucket', () => {

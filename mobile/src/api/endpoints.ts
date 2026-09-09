@@ -322,8 +322,9 @@ export interface TopModel {
   model: string;
   model_key: string;
   count: number;
-  /** Lowest real asking price in the window, or null if every listing is call-for-price. */
+  /** Ends of the real-price range in the window. Both null when every listing is call-for-price. */
   min_price: number | null;
+  max_price: number | null;
   image_path: string | null;
 }
 

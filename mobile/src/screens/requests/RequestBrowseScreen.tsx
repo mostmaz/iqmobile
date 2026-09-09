@@ -33,13 +33,22 @@ import { CONDITIONS } from '../../lib/conditions';
 import { ar } from '../../i18n/ar';
 import { orderBrandsForFunnel, brandLabel, type FunnelBrand } from '../../lib/requestFunnel';
 import { bundledBrandLogo } from '../../lib/brandLogos';
+import { formatPriceRange } from '../../lib/priceRange';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
 
 const PAGE_SIZE = 15;
-/** The window for both the ranking and the list — one number, on purpose. */
-const WINDOW_DAYS = 60;
+// The window for both the ranking and the list — one number, on purpose.
+//
+// A year, not two months. Which devices a brand is known for is a slow fact,
+// and a 60-day ranking let one busy fortnight decide the top ten. The list
+// under it uses the SAME number, which is the guarantee the whole funnel
+// rests on: a device card can never open onto an empty list. Every listing
+// shown is still active or reserved — sold and expired are excluded by the
+// endpoint — so a wider window means more stock, not stale stock.
+const WINDOW_DAYS = 365;
+const WINDOW_AR = 'سنة';
 /**
  * Card corner from the Claude Design prototype. Deliberately off the shared
  * `radius` scale, whose largest step is 16: the funnel's chooser cards are
@@ -155,19 +164,19 @@ export default function RequestBrowseScreen({ navigation }: any) {
         topModels.isLoading ? (
           <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
             {[0, 1, 2, 3].map((i) => (
-              <View key={i} style={{ width: '48%', height: 130, borderRadius: CARD_RADIUS, backgroundColor: theme.surface }} />
+              <View key={i} style={{ width: '48%', height: 152, borderRadius: CARD_RADIUS, backgroundColor: theme.surface }} />
             ))}
           </View>
         ) : topModels.isError ? (
           <LoadFailed compact error={topModels.error} retrying={topModels.isFetching} onRetry={() => topModels.refetch()} />
         ) : (topModels.data?.length ?? 0) === 0 ? (
           <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 20 }}>
-            لا توجد إعلانات لهذه الماركة في آخر {WINDOW_DAYS} يوماً. اطلبه وتصلك عروض المتاجر.
+            لا توجد إعلانات لهذه الماركة في آخر {WINDOW_AR}. اطلبه وتصلك عروض المتاجر.
           </Text>
         ) : (
           <View style={{ gap: 8 }}>
             <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
-              الأكثر عرضاً خلال {WINDOW_DAYS} يوماً
+              الأكثر عرضاً خلال {WINDOW_AR}
             </Text>
             {/* 2-up cards with the device's own photo, not text chips. The
                 photo is the newest listing's first image, which the ranking
@@ -219,8 +228,8 @@ export default function RequestBrowseScreen({ navigation }: any) {
                 filtered list would quote a price the list does not contain. */}
             {!condition && items.length > 0
               && (topModels.data?.find((m) => m.model === model)?.min_price ?? null) != null
-              ? `المعروض خلال ${WINDOW_DAYS} يوماً · يبدأ من ${fmtIQD(topModels.data!.find((m) => m.model === model)!.min_price!)} د.ع`
-              : `المعروض خلال ${WINDOW_DAYS} يوماً`}
+              ? `المعروض خلال ${WINDOW_AR} · يبدأ من ${fmtIQD(topModels.data!.find((m) => m.model === model)!.min_price!)} د.ع`
+              : `المعروض خلال ${WINDOW_AR}`}
           </Text>
         </View>
       ) : null}
@@ -428,6 +437,7 @@ function ModelCard({ model, active, onPress }: {
   onPress: () => void;
 }) {
   const photo = model.image_path ? fullImageUrl(model.image_path) : null;
+  const range = formatPriceRange(model.min_price, model.max_price);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -456,20 +466,34 @@ function ModelCard({ model, active, onPress }: {
           </Text>
         )}
       </View>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
-        <Text
-          numberOfLines={2}
-          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 12, lineHeight: 16, color: active ? theme.bg : theme.ink, textAlign: 'right' }}
-        >
-          {model.model}
-        </Text>
-        <Text
-          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ fontFamily: fonts.mono, fontSize: 10.5, opacity: 0.6, color: active ? theme.bg : theme.ink, writingDirection: 'ltr' }}
-        >
-          {model.count}
-        </Text>
+      <View style={{ gap: 3 }}>
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
+          <Text
+            numberOfLines={2}
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 12, lineHeight: 16, color: active ? theme.bg : theme.ink, textAlign: 'right' }}
+          >
+            {model.model}
+          </Text>
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.mono, fontSize: 10.5, opacity: 0.6, color: active ? theme.bg : theme.ink, writingDirection: 'ltr' }}
+          >
+            {model.count}
+          </Text>
+        </View>
+        {/* The range, when there is a real one. A group where every listing
+            is call-for-price sends null for both ends and gets no line —
+            better than a dash between two blanks. */}
+        {range ? (
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ar, fontSize: 10.5, color: active ? theme.bg : theme.subtle, opacity: active ? 0.75 : 1, textAlign: 'right' }}
+          >
+            {range} د.ع
+          </Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
