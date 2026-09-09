@@ -24,7 +24,7 @@ const GOV_AR = {
   Diwaniyah: 'الديوانية', 'Dhi Qar': 'ذي قار', Maysan: 'ميسان',
   Muthanna: 'المثنى', Salahuddin: 'صلاح الدين', Wasit: 'واسط',
 };
-const COND_AR = { new: 'جديد', used: 'مستعمل', refurbished: 'مجدّد', repaired: 'مصلّح' };
+import { CONDITION_AR as COND_AR } from '../conditions.js';
 
 // Escape every dynamic value before it lands in HTML/attribute context —
 // model + description are user input, so this is the XSS guard.

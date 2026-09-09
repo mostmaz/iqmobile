@@ -24,6 +24,7 @@ import { pushToAdmins } from '../adminPush.js';
 import { audit } from '../auditLog.js';
 import { getShopSignals, computeShopSignals } from '../shopSignals.js';
 import { refreshShopDiagnostics, demandForShop } from '../shopDiagnostics.js';
+import { toCondition } from '../conditions.js';
 
 // Same upload conventions as the app: disk storage under ./uploads, image
 // mime/ext allow-list, 5MB cap. lst_/shp_ prefixes match existing files.
@@ -365,7 +366,7 @@ r.post('/shop-admin/listings', requireShopAdmin, (req, res) => {
   const priceRaw = Number(b.asking_price);
   const hasPrice = Number.isFinite(priceRaw) && priceRaw > 0;
   const price = hasPrice ? (priceRaw < 10000 ? priceRaw * 1000 : Math.round(priceRaw)) : 1;
-  const condition = ['new', 'used', 'refurbished', 'repaired'].includes(b.condition) ? b.condition : 'new';
+  const condition = toCondition(b.condition);
   const stock = Number.isFinite(Number(b.stock_qty)) && Number(b.stock_qty) >= 0 ? Number(b.stock_qty) : null;
   const t = now();
   const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
@@ -573,7 +574,7 @@ r.post('/shop-admin/listings/bulk-add', requireShopAdmin, requireAdvanced, (req,
         req.shop.id, brand, model,
         String(row.storage || '').trim() || null,
         String(row.color || '').trim() || null,
-        ['new', 'used', 'refurbished', 'repaired'].includes(row.condition) ? row.condition : 'new',
+        toCondition(row.condition),
         price, req.shop.governorate || 'Baghdad',
         String(row.description || '').trim() || null,
         asDraft ? 'removed' : 'active',

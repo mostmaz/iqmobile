@@ -12,7 +12,7 @@ import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Btn, FieldLabel, Header, Input, Pill, fmtIQD } from '../../components/ui';
 import { GovPicker } from '../../components/GovPicker';
 import { districtHint } from '../../lib/governorates';
-import { CONDITIONS } from '../../lib/conditions';
+import { SELLABLE_CONDITIONS } from '../../lib/conditions';
 import { fieldsFor, type ConditionDetails } from '../../lib/conditionDetails';
 import { slotAt, nextSlot } from '../../lib/photoSlots';
 import { NEGOTIABLE_LABEL, type PriceMode } from '../../lib/priceMode';
@@ -770,7 +770,9 @@ export default function PostListingScreen({ navigation }: any) {
           <>
             <FieldLabel>الحالة</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-              {CONDITIONS.map((c) => <Pill key={c} active={condition === c} onPress={() => setCondition(c)}>{(ar.listing as any)[c]}</Pill>)}
+              {/* SELLABLE, not CONDITIONS: «مجدد» is no longer offered but stays a
+                  valid value so the listings that carry it remain filterable. */}
+              {SELLABLE_CONDITIONS.map((c) => <Pill key={c} active={condition === c} onPress={() => setCondition(c)}>{(ar.listing as any)[c]}</Pill>)}
             </View>
 
             {/* Structured condition. Skipped entirely for new/sealed — a

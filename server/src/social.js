@@ -69,6 +69,10 @@ function conditionPhrase(l, { emoji = true } = {}) {
   const bat = Number(l.battery_health);
   const e = (s) => (emoji ? s : s.replace(/^[^؀-ۿ\w]+\s*/, ''));
   if (c === 'new') return e('🆕 جديد بالكرتون — غير مفتوح');
+  // «كالجديد» is now a condition the seller picks, so it outranks the
+  // battery-health guess below — that guess exists for sellers who never
+  // said, and must not overwrite one who did.
+  if (c === 'like_new') return e('✨ كالجديد — بحالة ممتازة');
   if (c === 'refurbished') return e('♻️ مجدّد بحالة الوكالة');
   if (c === 'repaired') return e('🔧 مصلّح ويعمل بكفاءة تامة');
   if (Number.isFinite(bat) && bat >= 90) return e(`✨ كالجديد — بطارية ${bat}٪`);

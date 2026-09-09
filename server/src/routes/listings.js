@@ -30,6 +30,8 @@ import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { parseConditionDetails, serializeConditionDetails, annotateDisclosure } from '../conditionDetails.js';
+// Every valid value, not just the sellable ones — see src/conditions.js.
+import { CONDITIONS } from '../conditions.js';
 
 const r = Router();
 
@@ -127,7 +129,6 @@ function trim(v, max) {
   return s.slice(0, max);
 }
 
-const CONDITIONS = ['new', 'used', 'repaired', 'refurbished'];
 const MAX_IMAGES = 10;
 
 function ttlMs() {

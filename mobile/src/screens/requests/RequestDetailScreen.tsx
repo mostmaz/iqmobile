@@ -34,7 +34,7 @@ import { useAuth } from '../../auth/AuthContext';
 const sameModel = (m?: string | null) => String(m || '').toLowerCase().replace(/\s+/g, '');
 
 const conditionLabel = (k?: string | null) => ({
-  new: 'جديد', used: 'مستعمل', refurbished: 'مجدّد', repaired: 'مصلّح',
+  new: 'جديد', like_new: 'كالجديد', used: 'مستعمل', refurbished: 'مجدّد', repaired: 'مصلّح',
 } as Record<string, string>)[k || ''] || 'أي حالة';
 
 export default function RequestDetailScreen({ navigation, route }: any) {

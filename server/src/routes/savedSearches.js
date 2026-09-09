@@ -9,7 +9,7 @@ import { notify, hasNotified } from '../notify.js';
 const r = Router();
 
 const MAX_PER_USER = 20;
-const CONDITIONS = ['new', 'used', 'repaired', 'refurbished'];
+import { CONDITIONS } from '../conditions.js';
 // Push at most once per search per this window, so a broad search doesn't
 // fire a burst of notifications when several matching listings post together.
 const PUSH_COOLDOWN_MS = 15 * 60 * 1000;

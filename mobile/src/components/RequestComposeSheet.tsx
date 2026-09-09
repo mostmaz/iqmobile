@@ -19,18 +19,21 @@ import { GovPicker } from './GovPicker';
 import { PhoneRequests, DeviceCatalog, Listings, type PhoneRequest } from '../api/endpoints';
 import { foldModelKey } from '../lib/requestFunnel';
 import { GOV_AR_TO_EN } from '../lib/governorates';
+import { SELLABLE_CONDITIONS } from '../lib/conditions';
+import { ar } from '../i18n/ar';
 
 const PRICE_STEP = 25_000;
 const PRICE_MIN = 50_000;
 const PRICE_MAX = 10_000_000;
 const clampPrice = (v: number) => Math.min(PRICE_MAX, Math.max(PRICE_MIN, Math.round(v / PRICE_STEP) * PRICE_STEP));
 
+// A third literal copy of the taxonomy used to live here, with its own
+// labels. It is derived now — a buyer asking for a condition nobody may post
+// would be waiting for offers that cannot come, so this follows the SELL
+// list, not the filter list.
 export const CONDITIONS: { key: string | null; label: string }[] = [
   { key: null, label: 'أي حالة' },
-  { key: 'new', label: 'جديد' },
-  { key: 'used', label: 'مستعمل' },
-  { key: 'refurbished', label: 'مجدّد' },
-  { key: 'repaired', label: 'مصلّح' },
+  ...SELLABLE_CONDITIONS.map((c) => ({ key: c as string, label: (ar.listing as any)[c] as string })),
 ];
 export const conditionLabel = (k?: string | null) => CONDITIONS.find((c) => c.key === k)?.label || 'أي حالة';
 

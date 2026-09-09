@@ -2,8 +2,8 @@
 //
 // Model and storage still have to match exactly — an S25 is not an S25 Ultra
 // and 128GB is not 512GB, and blurring those would make the median
-// meaningless. CONDITION deliberately does not: pooling new, used, repaired
-// and refurbished is a decision to trade precision for a sample that exists
+// meaningless. CONDITION deliberately does not: pooling new, like-new, used,
+// repaired and refurbished is a decision to trade precision for a sample that exists
 // at all. The strict version returned nothing for most sellers, and no
 // guidance helps nobody, while a wide median at least anchors the decision.
 //
@@ -13,6 +13,8 @@
 // with it.
 // 90 days, not 30. Thirty was too short to reach the 3-listing floor for
 // anything but the most common phones, so most sellers saw no guidance at all.
+import { isCondition } from './conditions.js';
+
 const WINDOW_DAYS = 90;
 
 export function askingPriceGuidance(db, filters, sellerId, now = Date.now(), neverExpire = true) {
@@ -21,7 +23,7 @@ export function askingPriceGuidance(db, filters, sellerId, now = Date.now(), nev
   const fields = ['brand', 'model', 'storage', 'condition', 'governorate'];
   if (fields.some(key => typeof filters[key] !== 'string' || !filters[key].trim() || filters[key].length > 120))
     return null;
-  if (!['new', 'used', 'repaired', 'refurbished'].includes(filters.condition)) return null;
+  if (!isCondition(filters.condition)) return null;
   const normalize = value => value.trim().toLowerCase().replace(/\s+/g, '');
   const capacity = value => normalize(value).replace(/^1024gb$/, '1tb');
   const rows = db.prepare(`

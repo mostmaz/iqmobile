@@ -43,6 +43,7 @@ export const ku = {
     new: 'نوێ',
     used: 'بەکارهاتوو',
     repaired: 'چاککراو',
+    like_new: 'وەک نوێ',
     refurbished: 'نۆژەنکراوە',
     active: 'چالاک',
     reserved: 'حیجزکراو',

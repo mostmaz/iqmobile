@@ -22,6 +22,7 @@
 import * as XLSX from 'xlsx';
 import { db, now, getSetting } from './db.js';
 import { houseShopId } from './storefrontCard.js';
+import { toCondition } from './conditions.js';
 
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const latinDigits = (s) => String(s).replace(/[٠-٩]/g, (d) => String(AR_DIGITS.indexOf(d)));
@@ -153,7 +154,7 @@ export function applyImport(plan, shopId) {
         const pre = p.action === 'create_preorder';
         ins.run(
           shopId, p.brand, p.model, p.storage, p.color,
-          ['new', 'used', 'refurbished', 'repaired'].includes(p.condition) ? p.condition : 'new',
+          toCondition(p.condition),
           pre ? 1 : p.price, 'Baghdad', p.note, pre ? 1 : 0,
           t, t + TTL_MS, t,
         );

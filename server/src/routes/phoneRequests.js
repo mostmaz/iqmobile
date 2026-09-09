@@ -31,7 +31,7 @@ import { norm } from './savedSearches.js';
 
 const r = Router();
 
-const CONDITIONS = ['new', 'used', 'repaired', 'refurbished'];
+import { CONDITIONS } from '../conditions.js';
 const TTL_MS = 21 * 24 * 60 * 60 * 1000;
 
 // A request reaches real people's phones, so the caps are about protecting

@@ -27,7 +27,7 @@ const GOV_AR = {
   Diwaniyah: 'الديوانية', 'Dhi Qar': 'ذي قار', Maysan: 'ميسان',
   Muthanna: 'المثنى', Salahuddin: 'صلاح الدين', Wasit: 'واسط',
 };
-const COND_AR = { new: 'جديد', used: 'مستعمل', refurbished: 'مجدّد', repaired: 'مصلّح' };
+import { CONDITION_AR as COND_AR } from '../conditions.js';
 
 function esc(s) {
   return String(s == null ? '' : s)

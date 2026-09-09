@@ -42,6 +42,7 @@ const AR = {
   },
   listing: {
     new: 'جديد',
+    like_new: 'كالجديد',
     used: 'مستعمل',
     repaired: 'مصلح',
     refurbished: 'مجدد',

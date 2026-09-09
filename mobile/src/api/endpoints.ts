@@ -41,7 +41,7 @@ export interface User {
   shop_location_edits_remaining?: number;
 }
 
-export type Condition = 'new' | 'used' | 'repaired' | 'refurbished';
+export type Condition = 'new' | 'like_new' | 'used' | 'repaired' | 'refurbished';
 export type ListingStatus = 'active' | 'reserved' | 'sold' | 'expired' | 'removed';
 
 export interface ListingImage {
