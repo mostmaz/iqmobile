@@ -60,13 +60,31 @@ pinned.
   sheet moved to `components/RequestComposeSheet.tsx` and gained two optional
   `initial*` props. Neither changed behaviour.
 
-## Brand grid and logos
+## Three shapes, one language
 
-The brand step is a **2-up grid of cards** — logo, name, listing count — from
-the Claude Design prototype. Once a brand is chosen the grid **collapses to a
-pill rail**: the cards are ~96pt tall, and three rows of them would push the
-model chips and every listing below the fold on a 390pt screen. The grid is
-for choosing; the rail is for changing your mind.
+Every step of the chooser is a **card**, from the Claude Design prototype:
+2-up, 18pt corner, 1.5pt border, a picture well over a name-and-count row.
+Text chips were the first attempt at steps 1 and 2 and they read as a
+different screen, which is the whole reason this section exists.
+
+- **Brand step** — 2-up cards, 76pt logo well, name and listing count.
+- **Brand chosen** — the grid becomes a rail of the *same tile* at 48pt with
+  the name beneath. Three rows of full cards would push the models and every
+  listing below the fold on a 390pt screen. The grid is for choosing; the
+  rail is for changing your mind.
+- **Model step** — 2-up cards again, with the **newest listing's photo** in
+  the well. `image_path` already comes back from `/top-models`, so the photo
+  costs no extra request, and a buyer recognises the phone by sight long
+  before they parse "Galaxy S24 Ultra".
+- **Device chosen** — brand rail and model grid collapse into one summary
+  row (mark, model, brand) with «تغيير الجهاز» to reopen. Ten photo cards are
+  ~650pt of chooser; without the collapse the listings the buyer just asked
+  for start below the fold. The prototype leaves the chooser open by default
+  because a click-through has to show every state at once — that is a
+  property of the prototype, not a product decision, and the collapsed row is
+  the prototype's own component.
+
+## Brand logos
 
 **The app ships no brand logos and never will.** They are manufacturer
 trademarks, and which may be used is the operator's decision, not something to

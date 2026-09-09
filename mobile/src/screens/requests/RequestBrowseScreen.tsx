@@ -18,7 +18,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { theme, fonts, radius } from '../../theme';
+import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Header, Pill, fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { Img } from '../../components/Img';
@@ -27,7 +27,7 @@ import { ListingListSkeleton } from '../../components/Skeleton';
 import { LoadFailed } from '../../components/LoadFailed';
 import { BrandListModal } from '../../components/BrandListModal';
 import { RequestComposeSheet } from '../../components/RequestComposeSheet';
-import { Listings, Brands, type BrandRow, type BrowseSort, type Condition } from '../../api/endpoints';
+import { Listings, Brands, type BrandRow, type BrowseSort, type Condition, type TopModel } from '../../api/endpoints';
 import { SortPills } from '../../components/SortPills';
 import { CONDITIONS } from '../../lib/conditions';
 import { ar } from '../../i18n/ar';
@@ -39,6 +39,13 @@ import { useAuth } from '../../auth/AuthContext';
 const PAGE_SIZE = 15;
 /** The window for both the ranking and the list — one number, on purpose. */
 const WINDOW_DAYS = 60;
+/**
+ * Card corner from the Claude Design prototype. Deliberately off the shared
+ * `radius` scale, whose largest step is 16: the funnel's chooser cards are
+ * the only place in the app that uses it, and rounding them to 16 to stay on
+ * the scale is what made the shipped screen read as a different design.
+ */
+const CARD_RADIUS = 18;
 
 export default function RequestBrowseScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -49,6 +56,11 @@ export default function RequestBrowseScreen({ navigation }: any) {
   const [brand, setBrand] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  // The chooser collapses once a device is picked. Ten photo cards are ~650pt
+  // of chooser, so leaving it open puts the listings the buyer just asked for
+  // off the bottom of a 390pt screen. The prototype defaults it open because a
+  // click-through has to show every state at once; a phone does not.
+  const [selectorOpen, setSelectorOpen] = useState(false);
   // Kept across a model change on purpose, the way SearchScreen keeps its
   // sort: a buyer who asked for cheapest-first means it for the next device
   // too, and re-picking it every time is the annoyance the control removes.
@@ -75,6 +87,15 @@ export default function RequestBrowseScreen({ navigation }: any) {
     setBrand(name);
     setModel(null);
   }
+
+  function pickModel(name: string) {
+    const next = model === name ? null : name;
+    setModel(next);
+    setSelectorOpen(false);
+  }
+
+  /** Brand and model rows are hidden behind the summary once a device is picked. */
+  const selectorVisible = !model || selectorOpen;
 
   // ── step 2: that brand's most-listed models ─────────────────────────
   const topModels = useQuery({
@@ -122,34 +143,41 @@ export default function RequestBrowseScreen({ navigation }: any) {
           اختر الماركة لترى الأجهزة المعروضة الآن — وإن لم تجد ما تريد، اطلبه.
         </Text>
       ) : null}
+
+      {/* The collapsed chooser: what you picked, and the way back to picking. */}
+      {model && !selectorVisible ? (
+        <PickedBar
+          brand={brand!}
+          model={model}
+          onChange={() => setSelectorOpen(true)}
+        />
+      ) : null}
       {/* Brands. Six in the owner's order, then «أخرى». Scrolled to the end
-          on layout so RTL lands on the first pill — the fix Browse and
-          Search both carry. */}
-      {/* Brand grid, 2-up. Cards rather than a rail so the logo has somewhere
-          to live and the tap target is a whole card.
-          
-          Once a brand is chosen the grid collapses to a single-row rail of
-          pills: the cards are ~96pt tall, and three rows of them would push
-          the model chips and every listing below the fold on a 390pt screen.
-          The grid is for choosing; the rail is for changing your mind. */}
-      {brand ? (
+          on layout so RTL lands on the first item — the fix Browse and
+          Search both carry.
+
+          Two shapes, one language. Choosing is a 2-up grid of cards; once a
+          brand is chosen that collapses to a rail of the same tile at 48pt
+          with its name beneath, because three rows of 96pt cards would push
+          the models and every listing below the fold on a 390pt screen.
+          Text pills were the earlier shortcut here and they broke the
+          design: the funnel is made of tiles the whole way down. */}
+      {brand && selectorVisible ? (
         <ScrollView
           ref={railRef}
           horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 2, paddingBottom: 2 }}
           onContentSizeChange={() => railRef.current?.scrollToEnd({ animated: false })}
         >
           {head.map((b) => (
-            <Pill key={b.name} active={brand === b.name} onPress={() => pickBrand(b.name)}>
-              {brandLabel(b)}
-            </Pill>
+            <BrandRailItem key={b.name} brand={b} active={brand === b.name} onPress={() => pickBrand(b.name)} />
           ))}
           {pickedFromRest ? (
-            <Pill active onPress={() => pickBrand(pickedFromRest.name)}>{brandLabel(pickedFromRest)}</Pill>
+            <BrandRailItem brand={pickedFromRest} active onPress={() => pickBrand(pickedFromRest.name)} />
           ) : null}
-          <Pill active={false} onPress={() => setMoreOpen(true)}>أخرى…</Pill>
+          <BrandRailItem more onPress={() => setMoreOpen(true)} />
         </ScrollView>
-      ) : (
+      ) : brand ? null : (
         <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
           {head.map((b) => <BrandCard key={b.name} brand={b} onPress={() => pickBrand(b.name)} />)}
           <BrandCard more onPress={() => setMoreOpen(true)} />
@@ -157,11 +185,11 @@ export default function RequestBrowseScreen({ navigation }: any) {
       )}
 
       {/* Models. Real supply, real counts. */}
-      {brand ? (
+      {brand && selectorVisible ? (
         topModels.isLoading ? (
-          <View style={{ flexDirection: 'row-reverse', gap: 6 }}>
-            {[96, 72, 84].map((w, i) => (
-              <View key={i} style={{ width: w, height: 34, borderRadius: radius.pill, backgroundColor: theme.chipBg }} />
+          <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={{ width: '48%', height: 130, borderRadius: CARD_RADIUS, backgroundColor: theme.surface }} />
             ))}
           </View>
         ) : topModels.isError ? (
@@ -175,16 +203,18 @@ export default function RequestBrowseScreen({ navigation }: any) {
             <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
               الأكثر عرضاً خلال {WINDOW_DAYS} يوماً
             </Text>
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 }}>
+            {/* 2-up cards with the device's own photo, not text chips. The
+                photo is the newest listing's first image, which the ranking
+                endpoint already returns — a buyer recognises the phone by
+                sight long before they parse "Galaxy S24 Ultra". */}
+            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
               {topModels.data!.map((m) => (
-                <Pill
+                <ModelCard
                   key={m.model_key}
+                  model={m}
                   active={model === m.model}
-                  count={m.count}
-                  onPress={() => setModel(model === m.model ? null : m.model)}
-                >
-                  {m.model}
-                </Pill>
+                  onPress={() => pickModel(m.model)}
+                />
               ))}
             </View>
           </View>
@@ -349,33 +379,244 @@ function BrandCard({ brand, more, onPress }: {
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole="button"
-      // Two per row with a 10pt gutter inside 16pt page padding.
+      // Two per row with a 10pt gutter inside 16pt page padding. «أخرى» is
+      // dashed and filled with the chip colour: it opens a list, it does not
+      // pick a brand, and it should not look like a seventh brand.
       style={{
-        width: '48%', backgroundColor: theme.surface, borderRadius: radius.lg,
-        borderWidth: 1, borderColor: theme.line, padding: 10, gap: 8,
+        width: '48%', backgroundColor: more ? theme.chipBg : theme.surface,
+        borderRadius: CARD_RADIUS, borderWidth: 1.5,
+        borderStyle: more ? 'dashed' : 'solid',
+        borderColor: more ? 'rgba(27,26,24,0.22)' : theme.line,
+        padding: 12, gap: 10,
       }}
     >
       <View style={{
-        height: 64, borderRadius: radius.md, backgroundColor: theme.chipBg,
+        height: 76, borderRadius: radius.lg, backgroundColor: more ? 'transparent' : theme.chipBg,
         alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
       }}>
         {logo ? (
           <Img source={{ uri: logo }} contentFit="contain" style={{ width: '78%', height: '72%' }} />
         ) : (
-          <Text style={{ fontFamily: fonts.ltrBold, fontSize: 22, color: theme.subtle }}>
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ltrBold, fontSize: more ? 26 : 24, color: theme.subtle }}
+          >
             {more ? '⋯' : (brand!.name || '?').trim().charAt(0).toUpperCase()}
           </Text>
         )}
       </View>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
+        <Text
+          numberOfLines={1}
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}
+        >
           {label}
         </Text>
         {!more && (brand!.count ?? 0) > 0 ? (
-          <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: theme.subtle, writingDirection: 'ltr' }}>
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.mono, fontSize: 10.5, color: theme.subtle, writingDirection: 'ltr' }}
+          >
             {brand!.count}
           </Text>
         ) : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * The collapsed chooser — brand mark, the picked device, and the way back.
+ *
+ * It replaces the brand rail and the model grid once a device is chosen, so
+ * the listings start near the top of the screen instead of below ~650pt of
+ * chooser. «تغيير الجهاز» puts both rows back.
+ */
+function PickedBar({ brand, model, onChange }: {
+  brand: string;
+  model: string;
+  onChange: () => void;
+}) {
+  return (
+    <View style={{
+      flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      paddingVertical: 10, paddingHorizontal: 12,
+      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: radius.xl,
+    }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+        <View style={{
+          width: 38, height: 38, borderRadius: radius.md, backgroundColor: theme.chipBg,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ltrBold, fontSize: 13, color: theme.chipInk }}
+          >
+            {(brand || '?').trim().slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}
+          >
+            {model}
+          </Text>
+          <Text
+            numberOfLines={1}
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right' }}
+          >
+            {brand}
+          </Text>
+        </View>
+      </View>
+
+      <TouchableOpacity
+        onPress={onChange}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        hitSlop={6}
+        // flexShrink:0 on both the button and its label. The row's left group
+        // is flex:1, and under that pressure the Arabic label silently drops
+        // its trailing word — «تغيير الجهاز» renders as «تغيير». That is
+        // shrink, not bidi: see project_rtl_text_clipping.
+        style={{
+          flexShrink: 0,
+          flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
+          paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.pill,
+          backgroundColor: theme.bg, borderWidth: 1, borderColor: 'rgba(27,26,24,0.12)',
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ flexShrink: 0, fontFamily: fonts.arBold, fontSize: 12, color: theme.ink }}
+        >
+          تغيير الجهاز
+        </Text>
+        <Text
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ fontFamily: fonts.ltr, fontSize: 11, color: theme.ink, marginTop: -1 }}
+        >
+          ▾
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/**
+ * The same brand tile at rail size, for after a brand has been chosen.
+ *
+ * 48pt mark over a 10.5pt name, in a 62pt column — the shape the design uses
+ * so the row still reads as the grid it replaced. Active inverts the tile to
+ * ink, which is how every other selected control in the app reads.
+ */
+function BrandRailItem({ brand, more, active, onPress }: {
+  brand?: FunnelBrand;
+  /** The «أخرى» item — the rest of the brands, not the catalogue's "Other". */
+  more?: boolean;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const label = more ? 'أخرى' : brandLabel(brand!);
+  const logo = brand?.logo_path ? fullImageUrl(brand.logo_path) : null;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      style={{ width: 62, alignItems: 'center', gap: 6 }}
+    >
+      <View style={{
+        width: 48, height: 48, borderRadius: radius.xl,
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+        backgroundColor: active ? theme.ink : theme.surface,
+        borderWidth: 1, borderColor: active ? theme.ink : theme.line,
+      }}>
+        {logo ? (
+          <Img source={{ uri: logo }} contentFit="contain" style={{ width: '74%', height: '74%' }} />
+        ) : (
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: active ? theme.bg : theme.ink }}
+          >
+            {more ? '⋯' : (brand!.name || '?').trim().charAt(0).toUpperCase()}
+          </Text>
+        )}
+      </View>
+      <Text
+        numberOfLines={1}
+        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+        style={{ fontFamily: fonts.ar, fontSize: 10.5, color: active ? theme.ink : theme.subtle }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * One of the brand's most-listed models.
+ *
+ * A card, not a chip: same 2-up grid, same corner and border weight as the
+ * brand step, with the newest listing's photo where the brand's logo sat.
+ * `image_path` comes from the ranking endpoint, so the photo costs no extra
+ * request — and a model with no image on any listing still renders a filled
+ * well rather than a hole.
+ */
+function ModelCard({ model, active, onPress }: {
+  model: TopModel;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const photo = model.image_path ? fullImageUrl(model.image_path) : null;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={{
+        width: '48%', backgroundColor: active ? theme.ink : theme.surface,
+        borderRadius: CARD_RADIUS, borderWidth: 1.5,
+        borderColor: active ? theme.ink : theme.line,
+        padding: 12, gap: 10,
+      }}
+    >
+      <View style={{
+        height: 78, borderRadius: radius.md, backgroundColor: theme.chipBg,
+        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+      }}>
+        {photo ? (
+          <Img source={{ uri: photo }} contentFit="cover" style={{ width: '100%', height: '100%' }} />
+        ) : (
+          <Text
+            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+            style={{ fontFamily: fonts.ltrBold, fontSize: 18, color: theme.subtle }}
+          >
+            {(model.model || '?').trim().charAt(0).toUpperCase()}
+          </Text>
+        )}
+      </View>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 }}>
+        <Text
+          numberOfLines={2}
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 12, lineHeight: 16, color: active ? theme.bg : theme.ink, textAlign: 'right' }}
+        >
+          {model.model}
+        </Text>
+        <Text
+          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
+          style={{ fontFamily: fonts.mono, fontSize: 10.5, opacity: 0.6, color: active ? theme.bg : theme.ink, writingDirection: 'ltr' }}
+        >
+          {model.count}
+        </Text>
       </View>
     </TouchableOpacity>
   );
