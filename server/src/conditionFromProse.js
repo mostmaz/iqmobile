@@ -52,7 +52,10 @@ export function fold(input) {
 // — a phone with no repairs — was recorded as repaired. Separators are
 // spelled out instead.
 const SEP = '[\\s،,.|:؛!؟()\\-]';
-const NEG_SEPARATED = new RegExp(`(?:^|${SEP})(?:ما|مو|لا|ولا|ابد|بدون|بلا|ماكو|مافي|مب|خالي|عدا|غير)(?:${SEP}|$)`);
+// The leading «و»/«ف» is part of the word in Arabic writing: «وبدون تبديل»
+// has no separator before the negator, and without this «بدون» was invisible
+// and the phone came back as repaired.
+const NEG_SEPARATED = new RegExp(`(?:^|${SEP})(?:و|ف)?(?:ما|مو|لا|ولا|ابد|بدون|بلا|ماكو|مافي|مب|خالي|غير)(?:${SEP}|$)`);
 // Iraqi writing glues the negator to the verb as often as not, and none of
 // these survive a separator rule: «مامبدل», «مابي», «ماداخل», «مامفتوح».
 const NEG_GLUED = /(?:ما|مو)(?:مبدل|مصلح|مفتوح|داخل|بي|بيه|بيها|كو|في|اكو|شي)/;
@@ -89,6 +92,9 @@ const WATER_SPEC = /(مقاوم|ضد الماء|ضد المي|ip\s?6|ip\s?5|ip\s
  */
 export function clauses(text) {
   return String(text)
+    // «عدا» is an EXCEPTION marker, not a negator: «مكفول من التصليح … عدا
+    // بي فطر بل كلاسه» introduces the one defect there is. It splits a
+    // clause, and must never suppress what follows it.
     .split(/[.،,؛!؟\n|()]+|\s(?:بس|فقط|لكن|لاكن|الا|ماعدا|عدا|سوى)\s/)
     .map((c) => c.trim())
     .filter(Boolean);
@@ -102,10 +108,44 @@ export function clauses(text) {
  * they flipped exactly those listings to clean. Blanked before the negation
  * test rather than fought inside it.
  */
-const NEG_FALSE = /(مثل ما|مثلما|كما|زي ما|شلون ما|ما بين|مايبين|ما يبين|ما يبان|ما واضح|ما واظح|ما مبين)/g;
+const NEG_FALSE = new RegExp(
+  '(مثل ما|مثلما|كما|زي ما|شلون ما|ما بين|مايبين|ما يبين|ما يبان|ما واضح|ما واظح|ما مبين)'
+  // «بدون» is usually about what is missing from the BOX, not about defects,
+  // and it reached across half a sentence: «جهاز نضيف بدون ملحقات بي شخوط بل
+  // شاشه» is a phone with no accessories AND a scratched screen, and this
+  // negator turned it into a clean one.
+  + '|بدون\\s*(ملحقات|كارتون|كرتون|علبه|شاحن|كيبل|سماعات|كفر|اغراض|غراض|توصيل|معامله|مجال|ضمان|كفاله)',
+  'g',
+);
+
+/** Blank the false negators, keeping every index intact for the distance test. */
+function maskFalseNegators(clause) {
+  return clause.replace(NEG_FALSE, (m) => ' '.repeat(m.length));
+}
 
 function negated(clause) {
-  return NEG.test(clause.replace(NEG_FALSE, ' '));
+  return NEG.test(maskFalseNegators(clause));
+}
+
+/**
+ * Is there a negator NEAR this defect word — not merely somewhere in the
+ * clause?
+ *
+ * Clause-wide negation was the last thing to break, and in the worst
+ * direction. «مبدل شاشة وبطارية وكامرة … السعر 450 قفل من الاخير بدون عمله»
+ * is a phone with three replaced parts; «بدون عمله» is about the commission
+ * and sits nowhere near the repair, yet it marked the listing as never
+ * repaired. Sellers write negation next to what they are denying, so the
+ * negator has to be within reach — the same distance rule the locators use.
+ */
+function negatedNear(clause, at, len) {
+  const masked = maskFalseNegators(clause);
+  for (const re of [NEG_SEPARATED, NEG_GLUED]) {
+    for (const h of hits(masked, re)) {
+      if (gap(at, len, h.at, h.len) < MAX_LOCATOR_DISTANCE) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -133,48 +173,105 @@ const CRACK = /(فطر|مفطور|مفطوره|مفطر|مفطره|انكسر|م
 // cancelled, and the listing came back with nothing at all.
 const DISPLAY_FAULT = new RegExp(
   `(?:(?:^|${SEP})(?:خط بالشاش|خط بشاش|خطين|خطوط))`
-  + '|(بقعه|نقطه سوده|بكسل محروق|لمس مفطور|لمس ما يشتغل|اللمس ما|ما يشتغل اللمس|ميته|متفلشه)',
+  + '|(بقعه|نقطه سوده|بكسل محروق|لمس مفطور|لمس ما يشتغل|اللمس ما|ما يشتغل اللمس|ميته|متفلشه)'
+  // A fault named ON the screen. Bare «عاطل» is not enough — «فيس ايدي عاطل»
+  // is Face ID, and it appears beside a screen far more often than a broken
+  // display does.
+  + '|(عطل بالشاش|عطل بل شاش|عطل بشاش|مشكله بالشاش|مشكله بشاش|خلل بالشاش|الشاشه عاطل)',
 );
 const DENT = /(كدمه|كدمات|ضربه|ضربات|مضروب|انبعاج|معوج|مثني)/;
 
-function screenAnswer(cs) {
-  const votes = [];
-  for (const c of cs) {
-    if (NOT_THE_PHONE.test(c)) continue;        // the protector, not the glass
-    if (DISPLAY_FAULT.test(c) && (SCREEN.test(c) || /خطين|نقطه سوده|بقعه/.test(c)) && !negated(c)) {
-      votes.push('display_fault');
-    }
-    // «لا تكسر بالسعر» is haggling. A crack beside price talk is not a crack.
-    if (CRACK.test(c) && SCREEN.test(c) && !PRICE_TALK.test(c) && !HYPOTHETICAL.test(c) && !negated(c)) {
-      votes.push('cracked');
-    }
-    // A clause naming BOTH the screen and the back cannot say which one the
-    // scratch is on. «مبدل شاشه ... بي شخوط بلضهر» is scratches on the back,
-    // and crediting the screen with them is a defect the seller never wrote.
-    if (SCRATCH.test(c) && SCREEN.test(c) && !BACK.test(c)) {
-      votes.push(negated(c) || NO_DEFECT_CLAIM.test(c) ? 'clean' : 'scratches');
-    }
-  }
-  // A global "not a single scratch" claim covers the screen too, but only
-  // when nothing more specific was said about it.
-  if (!votes.length && globalNoScratch(cs)) votes.push('clean');
-  return settle(votes);
+/** Beyond this many characters the two words are not talking about each other. */
+const MAX_LOCATOR_DISTANCE = 22;
+
+/**
+ * Gap between two spans, where OVERLAP counts as zero.
+ *
+ * The glued negators overlap what they negate — «مامبدل» contains «مبدل» —
+ * and a naive subtraction makes that gap negative, so the closest possible
+ * negation was the one being thrown away.
+ */
+function gap(aAt, aLen, bAt, bLen) {
+  if (bAt >= aAt + aLen) return bAt - (aAt + aLen);
+  if (bAt + bLen <= aAt) return aAt - (bAt + bLen);
+  return 0;
 }
 
-function bodyAnswer(cs) {
-  const votes = [];
-  for (const c of cs) {
-    if (NOT_THE_PHONE.test(c)) continue;
-    if (CRACK.test(c) && BACK.test(c) && !PRICE_TALK.test(c) && !HYPOTHETICAL.test(c) && !negated(c)) {
-      votes.push('cracked_back');
-    }
-    if (DENT.test(c) && BACK.test(c) && !negated(c)) votes.push('dents');
-    if (SCRATCH.test(c) && BACK.test(c)) {
-      votes.push(negated(c) || NO_DEFECT_CLAIM.test(c) ? 'clean' : 'scratches');
+/** Each occurrence of `re` in the clause, with where it sat. */
+function hits(clause, re) {
+  const out = [];
+  const g = new RegExp(re.source, 'g');
+  let m;
+  while ((m = g.exec(clause)) !== null) {
+    out.push({ at: m.index, len: m[0].length });
+    if (m.index === g.lastIndex) g.lastIndex++;
+  }
+  return out;
+}
+
+/**
+ * Which surface a defect word is about: the NEAREST locator to it, if one is
+ * close enough to be in the same breath.
+ *
+ * "The clause mentions the screen" is not good enough. «ضهر مفطر وشاشه بيها
+ * خدش بسيط» names both surfaces and two different defects, and asking only
+ * whether the clause contained «شاشه» put the crack on the screen and lost
+ * the scratch entirely. Distance settles it: «مفطر» is next to «ضهر», «خدش»
+ * is next to «شاشه», and both facts survive.
+ */
+function surfaceOf(clause, at, len) {
+  let best = null;
+  let bestD = MAX_LOCATOR_DISTANCE;
+  for (const [kind, re] of [['screen', SCREEN], ['back', BACK]]) {
+    for (const h of hits(clause, re)) {
+      const d = gap(at, len, h.at, h.len);
+      if (d < bestD) { bestD = d; best = kind; }
     }
   }
-  if (!votes.length && globalNoScratch(cs)) votes.push('clean');
-  return settle(votes);
+  return best;
+}
+
+/**
+ * The screen and the body in one pass, because a single clause routinely
+ * answers for both and they cannot be decided independently.
+ */
+function surfaceAnswers(cs) {
+  const screen = [];
+  const body = [];
+  for (const c of cs) {
+    if (NOT_THE_PHONE.test(c)) continue;        // the protector, not the glass
+    const claim = NO_DEFECT_CLAIM.test(c);
+    // A crack in «الشاشة الخلفية» is the back glass, whatever the word says.
+    const rearGlass = /شاشه الخلفيه|الشاشه الخلفيه|شاشه خلفيه/.test(c);
+
+    for (const h of hits(c, DISPLAY_FAULT)) {
+      if (negatedNear(c, h.at, h.len)) continue;
+      if (surfaceOf(c, h.at, h.len) === 'back') continue;
+      screen.push('display_fault');
+    }
+    for (const h of hits(c, CRACK)) {
+      if (PRICE_TALK.test(c) || HYPOTHETICAL.test(c) || negatedNear(c, h.at, h.len)) continue;
+      const where = rearGlass ? 'back' : surfaceOf(c, h.at, h.len);
+      if (where === 'screen') screen.push('cracked');
+      else if (where === 'back') body.push('cracked_back');
+    }
+    for (const h of hits(c, DENT)) {
+      if (negatedNear(c, h.at, h.len)) continue;
+      if (surfaceOf(c, h.at, h.len) === 'back') body.push('dents');
+    }
+    for (const h of hits(c, SCRATCH)) {
+      const where = surfaceOf(c, h.at, h.len);
+      if (!where) continue;
+      const clean = negatedNear(c, h.at, h.len) || claim;
+      (where === 'screen' ? screen : body).push(clean ? 'clean' : 'scratches');
+    }
+  }
+  // A blanket "not a single scratch" claim covers both surfaces, but only
+  // where nothing more specific was said.
+  const blanket = globalNoScratch(cs);
+  if (!screen.length && blanket) screen.push('clean');
+  if (!body.length && blanket) body.push('clean');
+  return { screen: settle(screen), body: settle(body) };
 }
 
 /**
@@ -188,7 +285,8 @@ function globalNoScratch(cs) {
   for (const c of cs) {
     if (!SCRATCH.test(c)) continue;
     if (SCREEN.test(c) || BACK.test(c) || NOT_THE_PHONE.test(c)) continue;
-    if (negated(c) || NO_DEFECT_CLAIM.test(c)) claim = true;
+    const anyNeg = hits(c, SCRATCH).some((h) => negatedNear(c, h.at, h.len));
+    if (anyNeg || NO_DEFECT_CLAIM.test(c)) claim = true;
     // An un-negated scratch anywhere kills the blanket claim outright: the
     // seller has said there IS one, and only the location is missing.
     else return false;
@@ -206,20 +304,43 @@ const REPAIR_WORD = /(تصليح|مصلح|صلح|اصلاح|صيانه|صيان�
  */
 const REPAIR_NOT_DONE = /(يحتاج|محتاج|معوز|لازم|اذا |ضمان|كفاله|مكفول|يريد تبديل|تصليحها)/;
 
+/**
+ * Spec-sheet prose, which is not a repair report.
+ *
+ * «تقنية LTPO التي تعمل على تغيير معدل تحديث الشاشة» is a phone DESCRIBING
+ * its refresh rate, and «تغيير» beside «شاشة» read it as a replaced screen.
+ * Copy-pasted spec sheets are common on this marketplace and they are the
+ * one place a repair verb appears with no repair behind it.
+ */
+const SPEC_SHEET = /(يدعم|هرتز|هيرتز|ميجابكسل|ميجا بكسل|ميكا بكسل|معالج|نانومتر|واط|مللي امبير|معدل تحديث|تقنيه|بدقه|dolby|hdr|ltpo|snapdragon|mediatek)/;
+
+// Which part was replaced is decided by ADJACENCY, not by the part being
+// mentioned anywhere in the clause. «مبدل بطاريه 100% وبه عطل بالشاشه» is a
+// replaced battery and a faulty screen; keying on "does the clause contain
+// شاشة" turned it into a replaced screen and lost both facts.
+const REPLACED_SCREEN = /(مبدل|مبدله|مبدلة|مستبدل|مستبدله|مستبدلة|بدلت|بدلته|بدلتها|تبديل|تغيير|مغير)\s*(?:ال)?\s*(شاشه|شاشة|كلاس|قزاز|زجاج)|(?:ال)?(شاشه|شاشة)\s*(مبدله|مبدلة|مستبدله|مستبدلة|مبدل|مغيره)/;
+const REPLACED_BATTERY = /(مبدل|مبدله|مبدلة|مستبدل|مستبدله|مستبدلة|بدلت|بدلته|بدلتها|تبديل|تغيير|مغير)\s*(?:ال)?\s*(بطاري|باتري|battery)|(?:ال)?(بطاريه|بطارية)\s*(مبدله|مبدلة|مستبدله|مستبدلة|مبدل)/;
+
 function repairsAnswer(cs) {
   const votes = [];
   for (const c of cs) {
-    if (!REPAIR_WORD.test(c)) continue;
-    if (negated(c)) { votes.push('none'); continue; }
-    if (REPAIR_NOT_DONE.test(c)) continue;
-    if (SCREEN.test(c)) { votes.push('screen_replaced'); continue; }
-    if (/بطاري|باتري|battery/.test(c)) { votes.push('battery_replaced'); continue; }
-    votes.push('other_repair');
+    for (const h of hits(c, REPAIR_WORD)) {
+      if (negatedNear(c, h.at, h.len)) { votes.push('none'); continue; }
+      if (REPAIR_NOT_DONE.test(c)) continue;
+      if (SPEC_SHEET.test(c) && !REPLACED_SCREEN.test(c) && !REPLACED_BATTERY.test(c)) continue;
+      if (REPLACED_SCREEN.test(c)) { votes.push('screen_replaced'); continue; }
+      if (REPLACED_BATTERY.test(c)) { votes.push('battery_replaced'); continue; }
+      votes.push('other_repair');
+    }
   }
   return settle(votes);
 }
 
-const WATER_DAMAGE = /(دخل.{0,8}(ماي|مويه|ماء|مي)|غرق|وقع.{0,10}(ماي|مويه|ماء)|بلل|تبلل|رطوبه)/;
+// «بلل» was in this list and matched inside «بللعاب» — "a beast at games".
+// The listing then read as a water-damage declaration, negated into «no».
+// Water words need a word start; the concept is too rare in this corpus to
+// be worth a loose pattern.
+const WATER_DAMAGE = new RegExp(`(?:^|${SEP})(?:دخل.{0,8}(?:ماي|مويه|ماء)|غرق|وقع.{0,10}(?:ماي|مويه|ماء)|تبلل|رطوبه)`);
 const WATER_CLEAR = /((ما|مو|لا|ولا|ابد|بدون)\s*(دخل|داخل)?\s*(ماي|مويه|ماء)|ما دخله ماي|ما دخل ماي)/;
 
 function waterAnswer(cs) {
@@ -228,7 +349,8 @@ function waterAnswer(cs) {
     // Every «ماء» in a thousand live listings is an IP rating. Marketing copy
     // about water RESISTANCE must never become a water-damage declaration.
     if (WATER_SPEC.test(c)) continue;
-    if (WATER_DAMAGE.test(c)) votes.push(negated(c) ? 'no' : 'yes');
+    for (const h of hits(c, WATER_DAMAGE)) votes.push(negatedNear(c, h.at, h.len) ? 'no' : 'yes');
+    if (WATER_DAMAGE.test(c)) continue;
     else if (WATER_CLEAR.test(c)) votes.push('no');
   }
   return settle(votes);
@@ -244,8 +366,7 @@ export function inferConditionDetails(description) {
   if (!t) return {};
   const cs = clauses(t);
   const out = {};
-  const screen = screenAnswer(cs);
-  const body = bodyAnswer(cs);
+  const { screen, body } = surfaceAnswers(cs);
   const repairs = repairsAnswer(cs);
   const water = waterAnswer(cs);
   if (screen) out.screen = screen;

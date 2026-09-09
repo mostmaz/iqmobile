@@ -109,3 +109,50 @@ test('everything it emits survives the storage validator', () => {
     assert.deepEqual(parseConditionDetails(inferred), inferred, t);
   }
 });
+
+// ── the six errors a full audit of 1,123 live descriptions turned up ──
+
+test('a spec sheet is not a repair report', () => {
+  // «تقنية LTPO التي تعمل على تغيير معدل تحديث الشاشة» — a phone describing
+  // its refresh rate read as a replaced screen.
+  const t = 'الشاشه تدعم معدل تحديث 120 هرتز بتقنيه ltpo التي تعمل علي تغيير معدل تحديث الشاشه بشكل تلقايي';
+  assert.equal(inferConditionDetails(t).repairs, undefined);
+});
+
+test('which part was replaced is decided by adjacency, not by mention', () => {
+  // A replaced battery and a faulty screen. Keying on "the clause contains
+  // شاشة" made it a replaced screen and lost both facts.
+  assert.deepEqual(
+    inferConditionDetails('مبدل بطارية 100% وبه عطل بالشاشة والحساس'),
+    { screen: 'display_fault', repairs: 'battery_replaced' },
+  );
+});
+
+test('the nearest surface owns the defect', () => {
+  // Two surfaces, two different defects, one clause.
+  assert.deepEqual(
+    inferConditionDetails('ضهر مفطر وشاشه بيها خدش بسيط'),
+    { screen: 'scratches', body: 'cracked_back' },
+  );
+  // «الشاشة الخلفية» is the back glass, whatever the word says.
+  assert.equal(inferConditionDetails('فيه فطر خفيف بالشاشه الخلفية').body, 'cracked_back');
+  assert.equal(inferConditionDetails('فيه فطر خفيف بالشاشه الخلفية').screen, undefined);
+});
+
+test('«بدون» about the box is not «بدون» about defects', () => {
+  // A phone with no accessories AND a scratched screen, read as clean.
+  assert.equal(
+    inferConditionDetails('جهاز نضيف بدون ملحقات بي شخوط بل شاشه').screen,
+    'scratches',
+  );
+});
+
+test('a negator carrying a prefixed «و» is still a negator', () => {
+  // «وبدون تبديل اي قطع» has no separator before the negator.
+  assert.equal(inferConditionDetails('بحالة ممتازة وبدون تبديل اي قطع').repairs, 'none');
+});
+
+test('«بلل» inside «بللعاب» is not water damage', () => {
+  // "A beast at games" was read as a water declaration, then negated to «no».
+  assert.equal(inferConditionDetails('جهاز فلاكشب وحش بللعاب وحماوة ميحمة ابد').water, undefined);
+});
