@@ -16,21 +16,30 @@ const LIVE = [
   { name: 'POCO', display_ar: 'بوكو', position: 16, count: 12 },
 ];
 
-test("the head is the owner's six, in the owner's order, not the server's", () => {
+test("the head is the owner's list, in the owner's order, not the server's", () => {
   const { head } = orderBrandsForFunnel(LIVE);
-  assert.deepEqual(head.map((b) => b.name), ['Apple', 'Samsung', 'Honor', 'Realme', 'Xiaomi', 'Infinix']);
+  assert.deepEqual(head.map((b) => b.name),
+    ['Apple', 'Samsung', 'Honor', 'Realme', 'Xiaomi', 'Infinix', 'Tecno']);
+});
+
+test('Tecno is a head brand, not one of the rest', () => {
+  // It outsells three of the brands above it on the server's own count and
+  // was still behind «أخرى» — the owner added it to the head list.
+  const { head, rest } = orderBrandsForFunnel(LIVE);
+  assert.ok(head.some((b) => b.name === 'Tecno'));
+  assert.ok(!rest.some((b) => b.name === 'Tecno'));
 });
 
 test('the rest is ordered by what is actually for sale', () => {
   const { rest } = orderBrandsForFunnel(LIVE);
-  assert.deepEqual(rest.map((b) => b.name), ['Tecno', 'POCO', 'Huawei', 'Other']);
+  assert.deepEqual(rest.map((b) => b.name), ['POCO', 'Huawei', 'Other']);
 });
 
 test('a head brand the server does not have is skipped, never invented', () => {
   // A pill for a brand the server does not know would filter on a name it
   // ignores and silently return everything.
   const { head } = orderBrandsForFunnel(LIVE.filter((b) => b.name !== 'Honor'));
-  assert.deepEqual(head.map((b) => b.name), ['Apple', 'Samsung', 'Realme', 'Xiaomi', 'Infinix']);
+  assert.deepEqual(head.map((b) => b.name), ['Apple', 'Samsung', 'Realme', 'Xiaomi', 'Infinix', 'Tecno']);
 });
 
 test('the literal "Other" brand is a row in the rest, not the «أخرى» pill', () => {
@@ -66,7 +75,7 @@ test('junk input is an empty funnel, not a throw', () => {
 test('the label prefers Arabic and falls back to the name', () => {
   assert.equal(brandLabel({ name: 'Apple', display_ar: 'آبل' }), 'آبل');
   assert.equal(brandLabel({ name: 'POCO', display_ar: '  ' }), 'POCO');
-  assert.equal(HEAD_BRANDS.length, 6);
+  assert.equal(HEAD_BRANDS.length, 7);
 });
 
 // ── the fold that decides whether "this device is available" appears ──────

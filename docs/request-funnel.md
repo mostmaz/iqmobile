@@ -60,38 +60,55 @@ pinned.
   sheet moved to `components/RequestComposeSheet.tsx` and gained two optional
   `initial*` props. Neither changed behaviour.
 
-## Three shapes, one language
+## One step at a time
 
-Every step of the chooser is a **card**, from the Claude Design prototype:
-2-up, 18pt corner, 1.5pt border, a picture well over a name-and-count row.
-Text chips were the first attempt at steps 1 and 2 and they read as a
-different screen, which is the whole reason this section exists.
+Each step **replaces** the one before it. Brand cards, then that brand's
+device cards, then that device's listings. Stacking them instead — the first
+attempt — put three rows of brand cards plus five rows of device cards above
+the listings, about 1100pt of chooser on a 390pt screen, so the answer a buyer
+asked for opened below all of it.
 
-- **Brand step** — 2-up cards, 76pt logo well, name and listing count.
-- **Brand chosen** — the grid becomes a rail of the *same tile* at 48pt with
-  the name beneath. Three rows of full cards would push the models and every
-  listing below the fold on a 390pt screen. The grid is for choosing; the
-  rail is for changing your mind.
-- **Model step** — 2-up cards again, with the **newest listing's photo** in
-  the well. `image_path` already comes back from `/top-models`, so the photo
-  costs no extra request, and a buyer recognises the phone by sight long
-  before they parse "Galaxy S24 Ultra".
-- **Device chosen** — brand rail and model grid collapse into one summary
-  row (mark, model, brand) with «تغيير الجهاز» to reopen. Ten photo cards are
-  ~650pt of chooser; without the collapse the listings the buyer just asked
-  for start below the fold. The prototype leaves the chooser open by default
-  because a click-through has to show every state at once — that is a
-  property of the prototype, not a product decision, and the collapsed row is
-  the prototype's own component.
+Every step is a **card**: 2-up, 18pt corner, 1.5pt border, a picture well over
+a name-and-count row. Text chips were the first attempt at both chooser steps
+and they read as a different screen from the design, which is why this is
+written down.
+
+- **Brands** — logo well, name, listing count. «أخرى» is dashed so it does not
+  read as an eighth brand.
+- **Devices** — the same card with the **newest listing's photo** in the well.
+  `image_path` already comes back from `/top-models`, so the photo costs no
+  extra request, and a buyer recognises the phone by sight long before they
+  parse "Galaxy S24 Ultra".
+- **Listings** — filters, the price line, the cards.
+
+**Back is the header's own arrow**, in the slot the iQ badge normally holds:
+leading edge, beside the title, with «طلباتي» keeping the other side. It walks
+one step back. There is deliberately no second control that does the same
+thing.
+
+**The header carries the identity of the step, and is the only thing that
+does.** Title and eyebrow are «اطلب جهاز / شوف الموجود أولاً», then
+«Samsung / اختر الجهاز», then «Galaxy S25 Ultra / Samsung». A summary card
+under that header printed the same two lines twice, so it was removed.
 
 ## Brand logos
 
-**The app ships no brand logos and never will.** They are manufacturer
-trademarks, and which may be used is the operator's decision, not something to
-bake into a binary. So `brands.logo_path` is nullable, an operator uploads
-each one through `POST /admin/brands/:id/logo`, and a brand without a logo
-renders its initial in the same tile — a deliberate-looking card, not an empty
-box or a broken-image glyph. Every brand starts that way.
+Three sources, in order: an operator's upload wins, then the mark bundled with
+the app, then the brand's initial rendered in the same tile — a
+deliberate-looking card, never an empty box or a broken-image glyph.
+
+`mobile/assets/brands/` ships the seven head brands, from Wikimedia Commons
+and the English Wikipedia file pages at 256px on the long edge, alpha-trimmed,
+about 42KB in total. Six are tagged public domain as below the threshold of
+originality; Samsung's wordmark is CC BY 4.0. They remain manufacturer
+trademarks and identify the brand whose phones a listing is for.
+
+An earlier version of this file said the app would never ship them, on the
+grounds that trademark use is the operator's call. That is answered by the
+override above, not by shipping nothing: with zero of twenty-two logos
+uploaded the grid was seven letters, and the owner asked for the marks. An
+operator who wants a different one uploads it and the bundled file stops being
+used.
 
 `PATCH /admin/brands/:id` also accepts `logo_path`, restricted to a
 `/uploads/…` path: an off-site URL there would put a third-party host in every

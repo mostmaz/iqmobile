@@ -1,9 +1,9 @@
 // Which brands the request funnel shows first, and which it hides behind
 // «أخرى». Pure, so the order is testable without rendering anything.
 //
-// The six named brands are the owner's list, in the owner's order — they are
-// what Iraqi buyers actually ask for, and a rail of twenty-two pills would
-// bury them. Everything else waits behind one pill, ordered by how much of it
+// The named brands are the owner's list, in the owner's order — they are
+// what Iraqi buyers actually ask for, and a grid of twenty-two would bury
+// them. Everything else waits behind «أخرى», ordered by how much of it
 // is actually for sale (`count`), because that is the only honest ranking
 // for a brand the buyer had to go looking for.
 //
@@ -21,7 +21,7 @@ export interface FunnelBrand {
 }
 
 /** Owner's order. Compared lowercase against `name`. */
-export const HEAD_BRANDS = ['apple', 'samsung', 'honor', 'realme', 'xiaomi', 'infinix'];
+export const HEAD_BRANDS = ['apple', 'samsung', 'honor', 'realme', 'xiaomi', 'infinix', 'tecno'];
 
 const key = (b: FunnelBrand) => (b.name || '').trim().toLowerCase();
 

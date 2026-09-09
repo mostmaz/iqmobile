@@ -15,7 +15,7 @@
 // The old three-tab board is one tap away behind «طلباتي» in the header and
 // is otherwise untouched.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../../theme';
@@ -32,6 +32,7 @@ import { SortPills } from '../../components/SortPills';
 import { CONDITIONS } from '../../lib/conditions';
 import { ar } from '../../i18n/ar';
 import { orderBrandsForFunnel, brandLabel, type FunnelBrand } from '../../lib/requestFunnel';
+import { bundledBrandLogo } from '../../lib/brandLogos';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
@@ -51,16 +52,10 @@ export default function RequestBrowseScreen({ navigation }: any) {
   const { user } = useAuth();
   const isReal = !!user && !(user as any).is_guest;
   const tabClearance = useTabBarClearance();
-  const railRef = useRef<ScrollView>(null);
 
   const [brand, setBrand] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  // The chooser collapses once a device is picked. Ten photo cards are ~650pt
-  // of chooser, so leaving it open puts the listings the buyer just asked for
-  // off the bottom of a 390pt screen. The prototype defaults it open because a
-  // click-through has to show every state at once; a phone does not.
-  const [selectorOpen, setSelectorOpen] = useState(false);
   // Kept across a model change on purpose, the way SearchScreen keeps its
   // sort: a buyer who asked for cheapest-first means it for the next device
   // too, and re-picking it every time is the annoyance the control removes.
@@ -75,27 +70,30 @@ export default function RequestBrowseScreen({ navigation }: any) {
     staleTime: 5 * 60 * 1000,
   });
   const { head, rest } = useMemo(() => orderBrandsForFunnel(brandRows as BrandRow[] | undefined), [brandRows]);
-  // A brand picked from «أخرى» shows as a seventh, active pill — otherwise
-  // the selection would be invisible and the rail would look unselected.
   const pickedFromRest = brand && !head.some((b) => b.name === brand)
     ? rest.find((b) => b.name === brand) : null;
+  /** The chosen brand's row, wherever it came from — for the picked summary. */
+  const brandRow = pickedFromRest ?? head.find((b) => b.name === brand) ?? null;
 
   function pickBrand(name: string) {
-    // Switching brand invalidates the model — models are brand-specific.
-    // Tapping the active brand again clears it, the SearchScreen toggle.
-    if (name === brand) { setBrand(null); setModel(null); return; }
     setBrand(name);
     setModel(null);
   }
 
-  function pickModel(name: string) {
-    const next = model === name ? null : name;
-    setModel(next);
-    setSelectorOpen(false);
+  // ── one step at a time ──────────────────────────────────────────────
+  //
+  // Brands, then that brand's devices, then that device's listings. Each
+  // step REPLACES the one before it rather than stacking under it: three
+  // rows of brand cards plus five rows of device cards is ~1100pt of chooser,
+  // and the listings a buyer asked for would open below all of it.
+  //
+  // The header's own back arrow walks it back, so there is exactly one way
+  // out of a step and it sits where every other screen in the app puts it.
+  const step: 'brand' | 'model' | 'list' = !brand ? 'brand' : !model ? 'model' : 'list';
+  function goBack() {
+    if (model) { setModel(null); return; }
+    if (brand) { setBrand(null); return; }
   }
-
-  /** Brand and model rows are hidden behind the summary once a device is picked. */
-  const selectorVisible = !model || selectorOpen;
 
   // ── step 2: that brand's most-listed models ─────────────────────────
   const topModels = useQuery({
@@ -138,54 +136,22 @@ export default function RequestBrowseScreen({ navigation }: any) {
           below them it lands under the floating button on a 390pt screen,
           where an instruction nobody scrolls to is an instruction nobody
           reads. */}
-      {!brand ? (
+      {step === 'brand' ? (
         <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 13, lineHeight: 20, textAlign: 'right' }}>
           اختر الماركة لترى الأجهزة المعروضة الآن — وإن لم تجد ما تريد، اطلبه.
         </Text>
       ) : null}
 
-      {/* The collapsed chooser: what you picked, and the way back to picking. */}
-      {model && !selectorVisible ? (
-        <PickedBar
-          brand={brand!}
-          model={model}
-          onChange={() => setSelectorOpen(true)}
-        />
-      ) : null}
-      {/* Brands. Six in the owner's order, then «أخرى». Scrolled to the end
-          on layout so RTL lands on the first item — the fix Browse and
-          Search both carry.
-
-          Two shapes, one language. Choosing is a 2-up grid of cards; once a
-          brand is chosen that collapses to a rail of the same tile at 48pt
-          with its name beneath, because three rows of 96pt cards would push
-          the models and every listing below the fold on a 390pt screen.
-          Text pills were the earlier shortcut here and they broke the
-          design: the funnel is made of tiles the whole way down. */}
-      {brand && selectorVisible ? (
-        <ScrollView
-          ref={railRef}
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 2, paddingBottom: 2 }}
-          onContentSizeChange={() => railRef.current?.scrollToEnd({ animated: false })}
-        >
-          {head.map((b) => (
-            <BrandRailItem key={b.name} brand={b} active={brand === b.name} onPress={() => pickBrand(b.name)} />
-          ))}
-          {pickedFromRest ? (
-            <BrandRailItem brand={pickedFromRest} active onPress={() => pickBrand(pickedFromRest.name)} />
-          ) : null}
-          <BrandRailItem more onPress={() => setMoreOpen(true)} />
-        </ScrollView>
-      ) : brand ? null : (
+      {/* Step 1 — brands. The owner's order, then «أخرى» for the rest. */}
+      {step === 'brand' ? (
         <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
           {head.map((b) => <BrandCard key={b.name} brand={b} onPress={() => pickBrand(b.name)} />)}
           <BrandCard more onPress={() => setMoreOpen(true)} />
         </View>
-      )}
+      ) : null}
 
-      {/* Models. Real supply, real counts. */}
-      {brand && selectorVisible ? (
+      {/* Step 2 — that brand's most-listed devices. Real supply, real counts. */}
+      {step === 'model' ? (
         topModels.isLoading ? (
           <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
             {[0, 1, 2, 3].map((i) => (
@@ -212,8 +178,8 @@ export default function RequestBrowseScreen({ navigation }: any) {
                 <ModelCard
                   key={m.model_key}
                   model={m}
-                  active={model === m.model}
-                  onPress={() => pickModel(m.model)}
+                  active={false}
+                  onPress={() => setModel(m.model)}
                 />
               ))}
             </View>
@@ -264,8 +230,18 @@ export default function RequestBrowseScreen({ navigation }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <Header
-        title="اطلب جهاز"
-        eyebrow="شوف الموجود أولاً"
+        // The header carries the identity of the step you are on, and is the
+        // ONLY place that carries it. A summary card under a header that
+        // already says «Samsung / Galaxy S25 Ultra» prints the same two lines
+        // twice.
+        title={step === 'list' ? model! : step === 'model' ? brandLabel(brandRow ?? { name: brand! }) : 'اطلب جهاز'}
+        eyebrow={step === 'brand' ? 'شوف الموجود أولاً'
+          : step === 'model' ? 'اختر الجهاز'
+          : brandLabel(brandRow ?? { name: brand! })}
+        // Back walks the funnel back a step. It takes the slot the iQ badge
+        // normally holds — leading edge, beside the title — so «طلباتي»
+        // keeps the other side.
+        onBack={step === 'brand' ? undefined : goBack}
         right={(
           <TouchableOpacity
             onPress={() => navigation.navigate('RequestBoard')}
@@ -295,8 +271,7 @@ export default function RequestBrowseScreen({ navigation }: any) {
           <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
         ) : null}
         ListEmptyComponent={
-          !brand ? null
-            : !model ? null
+          step !== 'list' ? null
             : list.isError ? (
               <LoadFailed error={list.error} retrying={list.isFetching} onRetry={() => list.refetch()} />
             ) : list.isLoading ? (
@@ -359,6 +334,17 @@ export default function RequestBrowseScreen({ navigation }: any) {
 }
 
 /**
+ * Where a brand's mark comes from, in order.
+ *
+ * An operator's upload wins, then the mark bundled with the app, then
+ * nothing — and "nothing" is a rendered initial, never a broken-image box.
+ */
+function brandLogoSource(b: FunnelBrand): { uri: string } | number | null {
+  if (b.logo_path) return { uri: fullImageUrl(b.logo_path) };
+  return bundledBrandLogo(b.name);
+}
+
+/**
  * One brand in the chooser grid.
  *
  * The logo is optional and always will be: the app ships no brand images —
@@ -373,7 +359,8 @@ function BrandCard({ brand, more, onPress }: {
   onPress: () => void;
 }) {
   const label = more ? 'أخرى' : brandLabel(brand!);
-  const logo = brand?.logo_path ? fullImageUrl(brand.logo_path) : null;
+  // Uploaded logo first, bundled mark second, initial last.
+  const logo = brand ? brandLogoSource(brand) : null;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -395,7 +382,7 @@ function BrandCard({ brand, more, onPress }: {
         alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
       }}>
         {logo ? (
-          <Img source={{ uri: logo }} contentFit="contain" style={{ width: '78%', height: '72%' }} />
+          <Img source={logo} contentFit="contain" style={{ width: '78%', height: '72%' }} />
         ) : (
           <Text
             maxFontSizeMultiplier={FONT_SCALE_TIGHT}
@@ -422,140 +409,6 @@ function BrandCard({ brand, more, onPress }: {
           </Text>
         ) : null}
       </View>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * The collapsed chooser — brand mark, the picked device, and the way back.
- *
- * It replaces the brand rail and the model grid once a device is chosen, so
- * the listings start near the top of the screen instead of below ~650pt of
- * chooser. «تغيير الجهاز» puts both rows back.
- */
-function PickedBar({ brand, model, onChange }: {
-  brand: string;
-  model: string;
-  onChange: () => void;
-}) {
-  return (
-    <View style={{
-      flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-      paddingVertical: 10, paddingHorizontal: 12,
-      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: radius.xl,
-    }}>
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-        <View style={{
-          width: 38, height: 38, borderRadius: radius.md, backgroundColor: theme.chipBg,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Text
-            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-            style={{ fontFamily: fonts.ltrBold, fontSize: 13, color: theme.chipInk }}
-          >
-            {(brand || '?').trim().slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            numberOfLines={1}
-            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-            style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}
-          >
-            {model}
-          </Text>
-          <Text
-            numberOfLines={1}
-            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-            style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right' }}
-          >
-            {brand}
-          </Text>
-        </View>
-      </View>
-
-      <TouchableOpacity
-        onPress={onChange}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        hitSlop={6}
-        // flexShrink:0 on both the button and its label. The row's left group
-        // is flex:1, and under that pressure the Arabic label silently drops
-        // its trailing word — «تغيير الجهاز» renders as «تغيير». That is
-        // shrink, not bidi: see project_rtl_text_clipping.
-        style={{
-          flexShrink: 0,
-          flexDirection: 'row-reverse', alignItems: 'center', gap: 6,
-          paddingVertical: 8, paddingHorizontal: 12, borderRadius: radius.pill,
-          backgroundColor: theme.bg, borderWidth: 1, borderColor: 'rgba(27,26,24,0.12)',
-        }}
-      >
-        <Text
-          numberOfLines={1}
-          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ flexShrink: 0, fontFamily: fonts.arBold, fontSize: 12, color: theme.ink }}
-        >
-          تغيير الجهاز
-        </Text>
-        <Text
-          maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ fontFamily: fonts.ltr, fontSize: 11, color: theme.ink, marginTop: -1 }}
-        >
-          ▾
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-/**
- * The same brand tile at rail size, for after a brand has been chosen.
- *
- * 48pt mark over a 10.5pt name, in a 62pt column — the shape the design uses
- * so the row still reads as the grid it replaced. Active inverts the tile to
- * ink, which is how every other selected control in the app reads.
- */
-function BrandRailItem({ brand, more, active, onPress }: {
-  brand?: FunnelBrand;
-  /** The «أخرى» item — the rest of the brands, not the catalogue's "Other". */
-  more?: boolean;
-  active?: boolean;
-  onPress: () => void;
-}) {
-  const label = more ? 'أخرى' : brandLabel(brand!);
-  const logo = brand?.logo_path ? fullImageUrl(brand.logo_path) : null;
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      activeOpacity={0.85}
-      accessibilityRole="button"
-      accessibilityState={{ selected: !!active }}
-      style={{ width: 62, alignItems: 'center', gap: 6 }}
-    >
-      <View style={{
-        width: 48, height: 48, borderRadius: radius.xl,
-        alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-        backgroundColor: active ? theme.ink : theme.surface,
-        borderWidth: 1, borderColor: active ? theme.ink : theme.line,
-      }}>
-        {logo ? (
-          <Img source={{ uri: logo }} contentFit="contain" style={{ width: '74%', height: '74%' }} />
-        ) : (
-          <Text
-            maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-            style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: active ? theme.bg : theme.ink }}
-          >
-            {more ? '⋯' : (brand!.name || '?').trim().charAt(0).toUpperCase()}
-          </Text>
-        )}
-      </View>
-      <Text
-        numberOfLines={1}
-        maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-        style={{ fontFamily: fonts.ar, fontSize: 10.5, color: active ? theme.ink : theme.subtle }}
-      >
-        {label}
-      </Text>
     </TouchableOpacity>
   );
 }
