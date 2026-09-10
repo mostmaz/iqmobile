@@ -14,13 +14,14 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { theme, fonts, radius, shadowSoft } from '../../theme';
+import { theme, fonts, radius, shadowSoft, shadowAccent } from '../../theme';
 import { Btn, Header, Pill, Input, fmtIQD } from '../../components/ui';
 import {
   IconRequest, IconPin, IconStar, IconTag, IconClose, IconCheck,
   IconPhoneIcon, IconMsgCall, IconChevronLeft,
 } from '../../components/icons';
 import { Img } from '../../components/Img';
+import { bundledBrandLogo } from '../../lib/brandLogos';
 import { fullImageUrl } from '../../api/upload';
 import { PhoneRequests, Listings, type PhoneRequest, type RequestOffer, type Listing } from '../../api/endpoints';
 import { deviceTitle, timeAgoAr } from '../../lib/format';
@@ -84,11 +85,17 @@ export default function RequestDetailScreen({ navigation, route }: any) {
           borderColor: theme.line, ...shadowSoft, padding: 16,
         }}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
+            {/* Same brand tile the board uses, so the card a buyer tapped
+                and the card they land on are recognisably the same thing. */}
             <View style={{
-              width: 40, height: 40, borderRadius: 13, backgroundColor: theme.chipBg,
-              alignItems: 'center', justifyContent: 'center',
+              width: 42, height: 42, borderRadius: radius.lg, backgroundColor: theme.chipBg,
+              alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
             }}>
-              <IconRequest size={20} color={theme.ink} sw={1.6} />
+              {bundledBrandLogo(data.brand) ? (
+                <Img source={bundledBrandLogo(data.brand)!} contentFit="contain" style={{ width: 25, height: 25 }} />
+              ) : (
+                <IconRequest size={20} color={theme.ink} sw={1.6} />
+              )}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{
@@ -152,9 +159,21 @@ function BuyerView({ request, onStatus, busy, navigation }: {
 
   return (
     <View style={{ marginTop: 18 }}>
-      <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right', marginBottom: 10 }}>
-        {offers.length ? `العروض (${offers.length})` : 'العروض'}
-      </Text>
+      {/* The ordering is stated rather than left to be inferred. A buyer
+          scanning a list of prices assumes SOME order; saying which one
+          means the first card can be trusted as the cheapest. */}
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', marginBottom: 10, gap: 6 }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>العروض</Text>
+        {offers.length ? (
+          <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 12, color: theme.accentDeep }}>
+            {offers.length}
+          </Text>
+        ) : null}
+        <View style={{ flex: 1 }} />
+        {offers.length > 1 ? (
+          <Text style={{ fontFamily: fonts.arRegular, fontSize: 11.5, color: theme.subtle }}>الأرخص أولاً</Text>
+        ) : null}
+      </View>
 
       {offers.length === 0 ? (
         <View style={{
@@ -169,25 +188,38 @@ function BuyerView({ request, onStatus, busy, navigation }: {
           </Text>
         </View>
       ) : (
-        offers.map((o) => <OfferCard key={o.id} offer={o} navigation={navigation} />)
+        // The cheapest offer is marked, not just first. "First" only reads
+        // as "cheapest" once you have compared the prices yourself, which is
+        // the work the border saves.
+        offers.map((o, i) => (
+          <OfferCard key={o.id} offer={o} best={i === 0 && offers.length > 1} navigation={navigation} />
+        ))
       )}
 
+      {/* One row, not a stack. «حصلت على الجهاز» is the outcome everyone
+          wants and takes the width; «أغلق الطلب» is the giving-up branch and
+          gets a fixed 110. Stacked full-width, the two read as equally
+          likely next steps. Both keep their two-step confirmations. */}
       {isOpen ? (
-        <View style={{ marginTop: 22, gap: 8 }}>
-          <Btn kind="primary" full busy={busy} onPress={() => Alert.alert(
-            'حصلت على الجهاز؟',
-            'سنغلق الطلب ونوقف وصول عروض جديدة.',
-            [{ text: 'لا', style: 'cancel' }, { text: 'نعم، حصلت عليه', onPress: () => onStatus('fulfilled') }],
-          )}>
-            حصلت على الجهاز
-          </Btn>
-          <Btn kind="ghost" full onPress={() => Alert.alert(
-            'إغلاق الطلب',
-            'لن تصلك عروض جديدة على هذا الطلب.',
-            [{ text: 'إلغاء', style: 'cancel' }, { text: 'أغلق', style: 'destructive', onPress: () => onStatus('closed') }],
-          )}>
-            أغلق الطلب
-          </Btn>
+        <View style={{ marginTop: 22, flexDirection: 'row-reverse', gap: 8, alignItems: 'stretch' }}>
+          <View style={{ flex: 1 }}>
+            <Btn kind="primary" full busy={busy} onPress={() => Alert.alert(
+              'حصلت على الجهاز؟',
+              'سنغلق الطلب ونوقف وصول عروض جديدة.',
+              [{ text: 'لا', style: 'cancel' }, { text: 'نعم، حصلت عليه', onPress: () => onStatus('fulfilled') }],
+            )}>
+              حصلت على الجهاز
+            </Btn>
+          </View>
+          <View style={{ width: 110 }}>
+            <Btn kind="ghost" full onPress={() => Alert.alert(
+              'إغلاق الطلب',
+              'لن تصلك عروض جديدة على هذا الطلب.',
+              [{ text: 'إلغاء', style: 'cancel' }, { text: 'أغلق', style: 'destructive', onPress: () => onStatus('closed') }],
+            )}>
+              أغلق الطلب
+            </Btn>
+          </View>
         </View>
       ) : request.status !== 'expired' ? (
         <View style={{ marginTop: 22 }}>
@@ -198,18 +230,20 @@ function BuyerView({ request, onStatus, busy, navigation }: {
   );
 }
 
-function OfferCard({ offer, navigation }: { offer: RequestOffer; navigation: any }) {
+function OfferCard({ offer, best, navigation }: { offer: RequestOffer; best?: boolean; navigation: any }) {
   const s = offer.seller;
   const logo = s?.shop_image_path || s?.profile_image_path;
   return (
     <View style={{
-      backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
-      borderColor: theme.line, ...shadowSoft, padding: 14, marginBottom: 10,
+      backgroundColor: theme.surface, borderRadius: radius.xxl,
+      borderWidth: best ? 1.5 : 1,
+      borderColor: best ? theme.accent : theme.line,
+      ...shadowSoft, padding: 14, marginBottom: 10,
     }}>
       {/* seller */}
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10 }}>
         <View style={{
-          width: 42, height: 42, borderRadius: 13, backgroundColor: theme.chipBg,
+          width: 44, height: 44, borderRadius: radius.lg, backgroundColor: theme.chipBg,
           alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
         }}>
           {logo ? (
@@ -397,8 +431,8 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
       </Text>
 
       <View style={{
-        backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
-        borderColor: theme.line, padding: 14,
+        backgroundColor: theme.surface, borderRadius: radius.xxxl, borderWidth: 1,
+        borderColor: theme.line, ...shadowSoft, padding: 16,
       }}>
         <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginBottom: 6, textAlign: 'right' }}>
           سعرك (د.ع)
@@ -436,14 +470,19 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
         </Text>
         <Input value={note} onChangeText={setNote} placeholder="مثلاً: متوفر أزرق 256، كفالة سنة" multiline />
 
-        <View style={{ marginTop: 14, gap: 8 }}>
-          <Btn kind="primary" full busy={send.isPending} onPress={() => {
-            const n = Number(String(price).replace(/[^\d]/g, ''));
-            if (!Number.isFinite(n) || n <= 0) { Alert.alert('اكتب سعرك', 'السعر مطلوب لإرسال العرض.'); return; }
-            send.mutate();
-          }}>
-            {existing ? 'حدّث عرضك' : 'أرسل العرض'}
-          </Btn>
+        {/* Accent, not ink. This is the one act the whole screen exists for
+            — every other control on it is a field — and on a white card an
+            ink button is just the darkest rectangle among several. */}
+        <View style={{ marginTop: 16, gap: 8 }}>
+          <View style={{ borderRadius: radius.lg, ...shadowAccent }}>
+            <Btn kind="accent" full busy={send.isPending} onPress={() => {
+              const n = Number(String(price).replace(/[^\d]/g, ''));
+              if (!Number.isFinite(n) || n <= 0) { Alert.alert('اكتب سعرك', 'السعر مطلوب لإرسال العرض.'); return; }
+              send.mutate();
+            }}>
+              {existing ? 'حدّث عرضك' : 'أرسل العرض'}
+            </Btn>
+          </View>
           {existing ? (
             <Btn kind="ghost" full busy={withdraw.isPending} onPress={() => Alert.alert(
               'سحب العرض',
