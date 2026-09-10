@@ -412,24 +412,37 @@ export default function BrowseScreen({ navigation }: any) {
             }, shadowAccent]}>
               <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 12 }}>iQ</Text>
             </View>
-            {/* The scope is the app name's SUBTITLE now, not a chip beside
-                it (design 8a). As a chip it was a third pill in a row that
-                already had a logo and three icon buttons; under «IQ Mobile»
-                it reads as "where you are", which is what it means — and it
-                gave the row back the width the search field needs. */}
-            <TouchableOpacity onPress={() => setShowFilter(true)} activeOpacity={0.7} accessibilityRole="button"
-              accessibilityLabel="اختر المحافظة">
+            <View>
               <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
                 {ar.app.name}
               </Text>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 3 }}>
-                <IconPin size={11} color={theme.accent} sw={1.8} />
-                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle }}>
-                  {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
-                </Text>
-              </View>
-            </TouchableOpacity>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle }}>
+                العراق
+              </Text>
+            </View>
           </View>
+          {/* Current scope — "all Iraq" or the picked governorate — as a chip
+              you can aim at, not as a line of subtitle under the app name.
+              It was briefly folded into that subtitle to buy width for the
+              search row; the width was not worth it, because changing city is
+              something a buyer DOES and a subtitle is something they read.
+              Tapping opens the filter sheet, where the governorate is set. */}
+          <TouchableOpacity
+            onPress={() => setShowFilter(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`المحافظة: ${filters.governorate ? arOf(filters.governorate) : 'كل العراق'}. اضغط للتغيير`}
+            style={{
+              flexShrink: 0, flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+              borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, marginHorizontal: 5,
+            }}
+          >
+            <IconPin size={13} color={theme.accent} sw={1.7} />
+            <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.ink }}>
+              {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
+            </Text>
+          </TouchableOpacity>
           {/* Trailing actions: filter + bell, side by side. The search box
               and brand rail that used to sit below were removed — search has
               its own tab, brand selection moved into the filter sheet. */}
