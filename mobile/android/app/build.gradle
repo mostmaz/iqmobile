@@ -210,6 +210,11 @@ gradle.taskGraph.whenReady { graph ->
         t.project == project && t.name ==~ /(assemble|bundle|package)Release/
     }
     if (!releaseTask) return
+    // build-test-apk.sh builds a RELEASE variant on purpose — that is how the
+    // side-by-side «iQ تجربة» app gets a real signing config — so it opts in
+    // explicitly, the same way a deliberate debug-signed release does above.
+    // The opt-in is the whole point: a suffix nobody asked for is the bug.
+    if (project.findProperty('allowTestApplicationId') == 'true') return
     def actual = android.defaultConfig.applicationId +
                  (android.defaultConfig.applicationIdSuffix ?: '')
     if (actual != 'org.iqmobile.app') {

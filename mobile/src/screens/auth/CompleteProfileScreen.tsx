@@ -12,6 +12,7 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } fr
 import { Img } from '../../components/Img';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import * as Location from 'expo-location';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius } from '../../theme';
@@ -45,16 +46,16 @@ export default function CompleteProfileScreen() {
     if (pickBusy) return;
     setPickBusy(true);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
+      const granted = await ensureLibraryPermission();
+      if (!granted) {
         Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
         return;
       }
-      const r = await ImagePicker.launchImageLibraryAsync({
+      const r = await launchLibrary({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 1, allowsEditing: true,
       });
-      if (r.canceled || !r.assets?.[0]?.uri) return;
+      if (!r || r.canceled || !r.assets?.[0]?.uri) return;
       try {
         const compressed = await compressForAvatar(r.assets[0].uri);
         setShopImage(compressed);

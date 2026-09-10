@@ -137,7 +137,7 @@ PY
 
 echo "→ building (this takes a few minutes)…"
 cd android
-SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew :app:assembleRelease -q
+SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew :app:assembleRelease -PallowTestApplicationId=true -q
 cd ..
 
 OUT="$HOME/Downloads/iqmobile-test.apk"

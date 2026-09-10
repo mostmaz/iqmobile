@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -73,13 +74,13 @@ export default function EditListingScreen({ route, navigation }: any) {
     if (mediaBusy) return;
     const remaining = MAX_IMAGES - images.length;
     if (remaining <= 0) { Alert.alert('الحد الأقصى', `الحد الأقصى ${MAX_IMAGES} صور.`); return; }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const granted = await ensureLibraryPermission();
+    if (!granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true, quality: 1, selectionLimit: remaining,
     });
-    if (r.canceled || !r.assets?.length) return;
+    if (!r || r.canceled || !r.assets?.length) return;
     setMediaBusy(true);
     let failed = 0;
     try {
@@ -110,13 +111,13 @@ export default function EditListingScreen({ route, navigation }: any) {
 
   const addVideo = useCallback(async () => {
     if (mediaBusy) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('الفيديو', 'فعّل إذن الوصول للوسائط من إعدادات الجهاز.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const granted = await ensureLibraryPermission('video');
+    if (!granted) { Alert.alert('الفيديو', 'فعّل إذن الوصول للوسائط من إعدادات الجهاز.'); return; }
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsMultipleSelection: false, videoMaxDuration: 60,
-    });
-    if (r.canceled || !r.assets?.length) return;
+    }, 'video');
+    if (!r || r.canceled || !r.assets?.length) return;
     setMediaBusy(true);
     try {
       const out = await compressVideo(r.assets[0].uri);

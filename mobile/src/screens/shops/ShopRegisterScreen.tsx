@@ -13,6 +13,7 @@ import { View, Text, ScrollView, Alert, ActivityIndicator, TouchableOpacity } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import * as Location from 'expo-location';
 import { theme, fonts, radius } from '../../theme';
 import { Header, Btn, Input, FieldLabel } from '../../components/ui';
@@ -134,12 +135,12 @@ export default function ShopRegisterScreen({ navigation }: any) {
   async function pickAndUploadBanner() {
     if (shopImgLeft === 0) { Alert.alert('انتهت التعديلات', 'لقد استنفذت تعديلات شعار المتجر.'); return; }
     if (bannerBusy) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const granted = await ensureLibraryPermission();
+    if (!granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1, allowsEditing: true,
     });
-    if (r.canceled || !r.assets?.[0]?.uri) return;
+    if (!r || r.canceled || !r.assets?.[0]?.uri) return;
     setBannerBusy(true);
     try {
       const compressed = await compressForAvatar(r.assets[0].uri);
@@ -166,13 +167,13 @@ export default function ShopRegisterScreen({ navigation }: any) {
   async function pickAndAddPriceImages() {
     if (imgBusy) return;
     if (shopImages.length >= 12) { Alert.alert('الحد الأقصى', 'يمكنك إضافة حتى 12 صورة.'); return; }
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const granted = await ensureLibraryPermission();
+    if (!granted) { Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.'); return; }
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
       allowsMultipleSelection: true, selectionLimit: 12 - shopImages.length,
     });
-    if (r.canceled || !r.assets?.length) return;
+    if (!r || r.canceled || !r.assets?.length) return;
     setImgBusy(true);
     try {
       const uris: string[] = [];

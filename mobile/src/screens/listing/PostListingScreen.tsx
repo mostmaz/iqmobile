@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler, Modal, KeyboardAvoidingView } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -351,18 +352,18 @@ export default function PostListingScreen({ navigation }: any) {
   }
 
   async function pickVideo() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
+    const granted = await ensureLibraryPermission('video');
+    if (!granted) {
       Alert.alert('الفيديو', 'فعّل إذن الوصول للوسائط من إعدادات الجهاز.'); return;
     }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsMultipleSelection: false,
       // A minute is plenty to show a phone working; longer clips balloon
       // upload sizes past what mobile data here tolerates.
       videoMaxDuration: 60,
-    });
-    if (r.canceled || !r.assets?.length) return;
+    }, 'video');
+    if (!r || r.canceled || !r.assets?.length) return;
     const asset = r.assets[0];
     setVideoBusy(true);
     try {
@@ -383,8 +384,8 @@ export default function PostListingScreen({ navigation }: any) {
   }
 
   async function pickImages() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
+    const granted = await ensureLibraryPermission();
+    if (!granted) {
       Alert.alert('الصور', 'فعّل إذن الصون من إعدادات الجهاز.'); return;
     }
     // Guard against the off-by-one where `images.length === 10` makes
@@ -396,13 +397,13 @@ export default function PostListingScreen({ navigation }: any) {
       Alert.alert('الحد الأقصى', 'الحد الأقصى 10 صور.');
       return;
     }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       quality: 1,
       selectionLimit: remaining,
     });
-    if (r.canceled) return;
+    if (!r || r.canceled) return;
     // Compress concurrently but cap to 3-at-a-time. A naïve Promise.all
     // over 10 photos was much faster than sequential, but each
     // manipulateAsync holds a decoded bitmap in memory (a 4032×3024

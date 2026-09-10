@@ -5,6 +5,7 @@ import { Img } from '../../components/Img';
 import { CommonActions } from '@react-navigation/native';
 import { navigationRef } from '../../navigation/ref';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../auth/AuthContext';
 import { theme, fonts, radius, shadowAccent, FONT_SCALE_TIGHT } from '../../theme';
@@ -76,12 +77,12 @@ export default function ProfileScreen({ navigation }: any) {
   const initial = user.display_name?.[0] || '?';
 
   async function pickAvatar() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const granted = await ensureLibraryPermission();
+    if (!granted) return;
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1, allowsEditing: true,
     });
-    if (r.canceled || !r.assets?.[0]?.uri) return;
+    if (!r || r.canceled || !r.assets?.[0]?.uri) return;
     try {
       const compressed = await compressForAvatar(r.assets[0].uri);
       await uploadProfileImage(compressed);

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
+import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
@@ -189,15 +190,15 @@ export default function ChatScreen({ route, navigation }: any) {
 
   async function pickAndSendImage() {
     if (sending) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
+    const granted = await ensureLibraryPermission();
+    if (!granted) {
       Alert.alert('الصور', 'فعّل إذن الصور من إعدادات الجهاز.');
       return;
     }
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const r = await launchLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
     });
-    if (r.canceled || !r.assets?.[0]?.uri) return;
+    if (!r || r.canceled || !r.assets?.[0]?.uri) return;
     setSending(true);
     try {
       // Wrap BOTH compress + send in the try — a corrupt HEIC or OOM
