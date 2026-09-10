@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { timeAgoAr, deviceTitle } from '../../lib/format';
 import { Shops } from '../../api/endpoints';
-import { theme, fonts, radius } from '../../theme';
+import { theme, fonts, radius, shadowSoft } from '../../theme';
 import { Header, Btn, fmtIQD } from '../../components/ui';
 import { IconChat, IconStore } from '../../components/icons';
 import { RowListSkeleton } from '../../components/Skeleton';
@@ -16,6 +16,7 @@ import { fullImageUrl } from '../../api/upload';
 import { useAuth } from '../../auth/AuthContext';
 import { subscribeSSE } from '../../sse/client';
 import { ar } from '../../i18n/ar';
+import { bundledBrandLogo } from '../../lib/brandLogos';
 
 export default function ChatsListScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -159,9 +160,12 @@ export default function ChatsListScreen({ navigation, route }: any) {
           //      blank (legacy guests pre-display-name auto-naming).
           const counterName = counter?.display_name?.trim() || ar.chat.fallbackUser;
           const initial = counterName.charAt(0).toUpperCase();
-          const listingLabel = item.listing
-            ? `${deviceTitle(item.listing.brand, item.listing.model)} · ${fmtIQD(item.listing.asking_price)} د.ع`
+          // Model and price are separate now — they are set in different
+          // fonts inside the chip, and a pre-joined string cannot be.
+          const listingModel = item.listing
+            ? deviceTitle(item.listing.brand, item.listing.model)
             : ar.chat.listingMissing;
+          const brandMark = item.listing ? bundledBrandLogo(item.listing.brand) : null;
           const unread = item.unread_count || 0;
           const last = item.last_message;
           return (
@@ -169,17 +173,35 @@ export default function ChatsListScreen({ navigation, route }: any) {
               activeOpacity={0.85}
               onPress={() => navigation.navigate('Chat', { id: item.id })}
               style={{
-                padding: 12, marginBottom: 8, borderRadius: radius.lg,
+                padding: 13, marginBottom: 8, borderRadius: radius.xxl,
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-                flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
+                ...shadowSoft,
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 11,
               }}
             >
-              <View style={{ width: 44, height: 44, borderRadius: 999, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                {counter?.profile_image_path ? (
-                  <Img source={{ uri: fullImageUrl(counter.profile_image_path) }} style={{ width: 44, height: 44 }} />
-                ) : (
-                  <Text style={{ fontFamily: fonts.arBold, color: theme.subtle }}>{initial}</Text>
-                )}
+              <View>
+                <View style={{ width: 46, height: 46, borderRadius: radius.xl, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {counter?.profile_image_path ? (
+                    <Img source={{ uri: fullImageUrl(counter.profile_image_path) }} style={{ width: 46, height: 46 }} />
+                  ) : (
+                    <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.chipInk }}>{initial}</Text>
+                  )}
+                </View>
+                {/* The brand mark of the phone the thread is about, ringed so
+                    it reads as a badge rather than as part of the avatar.
+                    Two threads from the same guest pseudonym are otherwise
+                    identical down to the initial — this is the only thing in
+                    the row that tells them apart at a glance. */}
+                {brandMark ? (
+                  <View style={{
+                    position: 'absolute', bottom: -2, left: -2,
+                    width: 20, height: 20, borderRadius: 999,
+                    backgroundColor: theme.surface, borderWidth: 2, borderColor: theme.surface,
+                    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                  }}>
+                    <Img source={brandMark} contentFit="contain" style={{ width: 14, height: 14 }} />
+                  </View>
+                ) : null}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {/* Name and time share the top line; the preview and the
@@ -189,25 +211,30 @@ export default function ChatsListScreen({ navigation, route }: any) {
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
                   <Text
                     numberOfLines={1}
-                    style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right' }}
+                    style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink, textAlign: 'right' }}
                   >
                     {counterName}
                   </Text>
+                  {/* The timestamp carries the unread state too. It is the
+                      one element on the row that is always present, so an
+                      accent reading here survives a thread with no preview
+                      text and no badge yet. */}
                   {last ? (
-                    <Text style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle }}>
+                    <Text style={{
+                      fontFamily: unread ? fonts.ar : fonts.arRegular,
+                      fontSize: 10.5,
+                      color: unread ? theme.accentDeep : theme.subtle,
+                    }}>
                       {timeAgoAr(last.created_at)}
                     </Text>
                   ) : null}
                 </View>
-                <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, marginTop: 2, textAlign: 'right' }} numberOfLines={1}>
-                  {listingLabel}
-                </Text>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 3 }}>
                   <Text
                     numberOfLines={1}
                     style={{
                       flex: 1, textAlign: 'right', fontSize: 12.5,
-                      fontFamily: unread ? fonts.arBold : fonts.ar,
+                      fontFamily: unread ? fonts.arBold : fonts.arRegular,
                       color: unread ? theme.ink : theme.subtle,
                     }}
                   >
@@ -222,6 +249,32 @@ export default function ChatsListScreen({ navigation, route }: any) {
                         {unread > 99 ? '99+' : unread}
                       </Text>
                     </View>
+                  ) : null}
+                </View>
+                {/* The listing is a chip, not a third line of grey text, and
+                    it moves BELOW the message.
+                    
+                    As a text line above the preview it competed with the
+                    message for the eye at the same size and colour, and the
+                    thing a person opens this screen for is the message. As a
+                    chip it reads as metadata, and the price gets to be the
+                    one part of it set in Inter. `align-self` keeps it the
+                    width of its content — full-width, it looked like another
+                    row of the card. */}
+                <View style={{
+                  alignSelf: 'flex-start', marginTop: 5,
+                  flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+                  maxWidth: '100%',
+                  paddingHorizontal: 9, paddingVertical: 4,
+                  borderRadius: radius.pill, backgroundColor: theme.inset,
+                }}>
+                  <Text numberOfLines={1} style={{ fontFamily: fonts.ar, fontSize: 10.5, color: theme.subtle, flexShrink: 1, minWidth: 0 }}>
+                    {listingModel}
+                  </Text>
+                  {item.listing ? (
+                    <Text style={{ fontFamily: fonts.ltrBold, fontSize: 10.5, color: theme.accentDeep, flexShrink: 0 }}>
+                      {fmtIQD(item.listing.asking_price)} د.ع
+                    </Text>
                   ) : null}
                 </View>
               </View>
