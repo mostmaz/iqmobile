@@ -181,13 +181,20 @@ export function ListingCard({
             the price owns its line and the location owns the next one. */}
         <View style={{ marginTop: compact ? 5 : 9, gap: 4 }}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-          {/* Same sentinel bug as the detail page: without this branch a
-              call-for-price listing showed «١ د.ع» on every card in the feed. */}
+          {/* flex: 1, NOT flexShrink: 0.
+          
+              A seven-digit price showed as «… 1,650,000» in the feed: the
+              «د.ع» was ellipsised away while the row still had a third of its
+              width free. This is the Android RTL measurement bug the Header
+              title and the description label both hit — under shrink pressure
+              a Text containing Arabic measures short and drops its trailing
+              token, and flexShrink: 0 does NOT prevent it (that was tried
+              first, twice, in both other places). Owning the free space does. */}
           {isOnRequest(listing as any) ? (
             <Text
               numberOfLines={1}
               maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              style={{ fontFamily: fonts.arBold, fontSize: compact ? 12.5 : 14, color: theme.ink, flexShrink: 0 }}
+              style={{ flex: 1, textAlign: 'right', fontFamily: fonts.arBold, fontSize: compact ? 12.5 : 14, color: theme.ink }}
             >
               {ON_REQUEST_LABEL}
             </Text>
@@ -195,7 +202,7 @@ export function ListingCard({
             <Text
               numberOfLines={1}
               maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-              style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3, flexShrink: 0 }}
+              style={{ flex: 1, textAlign: 'right', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: compact ? 16 : 19, color: theme.accentDeep, letterSpacing: -0.3 }}
             >
               {fmtIQD(listing.asking_price)}
               <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>

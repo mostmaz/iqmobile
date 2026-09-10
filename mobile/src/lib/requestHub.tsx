@@ -89,8 +89,14 @@ export function RequestHubProvider({ children }: { children: React.ReactNode }) 
   return (
     <Ctx.Provider value={value}>
       {children}
+      {/* Mounted only while open. Left permanently mounted with visible=false,
+          its rails and its queries lay out once against a hidden, zero-width
+          modal and never corrected — the brand rail opened on the tail of the
+          list. Mounting on open also gives the sheet's own reset effect a
+          fresh instance to reset. */}
+      {seed !== null ? (
       <RequestComposeSheet
-        visible={seed !== null}
+        visible
         onClose={() => setSeed(null)}
         defaultGovAr={govAr}
         initialBrand={seed?.brand ?? null}
@@ -114,6 +120,7 @@ export function RequestHubProvider({ children }: { children: React.ReactNode }) 
           });
         }}
       />
+      ) : null}
     </Ctx.Provider>
   );
 }

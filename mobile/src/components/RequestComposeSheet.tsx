@@ -101,6 +101,26 @@ export function RequestComposeSheet({
     [catalogBrands, brandSupply],
   );
 
+  // A THIRD trigger for the RTL rail, on top of the two callbacks on the
+  // ScrollView itself.
+  //
+  // Both callbacks are edge-triggered, and the brand list arrives in two
+  // steps (the catalogue, then the reorder by real supply) AFTER the sheet is
+  // already up — its queries are `enabled: visible`. Whichever of layout and
+  // content-size fires last can fire while the other side is still zero, and
+  // a scrollToEnd against a zero-width viewport, or against no content, is a
+  // silent no-op. The rail then opens on Google/Itel/POCO instead of Apple,
+  // which is exactly what it did once the sheet moved up to the tab level.
+  //
+  // Keyed on the LENGTH, not the array: a reorder that keeps the count must
+  // not yank the rail back under a buyer who has already scrolled it.
+  const railCount = railBrands.length;
+  React.useEffect(() => {
+    if (!visible || railCount === 0) return;
+    const t = setTimeout(() => brandRailRef.current?.scrollToEnd({ animated: false }), 0);
+    return () => clearTimeout(t);
+  }, [visible, railCount]);
+
   // Is the thing they are about to ask for already on sale? Reuses the
   // funnel's top-models endpoint rather than adding a count route: it is one
   // request per brand and already returns exactly this number.

@@ -99,7 +99,10 @@ export default function SearchScreen({ navigation, route }: any) {
   // "Thin" is the whole trigger for the request invitation: a settled list
   // with no further page and few enough rows that the buyer has plainly not
   // found what they came for.
-  const thin = enabled && !isLoading && !hasNextPage && items.length <= THIN_RESULTS;
+  // !isError as well: a search that FAILED has not told the buyer anything
+  // about supply, and «ما لقيت جهازك؟» over a connection error blames them
+  // for our outage.
+  const thin = enabled && !isLoading && !isError && !hasNextPage && items.length <= THIN_RESULTS;
   const hasFilters = !!brand || !!model || !!sort;
 
   function pickBrand(b: string) {
@@ -307,10 +310,14 @@ export default function SearchScreen({ navigation, route }: any) {
         // three results does not scroll to the bottom to look for a way out —
         // they go back and search again — so an invitation under the last
         // card is one nobody sees.
+        // Seeded from the FILTERS, never from the typed query: the sheet's
+        // device field is a catalogue picker, and dropping raw text into it
+        // leaves a model the picker never validated sitting under a brand
+        // selector that will clear it the moment it is touched.
         ListHeaderComponent={thin ? (
           <RequestInviteCard
             style={{ marginBottom: 12 }}
-            onPress={() => openCompose({ brand, model: model || draft.trim() })}
+            onPress={() => openCompose({ brand, model: brand ? model : '' })}
           />
         ) : null}
         onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
@@ -318,11 +325,12 @@ export default function SearchScreen({ navigation, route }: any) {
         ListFooterComponent={isFetchingNextPage ? (
           <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
         ) : thin && items.length > 0 ? (
-          // Only when the list really is thin. Under forty results this
-          // sentence is help; under a full page it is nagging.
+          // `thin` already gates this — but items.length > 0 as well, because
+          // with zero results the pinned card above is the whole screen and a
+          // second copy of the same offer under it is just noise.
           <RequestInviteFooter
             pitch={invitePitch(pulse?.seller_reach ?? 0)}
-            onPress={() => openCompose({ brand, model: model || draft.trim() })}
+            onPress={() => openCompose({ brand, model: brand ? model : '' })}
           />
         ) : null}
         // Three states: no query yet → prompt; query inflight with no
