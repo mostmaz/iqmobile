@@ -29,6 +29,7 @@ import { notify, hasNotified } from '../notify.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { norm } from './savedSearches.js';
 import { requestsAnsweredBy } from '../requestMatch.js';
+import { requestPulse } from '../requestPulse.js';
 
 const r = Router();
 
@@ -369,7 +370,17 @@ r.get('/phone-requests', optionalAuth(), (req, res) => {
 
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
   const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  // The feed's quick sorts. `budget` puts the money first because that is
+  // what a shop deciding whether to reply is weighing; `no_offers` is the
+  // opposite view — the requests nobody has answered yet, which are the ones
+  // where a reply actually wins something. Both keep recency as the
+  // tiebreak, so neither can strand an old request at the top forever.
+  const ORDER = {
+    new: 'created_at DESC',
+    budget: 'max_price DESC, created_at DESC',
+    no_offers: 'COALESCE(offer_count,0) ASC, created_at DESC',
+  };
+  sql += ` ORDER BY ${ORDER[String(req.query.sort || '')] || ORDER.new} LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
   const rows = db.prepare(sql).all(...params);
@@ -403,6 +414,28 @@ r.get('/listings/:id(\\d+)/matching-requests', requireAuth(), (req, res) => {
     // than on the request itself.
     above_budget: row.above_budget,
   })));
+});
+
+// How busy the request feature is, near you.
+//
+// One endpoint for three call sites that must agree: the الطلبات tab badge,
+// the line under the feed's title, and the invite card's «خل N تاجر يشوفون
+// طلبك». They used to be three different claims because nothing computed
+// them; see requestPulse.js for why the numbers are shaped the way they are.
+//
+// optionalAuth: a signed-out browser still sees the feed, so it still gets a
+// headline number. The governorate then has to come from the query string.
+r.get('/phone-requests/pulse', optionalAuth(), (req, res) => {
+  expireStale();
+  const raw = req.query.governorate ?? req.user?.governorate ?? '';
+  const g = normalizeGovernorate(String(raw));
+  const since = Math.max(0, parseInt(String(req.query.since || '0'), 10) || 0);
+  res.json(requestPulse(db, {
+    governorate: g && isGovernorate(g) ? g : null,
+    since,
+    now: now(),
+    maxReach: MAX_BROADCAST,
+  }));
 });
 
 // Must precede /:id — otherwise "mine" is parsed as an id.
