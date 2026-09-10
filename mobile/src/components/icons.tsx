@@ -201,6 +201,17 @@ export const IconFilter = ({ size = 18, color = 'currentColor', sw = 1.7 }: IP) 
     <Path d="M10 19h4" />
   </Svg>
 );
+// A board of requests — three lines, the last one short. Distinct from
+// IconFilter (whose lines TAPER, meaning "narrowing down") because they sit
+// two tabs apart in the same bar: this one is a list you read, that one is a
+// funnel you set.
+export const IconList = ({ size = 18, color = 'currentColor', sw = 1.7 }: IP) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M3.5 6.5h17" />
+    <Path d="M3.5 12h17" />
+    <Path d="M3.5 17.5h11" />
+  </Svg>
+);
 // Storefront silhouette — used for the "shop" seller type pill / avatar.
 export const IconStore2 = ({ size = 14, color = 'currentColor', sw = 1.7 }: IP) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">

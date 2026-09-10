@@ -18,6 +18,7 @@ import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { AppGate } from '../components/AppGate';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { RequestHubProvider } from '../lib/requestHub';
 import { useAuth } from '../auth/AuthContext';
 import AuthGateScreen from '../screens/auth/AuthGateScreen';
 import OtpVerifyScreen from '../screens/auth/OtpVerifyScreen';
@@ -158,16 +159,21 @@ function ProfileStackNav() {
     </BrowseStack.Navigator>
   );
 }
-// طلبات — opens on the browse-first funnel (brand → most-listed models →
-// last-60-day listings); the three-tab board sits behind «طلباتي» as
-// RequestBoard. resetToRootOnTabPress targets RequestsHome, so the tab
-// always returns to the funnel. RequestDetail needs ListingDetail locally
-// because an offer can attach a listing, and that tap must not dead-end.
+// الطلبات — opens on the FEED (design 6a). It used to open on the
+// browse-first funnel, with the board tucked behind a «طلباتي» pill, because
+// one tab had to serve both "I want to ask for a phone" and "show me what
+// people are asking for". «اطلب جهاز» owns the first job now, so this tab
+// can be what its name says.
+//
+// The funnel stays as RequestFunnel: it is still the best answer to «شوف
+// المعروض الآن» in the compose sheet, which is a brand-and-model question,
+// not a free-text search. RequestDetail needs ListingDetail locally because
+// an offer can attach a listing, and that tap must not dead-end.
 function RequestsStackNav() {
   return (
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
-      <BrowseStack.Screen name="RequestsHome" component={RequestBrowseScreen} />
-      <BrowseStack.Screen name="RequestBoard" component={RequestsScreen} />
+      <BrowseStack.Screen name="RequestsHome" component={RequestsScreen} />
+      <BrowseStack.Screen name="RequestFunnel" component={RequestBrowseScreen} />
       <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
@@ -287,10 +293,21 @@ function resetToRootOnTabPress(tabName: string, rootRoute: string, opts?: { alwa
   });
 }
 
+// «اطلب جهاز» is a button wearing a tab's clothes: TabBar intercepts its
+// press and opens the compose sheet, so this component is never reached.
+// It exists because a bottom-tab navigator has to be given one, and because
+// the route reserves the slot's position in the row.
+function AskDevicePlaceholder() { return null; }
+
 function MainTabs() {
   return (
+    <RequestHubProvider>
     <Tabs.Navigator screenOptions={{ headerShown: false }} tabBar={(p) => <TabBar {...p} />}>
       <Tabs.Screen name="Browse" component={BrowseStackNav} />
+      {/* Second slot, where «بحث» used to be — search is a real field in the
+          Browse header now (design 8a/8b). The Search STACK stays registered
+          below; it is only its button that left the bar. */}
+      <Tabs.Screen name="AskDevice" component={AskDevicePlaceholder} />
       <Tabs.Screen name="Search" component={SearchStackNav} />
       <Tabs.Screen
         name="Sell"
@@ -302,9 +319,10 @@ function MainTabs() {
         // leftover form state from a canceled wizard would persist.
         listeners={resetToRootOnTabPress('Sell', 'SellHome', { always: true })}
       />
-      {/* Placed after Sell on purpose: the bar hides Chats, so the visible
-          row is Browse · Search · Sell · Requests · Profile and Sell keeps
-          the centre slot its elevated treatment is designed around. */}
+      {/* Placed after Sell on purpose: the bar hides Chats and Search, so the
+          visible row is Browse · AskDevice · Sell · Requests · Profile and
+          Sell keeps the centre slot its elevated treatment is designed
+          around. */}
       <Tabs.Screen
         name="Requests"
         component={RequestsStackNav}
@@ -319,6 +337,7 @@ function MainTabs() {
       />
       <Tabs.Screen name="Profile" component={ProfileStackNav} />
     </Tabs.Navigator>
+    </RequestHubProvider>
   );
 }
 

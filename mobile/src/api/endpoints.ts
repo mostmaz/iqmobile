@@ -518,15 +518,42 @@ export interface SentOffer extends RequestOffer {
   request: { id: number; brand: string; model: string; max_price: number; governorate: string; status: RequestStatus };
 }
 
+/** The feed's quick sorts. `new` is the server's default and is never sent. */
+export type RequestSort = 'new' | 'budget' | 'no_offers';
+
+/**
+ * How busy the request feature is near you — the ONE source for the الطلبات
+ * badge, the feed's subtitle and the invite card's shop count. Three screens
+ * quoting three different numbers is the failure this replaces.
+ */
+export interface RequestPulse {
+  /** Open requests posted in your governorate in the last 24 hours. */
+  count_24h: number;
+  /** Of those, the ones newer than the `since` you sent. Drives the badge. */
+  count_new: number;
+  governorate: string | null;
+  /** Shops in your governorate a request is guaranteed to reach. 0 = unknown. */
+  seller_reach: number;
+}
+
 export const PhoneRequests = {
   /** The public board. `mineToAnswer` narrows to brands this seller has listed. */
-  board: (opts: { governorate?: string; brand?: string; mineToAnswer?: boolean } = {}) => {
+  board: (opts: { governorate?: string; brand?: string; mineToAnswer?: boolean; sort?: RequestSort } = {}) => {
     const q = new URLSearchParams();
     if (opts.governorate) q.set('governorate', opts.governorate);
     if (opts.brand) q.set('brand', opts.brand);
     if (opts.mineToAnswer) q.set('mine_to_answer', '1');
+    if (opts.sort && opts.sort !== 'new') q.set('sort', opts.sort);
     const qs = q.toString();
     return api<PhoneRequest[]>(`/phone-requests${qs ? `?${qs}` : ''}`);
+  },
+  /** @param since ms timestamp of the last time this device opened the feed. */
+  pulse: (opts: { governorate?: string; since?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.governorate) q.set('governorate', opts.governorate);
+    if (opts.since) q.set('since', String(Math.floor(opts.since)));
+    const qs = q.toString();
+    return api<RequestPulse>(`/phone-requests/pulse${qs ? `?${qs}` : ''}`);
   },
   mine: () => api<PhoneRequest[]>('/phone-requests/mine'),
   sentOffers: () => api<SentOffer[]>('/phone-requests/offers/mine'),

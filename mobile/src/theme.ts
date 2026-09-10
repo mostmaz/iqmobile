@@ -34,6 +34,10 @@ export const theme = {
   accent: '#D9583A',
   accentSoft: 'rgba(217,88,58,0.14)',
   accentDeep: '#B23F25',
+  // A dashed accent outline at full strength shouts; at half it reads as an
+  // invitation. Used by the «ما لقيت جهازك؟» card, which sits INSIDE a list
+  // of real listings and must not out-rank them.
+  accentBorder: 'rgba(217,88,58,0.5)',
   accentInk: '#FFFFFF',
   chipBg: '#F2EEE8',
   chipInk: '#3A352D',

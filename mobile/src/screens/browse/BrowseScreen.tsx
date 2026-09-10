@@ -10,7 +10,9 @@ import { CONDITIONS } from '../../lib/conditions';
 import { digitsOnly } from '../../lib/format';
 import { theme, fonts, radius, shadowAccent, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
-import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag, IconChat } from '../../components/icons';
+import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag, IconChat, IconSearch, IconClose } from '../../components/icons';
+import { RequestInviteCard } from '../../components/RequestInviteCard';
+import { useRequestHub } from '../../lib/requestHub';
 import { fmtIQD } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
@@ -65,13 +67,28 @@ const PRICE_DEFAULT_MAX = 3_000_000;
 // the FlatList nears its end. Keeps the grid responsive on first tab open.
 const PAGE_SIZE = 15;
 
+/**
+ * How many listings the buyer scrolls past before «ما لقيت جهازك؟» appears.
+ *
+ * One slot before the first promo banner (every 5th), so the two never sit
+ * back to back — a paid banner directly under our own invitation reads as two
+ * ads in a row and both get skipped.
+ */
+const INVITE_AFTER = 4;
+
 export default function BrowseScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const tabClearance = useTabBarClearance();
   const cartCount = useCart().count;
+  const { openCompose } = useRequestHub();
   const [filters, setFilters] = useState<BrowseFilters>({});
-  // Search lives in its own dedicated tab now (it replaced Favorites in the
-  // bottom bar). Browse is pure filtering — no inline search box here.
+  // Search is a real field in this header again (design 8a). It had a tab of
+  // its own for a while; the tab is gone and the slot went to «اطلب جهاز»,
+  // but the SearchScreen it opened is still where results are shown — this
+  // field hands `q` to it rather than filtering in place, because the two
+  // screens answer different questions (a feed you browse vs. a query you
+  // asked).
+  const [q, setQ] = useState('');
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -346,6 +363,18 @@ export default function BrowseScreen({ navigation }: any) {
           slot++;
         }
       });
+    } else {
+      out = [...(items as any[])];
+    }
+    // «ما لقيت جهازك؟» after the 4th listing (design 8a).
+    //
+    // Fourth, not first and not last. First is a pitch before the buyer has
+    // looked at anything; last is a page nobody reaches. Four cards in is the
+    // point where "the thing I want is not in this feed" has become a real
+    // thought — and it lands one slot BEFORE the banner at five, so the two
+    // never stack.
+    if (out.length > INVITE_AFTER) {
+      out.splice(INVITE_AFTER, 0, { __requestInvite: true });
     }
     // Home-hub card (storefront + shops segments) — right after the promo
     // banner, before the first listing (design §A ordering).
@@ -387,32 +416,24 @@ export default function BrowseScreen({ navigation }: any) {
             }, shadowAccent]}>
               <Text style={{ color: '#fff', fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 12 }}>iQ</Text>
             </View>
-            <View>
+            {/* The scope is the app name's SUBTITLE now, not a chip beside
+                it (design 8a). As a chip it was a third pill in a row that
+                already had a logo and three icon buttons; under «IQ Mobile»
+                it reads as "where you are", which is what it means — and it
+                gave the row back the width the search field needs. */}
+            <TouchableOpacity onPress={() => setShowFilter(true)} activeOpacity={0.7} accessibilityRole="button"
+              accessibilityLabel="اختر المحافظة">
               <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>
                 {ar.app.name}
               </Text>
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle }}>
-                العراق
-              </Text>
-            </View>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 3 }}>
+                <IconPin size={11} color={theme.accent} sw={1.8} />
+                <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 10.5, color: theme.subtle }}>
+                  {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           </View>
-          {/* Current scope chip — "all Iraq" or the picked governorate. Lives
-              in the existing top row so it adds no vertical height. Tap to
-              open the filter sheet (where the governorate is chosen). */}
-          <TouchableOpacity
-            onPress={() => setShowFilter(true)}
-            activeOpacity={0.7}
-            style={{
-              flexShrink: 0, flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-              borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, marginHorizontal: 5,
-            }}
-          >
-            <IconPin size={13} color={theme.accent} sw={1.7} />
-            <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.ink }}>
-              {filters.governorate ? arOf(filters.governorate) : 'كل العراق'}
-            </Text>
-          </TouchableOpacity>
           {/* Trailing actions: filter + bell, side by side. The search box
               and brand rail that used to sit below were removed — search has
               its own tab, brand selection moved into the filter sheet. */}
@@ -478,32 +499,9 @@ export default function BrowseScreen({ navigation }: any) {
                 </View>
               ) : null}
             </TouchableOpacity>
-            {/* Filter button. Compact icon button matching the bell; the
-                accent dot signals an active (non-location) filter, and the
-                ink fill shows when the sheet is open. */}
-            <TouchableOpacity
-              onPress={() => setShowFilter((v) => !v)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="تصفية النتائج"
-              accessibilityState={{ expanded: showFilter }}
-              hitSlop={6}
-              style={{
-                width: 38, height: 38, borderRadius: radius.lg,
-                backgroundColor: showFilter ? theme.ink : theme.surface,
-                borderWidth: 1, borderColor: theme.line,
-                alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              <IconFilter size={17} color={showFilter ? theme.bg : theme.ink} sw={1.7} />
-              {hasActiveFilters && !showFilter ? (
-                <View style={{
-                  position: 'absolute', top: 6, right: 6,
-                  width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
-                  borderWidth: 1.5, borderColor: theme.surface,
-                }} />
-              ) : null}
-            </TouchableOpacity>
+            {/* The filter button moved DOWN, beside the search field: a
+                query and the controls that narrow it are one thought, and up
+                here it was a fourth glyph competing with the bell. */}
             {/* Bell opens the notifications inbox. Previously the wrapper
                 looked tappable (with a red unread dot!) but had no onPress —
                 users tapped it expecting Notifications and got nothing. */}
@@ -522,6 +520,73 @@ export default function BrowseScreen({ navigation }: any) {
               }} />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* Search — a real field, not a button that opens one.
+        
+            It had a tab of its own, and the tab is what killed it: a buyer
+            who wants to search does it FROM the feed they are already in, and
+            a tab meant leaving the feed to get a brand rail and no text box
+            at all. Typed text goes to the search screen as `q`, which the
+            server folds through the same Arabic/Latin vocabulary the device
+            picker uses, so «ايفون ١٣» and "iPhone 13" find each other. */}
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+          <View style={{
+            flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            borderRadius: radius.xl, paddingHorizontal: 13, height: 46,
+          }}>
+            <IconSearch size={18} color={theme.subtle} sw={1.8} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="دوّر على جهاز، ماركة، موديل…"
+              placeholderTextColor={theme.subtle}
+              returnKeyType="search"
+              // submitEditing, not onChangeText: firing a navigation on every
+              // keystroke would push a screen mid-word and take the keyboard
+              // with it.
+              onSubmitEditing={() => {
+                const term = q.trim();
+                if (!term) return;
+                navigation.getParent()?.navigate('Search', { screen: 'SearchHome', params: { q: term } });
+              }}
+              style={{
+                flex: 1, minWidth: 0, textAlign: 'right',
+                fontFamily: fonts.ar, fontSize: 13, color: theme.ink, padding: 0,
+              }}
+            />
+            {q ? (
+              <TouchableOpacity onPress={() => setQ('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="امسح البحث">
+                <IconClose size={15} color={theme.subtle} sw={1.8} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {/* The filter, beside the thing it filters. The accent dot signals
+              an active (non-location) filter; the ink fill shows while the
+              sheet is open. */}
+          <TouchableOpacity
+            onPress={() => setShowFilter((v) => !v)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="تصفية النتائج"
+            accessibilityState={{ expanded: showFilter }}
+            style={{
+              width: 46, height: 46, flexShrink: 0, borderRadius: radius.xl,
+              backgroundColor: showFilter ? theme.ink : theme.surface,
+              borderWidth: 1, borderColor: theme.line,
+              alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <IconFilter size={19} color={showFilter ? theme.bg : theme.ink} sw={1.7} />
+            {hasActiveFilters && !showFilter ? (
+              <View style={{
+                position: 'absolute', top: 8, right: 8,
+                width: 7, height: 7, borderRadius: 999, backgroundColor: theme.accent,
+                borderWidth: 1.5, borderColor: theme.surface,
+              }} />
+            ) : null}
+          </TouchableOpacity>
         </View>
 
         {/* A bottom sheet, not a block wedged into the header.
@@ -740,6 +805,7 @@ export default function BrowseScreen({ navigation }: any) {
             : item.__homeHub ? 'home-hub'
             : item.__recentlyViewed ? 'recently-viewed'
             : item.__shopUpgrade ? 'shop-upgrade'
+            : item.__requestInvite ? 'request-invite'
             : item.__feedBanner ? `feed-banner-${item.__slot}`
               : String(item.id)
         )}
@@ -780,6 +846,11 @@ export default function BrowseScreen({ navigation }: any) {
               onOpenStore={() => storefront && navigation.navigate('StoreHome', { id: storefront.shop_id })}
               onOpenDirectory={() => navigation.navigate('Shops')}
               onOpenShopPage={(sid) => navigation.navigate('ShopDetail', { id: sid })}
+            />
+          ) : item.__requestInvite ? (
+            <RequestInviteCard
+              style={{ marginBottom: 12 }}
+              onPress={() => openCompose({ brand: filters.brand ?? null })}
             />
           ) : item.__shopUpgrade ? (
             <ShopUpgradeCard

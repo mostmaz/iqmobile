@@ -57,13 +57,16 @@ const WINDOW_AR = 'سنة';
  */
 const CARD_RADIUS = 18;
 
-export default function RequestBrowseScreen({ navigation }: any) {
+export default function RequestBrowseScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const isReal = !!user && !(user as any).is_guest;
   const tabClearance = useTabBarClearance();
 
-  const [brand, setBrand] = useState<string | null>(null);
-  const [model, setModel] = useState<string | null>(null);
+  // «شوف المعروض الآن» in the compose sheet arrives here already knowing
+  // both, and walking the buyer back through two steps they just completed
+  // is what made the link feel like a dead end rather than an answer.
+  const [brand, setBrand] = useState<string | null>(route?.params?.brand ?? null);
+  const [model, setModel] = useState<string | null>(route?.params?.model ?? null);
   const [moreOpen, setMoreOpen] = useState(false);
   // Kept across a model change on purpose, the way SearchScreen keeps its
   // sort: a buyer who asked for cheapest-first means it for the next device
@@ -302,18 +305,19 @@ export default function RequestBrowseScreen({ navigation }: any) {
         // Back walks the funnel back a step. It takes the slot the iQ badge
         // normally holds — leading edge, beside the title.
         onBack={step === 'brand' ? undefined : goBack}
-        // «طلباتي» sits on the TITLE row, not the nav row. Up there it was
+        // «الطلبات» sits on the TITLE row, not the nav row. Up there it was
         // a lone pill against an empty band, reading as a second back
-        // button; level with «اطلب جهاز» it reads as the other thing this
-        // screen does.
+        // button; level with the title it reads as the other thing this
+        // screen does. It points at the tab root now that the feed IS the
+        // tab root — popping back rather than pushing a second copy.
         titleRight={(
           <TouchableOpacity
-            onPress={() => navigation.navigate('RequestBoard')}
+            onPress={() => navigation.navigate('RequestsHome')}
             hitSlop={8}
             accessibilityRole="button"
             style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line }}
           >
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink }}>طلباتي</Text>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink }}>الطلبات</Text>
           </TouchableOpacity>
         )}
       />

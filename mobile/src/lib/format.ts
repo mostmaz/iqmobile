@@ -95,6 +95,27 @@ export function timeAgoAr(ts: number): string {
   return new Date(ts).toLocaleDateString('ar-IQ', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/**
+ * «ينتهي بعد 5 ساعات» — the other end of timeAgoAr, for a deadline.
+ *
+ * Returns null when the deadline is further away than `withinHours`, because
+ * "expires in 19 days" is not urgency, it is a fact nobody acts on — and a
+ * badge that is on every card is a badge that means nothing. Also null once
+ * the moment has passed: an expired request is handled by its status, and a
+ * card cannot be both «ينتهي بعد» and over.
+ *
+ * Uses the same Latin numerals and the same inflection as timeAgoAr. Two
+ * lines of one card disagreeing about how to write "5" is the exact problem
+ * the comment above this block describes.
+ */
+export function timeLeftAr(expiresAt: number, withinHours = 24, nowMs = Date.now()): string | null {
+  const diff = expiresAt - nowMs;
+  if (diff <= 0 || diff > withinHours * 3_600_000) return null;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `ينتهي بعد ${arCount(Math.max(1, mins), AR_MINUTE)}`;
+  return `ينتهي بعد ${arCount(Math.floor(mins / 60), AR_HOUR)}`;
+}
+
 /** Day bucket for grouping a list — "اليوم" / "أمس" / a short date. */
 export function dayBucketAr(ts: number): string {
   const d = new Date(ts);

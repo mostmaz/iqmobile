@@ -19,7 +19,7 @@ import { View, Text, FlatList, TouchableOpacity, ScrollView, Alert, Modal } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme, fonts, radius, shadowSoft, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
+import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Header, Pill, Input, fmtIQD } from '../../components/ui';
 import { Img } from '../../components/Img';
 import { bundledBrandLogo } from '../../lib/brandLogos';
@@ -30,14 +30,22 @@ import {
 import { DevicePickerModal } from '../../components/DevicePickerModal';
 import { GovPicker } from '../../components/GovPicker';
 import { TextRowListSkeleton } from '../../components/Skeleton';
-import { PhoneRequests, DeviceCatalog, type PhoneRequest, type SentOffer } from '../../api/endpoints';
-import { deviceTitle, timeAgoAr } from '../../lib/format';
+import { PhoneRequests, DeviceCatalog, type PhoneRequest, type SentOffer, type RequestSort } from '../../api/endpoints';
+import { deviceTitle, timeAgoAr, timeLeftAr } from '../../lib/format';
 import { GOV_AR_TO_EN, GOV_EN_TO_AR, arOf } from '../../lib/governorates';
 import { useAuth } from '../../auth/AuthContext';
-import { RequestComposeSheet, conditionLabel } from '../../components/RequestComposeSheet';
+import { conditionLabel } from '../../components/RequestComposeSheet';
+import { useRequestHub } from '../../lib/requestHub';
+import { pulseLine } from '../../lib/requestPulse';
 
 
 type Tab = 'board' | 'mine' | 'offers';
+
+const SORTS: [RequestSort, string][] = [
+  ['new', 'الأحدث'],
+  ['budget', 'أعلى ميزانية'],
+  ['no_offers', 'بدون عروض'],
+];
 
 export default function RequestsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -45,27 +53,42 @@ export default function RequestsScreen({ navigation }: any) {
   const { user } = useAuth();
   const isReal = !!user && !(user as any).is_guest;
 
+  const { pulse, markFeedSeen, openCompose } = useRequestHub();
+
   const [tab, setTab] = useState<Tab>('board');
   const [govAr, setGovAr] = useState('');           // '' = كل المحافظات
   const [mineToAnswer, setMineToAnswer] = useState(false);
-  const [composing, setComposing] = useState(false);
+  const [sort, setSort] = useState<RequestSort>('new');
+  // row-reverse lays the first pill at the far RIGHT of the content, but a
+  // horizontal ScrollView opens at offset 0 — the LEFT edge — so the rail
+  // opened on «بدون عروض». Both callbacks, as elsewhere: onContentSizeChange
+  // can fire before the scroller knows its own width.
+  const sortRailRef = React.useRef<ScrollView>(null);
 
   const board = useQuery({
-    queryKey: ['requests-board', govAr, mineToAnswer],
+    queryKey: ['requests-board', govAr, mineToAnswer, sort],
     queryFn: () => PhoneRequests.board({
       governorate: govAr ? GOV_AR_TO_EN[govAr] : undefined,
       mineToAnswer: mineToAnswer || undefined,
+      sort,
     }),
   });
   const mine = useQuery({ queryKey: ['requests-mine'], queryFn: () => PhoneRequests.mine(), enabled: isReal });
   const sent = useQuery({ queryKey: ['requests-sent'], queryFn: () => PhoneRequests.sentOffers(), enabled: isReal });
 
   // Coming back from a detail screen must not show a stale offer count.
+  //
+  // Opening the feed is also what clears the الطلبات badge — «يصفّر بعد ما
+  // تفتح الفيد». Stamped on FOCUS rather than on mount so returning from a
+  // request's detail page re-stamps it too; anything posted while the buyer
+  // was reading one request has been seen by the time they come back to the
+  // list that shows it.
   useFocusEffect(React.useCallback(() => {
     qc.invalidateQueries({ queryKey: ['requests-board'] });
     qc.invalidateQueries({ queryKey: ['requests-mine'] });
     qc.invalidateQueries({ queryKey: ['requests-sent'] });
-  }, [qc]));
+    markFeedSeen();
+  }, [qc, markFeedSeen]));
 
   const active = tab === 'board' ? board : tab === 'mine' ? mine : sent;
 
@@ -82,17 +105,20 @@ export default function RequestsScreen({ navigation }: any) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header
-        title="طلبات الأجهزة"
-        eyebrow="اطلب الجهاز الذي تبحث عنه"
-        // Pushed from the funnel now, not the tab root: without this, iOS —
-        // which has no system back button — has no way to leave this screen.
-        onBack={() => navigation.goBack()}
+        title="الطلبات"
+        // The subtitle is a MEASUREMENT, not a slogan. «اطلب الجهاز الذي
+        // تبحث عنه» described the button; this describes whether opening the
+        // screen was worth it, and it is the same number the tab's badge
+        // counts up to — see lib/requestPulse.ts.
+        eyebrow={pulseLine(pulse?.count_24h ?? 0, arOf((user as any)?.governorate) || '')}
+        // No back button: this is the tab root now, not a page pushed from
+        // the funnel.
         // A tinted tile, not a bare glyph. In the header a lone «+» has no
         // edge to aim at and reads as decoration; the tile gives it a body
         // and a 38pt target.
         right={(
           <TouchableOpacity
-            onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
+            onPress={() => openCompose()}
             accessibilityRole="button"
             accessibilityLabel="اطلب جهازاً"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -156,6 +182,22 @@ export default function RequestsScreen({ navigation }: any) {
       {/* Board filters */}
       {tab === 'board' ? (
         <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          {/* Order the board. «بدون عروض» is the one that changes a seller's
+              day: a request with five offers is a bidding war they probably
+              lose, and one with none is a reply that wins outright. It was
+              not reachable at all before — the board only ever sorted by
+              recency. */}
+          <ScrollView
+            ref={sortRailRef}
+            horizontal showsHorizontalScrollIndicator={false}
+            onContentSizeChange={() => sortRailRef.current?.scrollToEnd({ animated: false })}
+            onLayout={() => sortRailRef.current?.scrollToEnd({ animated: false })}
+            contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2, paddingBottom: 8 }}
+          >
+            {(SORTS).map(([key, label]) => (
+              <Pill key={key} active={sort === key} onPress={() => setSort(key)}>{label}</Pill>
+            ))}
+          </ScrollView>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
             <View style={{ flex: 1 }}>
               <GovPicker valueAr={govAr} onChangeAr={setGovAr} allowAll compact />
@@ -201,55 +243,20 @@ export default function RequestsScreen({ navigation }: any) {
             : <RequestRow
                 request={item as PhoneRequest}
                 showOffers={tab === 'mine'}
+                showAction={tab === 'board' && !(item as PhoneRequest).is_mine}
                 onPress={() => navigation.navigate('RequestDetail', { id: item.id })}
               />
           )}
-          ListEmptyComponent={<Empty tab={tab} onCompose={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))} />}
+          ListEmptyComponent={<Empty tab={tab} onCompose={() => openCompose()} />}
         />
       )}
 
-      {/* The screen's one action, as a bar rather than a button floating
-          over the last card. Accent-filled: on a board of white cards a
-          dark button was one more rectangle, and this is the only thing on
-          the screen a buyer is meant to do. */}
-      {tab !== 'offers' ? (
-        // `bottom: 0` alone. The screen already ends above the tab bar, so
-        // adding insets.bottom on top of that double-counted the home
-        // indicator and left the bar floating ~50pt clear of it.
-        <View style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0,
-          backgroundColor: theme.surface, borderTopWidth: 1, borderTopColor: theme.line,
-          ...shadowUp, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14,
-        }}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
-            style={{
-              minHeight: 50, borderRadius: radius.lg, backgroundColor: theme.accent,
-              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
-            }}
-          >
-            <IconPlus size={17} color="#fff" sw={2.2} />
-            <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
-              اطلب جهازاً
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
-      <RequestComposeSheet
-        visible={composing}
-        onClose={() => setComposing(false)}
-        defaultGovAr={arOf((user as any)?.governorate) || ''}
-        onCreated={(created) => {
-          setComposing(false);
-          setTab('mine');
-          qc.invalidateQueries({ queryKey: ['requests-mine'] });
-          qc.invalidateQueries({ queryKey: ['requests-board'] });
-          navigation.navigate('RequestDetail', { id: created.id });
-        }}
-      />
+      {/* The sticky «اطلب جهازاً» bar is gone, and that is the point of the
+          new tab row: «اطلب جهاز» sits in the bar directly below, always, on
+          every screen. Two accent buttons stacked on top of each other doing
+          the same thing was the cost of the old single-tab arrangement. The
+          header's «+» tile stays for reach from the top of a long list, and
+          the empty states still offer it in words. */}
     </View>
   );
 }
@@ -260,10 +267,20 @@ export default function RequestsScreen({ navigation }: any) {
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 const arNum = (n: number) => String(Math.max(0, Math.floor(n))).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
 
-function RequestRow({ request, showOffers, onPress }: { request: PhoneRequest; showOffers?: boolean; onPress: () => void }) {
+function RequestRow({ request, showOffers, showAction, onPress }: {
+  request: PhoneRequest; showOffers?: boolean;
+  /** The board's view. On «طلباتي» the reader IS the buyer — offering on
+      your own request is not a thing, and the footer would name them to
+      themselves. */
+  showAction?: boolean;
+  onPress: () => void;
+}) {
   const closed = request.status !== 'open';
   const offers = request.offer_count || 0;
   const mark = bundledBrandLogo(request.brand);
+  const deadline = timeLeftAr(request.expires_at);
+  // my_offer is only present in a signed-in seller's view of the board.
+  const answered = !!request.my_offer;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
@@ -330,11 +347,25 @@ function RequestRow({ request, showOffers, onPress }: { request: PhoneRequest; s
         ) : null}
       </View>
 
-      {/* Condition, place and age as chips rather than a run-on grey line. */}
+      {/* Condition and place as chips rather than a run-on grey line. The
+          age moved to the footer, beside the person whose age it is. */}
       <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         <MetaChip>{conditionLabel(request.condition)}</MetaChip>
         <MetaChip icon={<IconPin size={11} color={theme.subtle} sw={1.7} />}>{arOf(request.governorate)}</MetaChip>
-        <MetaChip>{timeAgoAr(request.created_at)}</MetaChip>
+        {/* The deadline, and ONLY when it is close — timeLeftAr returns null
+            past its window. A request lives three weeks, so a countdown on
+            every card would be a badge that has stopped meaning "hurry". */}
+        {!closed && deadline ? (
+          <View style={{
+            flexDirection: 'row-reverse', alignItems: 'center', gap: 4,
+            paddingHorizontal: 9, paddingVertical: 4,
+            borderRadius: radius.pill, backgroundColor: theme.accentSoft,
+          }}>
+            <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 11, color: theme.accentDeep }}>
+              {deadline}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {request.note ? (
@@ -344,6 +375,43 @@ function RequestRow({ request, showOffers, onPress }: { request: PhoneRequest; s
         }}>
           {request.note}
         </Text>
+      ) : null}
+
+      {/* Who is asking, and the one thing to do about it.
+      
+          A board of anonymous demand is a spreadsheet; a name and an initial
+          make it a person a seller is answering. «قدّم عرض» is spelled out
+          rather than left implicit in the card tap, because the previous card
+          gave a seller no visible verb at all — the whole row was a link to
+          a screen whose purpose you had to already know. */}
+      {showAction ? (
+        <View style={{
+          flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+          marginTop: 12, paddingTop: 11, borderTopWidth: 1, borderTopColor: theme.line,
+        }}>
+          <View style={{
+            width: 26, height: 26, borderRadius: 999, backgroundColor: theme.chipBg,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle }}>
+              {(request.buyer?.display_name || '؟').trim().charAt(0)}
+            </Text>
+          </View>
+          <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
+            {request.buyer?.display_name || 'مشتري'} · {timeAgoAr(request.created_at)}
+          </Text>
+          <View style={{
+            flexShrink: 0, borderRadius: radius.lg, paddingHorizontal: 14, paddingVertical: 8,
+            backgroundColor: answered ? theme.inset : theme.ink,
+          }}>
+            <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
+              fontFamily: fonts.arBold, fontSize: 12,
+              color: answered ? theme.subtle : theme.buttonInk,
+            }}>
+              {answered ? 'عرضك مُرسل' : 'قدّم عرض'}
+            </Text>
+          </View>
+        </View>
       ) : null}
     </TouchableOpacity>
   );

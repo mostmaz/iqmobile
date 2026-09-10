@@ -1,15 +1,27 @@
-// Filter-based search: the buyer picks a brand, then an exact device from the
-// same catalog the selling form uses — no free-typing. This keeps buyer
-// queries and seller listings on identical device names, so the results
-// actually match. Falls through to Listings.browse({ brand, model }): brand is
-// an exact filter, model a LIKE on the listing's model field.
+// Search — typed, then narrowed.
+//
+// It used to be filter-ONLY: pick a brand, then an exact catalogue device, no
+// free-typing, on the argument that identical device names make results
+// match. That argument holds for the FILTERS and it is why they are still
+// here — but it cost the buyer the one thing they arrive knowing how to do,
+// which is type the name of the phone they want. The server folds `q` through
+// the same Arabic/Latin vocabulary the catalogue uses (see savedSearches.norm),
+// so «ايفون ١٣» and "iPhone 13" reach the same listings.
+//
+// So: a query on top, the brand/device/sort controls behind «فلترة», and the
+// «ما لقيت جهازك؟» invitation pinned above the results — because a thin
+// result list is the moment posting a request is worth more than another
+// search (design 8c).
 
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
-import { IconClose, IconBell, IconChevronDown } from '../../components/icons';
+import { IconClose, IconBell, IconChevronDown, IconSearch, IconFilter, IconChevronRight } from '../../components/icons';
+import { RequestInviteCard, RequestInviteFooter } from '../../components/RequestInviteCard';
+import { useRequestHub } from '../../lib/requestHub';
+import { invitePitch, resultsCountAr } from '../../lib/requestPulse';
 import { Pill } from '../../components/ui';
 import { ListingCard } from '../../components/ListingCard';
 import { ListingListSkeleton } from '../../components/Skeleton';
@@ -21,11 +33,29 @@ import { ar } from '../../i18n/ar';
 
 const PAGE_SIZE = 15;
 
-export default function SearchScreen({ navigation }: any) {
+/**
+ * At or below this many settled results, the search has failed the buyer
+ * enough to be worth offering the request instead. One page is fifteen; five
+ * is "I can see all of them and none is it".
+ */
+const THIN_RESULTS = 5;
+
+export default function SearchScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const brandRailRef = useRef<ScrollView>(null);
-  const [brand, setBrand] = useState<string | null>(null);
-  const [model, setModel] = useState('');
+  const { pulse, openCompose } = useRequestHub();
+  // Seeded from the Browse header's field, or from a saved search's deep
+  // link. `draft` is what is being typed; `q` is what has been submitted —
+  // separate, or every keystroke would fire a query and the list would
+  // flicker through six wrong answers on the way to the right one.
+  const [draft, setDraft] = useState<string>(route?.params?.q ?? '');
+  const [q, setQ] = useState<string>(route?.params?.q ?? '');
+  const [brand, setBrand] = useState<string | null>(route?.params?.brand ?? null);
+  const [model, setModel] = useState(route?.params?.model ?? '');
+  // The filters open by default only when there is nothing to filter YET.
+  // Arriving with a query, the results are the answer and the controls are a
+  // wall in front of them; arriving empty, the brand rail IS the search.
+  const [showFilters, setShowFilters] = useState(!(route?.params?.q));
   // undefined = the server's default order. Kept across a brand change: a
   // buyer who asked for cheapest-first means it for the next brand too.
   const [sort, setSort] = useState<BrowseSort | undefined>(undefined);
@@ -44,16 +74,18 @@ export default function SearchScreen({ navigation }: any) {
     [brandRows],
   );
 
-  // Results load once a brand is chosen; model (if set) narrows further.
-  const enabled = !!brand;
+  // Results load once there is a query OR a brand. Either alone is a real
+  // search; before either there is nothing to ask the server.
+  const enabled = !!brand || !!q;
   const {
     data, isLoading, isError, error, refetch, isFetching,
     fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['search', brand, model, sort ?? 'new'],
+    queryKey: ['search', q, brand, model, sort ?? 'new'],
     queryFn: ({ pageParam = 0 }) =>
       Listings.browse({
-        brand: brand!, ...(model ? { model } : {}), ...(sort ? { sort } : {}),
+        ...(q ? { q } : {}), ...(brand ? { brand } : {}),
+        ...(model ? { model } : {}), ...(sort ? { sort } : {}),
         limit: PAGE_SIZE, offset: pageParam as number,
       }),
     initialPageParam: 0,
@@ -62,6 +94,14 @@ export default function SearchScreen({ navigation }: any) {
   });
   const items = useMemo(() => data?.pages.flat() ?? [], [data]);
 
+  const resultsLabel = resultsCountAr(items.length, !!hasNextPage);
+
+  // "Thin" is the whole trigger for the request invitation: a settled list
+  // with no further page and few enough rows that the buyer has plainly not
+  // found what they came for.
+  const thin = enabled && !isLoading && !hasNextPage && items.length <= THIN_RESULTS;
+  const hasFilters = !!brand || !!model || !!sort;
+
   function pickBrand(b: string) {
     // Switching brand invalidates the chosen model (models are brand-specific).
     if (b === brand) { setBrand(null); setModel(''); return; }
@@ -69,9 +109,108 @@ export default function SearchScreen({ navigation }: any) {
     setModel('');
   }
 
+  const submit = (text: string) => {
+    const term = text.trim();
+    setQ(term);
+    // A submitted query answers the question the filters were asking, so it
+    // folds them away. Clearing back to nothing reopens them, because an
+    // empty search screen with no controls is a dead end.
+    setShowFilters(!term && !brand);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top + 14 }}>
       <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+        {/* The query, and a way back to the feed it came from. */}
+        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          {navigation.canGoBack() ? (
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button" accessibilityLabel="رجوع"
+              style={{
+                width: 44, height: 44, flexShrink: 0, borderRadius: radius.xl,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <IconChevronRight size={19} color={theme.ink} sw={2} />
+            </TouchableOpacity>
+          ) : null}
+          {/* Accent outline while a query is live — the field is not an empty
+              box waiting for input, it is the statement the list below is
+              answering, and it has to look like the thing you can change. */}
+          <View style={{
+            flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+            backgroundColor: theme.surface,
+            borderWidth: q ? 1.5 : 1, borderColor: q ? theme.accent : theme.line,
+            borderRadius: radius.xl, paddingHorizontal: 13, height: 46,
+          }}>
+            <IconSearch size={18} color={q ? theme.accent : theme.subtle} sw={1.8} />
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              onSubmitEditing={(e) => submit(e.nativeEvent.text)}
+              placeholder="دوّر على جهاز، ماركة، موديل…"
+              placeholderTextColor={theme.subtle}
+              returnKeyType="search"
+              autoFocus={!route?.params?.q && !route?.params?.brand}
+              style={{
+                flex: 1, minWidth: 0, textAlign: 'right',
+                fontFamily: q ? fonts.arBold : fonts.ar, fontSize: 13, color: theme.ink, padding: 0,
+              }}
+            />
+            {draft ? (
+              <TouchableOpacity
+                onPress={() => { setDraft(''); submit(''); }}
+                hitSlop={8} accessibilityRole="button" accessibilityLabel="امسح البحث"
+                style={{
+                  width: 18, height: 18, borderRadius: 999, backgroundColor: theme.chipBg,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <IconClose size={11} color={theme.subtle} sw={2.2} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+
+        {/* How many, and the way to narrow it. The count is the honest
+            version of the old silence: a buyer who sees «٣ نتائج» knows to
+            take the request card seriously, and one who sees «٤٠+» knows to
+            keep scrolling. */}
+        {enabled ? (
+          <View style={{
+            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: showFilters ? 12 : 2,
+          }}>
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink }}>
+              {isLoading ? 'جاري البحث…' : resultsLabel}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowFilters((v) => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showFilters }}
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 5,
+                borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 6,
+                borderWidth: 1, borderColor: showFilters ? theme.accent : theme.line,
+                backgroundColor: showFilters ? theme.accentSoft : theme.surface,
+              }}
+            >
+              <IconFilter size={13} color={showFilters ? theme.accentDeep : theme.ink} sw={1.8} />
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: showFilters ? theme.accentDeep : theme.ink }}>
+                فلترة
+              </Text>
+              {hasFilters && !showFilters ? (
+                <View style={{ width: 6, height: 6, borderRadius: 999, backgroundColor: theme.accent }} />
+              ) : null}
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {showFilters ? (
+        <>
         {/* Brand rail. row-reverse puts the first brand at the content's RIGHT
             edge, but a ScrollView opens at offset 0 — its LEFT edge — so the
             rail started on the last brands (Itel, Nubia…) instead of Apple.
@@ -133,7 +272,10 @@ export default function SearchScreen({ navigation }: any) {
         {/* Save this search → alert on new matching listing */}
         {enabled ? (
           <TouchableOpacity
-            onPress={() => saveSearch({ brand: brand!, ...(model ? { model } : {}) })}
+            // The typed query is part of the search now, so it is part of
+            // what gets saved — a saved «ايفون ١٣ بغداد» that quietly dropped
+            // the words would alert on every Apple listing in the country.
+            onPress={() => saveSearch({ ...(q ? { q } : {}), ...(brand ? { brand } : {}), ...(model ? { model } : {}) })}
             disabled={savingSearch}
             activeOpacity={0.85}
             style={{
@@ -149,6 +291,8 @@ export default function SearchScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
         ) : null}
+        </>
+        ) : null}
       </View>
 
       <FlatList
@@ -159,10 +303,27 @@ export default function SearchScreen({ navigation }: any) {
         renderItem={({ item }) => (
           <ListingCard listing={item} onPress={() => navigation.navigate('ListingDetail', { id: item.id })} />
         )}
+        // Pinned ABOVE the results, not below them (design 8c). A buyer with
+        // three results does not scroll to the bottom to look for a way out —
+        // they go back and search again — so an invitation under the last
+        // card is one nobody sees.
+        ListHeaderComponent={thin ? (
+          <RequestInviteCard
+            style={{ marginBottom: 12 }}
+            onPress={() => openCompose({ brand, model: model || draft.trim() })}
+          />
+        ) : null}
         onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
         onEndReachedThreshold={0.5}
         ListFooterComponent={isFetchingNextPage ? (
           <View style={{ paddingVertical: 20, alignItems: 'center' }}><ActivityIndicator color={theme.accent} /></View>
+        ) : thin && items.length > 0 ? (
+          // Only when the list really is thin. Under forty results this
+          // sentence is help; under a full page it is nagging.
+          <RequestInviteFooter
+            pitch={invitePitch(pulse?.seller_reach ?? 0)}
+            onPress={() => openCompose({ brand, model: model || draft.trim() })}
+          />
         ) : null}
         // Three states: no query yet → prompt; query inflight with no
         // results yet → shimmer cards (previously an empty string, which
@@ -201,7 +362,7 @@ export default function SearchScreen({ navigation }: any) {
           ) : (
             <View style={{ padding: 48, alignItems: 'center' }}>
               <Text style={{ fontFamily: fonts.ar, color: theme.subtle, fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
-                {!enabled ? 'اختر الماركة ثم الجهاز للبحث' : ar.browse.none}
+                {!enabled ? 'اكتب اسم الجهاز، أو اختر الماركة' : ar.browse.none}
               </Text>
             </View>
           )

@@ -22,7 +22,11 @@ const AR = {
     search: 'بحث',
     saved: 'المفضلة',
     sell: 'بيع',
-    requests: 'اطلب جهاز',
+    // Two tabs, two errands. «اطلب جهاز» opens the compose sheet; «الطلبات»
+    // opens the board. One tab labelled «اطلب جهاز» that landed on a board of
+    // other people's requests was answering neither.
+    askDevice: 'اطلب جهاز',
+    requests: 'الطلبات',
     chats: 'المحادثات',
     profile: 'حسابي',
   },
