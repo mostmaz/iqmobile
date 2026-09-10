@@ -16,8 +16,8 @@ import { Btn, Pill, Input, fmtIQD } from './ui';
 import { IconPlus, IconMinus, IconChevronDown, IconClose } from './icons';
 import { DevicePickerModal } from './DevicePickerModal';
 import { GovPicker } from './GovPicker';
-import { PhoneRequests, DeviceCatalog, Listings, type PhoneRequest } from '../api/endpoints';
-import { foldModelKey } from '../lib/requestFunnel';
+import { PhoneRequests, DeviceCatalog, Listings, Brands, type PhoneRequest } from '../api/endpoints';
+import { foldModelKey, orderComposeBrands } from '../lib/requestFunnel';
 import { GOV_AR_TO_EN } from '../lib/governorates';
 import { SELLABLE_CONDITIONS } from '../lib/conditions';
 import { ar } from '../i18n/ar';
@@ -86,6 +86,20 @@ export function RequestComposeSheet({
     staleTime: 5 * 60 * 1000,
     enabled: visible,
   });
+  // Same query key the funnel and browse use, so this is a cache read
+  // rather than a third request when the sheet opens.
+  const { data: brandSupply } = useQuery({
+    queryKey: ['brands'],
+    queryFn: () => Brands.list(),
+    staleTime: 5 * 60 * 1000,
+    enabled: visible,
+  });
+  // The rail's names come from the catalogue (the model picker queries it
+  // with whatever is tapped here); its ORDER comes from real listings.
+  const railBrands = React.useMemo(
+    () => orderComposeBrands(catalogBrands, brandSupply as any),
+    [catalogBrands, brandSupply],
+  );
 
   // Is the thing they are about to ask for already on sale? Reuses the
   // funnel's top-models endpoint rather than adding a count route: it is one
@@ -192,9 +206,15 @@ export function RequestComposeSheet({
             <ScrollView
               ref={brandRailRef}
               horizontal showsHorizontalScrollIndicator={false}
+              // BOTH callbacks, not just onContentSizeChange. Inside a Modal
+              // the content can be measured before the scroller knows its own
+              // width, and a scrollToEnd against a zero-width viewport is a
+              // no-op — so the rail opened on the tail anyway. onLayout fires
+              // once the width is real and puts it back at the RTL start.
               onContentSizeChange={() => brandRailRef.current?.scrollToEnd({ animated: false })}
+              onLayout={() => brandRailRef.current?.scrollToEnd({ animated: false })}
               contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
-              {(catalogBrands || []).map((b) => (
+              {railBrands.map((b) => (
                 <Pill key={b.brand} active={brand === b.brand} onPress={() => { setBrand(b.brand); setModel(''); }}>
                   {b.brand}
                 </Pill>
@@ -255,6 +275,7 @@ export function RequestComposeSheet({
               ref={condRailRef}
               horizontal showsHorizontalScrollIndicator={false}
               onContentSizeChange={() => condRailRef.current?.scrollToEnd({ animated: false })}
+              onLayout={() => condRailRef.current?.scrollToEnd({ animated: false })}
               contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
               {CONDITIONS.map((c) => (
                 <Pill key={c.key ?? 'any'} active={condition === c.key} onPress={() => setCondition(c.key)}>

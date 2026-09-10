@@ -88,3 +88,37 @@ export function foldModelKey(input: string | null | undefined): string {
   for (const [re, to] of reps) s = s.replace(re, to);
   return s.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 }
+
+/**
+ * Order the compose sheet's brand rail by how many devices are FOR SALE.
+ *
+ * The rail is fed by `/device-catalog/brands`, whose `count` is the number
+ * of models the catalogue knows for a brand — not the number of listings.
+ * Those two diverge badly: a brand with four hundred catalogue entries and
+ * nothing for sale sorted above the brands Iraqi buyers actually ask for.
+ *
+ * The catalogue is still the source of the NAMES, because the model picker
+ * queries the catalogue with whatever the buyer taps here — reordering is
+ * all this does. A brand nobody has listed keeps its place at the end, in
+ * catalogue order, so the rail never loses an option.
+ *
+ * @param catalog  `{ brand, count }` from the catalogue, in its own order.
+ * @param supply   `{ name, count }` from /brands — real listing counts.
+ */
+export function orderComposeBrands<T extends { brand: string; count?: number | null }>(
+  catalog: T[] | null | undefined,
+  supply: Array<{ name: string; count?: number | null }> | null | undefined,
+): T[] {
+  const listings = new Map<string, number>();
+  for (const b of supply || []) {
+    const k = (b?.name || '').trim().toLowerCase();
+    if (k) listings.set(k, Number(b.count) || 0);
+  }
+  return (catalog || [])
+    .filter((b) => b && String(b.brand || '').trim())
+    .map((b, i) => ({ b, i, n: listings.get(b.brand.trim().toLowerCase()) ?? 0 }))
+    // `i` as the final tiebreak keeps the catalogue's own order among brands
+    // that are level — without it, ties reshuffle between renders.
+    .sort((x, y) => (y.n - x.n) || ((Number(y.b.count) || 0) - (Number(x.b.count) || 0)) || (x.i - y.i))
+    .map(({ b }) => b);
+}

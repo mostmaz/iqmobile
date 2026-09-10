@@ -126,3 +126,57 @@ test('a real difference is still a difference', () => {
 test('junk folds to an empty string rather than throwing', () => {
   for (const v of [null, undefined, '', '   ']) assert.equal(foldModelKey(v as any), '');
 });
+
+// ─── the compose sheet's rail ──────────────────────────────────────────
+//
+// Its brands come from the CATALOGUE, whose `count` is models-we-know-of,
+// not listings-for-sale. These pin that the two are not confused again.
+import { orderComposeBrands } from '../src/lib/requestFunnel.ts';
+
+// A catalogue that disagrees with the market on purpose: Huawei has the
+// most known models and nothing for sale, Apple the reverse.
+const CATALOG = [
+  { brand: 'Huawei', count: 400 },
+  { brand: 'Xiaomi', count: 300 },
+  { brand: 'Apple', count: 90 },
+  { brand: 'Tecno', count: 60 },
+];
+const SUPPLY = [
+  { name: 'Apple', count: 120 },
+  { name: 'Xiaomi', count: 40 },
+  { name: 'Tecno', count: 25 },
+  { name: 'Huawei', count: 0 },
+];
+
+test('the rail is ordered by listings for sale, not catalogue size', () => {
+  const out = orderComposeBrands(CATALOG, SUPPLY).map((b) => b.brand);
+  assert.deepEqual(out, ['Apple', 'Xiaomi', 'Tecno', 'Huawei']);
+});
+
+test('a brand nobody has listed keeps its place rather than disappearing', () => {
+  // The catalogue is what the model picker queries, so dropping a brand
+  // here would remove a device a buyer can legitimately ask for.
+  const out = orderComposeBrands([...CATALOG, { brand: 'Nokia', count: 12 }], SUPPLY);
+  assert.equal(out.length, 5);
+  assert.deepEqual(out.map((b) => b.brand).slice(-2), ['Huawei', 'Nokia'],
+    'unsold brands fall to the end, ordered by catalogue size');
+});
+
+test('brand names are matched case-insensitively across the two sources', () => {
+  // /brands says "Apple"; the catalogue could say "apple". A miss here
+  // silently scores a top brand as zero.
+  const out = orderComposeBrands([{ brand: 'apple', count: 1 }, { brand: 'Xiaomi', count: 900 }], SUPPLY);
+  assert.deepEqual(out.map((b) => b.brand), ['apple', 'Xiaomi']);
+});
+
+test('ties keep the catalogue order instead of reshuffling', () => {
+  const cat = [{ brand: 'A', count: 5 }, { brand: 'B', count: 5 }, { brand: 'C', count: 5 }];
+  const supply = [{ name: 'A', count: 3 }, { name: 'B', count: 3 }, { name: 'C', count: 3 }];
+  assert.deepEqual(orderComposeBrands(cat, supply).map((b) => b.brand), ['A', 'B', 'C']);
+});
+
+test('missing inputs are an empty rail, not a crash', () => {
+  assert.deepEqual(orderComposeBrands(null, null), []);
+  assert.deepEqual(orderComposeBrands(CATALOG, null).map((b) => b.brand),
+    ['Huawei', 'Xiaomi', 'Apple', 'Tecno'], 'no supply data falls back to catalogue order');
+});
