@@ -8,7 +8,7 @@ import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useCart } from '../../lib/cart';
 import { CONDITIONS } from '../../lib/conditions';
 import { digitsOnly } from '../../lib/format';
-import { theme, fonts, radius, shadowAccent } from '../../theme';
+import { theme, fonts, radius, shadowAccent, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag, IconChat } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
@@ -562,9 +562,13 @@ export default function BrowseScreen({ navigation }: any) {
               activeOpacity={sortImpliesAvailable ? 1 : 0.75}
               accessibilityRole="switch"
               accessibilityState={{ checked: availableChecked, disabled: sortImpliesAvailable }}
+              // A filled row, not a bare checkbox floating between two
+              // sections. The fill is what says "this whole strip is the
+              // target", which a 22pt box and a label do not.
               style={{
                 flexDirection: 'row-reverse', alignItems: 'center', gap: 10,
-                paddingVertical: 10, marginBottom: 4,
+                paddingHorizontal: 12, paddingVertical: 11, marginBottom: 6,
+                borderRadius: radius.lg, backgroundColor: theme.inset,
                 opacity: sortImpliesAvailable ? 0.55 : 1,
               }}
             >
@@ -574,7 +578,7 @@ export default function BrowseScreen({ navigation }: any) {
                 borderWidth: availableChecked ? 0 : 2, borderColor: theme.subtle,
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                {availableChecked ? <IconCheck size={13} color={theme.bg} sw={2.6} /> : null}
+                {availableChecked ? <IconCheck size={13} color={theme.accentInk} sw={2.6} /> : null}
               </View>
               <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink }}>
                 المتوفر للبيع فقط
@@ -637,12 +641,9 @@ export default function BrowseScreen({ navigation }: any) {
                 openEndedAtMax
               />
             </View>
-            <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 14 }}>
-              <Btn kind="ghost" full onPress={clear}>{ar.browse.clear}</Btn>
-              <Btn kind="primary" full onPress={() => setShowFilter(false)}>{ar.browse.apply}</Btn>
-            </View>
-            {/* Save the current filters as a search that pings the user when a
-                matching listing is posted. */}
+            {/* Save-search sits ABOVE the actions now. Below «تطبيق» it was
+                past the end of the panel's job, and the border made it a
+                third button competing with the two that close the sheet. */}
             <TouchableOpacity
               onPress={() => saveSearch({
                 brand: filters.brand,
@@ -655,16 +656,34 @@ export default function BrowseScreen({ navigation }: any) {
               activeOpacity={0.85}
               style={{
                 flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
-                marginTop: 10, paddingVertical: 11, borderRadius: radius.lg,
-                borderWidth: 1, borderColor: theme.accent, backgroundColor: theme.accentSoft,
+                marginTop: 14, paddingVertical: 12, borderRadius: radius.lg,
+                backgroundColor: 'rgba(217,88,58,0.10)',
                 opacity: savingSearch ? 0.6 : 1,
               }}
             >
-              <IconBell size={15} color={theme.accent} sw={1.8} />
-              <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
-                احفظ البحث ونبّهني عند إعلان مطابق
+              <IconBell size={15} color={theme.accentDeep} sw={1.8} />
+              <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accentDeep }}>
+                نبّهني عند إعلان مطابق
               </Text>
             </TouchableOpacity>
+
+            {/* The apply button names its result.
+                
+                Only when the number is TRUE, though: `items` is the pages
+                loaded so far, so while another page is pending it would
+                understate the feed. The handoff drew a count here
+                unconditionally; a wrong count on the button that closes the
+                sheet is worse than no count. */}
+            <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 10, alignItems: 'stretch' }}>
+              <View style={{ flex: 1 }}>
+                <Btn kind="primary" full onPress={() => setShowFilter(false)}>
+                  {!hasNextPage && items.length > 0 ? `عرض ${arNum(items.length)} إعلان` : ar.browse.apply}
+                </Btn>
+              </View>
+              <View style={{ width: 96 }}>
+                <Btn kind="ghost" full onPress={clear}>{ar.browse.clear}</Btn>
+              </View>
+            </View>
           </View>
         ) : null}
       </View>
@@ -861,21 +880,24 @@ function PriceStepper({
   const inc = () => { setDraft(null); onChange(Math.min(PRICE_MAX, value + PRICE_STEP)); };
   const decDisabled = value <= PRICE_MIN;
   const incDisabled = value >= PRICE_MAX;
+  // An inset track with WHITE buttons on it, rather than a white field with
+  // grey buttons: it is the track that has to read as one control, and two
+  // tinted circles on a white row read as two buttons with a number between
+  // them.
   return (
     <View style={{
       flex: 1,
-      backgroundColor: theme.surface,
-      borderWidth: 1, borderColor: theme.line,
+      backgroundColor: theme.inset,
       borderRadius: radius.lg,
-      padding: 8,
+      padding: 9,
     }}>
       <Text style={{ fontFamily: fonts.ar, fontSize: 10, color: theme.subtle, textAlign: 'right', marginBottom: 3 }}>
         {label}
       </Text>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
         <TouchableOpacity onPress={dec} disabled={decDisabled} activeOpacity={0.7} style={{
-          width: 24, height: 24, borderRadius: 999,
-          backgroundColor: theme.chipBg,
+          width: 26, height: 26, borderRadius: 999,
+          backgroundColor: theme.surface,
           alignItems: 'center', justifyContent: 'center',
           opacity: decDisabled ? 0.35 : 1,
         }}>
@@ -903,8 +925,8 @@ function PriceStepper({
           }}
         />
         <TouchableOpacity onPress={inc} disabled={incDisabled} activeOpacity={0.7} style={{
-          width: 24, height: 24, borderRadius: 999,
-          backgroundColor: theme.chipBg,
+          width: 26, height: 26, borderRadius: 999,
+          backgroundColor: theme.surface,
           alignItems: 'center', justifyContent: 'center',
           opacity: incDisabled ? 0.35 : 1,
         }}>
