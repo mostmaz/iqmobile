@@ -550,6 +550,18 @@ r.get('/top-models', optionalAuth(), (req, res) => {
   const limit = Math.min(20, Math.max(1, Math.floor(Number(req.query.limit)) || 10));
   const since = Date.now() - days * 86400000;
 
+  // The funnel's condition filter, applied BEFORE the grouping rather than
+  // after it. Filtering the finished cards would leave each one carrying the
+  // unfiltered count and price range — a card reading «١٢ جهاز · من 400 ألف»
+  // over a list of two used phones starting at 700. Filtering the rows makes
+  // the count, the range and the thumbnail all describe the same set.
+  //
+  // An unknown value is IGNORED, not rejected, exactly as GET /listings
+  // treats it — the two routes back one screen, and a filter that 400s here
+  // while silently passing there is worse than either behaviour alone.
+  const conditionRaw = String(req.query.condition || '');
+  const condition = CONDITIONS.includes(conditionRaw) ? conditionRaw : null;
+
   // model_key is computed HERE, in SQL, with the fold model_exact filters on.
   // groupTopModels never derives a key of its own — one function, one truth.
   const rows = db.prepare(`
@@ -560,7 +572,8 @@ r.get('/top-models', optionalAuth(), (req, res) => {
       FROM phone_listings l
      WHERE l.brand = ? AND l.status IN ('active','reserved') AND COALESCE(l.is_draft,0) = 0
        AND l.created_at >= ? AND l.model IS NOT NULL AND TRIM(l.model) != ''
-  `).all(brand, since);
+       ${condition ? 'AND l.condition = ?' : ''}
+  `).all(...(condition ? [brand, since, condition] : [brand, since]));
 
   res.json(groupTopModels(rows, { limit }));
 });

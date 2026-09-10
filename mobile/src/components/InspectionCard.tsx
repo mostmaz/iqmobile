@@ -99,7 +99,8 @@ export function InspectionCard({ condition, value, onChange }: {
         </View>
       </View>
 
-      <View style={{ height: 4, backgroundColor: theme.chipBg }}>
+      {/* Fills from the right, like the strength rail above it. */}
+      <View style={{ height: 4, backgroundColor: theme.chipBg, flexDirection: 'row-reverse' }}>
         <View style={{ width: `${pct}%`, height: 4, backgroundColor: answered === fields.length ? theme.success : theme.accent }} />
       </View>
 

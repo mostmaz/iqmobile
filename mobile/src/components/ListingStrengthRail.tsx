@@ -51,7 +51,15 @@ export function ListingStrengthRail({ issues, totalChecks, onEdit }: {
           </View>
           {/* The bar is the whole point of the collapsed state: a number
               alone does not say "nearly there" at a glance. */}
-          <View style={{ height: 6, borderRadius: radius.pill, backgroundColor: theme.chipBg, overflow: 'hidden' }}>
+          {/* row-reverse so the fill grows from the RIGHT. A percentage-width
+              child in a plain View anchors to the start edge, which under
+              this app's LTR layout direction is the left — so the bar ran
+              backwards against every other RTL thing on the screen, the
+              step dots above it included. */}
+          <View style={{
+            height: 6, borderRadius: radius.pill, backgroundColor: theme.chipBg,
+            overflow: 'hidden', flexDirection: 'row-reverse',
+          }}>
             <View style={{ width: `${s.score}%`, height: 6, borderRadius: radius.pill, backgroundColor: tint }} />
           </View>
         </View>

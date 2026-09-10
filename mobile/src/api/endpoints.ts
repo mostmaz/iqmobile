@@ -339,8 +339,9 @@ export const Listings = {
    * Ranked by supply in the SAME window the funnel's next step shows, so a
    * chip can never open onto an empty list.
    */
-  topModels: (brand: string, days = 60) =>
-    api<TopModel[]>(`/listings/top-models?brand=${encodeURIComponent(brand)}&days=${days}`),
+  topModels: (brand: string, days = 60, condition?: Condition | null) =>
+    api<TopModel[]>(`/listings/top-models?brand=${encodeURIComponent(brand)}&days=${days}`
+      + (condition ? `&condition=${encodeURIComponent(condition)}` : '')),
   suggestions: (q: string, governorate?: string) => api<string[]>('/listings/search-suggestions' + qs({q, governorate})),
   create: (body: any) => api<Listing>('/listings', { method: 'POST', body: JSON.stringify(body) }),
   browse: (f: BrowseFilters = {}) => api<Listing[]>('/listings' + qs(f)),

@@ -105,9 +105,14 @@ export default function RequestBrowseScreen({ navigation }: any) {
   }
 
   // ── step 2: that brand's most-listed models ─────────────────────────
+  // The condition filter applies HERE as well as to the listings, which is
+  // the whole point of putting it on the device step: «مستعمل» should answer
+  // "which devices have used stock", not just filter a list the buyer has
+  // already committed to. The server filters rows before grouping, so a
+  // card's count, price range and photo all describe the filtered set.
   const topModels = useQuery({
-    queryKey: ['top-models', brand, WINDOW_DAYS],
-    queryFn: () => Listings.topModels(brand!, WINDOW_DAYS),
+    queryKey: ['top-models', brand, WINDOW_DAYS, condition ?? 'any'],
+    queryFn: () => Listings.topModels(brand!, WINDOW_DAYS, condition),
     enabled: !!brand,
     staleTime: 60_000,
   });
@@ -139,6 +144,36 @@ export default function RequestBrowseScreen({ navigation }: any) {
     setComposeOpen(true);
   }
 
+  /**
+   * One control, two steps.
+   *
+   * Declared once and rendered on both the device grid and the listing list
+   * so the selection survives the tap between them — a buyer who filtered to
+   * «مستعمل» to find the device meant it for the listings too, and a filter
+   * that silently resets on the next screen is the kind of thing people
+   * blame themselves for.
+   */
+  const conditionRail = (
+    <ScrollView
+      horizontal showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
+    >
+      <Pill active={!condition} onPress={() => setCondition(null)}>كل الحالات</Pill>
+      {/* All FOUR conditions, from the shared taxonomy. Offering three
+          is what once made a مصلح device postable but unfindable —
+          see lib/conditions.ts. */}
+      {CONDITIONS.map((c) => (
+        <Pill
+          key={c}
+          active={condition === c}
+          onPress={() => setCondition(condition === c ? null : c)}
+        >
+          {(ar.listing as any)[c] || c}
+        </Pill>
+      ))}
+    </ScrollView>
+  );
+
   const header = (
     <View style={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 10, gap: 12 }}>
       {/* The one line that explains the grid. It has to sit above the cards:
@@ -159,7 +194,10 @@ export default function RequestBrowseScreen({ navigation }: any) {
         </View>
       ) : null}
 
-      {/* Step 2 — that brand's most-listed devices. Real supply, real counts. */}
+      {/* Step 2 — that brand's most-listed devices. Real supply, real counts.
+          The filter sits ABOVE the grid it filters, where the numbers on the
+          cards below it are the answer. */}
+      {step === 'model' ? conditionRail : null}
       {step === 'model' ? (
         topModels.isLoading ? (
           <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 }}>
@@ -170,13 +208,31 @@ export default function RequestBrowseScreen({ navigation }: any) {
         ) : topModels.isError ? (
           <LoadFailed compact error={topModels.error} retrying={topModels.isFetching} onRetry={() => topModels.refetch()} />
         ) : (topModels.data?.length ?? 0) === 0 ? (
-          <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 20 }}>
-            لا توجد إعلانات لهذه الماركة في آخر {WINDOW_AR}. اطلبه وتصلك عروض المتاجر.
-          </Text>
+          // Two different dead ends, and telling them apart is the difference
+          // between "this brand has nothing" and "nothing MATCHES" — only one
+          // of those is fixed by clearing a filter the buyer set.
+          condition ? (
+            <View style={{ gap: 8, alignItems: 'flex-end' }}>
+              <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 20 }}>
+                لا توجد أجهزة {(ar.listing as any)[condition] || condition} من {brandRow ? brandLabel(brandRow) : brand} خلال {WINDOW_AR}.
+              </Text>
+              <TouchableOpacity onPress={() => setCondition(null)} accessibilityRole="button" hitSlop={8}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.accent }}>
+                  اعرض كل الحالات
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={{ fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right', lineHeight: 20 }}>
+              لا توجد إعلانات لهذه الماركة في آخر {WINDOW_AR}. اطلبه وتصلك عروض المتاجر.
+            </Text>
+          )
         ) : (
           <View style={{ gap: 8 }}>
             <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, textAlign: 'right' }}>
-              الأكثر عرضاً خلال {WINDOW_AR}
+              {condition
+                ? `الأكثر عرضاً خلال ${WINDOW_AR} · ${(ar.listing as any)[condition] || condition}`
+                : `الأكثر عرضاً خلال ${WINDOW_AR}`}
             </Text>
             {/* 2-up cards with the device's own photo, not text chips. The
                 photo is the newest listing's first image, which the ranking
@@ -196,37 +252,24 @@ export default function RequestBrowseScreen({ navigation }: any) {
         )
       ) : null}
 
-      {/* Order and condition, once there is a list to apply them to. An
-          inert control above nothing reads as a broken one — the same reason
-          SearchScreen gates its sort on a chosen brand. */}
+      {/* Sort only appears once there is a list to apply it to — an inert
+          control above nothing reads as a broken one, the same reason
+          SearchScreen gates its sort on a chosen brand. Condition is
+          different: it is meaningful on the device grid too, so the rail
+          above renders on both steps and this one is the same element. */}
       {listEnabled ? (
         <View style={{ gap: 4 }}>
           <SortPills value={sort} onChange={setSort} label={null} />
 
-          <ScrollView
-            horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
-          >
-            <Pill active={!condition} onPress={() => setCondition(null)}>كل الحالات</Pill>
-            {/* All FOUR conditions, from the shared taxonomy. Offering three
-                is what once made a مصلح device postable but unfindable —
-                see lib/conditions.ts. */}
-            {CONDITIONS.map((c) => (
-              <Pill
-                key={c}
-                active={condition === c}
-                onPress={() => setCondition(condition === c ? null : c)}
-              >
-                {(ar.listing as any)[c] || c}
-              </Pill>
-            ))}
-          </ScrollView>
+          {conditionRail}
 
           <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', marginTop: 2 }}>
-            {/* «يبدأ من» comes from the UNFILTERED top-models row, so it is
-                only true while no condition is selected. Showing it beside a
-                filtered list would quote a price the list does not contain. */}
-            {!condition && items.length > 0
+            {/* «يبدأ من» is safe beside a filtered list now: the top-models
+                row it reads is fetched with the SAME condition, so the two
+                describe one set. It used to be hidden whenever a condition
+                was picked, because the row was unfiltered and would quote a
+                price the list below did not contain. */}
+            {items.length > 0
               && (topModels.data?.find((m) => m.model === model)?.min_price ?? null) != null
               ? `المعروض خلال ${WINDOW_AR} · يبدأ من ${fmtIQD(topModels.data!.find((m) => m.model === model)!.min_price!)} د.ع`
               : `المعروض خلال ${WINDOW_AR}`}
