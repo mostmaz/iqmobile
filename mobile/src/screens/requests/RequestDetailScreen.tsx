@@ -21,6 +21,7 @@ import {
   IconPhoneIcon, IconMsgCall, IconChevronLeft,
 } from '../../components/icons';
 import { Img } from '../../components/Img';
+import { ListingCard } from '../../components/ListingCard';
 import { bundledBrandLogo } from '../../lib/brandLogos';
 import { fullImageUrl } from '../../api/upload';
 import { PhoneRequests, Listings, type PhoneRequest, type RequestOffer, type Listing } from '../../api/endpoints';
@@ -196,6 +197,15 @@ function BuyerView({ request, onStatus, busy, navigation }: {
         ))
       )}
 
+      {/* Already on sale, right now.
+          
+          A buyer opens their own request to see who replied. When nobody
+          has, the screen is a dead end — and the whole premise of the funnel
+          is that most requests are for a phone somebody is ALREADY selling.
+          This is that answer, under the offers rather than over them:
+          offers are what the buyer asked for, this is the shortcut. */}
+      <MatchingListings request={request} navigation={navigation} />
+
       {/* One row, not a stack. «حصلت على الجهاز» is the outcome everyone
           wants and takes the width; «أغلق الطلب» is the giving-up branch and
           gets a fixed 110. Stacked full-width, the two read as equally
@@ -226,6 +236,67 @@ function BuyerView({ request, onStatus, busy, navigation }: {
           <Btn kind="ghost" full busy={busy} onPress={() => onStatus('open')}>أعد فتح الطلب</Btn>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Listings that satisfy the request as written.
+ *
+ * The filter is the request itself — same brand, same model under the fold
+ * `/top-models` groups on, at or under the buyer's ceiling, in the condition
+ * they asked for if they named one. `model_exact` matters here for the same
+ * reason it does in the funnel: a request for "iPhone 13" must not answer
+ * with every iPhone 13 Pro Max, which costs twice as much and is over the
+ * ceiling the buyer just set.
+ *
+ * Governorate is deliberately NOT applied. The request carries where the
+ * buyer is, and sellers see the board filtered by it — but a phone one
+ * governorate over is an ordinary thing to buy here, and every card states
+ * its own location anyway.
+ */
+function MatchingListings({ request, navigation }: { request: PhoneRequest; navigation: any }) {
+  const q = useQuery({
+    queryKey: ['request-matches', request.id, request.brand, request.model, request.max_price, request.condition],
+    queryFn: () => Listings.browse({
+      brand: request.brand,
+      model: request.model,
+      model_exact: true,
+      max_price: request.max_price,
+      ...(request.condition ? { condition: request.condition as any } : {}),
+      available_only: true,
+      // Cheapest first: the buyer named a ceiling, so the interesting end of
+      // the range is the bottom.
+      sort: 'price_asc',
+      limit: 6,
+    }),
+    staleTime: 60_000,
+  });
+  const items = q.data || [];
+
+  // Nothing to say while it loads, and nothing to say when there is no
+  // match — an empty «أجهزة مطابقة» heading over a blank space reads as a
+  // failure, and the offers section above already covers the empty case.
+  if (q.isLoading || items.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 22 }}>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+        <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink }}>معروض الآن يطابق طلبك</Text>
+        <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 12, color: theme.accentDeep }}>
+          {items.length}
+        </Text>
+      </View>
+      <Text style={{ fontFamily: fonts.arRegular, fontSize: 12, color: theme.subtle, textAlign: 'right', marginBottom: 10, lineHeight: 19 }}>
+        نفس الجهاز، ضمن ميزانيتك، معروض للبيع الآن — تقدر تراسل البائع مباشرة.
+      </Text>
+      {items.map((l) => (
+        <ListingCard
+          key={l.id}
+          listing={l}
+          onPress={() => navigation.navigate('ListingDetail', { id: l.id })}
+        />
+      ))}
     </View>
   );
 }
