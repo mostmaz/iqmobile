@@ -32,6 +32,7 @@ import PostListingScreen from '../screens/listing/PostListingScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
 import MyListingsScreen from '../screens/listing/MyListingsScreen';
 import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
+import FreeBoostScreen from '../screens/listing/FreeBoostScreen';
 import ShopsScreen from '../screens/shops/ShopsScreen';
 import ShopScreen from '../screens/shops/ShopScreen';
 import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
@@ -76,6 +77,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
       <BrowseStack.Screen name="StoreHome" component={StoreHomeScreen} />
@@ -116,6 +118,7 @@ function SearchStackNav() {
       <BrowseStack.Screen name="Wallet" component={WalletScreen} />
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
     </BrowseStack.Navigator>
   );
 }
@@ -126,6 +129,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="Saved" component={SavedScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
       <BrowseStack.Screen name="ShopDetail" component={ShopScreen} />
       <BrowseStack.Screen name="StoreHome" component={StoreHomeScreen} />
@@ -177,6 +181,7 @@ function SellStackNav() {
       {/* Publishing lands on ListingDetail inside THIS stack — the promote
           CTA there needs the route locally or the post-publish upsell dies. */}
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       {/* ListingDetail's price-alert buttons need these locally too. */}
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
     </BrowseStack.Navigator>
@@ -197,6 +202,7 @@ function ChatsStackNav() {
       <BrowseStack.Screen name="Compare" component={CompareScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
+      <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       {/* ListingDetail's price-alert buttons need this locally too. */}
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
     </BrowseStack.Navigator>

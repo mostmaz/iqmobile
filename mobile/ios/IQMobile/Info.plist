@@ -86,8 +86,23 @@
     <string>‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق.</string>
     <key>RCTNewArchEnabled</key>
     <true/>
+    <!-- AdMob application id. Google's TEST id: it serves test ads only,
+         which is what a build should carry until the owner's real AdMob
+         account exists. Change it here and in app.json together. -->
+    <key>GADApplicationIdentifier</key>
+    <string>ca-app-pub-3940256099942544~1458002511</string>
+    <!-- We never show an ad the seller did not ask for, so nothing should
+         initialise or fetch before they press the button. -->
+    <key>GADDelayAppMeasurementInit</key>
+    <true/>
     <key>SKAdNetworkItems</key>
     <array>
+      <!-- Google/AdMob. Without this entry iOS reports nothing for an install
+           that came from a Google-served ad. Meta's two ids follow. -->
+      <dict>
+        <key>SKAdNetworkIdentifier</key>
+        <string>cstr6suwn9.skadnetwork</string>
+      </dict>
       <dict>
         <key>SKAdNetworkIdentifier</key>
         <string>v9wttpbfk9.skadnetwork</string>

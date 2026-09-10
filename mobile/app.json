@@ -109,7 +109,21 @@
         {
           "userTrackingPermission": "‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق."
         }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "delayAppMeasurementInit": true,
+          "userTrackingUsageDescription": "نستخدم هذا لعرض إعلانات أنسب لك عند مشاهدة فيديو لترويج إعلانك."
+        }
       ]
     ]
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511",
+    "delay_app_measurement_init": true
   }
 }

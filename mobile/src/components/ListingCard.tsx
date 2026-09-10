@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Img } from './Img';
 import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT, FONT_SCALE_RELAXED } from '../theme';
 import { fmtIQD } from './ui';
-import { IconStar, IconPin, IconSpark } from './icons';
+import { IconStar, IconPin, IconSpark, IconBolt } from './icons';
 import { ChipTag } from './marketplace';
 import { fullImageUrl } from '../api/upload';
 import { arOf } from '../lib/governorates';
@@ -33,6 +33,9 @@ export function ListingCard({
     : listing.status === 'expired' ? theme.subtle
       : theme.ink;
   const showStatus = listing.status !== 'active';
+  // Server-computed: `is_boosted` compares the highlight window to the
+  // server's clock, never this device's.
+  const boosted = !!(listing as any).is_boosted;
   // Horizontal card: image on the leading (physical-left) side, details on
   // the right. Yoga runs LTR app-wide (see App.tsx), so plain `row` puts the
   // first child on the left. Image fills the left column edge-to-edge
@@ -40,7 +43,12 @@ export function ListingCard({
   const imgW = compact ? 104 : 128;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
-      backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
+      backgroundColor: theme.surface, borderRadius: radius.xxl,
+      // A boosted listing gets a tinted edge for its highlight window. Border
+      // only — the phone, the price and the model stay the loudest things on
+      // the card, and a promoted listing that shouts is an advert.
+      borderWidth: boosted ? 1.5 : 1,
+      borderColor: boosted ? theme.accent : theme.line,
       ...shadowSoft, overflow: 'hidden', marginBottom: 8, opacity: stale ? 0.62 : 1,
       // Heights trimmed 10% from the previous 152 / 116 baseline. Inner
       // padding + chip margins trimmed proportionally below so the
@@ -149,6 +157,13 @@ export function ListingCard({
 
         {!compact ? (
           <View style={{ flexDirection: 'row-reverse', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
+            {/* «مروّج» leads the chip row rather than joining the image
+                corners: bottom-left already holds the compare button AND the
+                featured ribbon, which overlap each other today, and a third
+                badge there would make that worse. */}
+            {boosted ? (
+              <ChipTag tone="accent" icon={<IconBolt size={10} color={theme.accentDeep} />}>مروّج</ChipTag>
+            ) : null}
             <ChipTag>{(ar.listing as any)[listing.condition]}</ChipTag>
             {isNegotiable(listing as any) ? <ChipTag>{NEGOTIABLE_LABEL}</ChipTag> : null}
             {listing.storage ? <ChipTag>{listing.storage}</ChipTag> : null}

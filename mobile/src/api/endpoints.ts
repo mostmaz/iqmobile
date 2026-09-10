@@ -110,6 +110,11 @@ export interface Listing {
   is_featured?: boolean;
   featured_until?: number | null;
   feature_tier?: string | null;
+  // The FREE rewarded boost, a separate mechanism from featuring above: it
+  // moves the listing up «الأحدث» and never into a pinned slot. Also
+  // server-computed, for the same clock-safety reason.
+  is_boosted?: boolean;
+  boost_highlight_until?: number | null;
 }
 
 export type DealStatus =
@@ -765,6 +770,48 @@ export interface WalletState {
   balance: number;
   entries: WalletEntry[];
 }
+/** One boost attempt's state, plus the seller's allowance. See boostState.ts. */
+export interface BoostState {
+  enabled: boolean;
+  max_per_24h: number;
+  used: number;
+  remaining: number;
+  allowed: boolean;
+  reason: 'disabled' | 'daily_limit' | 'cooldown' | null;
+  next_available_at: number | null;
+  streak: number;
+  streak_used_today: boolean;
+  day_ends_at: number;
+  eligible?: boolean;
+  ineligible_reason?: string | null;
+  listing?: {
+    id: number;
+    is_boosted: boolean;
+    boost_highlight_until: number | null;
+    scheduled_bump_at: number | null;
+    bumped_at: number | null;
+  } | null;
+  last_attempt?: {
+    nonce: string; status: string; boost_type: string | null;
+    requested_at: number; granted_at: number | null;
+  } | null;
+}
+
+export interface BoostStart extends BoostState {
+  nonce: string;
+  ad_unit_id: string;
+}
+
+export const Boosts = {
+  /**
+   * Ask to watch an ad. Costs nothing — the boost is spent only when Google
+   * tells our server the video finished, so a failed ad is free.
+   */
+  start: (id: number) => api<BoostStart>(`/listings/${id}/boost/start`, { method: 'POST' }),
+  /** Polled after the ad, because the grant arrives server-to-server. */
+  state: (id: number) => api<BoostState>(`/listings/${id}/boost`),
+};
+
 export const Wallet = {
   get: () => api<WalletState>('/wallet'),
 };

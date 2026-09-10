@@ -19,6 +19,34 @@ allprojects {
     mavenCentral()
     maven { url 'https://www.jitpack.io' }
   }
+
+}
+
+// react-native-google-mobile-ads 16.x depends on play-services-ads 25.x,
+// whose Kotlin metadata is 2.3.0. React Native 0.81 pins Kotlin 2.1.20
+// (node_modules/react-native/gradle/libs.versions.toml), and a 2.1 compiler
+// refuses to READ 2.3 metadata — several hundred "Module was compiled with an
+// incompatible version of Kotlin" errors, all from inside the ads .jar.
+//
+// The alternatives were worse. Forcing an older ads SDK breaks the library,
+// which calls APIs that only exist in 25.x. Downgrading the library to 15.x
+// breaks against RN 0.81, whose ReactContext no longer exposes the members
+// 15.x reaches for. Raising the whole project to Kotlin 2.3 fights React
+// Native's own gradle plugin.
+//
+// So: tell the 2.1 compiler to read the newer metadata anyway, and ONLY for
+// this one module. The ads library is a thin wrapper over the SDK's public
+// API; it is not using anything 2.3 introduced.
+//
+// Delete this when React Native's pinned Kotlin catches up with the ads SDK.
+subprojects { sub ->
+  if (sub.name == 'react-native-google-mobile-ads') {
+    sub.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+      compilerOptions {
+        freeCompilerArgs.add('-Xskip-metadata-version-check')
+      }
+    }
+  }
 }
 
 apply plugin: "expo-root-project"

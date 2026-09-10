@@ -16,6 +16,13 @@ const Stroke = ({ size = 24, color = 'currentColor', sw = 1.6, children }: IP & 
 export const IconBolt = (p: IP) => (
   <Stroke {...p}><Path d="M13.5 2.5L4.5 13.5h6L9 21.5l9.5-11.5h-6l1-7.5z" /></Stroke>
 );
+/** The rewarded-video CTA. The only new glyph this feature needs. */
+export const IconPlayCircle = (p: IP) => (
+  <Stroke {...p}>
+    <Circle cx="12" cy="12" r="9" />
+    <Path d="M10 8.5l6 3.5-6 3.5v-7z" />
+  </Stroke>
+);
 export const IconBell = (p: IP) => (
   <Stroke {...p}>
     <Path d="M6 16V11a6 6 0 1112 0v5l1.5 2.5h-15L6 16z" />

@@ -16,6 +16,7 @@ import { SHOW_PROMOTE } from '../../config/flags';
 import { Listings, type ListingStatus } from '../../api/endpoints';
 import { ar } from '../../i18n/ar';
 import { useAuth } from '../../auth/AuthContext';
+import { FreeBoostCard } from '../../components/FreeBoostCard';
 
 const TABS: Array<{ key: 'all' | ListingStatus; label: string }> = [
   { key: 'all', label: 'الكل' },
@@ -141,7 +142,18 @@ export default function MyListingsScreen({ navigation }: any) {
                   </Text>
                 </View>
               ) : null}
-              {SHOW_PROMOTE && featured ? (
+              {/* Free boost, beside the paid CTA. Own component so the listing
+            page and this list can never disagree about how many are left. */}
+        {item.status === 'active' || item.status === 'reserved' ? (
+          <View style={{ marginHorizontal: -16, marginTop: -8 }}>
+            <FreeBoostCard
+              listingId={item.id}
+              onPress={() => navigation.navigate('FreeBoost', { id: item.id, label: `${item.brand} ${item.model}` })}
+            />
+          </View>
+        ) : null}
+
+        {SHOW_PROMOTE && featured ? (
                 <View style={{ marginTop: -4, marginBottom: 12, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, paddingHorizontal: 4 }}>
                   <IconSpark size={12} color={theme.accent} />
                   <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.accent }}>

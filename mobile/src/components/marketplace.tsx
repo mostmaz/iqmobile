@@ -31,10 +31,26 @@ export function Stamp({ children, icon, sm }: { children: React.ReactNode; icon?
 }
 
 // ─── Chip (small, on listing cards / spec rows) ──────────────────────
-export function ChipTag({ children }: { children: React.ReactNode }) {
+export function ChipTag({ children, tone, icon }: {
+  children: React.ReactNode;
+  /** `accent` tints the chip for a promoted listing. Default is neutral. */
+  tone?: 'neutral' | 'accent';
+  icon?: React.ReactNode;
+}) {
+  const accent = tone === 'accent';
   return (
-    <View style={{ paddingHorizontal: 9, paddingVertical: 3, backgroundColor: theme.chipBg, borderRadius: 999 }}>
-      <Text style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.chipInk }}>{children}</Text>
+    <View style={{
+      paddingHorizontal: 9, paddingVertical: 3, borderRadius: 999,
+      backgroundColor: accent ? theme.accentSoft : theme.chipBg,
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 4,
+    }}>
+      {icon}
+      <Text style={{
+        fontFamily: accent ? fonts.arBold : fonts.ar, fontSize: 11,
+        color: accent ? theme.accentDeep : theme.chipInk,
+      }}>
+        {children}
+      </Text>
     </View>
   );
 }

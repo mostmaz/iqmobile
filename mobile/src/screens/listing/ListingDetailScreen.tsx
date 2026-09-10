@@ -30,6 +30,7 @@ import { useTrack } from '../../analytics/track';
 import { logMetaEvent } from '../../analytics/meta';
 import { SHOW_PROMOTE } from '../../config/flags';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
+import { FreeBoostCard } from '../../components/FreeBoostCard';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
@@ -740,7 +741,19 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             a "featured until" notice while a window is active; hidden on
             sold/expired listings (nothing to promote). Hidden entirely in the
             Play Store artifact (SHOW_PROMOTE=false) — see config/flags.ts. */}
-        {isMine && SHOW_PROMOTE ? (
+        {/* Free first, paid second. The rewarded boost is NOT behind
+          SHOW_PROMOTE: that flag hides paid promotion on iOS because Apple
+          wants IAP for paid digital features, and watching an ad is not a
+          purchase. The card hides itself when the operator has the feature
+          off. */}
+      {isMine && (data.status === 'active' || data.status === 'reserved') ? (
+        <FreeBoostCard
+          listingId={id}
+          onPress={() => navigation.navigate('FreeBoost', { id, label: `${data.brand} ${data.model}` })}
+        />
+      ) : null}
+
+      {isMine && SHOW_PROMOTE ? (
           (data as any).featured_until && (data as any).featured_until > Date.now() ? (
             <View style={{
               marginHorizontal: 16, marginTop: 14, padding: 14,

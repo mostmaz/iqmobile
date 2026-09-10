@@ -94,6 +94,12 @@ android {
         applicationId 'org.iqmobile.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        applicationIdSuffix ".test"
+        resValue "string", "app_name_test", "iQ تجربة"
+        applicationIdSuffix ".test"
+        resValue "string", "app_name_test", "iQ تجربة"
+        applicationIdSuffix ".test"
+        resValue "string", "app_name_test", "iQ تجربة"
         versionCode 56
         versionName "0.4.1"
 

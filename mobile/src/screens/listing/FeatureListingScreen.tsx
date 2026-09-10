@@ -18,6 +18,7 @@ import { IconSpark, IconCheck, IconPhoneIcon, IconQiCard } from '../../component
 import { Features, Wallet, type FeatureCarrier, type FeaturePayMethod } from '../../api/endpoints';
 import { useAuth } from '../../auth/AuthContext';
 import { timeAgoAr } from '../../lib/format';
+import { FreeBoostCard } from '../../components/FreeBoostCard';
 
 const CARRIER_META: Record<FeatureCarrier, { label: string; color: string }> = {
   asiacell: { label: 'آسياسيل', color: '#ED1C24' },
@@ -201,6 +202,22 @@ export default function FeatureListingScreen({ navigation, route }: any) {
         {label ? (
           <Text style={{ fontFamily: fonts.arBold, fontSize: 14, color: theme.ink, textAlign: 'right', marginBottom: 12 }}>{label}</Text>
         ) : null}
+
+        {/* The free option, above the paid one. A seller who can get some of
+            this for nothing should be told before they are asked to pay —
+            and the line under it draws the boundary, because "top of
+            «الأحدث»" and "the featured slots" are different products and
+            conflating them is how the old promotion copy went wrong. */}
+        <FieldLabel style={{ marginTop: 0 }}>مجاناً · كل يوم</FieldLabel>
+        <View style={{ marginHorizontal: -20 }}>
+          <FreeBoostCard
+            listingId={listingId}
+            onPress={() => navigation.navigate('FreeBoost', { id: listingId, label })}
+          />
+        </View>
+        <Text style={{ marginTop: 8, marginBottom: 18, fontFamily: fonts.ar, fontSize: 11, color: theme.subtle, textAlign: 'right', lineHeight: 18 }}>
+          الرفع المجاني يرجع الإعلان لأعلى «الأحدث» فقط. المواضع المميّزة أعلى التصفّح تجي مع الباقات المدفوعة.
+        </Text>
 
         {hasPending ? (
           <>
