@@ -20,7 +20,7 @@ import { useTrack } from '../../analytics/track';
 export default function ListingPublishedScreen({ route, navigation }: any) {
   const {
     id, brand, model, price, governorate,
-    photosPending = 0, failedPhotos = 0, remaining = [],
+    failedPhotos = 0, remaining = [],
   } = route.params || {};
   const insets = useSafeAreaInsets();
   const track = useTrack();
@@ -60,13 +60,16 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
           <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
             ماذا يحدث الآن
           </Text>
-          <Row tone="success" text="الإعلان ظاهر للمشترين الآن." />
-          {photosPending > 0 || failedPhotos > 0 ? (
+          <Row tone="success" text="الإعلان ظاهر للمشترين الآن — بصوره." />
+          {/* Only a REAL problem gets a row. This used to also report
+              «الصور قيد المراجعة» whenever any photo uploaded, describing an
+              approval step that does not exist — the photos were already
+              live while the seller was told to wait for them. A failed
+              upload is the one thing here that is genuinely outstanding. */}
+          {failedPhotos > 0 ? (
             <Row
               tone="pending"
-              text={failedPhotos > 0
-                ? `${failedPhotos} من الصور لم تُرفع بسبب الاتصال — تقدر ترفعها من «تعديل الإعلان».`
-                : 'الصور قيد المراجعة — تظهر بعد موافقة الإدارة، عادة خلال ساعات.'}
+              text={`${failedPhotos} من الصور لم تُرفع بسبب الاتصال — تقدر ترفعها من «تعديل الإعلان».`}
             />
           ) : null}
           <Row tone="success" text="يصلك تنبيه فور مراسلة أول مشترٍ." />

@@ -545,7 +545,6 @@ export default function PostListingScreen({ navigation }: any) {
         price: listing.asking_price,
         governorate: govAr,
         failedPhotos: failedCount,
-        photosPending: images.length - failedCount,
         // Whatever the checklist still has to say, as ONE offer to finish
         // rather than a list of complaints at the moment of success.
         remaining: qualityIssues.map((i) => ({ id: i.id, title: i.title })),
@@ -1060,16 +1059,24 @@ export default function PostListingScreen({ navigation }: any) {
                 it reads as "photo three is usually the side", a prompt rather
                 than a claim about the picture above it. Past the fourth,
                 photos are unlabelled instead of wrongly labelled. */}
-            {/* Said BEFORE the picker opens, not after upload. A seller who
-                learns about review only when their listing is held reads it
-                as a rejection; here it is just the rule. */}
+            {/* No claim about review — listing photos are not reviewed. There
+                is no approval column on `listing_images` and no queue behind
+                it anywhere in the server or the admin app: an uploaded photo
+                is public the moment the listing is. The banner here used to
+                say every photo is checked before publishing, which was a
+                promise about a moderation step that does not exist. The
+                guidance it carried is worth keeping, so it stays — as advice
+                about what makes a good photo, which is true.
+                
+                (The VIDEO note further down is different: video review is
+                real, and that note stays.) */}
             <View style={{
               flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
-              backgroundColor: theme.accentSoft, borderColor: theme.accent, borderWidth: 1,
+              backgroundColor: theme.inset,
               borderRadius: radius.lg, padding: 11, marginBottom: 12,
             }}>
-              <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 12.5, color: theme.accentDeep, textAlign: 'right', lineHeight: 20 }}>
-                تُراجَع صور كل إعلان قبل نشره. اختر صوراً واضحة للجهاز نفسه — لا صوراً من الإنترنت ولا صوراً تحتوي أرقاماً أو معلومات شخصية.
+              <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', lineHeight: 20 }}>
+                اختر صوراً واضحة للجهاز نفسه — لا صوراً من الإنترنت ولا صوراً تحتوي أرقاماً أو معلومات شخصية.
               </Text>
             </View>
 
