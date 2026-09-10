@@ -9,7 +9,7 @@
 import React, { useState } from 'react';
 import { ON_REQUEST_LABEL } from '../lib/priceMode';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { theme, fonts, FONT_SCALE_TIGHT } from '../theme';
+import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { Img } from './Img';
 import { fmtIQD } from './ui';
 import { fullImageUrl } from '../api/upload';
@@ -45,7 +45,7 @@ export function HomeHubCard({
 
   return (
     <View style={{
-      backgroundColor: theme.surface, borderRadius: 16, borderWidth: 1,
+      backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
       borderColor: theme.line, padding: 10, marginBottom: 12,
     }}>
       {/* Segmented control */}
@@ -67,9 +67,9 @@ export function HomeHubCard({
                 key={p.id}
                 activeOpacity={0.85}
                 onPress={() => onOpenProduct(p)}
-                style={{ flex: 1, backgroundColor: theme.bg, borderRadius: 12, padding: 6, alignItems: 'center' }}
+                style={{ flex: 1, backgroundColor: theme.inset, borderRadius: radius.lg, padding: 6, alignItems: 'center' }}
               >
-                <View style={{ width: 52, height: 52, borderRadius: 8, backgroundColor: theme.chipBg, overflow: 'hidden' }}>
+                <View style={{ width: 52, height: 52, borderRadius: radius.sm, backgroundColor: theme.chipBg, overflow: 'hidden' }}>
                   {p.image_path ? (
                     <Img source={{ uri: fullImageUrl(p.image_path) }} contentFit="cover" style={{ width: 52, height: 52 }} />
                   ) : null}
@@ -88,7 +88,7 @@ export function HomeHubCard({
           <TouchableOpacity
             activeOpacity={0.88}
             onPress={onOpenStore}
-            style={{ marginTop: 10, backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
+            style={{ marginTop: 10, backgroundColor: theme.accent, borderRadius: radius.lg, paddingVertical: 11, alignItems: 'center' }}
           >
             <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: '#fff' }}>
               اشترِ جهاز جديد
@@ -103,9 +103,9 @@ export function HomeHubCard({
                 key={s.id}
                 activeOpacity={0.85}
                 onPress={() => onOpenShopPage(s.id)}
-                style={{ flex: 1, backgroundColor: theme.bg, borderRadius: 12, padding: 6, alignItems: 'center' }}
+                style={{ flex: 1, backgroundColor: theme.inset, borderRadius: radius.lg, padding: 6, alignItems: 'center' }}
               >
-                <View style={{ width: 52, height: 52, borderRadius: 8, backgroundColor: theme.chipBg, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 52, height: 52, borderRadius: radius.sm, backgroundColor: theme.chipBg, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                   {s.logo ? (
                     <Img source={{ uri: fullImageUrl(s.logo) }} contentFit="cover" style={{ width: 52, height: 52 }} />
                   ) : (
@@ -128,7 +128,7 @@ export function HomeHubCard({
           <TouchableOpacity
             activeOpacity={0.88}
             onPress={onOpenDirectory}
-            style={{ marginTop: 10, backgroundColor: theme.accent, borderRadius: 12, paddingVertical: 10, alignItems: 'center' }}
+            style={{ marginTop: 10, backgroundColor: theme.accent, borderRadius: radius.lg, paddingVertical: 11, alignItems: 'center' }}
           >
             <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 13.5, color: '#fff' }}>
               تصفّح المتاجر{shopsTotal ? ` (${arNum(shopsTotal)})` : ''}

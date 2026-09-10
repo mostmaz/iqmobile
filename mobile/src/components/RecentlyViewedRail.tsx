@@ -49,7 +49,7 @@ export function RecentlyViewedRail({
               borderWidth: 1, borderColor: theme.line, padding: 6, alignItems: 'center',
             }}
           >
-            <View style={{ width: 52, height: 52, borderRadius: 8, backgroundColor: theme.chipBg, overflow: 'hidden' }}>
+            <View style={{ width: 52, height: 52, borderRadius: radius.sm, backgroundColor: theme.chipBg, overflow: 'hidden' }}>
               {it.image_path ? (
                 <Img source={{ uri: fullImageUrl(it.image_path) }} contentFit="cover" style={{ width: 52, height: 52 }} />
               ) : null}
