@@ -1,0 +1,12 @@
+• «اطلب جهاز» now has its own tab — it opens the request form directly, with no screen in between.
+• «الطلبات» is its own screen, with a badge counting requests posted in your governorate in the last 24 hours.
+• Search is back at the top of the home screen: tapping it opens the brand list, then the device picker.
+• A «ما لقيت جهازك؟» card appears in the feed and above thin search results.
+• Sort requests by newest, highest budget, or no offers yet.
+• Requests now reach individuals who have sold the same brand, not only shops.
+• After posting a listing you see matching requests in your governorate and can contact the buyers.
+• Request cards show who posted, when it expires, and a «قدّم عرض» button.
+• Search understands both spellings — «ايفون ١٣» and "iPhone 13" find the same devices.
+• Filter by condition when picking a device.
+• A lighter, clearer look across the app.
+• Fixed: prices with seven digits were hiding the «د.ع» suffix.
