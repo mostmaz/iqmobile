@@ -45,6 +45,8 @@ export function DescriptionField({ value, onChange, note }: {
 }) {
   const len = value.trim().length;
   const met = len >= DESCRIPTION_MIN;
+  /** Long enough AND nothing listingQuality still objects to. */
+  const done = met && !note;
 
   const add = (phrase: string) => {
     if (value.includes(phrase)) return;
@@ -58,7 +60,11 @@ export function DescriptionField({ value, onChange, note }: {
         flexDirection: 'row-reverse', alignItems: 'baseline',
         justifyContent: 'space-between', marginBottom: 8,
       }}>
-        <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.subtle }}>
+        {/* flexShrink: 0 is load-bearing. With the counter as a sibling in a
+            space-between row, Android shrank this Text and dropped «الجهاز»
+            entirely — Arabic loses a whole trailing token rather than
+            ellipsising. Every label paired with a counter needs this. */}
+        <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ flexShrink: 0, fontFamily: fonts.arBold, fontSize: 12, color: theme.subtle }}>
           وصف حالة الجهاز
         </Text>
         <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
@@ -76,26 +82,30 @@ export function DescriptionField({ value, onChange, note }: {
         multiline
       />
 
-      {note || !met ? (
-        <View style={{
-          flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
-          marginTop: 8, paddingVertical: 9, paddingHorizontal: 11,
-          borderRadius: radius.md,
-          backgroundColor: met ? theme.successSoft : theme.accentSoft,
+      {/* Always on screen, and green ONLY when nothing is left to say.
+          It used to render on `note || !met`, which is false in exactly the
+          case the green state exists for — a long enough description that
+          listingQuality is happy with — so the box vanished at the moment it
+          was supposed to confirm. It also let `met` outrank an open note and
+          print «الوصف كافٍ» over advice that still stood. */}
+      <View style={{
+        flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8,
+        marginTop: 8, paddingVertical: 9, paddingHorizontal: 11,
+        borderRadius: radius.md,
+        backgroundColor: done ? theme.successSoft : theme.accentSoft,
+      }}>
+        {done ? (
+          <IconCheck size={13} color={theme.success} />
+        ) : (
+          <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.accent, marginTop: 5 }} />
+        )}
+        <Text style={{
+          flex: 1, fontFamily: fonts.ar, fontSize: 12.5, lineHeight: 20, textAlign: 'right',
+          color: done ? theme.success : theme.ink,
         }}>
-          {met ? (
-            <IconCheck size={13} color={theme.success} />
-          ) : (
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: theme.accent, marginTop: 5 }} />
-          )}
-          <Text style={{
-            flex: 1, fontFamily: fonts.ar, fontSize: 12.5, lineHeight: 20, textAlign: 'right',
-            color: met ? theme.success : theme.ink,
-          }}>
-            {met ? 'الوصف كافٍ — شكراً.' : (note || `اكتب ${DESCRIPTION_MIN} حرفاً على الأقل عن حالة الجهاز.`)}
-          </Text>
-        </View>
-      ) : null}
+          {done ? 'الوصف كافٍ — شكراً.' : (!met ? `اكتب ${DESCRIPTION_MIN} حرفاً على الأقل عن حالة الجهاز.` : note)}
+        </Text>
+      </View>
 
       <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
         {SEEDS.map((p) => {

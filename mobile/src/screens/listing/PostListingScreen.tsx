@@ -50,7 +50,13 @@ const FALLBACK_BRANDS = ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Huawe
 // Ascending by capacity. The old order put 1TB last after descending
 // GB values, so the largest option looked like the smallest.
 const STORAGE_CHOICES = ['64GB', '128GB', '256GB', '512GB', '1TB'];
-const ACCESSORIES_CHOICES = ['الشاحن', 'السماعات', 'العلبة الأصلية', 'كفر', 'لاصق شاشة', 'فاتورة'];
+// Stored verbatim in accessories_json, so this string is what the listing
+// page and the compare table print back. «بدون ملحقات» is one of them on
+// purpose: an empty list renders as «غير محدد», which is the same thing the
+// app shows for a seller who never answered, and the two are not the same
+// claim. Picking it clears the rest and vice versa — see toggleAcc.
+const NO_ACCESSORIES = 'بدون ملحقات';
+const ACCESSORIES_CHOICES = ['الشاحن', 'السماعات', 'العلبة الأصلية', 'كفر', 'لاصق شاشة', 'فاتورة', NO_ACCESSORIES];
 // Warranty options surfaced on step 0. Stored as the raw Arabic value on
 // the server (warranty_status is a free-text TEXT column, no enum check);
 // we render the same strings back wherever needed.
@@ -334,7 +340,14 @@ export default function PostListingScreen({ navigation }: any) {
   const showBattery = brand === 'Apple';
 
   function toggleAcc(a: string) {
-    setAccessories((s) => s.includes(a) ? s.filter((x) => x !== a) : [...s, a]);
+    setFieldErr((e) => (e === 'accessories' ? null : e));
+    setAccessories((s) => {
+      if (s.includes(a)) return s.filter((x) => x !== a);
+      // «بدون ملحقات» is a claim about all the others, so it cannot coexist
+      // with them in either direction.
+      if (a === NO_ACCESSORIES) return [a];
+      return [...s.filter((x) => x !== NO_ACCESSORIES), a];
+    });
   }
 
   async function pickVideo() {
@@ -563,6 +576,13 @@ export default function PostListingScreen({ navigation }: any) {
     // which reads as the form not knowing what it has.
     if (step === 0 && !brand) { setFieldErr('brand'); return setErr('اختر العلامة التجارية'); }
     if (step === 0 && !model) { setFieldErr('model'); return setErr('اختر موديل الجهاز'); }
+    // Accessories are rendered on step 0, so the check belongs here. It used
+    // to run in the step-1 block, which put an error about a field the
+    // seller could not see on screen and left «التالي» doing nothing.
+    if (step === 0 && accessories.length === 0) {
+      setFieldErr('accessories');
+      return setErr('اختر الملحقات — أو «بدون ملحقات» إن لم يكن معها شيء.');
+    }
     if (step === 1) {
       const cp = colorProblem(color);
       if (cp) { setFieldErr('color'); return setErr(cp); }
@@ -582,10 +602,6 @@ export default function PostListingScreen({ navigation }: any) {
     if (step === 1) {
       if (!storage) { setFieldErr('storage'); return setErr('اختر السعة'); }
       if (!color.trim()) { setFieldErr('color'); return setErr('اختر لون الجهاز'); }
-      if (accessories.length === 0) {
-        setFieldErr('accessories');
-        return setErr('اختر الملحقات — أو «بدون ملحقات» إن لم يكن معها شيء.');
-      }
       // Only for a device that HAS a history: a sealed phone has no screen
       // wear, no repairs and no water damage to declare, and asking would be
       // the form not paying attention.
@@ -790,7 +806,16 @@ export default function PostListingScreen({ navigation }: any) {
                 (what's in the box) sits with the brand/model headline,
                 not buried with the technical specs. */}
             <FieldLabel style={{ marginTop: 14 }}>{ar.listing.accessories}</FieldLabel>
-            <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 }}>
+            <View style={{
+              flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6,
+              // The other required fields mark themselves through Input's
+              // `invalid`; a chip row has no such prop, so the row itself
+              // carries the outline.
+              ...(fieldErr === 'accessories' ? {
+                borderWidth: 1, borderColor: theme.danger,
+                borderRadius: radius.md, padding: 8, margin: -1,
+              } : null),
+            }}>
               {ACCESSORIES_CHOICES.map((a) => (
                 <Pill key={a} active={accessories.includes(a)} onPress={() => toggleAcc(a)}>{a}</Pill>
               ))}
