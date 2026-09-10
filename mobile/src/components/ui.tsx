@@ -88,11 +88,21 @@ interface HeaderProps {
   title: string;
   eyebrow?: string;
   onBack?: () => void;
+  /** Top row, level with the back arrow / iQ badge. */
   right?: React.ReactNode;
+  /**
+   * Bottom row, level with the 26px title.
+   *
+   * For an action that belongs WITH the title rather than with the
+   * navigation — «طلباتي» beside «اطلب جهاز». Up on the top row it sat
+   * alone against an empty band and read as a second nav control; beside
+   * the title it reads as the other thing you can do on this screen.
+   */
+  titleRight?: React.ReactNode;
   badge?: 'BUYER' | 'SHOP';
 }
 
-export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: HeaderProps) {
+export function Header({ title, eyebrow, onBack, right, titleRight, badge = 'BUYER' }: HeaderProps) {
   const insets = useSafeAreaInsets();
   return (
     <View style={{ paddingHorizontal: 20, paddingTop: 6 + insets.top, paddingBottom: 14, backgroundColor: theme.bg }}>
@@ -131,9 +141,23 @@ export function Header({ title, eyebrow, onBack, right, badge = 'BUYER' }: Heade
           {eyebrow}
         </Text>
       ) : null}
-      <Text style={{ marginTop: eyebrow ? 4 : 14, fontFamily: fonts.arBold, fontSize: 26, color: theme.ink, letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}>
-        {title}
-      </Text>
+      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: eyebrow ? 4 : 14 }}>
+        {/* `flex: 1`, never `flexShrink` — verified on device. Under shrink
+            pressure Android measures this Arabic string short and clips it:
+            «اطلب جهاز» rendered as «اطلب ج...» with half the row empty
+            beside it. Owning the free space instead means there is no
+            pressure to mismeasure, and a title long enough to genuinely
+            need two lines gets them rather than an ellipsis. */}
+        <Text
+          style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 26, color: theme.ink, letterSpacing: -0.5, lineHeight: 32, textAlign: 'right' }}
+        >
+          {title}
+        </Text>
+        {/* `flexShrink: 0` so a long title never squeezes the control down
+            to nothing — Arabic drops a whole trailing token under shrink
+            pressure rather than ellipsising. */}
+        {titleRight ? <View style={{ flexShrink: 0 }}>{titleRight}</View> : null}
+      </View>
     </View>
   );
 }

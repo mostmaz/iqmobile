@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { RecentlyViewedRail } from '../../components/RecentlyViewedRail';
-import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, TextInput, PanResponder, Alert, Modal, Pressable } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -8,7 +8,7 @@ import { useTabBarClearance } from '../../lib/tabBarClearance';
 import { useCart } from '../../lib/cart';
 import { CONDITIONS } from '../../lib/conditions';
 import { digitsOnly } from '../../lib/format';
-import { theme, fonts, radius, shadowAccent, FONT_SCALE_TIGHT } from '../../theme';
+import { theme, fonts, radius, shadowAccent, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Pill } from '../../components/ui';
 import { IconFilter, IconBell, IconCheck, IconPlus, IconMinus, IconPin, IconBag, IconChat } from '../../components/icons';
 import { fmtIQD } from '../../components/ui';
@@ -234,8 +234,8 @@ export default function BrowseScreen({ navigation }: any) {
   // taps on the steppers/buttons inside still work.
   const filterPan = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_e, g) => g.dy < -12 && Math.abs(g.dy) > Math.abs(g.dx),
-      onPanResponderRelease: (_e, g) => { if (g.dy < -40) setShowFilter(false); },
+      onMoveShouldSetPanResponder: (_e, g) => g.dy > 12 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderRelease: (_e, g) => { if (g.dy > 40) setShowFilter(false); },
     }),
   ).current;
 
@@ -524,16 +524,44 @@ export default function BrowseScreen({ navigation }: any) {
           </View>
         </View>
 
-        {showFilter ? (
-          <View
-            {...filterPan.panHandlers}
-            style={{
-              marginTop: 2, padding: 14, backgroundColor: theme.surface,
-              borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
-            }}
+        {/* A bottom sheet, not a block wedged into the header.
+        
+            Inline, the panel pushed the whole feed down and its own bottom
+            scrolled away with the page, so «تطبيق» could not be pinned and
+            the taller controls were reachable only by scrolling the feed. As
+            a sheet it owns the screen while it is open, the actions sit on a
+            bar that cannot scroll away, and it needs no nav bar — the scrim
+            and the swipe-down are both ways out. */}
+        <Modal
+          visible={showFilter}
+          transparent
+          animationType="slide"
+          statusBarTranslucent
+          onRequestClose={() => setShowFilter(false)}
+        >
+          <Pressable
+            onPress={() => setShowFilter(false)}
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
           >
-            {/* Small grab handle — hints the panel is swipe-up dismissable. */}
+            {/* Swallows taps so they do not reach the scrim behind. */}
+            <Pressable
+              onPress={() => {}}
+              {...filterPan.panHandlers}
+              style={{
+                backgroundColor: theme.surface,
+                borderTopLeftRadius: 26, borderTopRightRadius: 26,
+                maxHeight: '92%', paddingTop: 10,
+              }}
+            >
+            {/* Grab handle — swipe DOWN to dismiss, which is the direction a
+                sheet at the bottom of the screen actually moves. Inline it
+                was up, and that gesture now means nothing. */}
             <View style={{ alignSelf: 'center', width: 34, height: 4, borderRadius: 999, backgroundColor: theme.line, marginBottom: 10 }} />
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 14 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             {/* Order first: it is the one control that changes every row
                 below it, and the reason most buyers open this panel at all
                 ("cheapest first") had no home before. */}
@@ -674,7 +702,23 @@ export default function BrowseScreen({ navigation }: any) {
                 understate the feed. The handoff drew a count here
                 unconditionally; a wrong count on the button that closes the
                 sheet is worse than no count. */}
-            <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 10, alignItems: 'stretch' }}>
+            </ScrollView>
+
+            {/* Pinned. The whole point of the sheet: on a long filter list
+                the button that closes it must not be somewhere below the
+                fold. */}
+            <View style={{
+              backgroundColor: theme.surface,
+              borderTopWidth: 1, borderTopColor: theme.line,
+              ...shadowUp,
+              paddingHorizontal: 16, paddingTop: 12,
+              // The modal is full-screen, so the sheet extends UNDER the
+              // gesture bar — the inset has to be added to real padding
+              // rather than max()'d with it, or the home indicator draws
+              // across «تطبيق».
+              paddingBottom: insets.bottom + 14,
+              flexDirection: 'row-reverse', gap: 8, alignItems: 'stretch',
+            }}>
               <View style={{ flex: 1 }}>
                 <Btn kind="primary" full onPress={() => setShowFilter(false)}>
                   {!hasNextPage && items.length > 0 ? `عرض ${arNum(items.length)} إعلان` : ar.browse.apply}
@@ -684,8 +728,9 @@ export default function BrowseScreen({ navigation }: any) {
                 <Btn kind="ghost" full onPress={clear}>{ar.browse.clear}</Btn>
               </View>
             </View>
-          </View>
-        ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
 
       <FlatList

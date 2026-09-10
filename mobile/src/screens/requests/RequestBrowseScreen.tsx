@@ -300,10 +300,13 @@ export default function RequestBrowseScreen({ navigation }: any) {
           : step === 'model' ? 'اختر الجهاز'
           : brandLabel(brandRow ?? { name: brand! })}
         // Back walks the funnel back a step. It takes the slot the iQ badge
-        // normally holds — leading edge, beside the title — so «طلباتي»
-        // keeps the other side.
+        // normally holds — leading edge, beside the title.
         onBack={step === 'brand' ? undefined : goBack}
-        right={(
+        // «طلباتي» sits on the TITLE row, not the nav row. Up there it was
+        // a lone pill against an empty band, reading as a second back
+        // button; level with «اطلب جهاز» it reads as the other thing this
+        // screen does.
+        titleRight={(
           <TouchableOpacity
             onPress={() => navigation.navigate('RequestBoard')}
             hitSlop={8}
