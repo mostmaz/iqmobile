@@ -4,6 +4,7 @@ import { requireAuth } from '../auth.js';
 import { isBrand } from '../brands.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { queryTokens } from '../searchNormalize.js';
+import { AR_DIGITS, normalizeArabic, mapDeviceToken } from '../arabicDeviceTerms.js';
 import { notify, hasNotified } from '../notify.js';
 
 const r = Router();
@@ -14,16 +15,53 @@ import { CONDITIONS } from '../conditions.js';
 // fire a burst of notifications when several matching listings post together.
 const PUSH_COOLDOWN_MS = 15 * 60 * 1000;
 
-// Mirror of arabicNormalizeSql (server/src/searchNormalize.js) in JS: lower,
-// digit-fold, collapse Arabic orthography, strip spaces. Applied to both the
-// listing haystack and (via queryTokens) the query so matching behaves the
-// same as the real /listings search.
+// Lower, digit-fold, collapse Arabic orthography, TRANSLITERATE known device
+// words, strip spaces.
+//
+// The transliteration step is the one that earns its keep. Without it this
+// was a pure orthography fold, which meant «ايفون ١٣» normalised to
+// "ايفون13" and "iPhone 13" to "iphone13" — two different strings for the
+// same phone. Every consumer of this function compares an Arabic-typed
+// thing to a Latin-typed one, so all three were silently half-blind:
+//
+//   - a saved search whose haystack is a listing's own Arabic description,
+//     matched against query tokens that were ALREADY transliterated by
+//     queryTokens() — so the two sides were never in the same alphabet;
+//   - a wishlist entry, compared model-to-model;
+//   - a device request, compared to a seller's listing.
+//
+// The vocabulary is arabicDeviceTerms.js, the same table buyer search, the
+// device picker and the nightly name cleanup use. Adding a product line
+// there fixes all of them at once, which is exactly why it lives in one
+// file. Unknown tokens pass through untouched, so an Arabic word that is
+// not a device term («كفاله») still matches an Arabic description.
+//
+// The cost, stated: for the free-text haystack this trades a little
+// precision for a lot of recall. A handful of dictionary keys are ordinary
+// Arabic words — «ساعه» (hour) maps to "watch", «ان» to "n" — so a
+// description saying «خلال ساعة» now contains the token "watch". That only
+// bites when the SEARCHER typed something that maps to the same token, and
+// against it stands the common case this fixes: Iraqi sellers write model
+// names in Arabic in the description, and a saved search for "iPhone" could
+// not see «ايفون» at all.
+//
+// NOT identical to arabicNormalizeSql() any more, and deliberately so:
+// that expression is a chain of REPLACEs evaluated per row, and a hundred
+// more of them on every browse query is not worth the same reach. The two
+// are never compared against each other — each is used on both sides of
+// its own comparison — so this is a capability difference, not drift.
 export function norm(s) {
-  return String(s || '').toLowerCase()
-    .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
-    .replace(/ة/g, 'ه').replace(/ـ/g, '')
-    .replace(/٠/g, '0').replace(/١/g, '1').replace(/٢/g, '2').replace(/٣/g, '3').replace(/٤/g, '4')
-    .replace(/٥/g, '5').replace(/٦/g, '6').replace(/٧/g, '7').replace(/٨/g, '8').replace(/٩/g, '9')
+  const folded = normalizeArabic(String(s || '').toLowerCase())
+    .replace(/[٠-٩۰-۹]/g, (d) => AR_DIGITS[d] || d);
+  return folded
+    // Split letter↔digit boundaries first, or «ايفون13» is one unknown
+    // token and never reaches the dictionary. expandQuery does the same.
+    .replace(/([؀-ۿ])(\d)/g, '$1 $2')
+    .replace(/(\d)([؀-ۿ])/g, '$1 $2')
+    .split(/[\s،,.\-_/]+/)
+    .filter(Boolean)
+    .map(mapDeviceToken)
+    .join('')
     .replace(/\s+/g, '');
 }
 

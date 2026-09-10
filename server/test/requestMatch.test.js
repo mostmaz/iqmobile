@@ -71,16 +71,31 @@ test('orthography and spacing fold together', () => {
   assert.deepEqual(match(listing({ model: 'أيفون13' })), [id]);
 });
 
-test('KNOWN GAP: the two scripts do not fold into each other', () => {
-  // norm('iPhone 13') is "iphone13" and norm('ايفون ١٣') is "ايفون13", so a
-  // buyer who wrote the model in Arabic is never matched with a seller who
-  // wrote it in Latin. This is pinned as a fact, not endorsed: the same gap
-  // exists in saved searches and the wishlist, because they share this
-  // normalizer, and closing it is a transliteration table rather than a
-  // change to this module. The test exists so that whoever adds one sees
-  // this line go red and knows to delete it.
-  request({ model: 'ايفون ١٣' });
+test('the two scripts fold into each other', () => {
+  // This was the gap: a buyer who wrote «ايفون ١٣» was never matched with a
+  // seller who wrote "iPhone 13", because norm() folded orthography but did
+  // not transliterate. It now runs both through arabicDeviceTerms, the same
+  // vocabulary buyer search and the device picker use.
+  const id = request({ model: 'ايفون ١٣' });
+  assert.deepEqual(match(listing({ model: 'iPhone 13' })), [id]);
+});
+
+test('transliteration does not make everything match everything', () => {
+  // The failure mode of a translation layer is over-matching. "iPhone 13"
+  // must still refuse "iPhone 13 Pro Max" in either script — that is the
+  // difference between a helpful lead and an offer the buyer did not ask
+  // for at twice the price.
+  request({ model: 'ايفون ١٣ برو ماكس' });
   assert.deepEqual(match(listing({ model: 'iPhone 13' })), []);
+  const exact = request({ model: 'ايفون ١٣' });
+  assert.deepEqual(match(listing({ model: 'iPhone 13' })), [exact]);
+});
+
+test('a non-device Arabic word is left alone', () => {
+  // Unknown tokens pass through untouched, so an Arabic model nobody has a
+  // Latin name for still matches itself rather than being mangled.
+  const id = request({ model: 'جهاز غريب' });
+  assert.deepEqual(match(listing({ model: 'جهاز غريب' })), [id]);
 });
 
 test('a price a little over the ceiling still matches, and says so', () => {
