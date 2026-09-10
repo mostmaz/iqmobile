@@ -94,12 +94,6 @@ android {
         applicationId 'org.iqmobile.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        applicationIdSuffix ".test"
-        resValue "string", "app_name_test", "iQ تجربة"
-        applicationIdSuffix ".test"
-        resValue "string", "app_name_test", "iQ تجربة"
-        applicationIdSuffix ".test"
-        resValue "string", "app_name_test", "iQ تجربة"
         versionCode 57
         versionName "0.5.0"
 
@@ -197,6 +191,34 @@ gradle.taskGraph.whenReady { graph ->
             "  so this release would be signed with the DEBUG key and rejected by Play Store.\n\n" +
             "  Restore keystore.properties (and the keystore it points at) from your backup,\n" +
             "  or pass -PallowDebugSigningForRelease=true for a local throwaway build.\n")
+    }
+}
+
+// A release artifact must carry the REAL package name.
+//
+// build-test-apk.sh injects `applicationIdSuffix ".test"` into defaultConfig
+// and restores the file on an EXIT trap. A trap does not fire if the script is
+// killed, so an interrupted test build leaves the suffix behind — and it was
+// then committed (three copies of it, from three interrupted runs) and shipped
+// into an AAB that Play rejected with «يجب أن يكون لحزمة APK … اسم الحزمة
+// org.iqmobile.app». The rejection arrives an hour later at the upload dialog,
+// long after the build that caused it.
+//
+// So: fail at task-graph time, on the machine that made the mistake.
+gradle.taskGraph.whenReady { graph ->
+    def releaseTask = graph.allTasks.find { t ->
+        t.project == project && t.name ==~ /(assemble|bundle|package)Release/
+    }
+    if (!releaseTask) return
+    def actual = android.defaultConfig.applicationId +
+                 (android.defaultConfig.applicationIdSuffix ?: '')
+    if (actual != 'org.iqmobile.app') {
+        throw new GradleException(
+            "\n\n  Refusing to build ${releaseTask.name}: applicationId is '${actual}',\n" +
+            "  but Play only accepts 'org.iqmobile.app'.\n\n" +
+            "  An interrupted build-test-apk.sh leaves `applicationIdSuffix \".test\"` in\n" +
+            "  android/app/build.gradle. Remove it (and any resValue app_name_test beside\n" +
+            "  it) from defaultConfig, then build again.\n")
     }
 }
 

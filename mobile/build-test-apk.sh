@@ -77,6 +77,21 @@ g = open('android/app/build.gradle').read()
 # silent no-op, so the build "succeeds" and produces an APK with the REAL
 # package id that overwrites the user's installed app.
 import re as _re
+
+# Strip any suffix a PREVIOUS run left behind before adding our own.
+#
+# restore() runs on an EXIT trap, and a trap does not fire when the script is
+# killed. Three interrupted runs left three stacked copies of these two lines
+# in build.gradle, they were committed, and the next production AAB carried
+# applicationId org.iqmobile.app.test — which Play rejects at the upload
+# dialog, an hour of build time after the mistake. Injecting idempotently
+# means an interrupted run costs a dirty file, not a broken release.
+_before = g
+g = _re.sub(r'^        applicationIdSuffix "[^"]*"\n        resValue "string", "app_name_test", "[^"]*"\n',
+            '', g, flags=_re.M)
+if g != _before:
+    print('  (cleaned up a previous interrupted run)')
+
 _m = _re.search(r"^        versionCode (\d+)$", g, _re.M)
 if not _m:
     raise SystemExit("build-test-apk: could not find the versionCode line in build.gradle")
@@ -92,6 +107,11 @@ open('android/app/build.gradle', 'w').write(g)
 #    LAN test server (http://192.168.x.x) is reachable — Android blocks
 #    cleartext by default since API 28.
 m = open('android/app/src/main/AndroidManifest.xml').read()
+# Same idempotency problem as the gradle file above: an interrupted run leaves
+# the test label committed, and the release build then dies at aapt with
+# "resource string/app_name_test not found" (the resValue that defined it is
+# only added for a test build).
+m = m.replace('android:label="@string/app_name_test"', 'android:label="@string/app_name"')
 m = m.replace('android:label="@string/app_name"', 'android:label="@string/app_name_test"', 1)
 # tools:replace is required, not cosmetic: TAndroidLame (pulled in by the
 # audio dep) declares android:label="@string/app_name" on its own
