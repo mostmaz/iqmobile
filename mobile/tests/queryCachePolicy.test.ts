@@ -42,3 +42,13 @@ test('a missing or odd key does not throw', () => {
   assert.equal(shouldPersistQuery([] as any), true);
   assert.equal(shouldPersistQuery([undefined] as any), true);
 });
+
+test('the requests badge is per-user, however public its numbers look', () => {
+  // A count of requests near you reads like public browsing data, but the
+  // key carries the viewer's governorate and their own last-seen stamp —
+  // restoring it under the next account on a shared phone badges their tab
+  // with somebody else's city.
+  assert.equal(shouldPersistQuery(['request-pulse', 'Baghdad', 123]), false);
+  assert.equal(shouldPersistQuery(['requests-board', 'Baghdad']), true,
+    'the BOARD is public — the same requests everyone sees');
+});

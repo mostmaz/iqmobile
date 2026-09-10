@@ -15,6 +15,11 @@
 const PRIVATE_KEYS = [
   'me', 'chat', 'chats', 'messages', 'inbox', 'notifications', 'mine',
   'myListings', 'saved', 'orders', 'cart', 'requests-mine', 'offers',
+  // The الطلبات badge. It looks like public data — a count of requests near
+  // you — but it is keyed to the signed-in user's governorate AND to when
+  // THIS person last opened the feed, so restoring it under the next account
+  // on a shared phone puts another city's badge on their tab.
+  'request-pulse',
 ];
 
 /**
