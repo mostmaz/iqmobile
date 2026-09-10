@@ -60,13 +60,17 @@ export function DescriptionField({ value, onChange, note }: {
         flexDirection: 'row-reverse', alignItems: 'baseline',
         justifyContent: 'space-between', marginBottom: 8,
       }}>
-        {/* flexShrink: 0 is load-bearing. With the counter as a sibling in a
-            space-between row, Android shrank this Text and dropped «الجهاز»
-            entirely — Arabic loses a whole trailing token rather than
-            ellipsising. Every label paired with a counter needs this. */}
-        <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ flexShrink: 0, fontFamily: fonts.arBold, fontSize: 12, color: theme.subtle }}>
-          وصف حالة الجهاز
-        </Text>
+        {/* The flex:1 View is load-bearing, and flexShrink:0 on the Text is
+            NOT enough — verified on device. Beside the counter, Android
+            measured this Arabic string ~50pt narrower than it paints and
+            clipped «الجهاز» off the end with room to spare on the row.
+            Giving the Text a parent that owns the free width and aligning
+            inside it is what InspectionCard's header already does. */}
+        <View style={{ flex: 1 }}>
+          <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.subtle, textAlign: 'right' }}>
+            وصف حالة الجهاز
+          </Text>
+        </View>
         <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
           fontFamily: fonts.ltrBold, fontSize: 11.5,
           color: met ? theme.success : theme.subtle,
