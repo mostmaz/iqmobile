@@ -76,6 +76,45 @@ const AR = {
     renew: 'تجديد',
     buyerChats: 'محادثات المشترين',
   },
+  // The quick-inspection questions and their answers.
+  //
+  // They lived as literals in lib/conditionDetails.ts, which meant a Kurdish
+  // seller saw «حالة الشاشة» and «بلا خدوش» in the middle of an otherwise
+  // Sorani wizard — half a screen in a language they did not pick. Moving
+  // them here does not translate them; it creates the slot a translator can
+  // fill. ku.ts carries the matching TODO.
+  //
+  // Keys are the stored values, never the display text, so a re-wording here
+  // can never orphan a listing already in the database.
+  inspect: {
+    title: 'فحص سريع للجهاز',
+    blurb: 'أربعة أسئلة تختصر أول ثلاث رسائل من المشتري. «غير معروف» جواب مقبول.',
+    none: 'جهاز جديد — لا أسئلة فحص. انتقل مباشرة إلى السعة واللون.',
+    change: 'تغيير',
+    q: {
+      screen: 'حالة الشاشة',
+      body: 'حالة الهيكل والظهر',
+      repairs: 'هل صُلّح أو بُدّل شيء؟',
+      water: 'هل دخله ماء؟',
+    },
+    a: {
+      clean: 'بلا خدوش',
+      body_clean: 'نظيف',
+      scratches: 'خدوش',
+      cracked: 'مكسورة',
+      display_fault: 'عيب بالعرض أو اللمس',
+      replaced: 'مبدّلة',
+      dents: 'ضربات أو انحناء',
+      cracked_back: 'ظهر مكسور',
+      none: 'لا شيء',
+      screen_replaced: 'الشاشة مبدّلة',
+      battery_replaced: 'البطارية مبدّلة',
+      other_repair: 'إصلاح آخر',
+      no: 'لا',
+      yes: 'نعم',
+      unknown: 'غير معروف',
+    },
+  },
   post: {
     title: 'انشر إعلان جديد',
     step1: 'العلامة والموديل',

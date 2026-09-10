@@ -29,6 +29,7 @@ import SavedSearchesScreen from '../screens/search/SavedSearchesScreen';
 import WalletScreen from '../screens/profile/WalletScreen';
 import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
+import ListingPublishedScreen from '../screens/listing/ListingPublishedScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
 import MyListingsScreen from '../screens/listing/MyListingsScreen';
 import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
@@ -177,6 +178,7 @@ function SellStackNav() {
   return (
     <BrowseStack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.bg } }}>
       <BrowseStack.Screen name="SellHome" component={PostListingScreen} />
+      <BrowseStack.Screen name="ListingPublished" component={ListingPublishedScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       {/* Publishing lands on ListingDetail inside THIS stack — the promote
           CTA there needs the route locally or the post-publish upsell dies. */}

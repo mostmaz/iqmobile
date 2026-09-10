@@ -521,15 +521,22 @@ export default function PostListingScreen({ navigation }: any) {
       clearDraft();
       clientKey.current = newClientKey();
 
-      if (failedCount > 0) {
-        // Say it plainly and point at the one place it can be fixed. The old
-        // code would have deleted the listing rather than admit this.
-        Alert.alert(
-          'نُشر الإعلان، وبعض الصور لم تُرفع',
-          `${failedCount} من الصور لم تُرفع بسبب الاتصال. إعلانك منشور، وتقدر ترفع الصور الباقية من تعديل الإعلان.`,
-        );
-      }
-      navigation.replace('ListingDetail', { id: listing.id });
+      // A screen, not an Alert on the way past. Failed uploads and photos
+      // awaiting review are the two things a seller most needs to know at
+      // this moment, and both used to arrive as a system dialog dismissed
+      // with one tap while the listing page was already loading behind it.
+      navigation.replace('ListingPublished', {
+        id: listing.id,
+        brand: listing.brand,
+        model: listing.model,
+        price: listing.asking_price,
+        governorate: govAr,
+        failedPhotos: failedCount,
+        photosPending: images.length - failedCount,
+        // Whatever the checklist still has to say, as ONE offer to finish
+        // rather than a list of complaints at the moment of success.
+        remaining: qualityIssues.map((i) => ({ id: i.id, title: i.title })),
+      });
     },
     // `reason` first: the server sends a widely-understood `error` code for
     // the benefit of older builds and puts the specific cause in `reason`.
@@ -1278,9 +1285,61 @@ export default function PostListingScreen({ navigation }: any) {
             }}>
               <IconCheck size={16} color={theme.success} sw={2.2} />
               <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13, color: theme.success, textAlign: 'right', lineHeight: 20 }}>
-                {qualityIssues.length ? 'راجع الملاحظات أدناه لتحسين إعلانك. يمكنك النشر بعد مراجعتها.' : 'جاهز للنشر. اضغط "نشر" بالأسفل لإطلاق إعلانك.'}
+                {qualityIssues.length
+                  ? 'الملاحظات لا تمنع النشر. «نشر» يعمل في كل الحالات.'
+                  : 'جاهز للنشر. اضغط «نشر» بالأسفل لإطلاق إعلانك.'}
               </Text>
             </View>
+
+            {/* The remaining fixes, attached to the preview they are about.
+                Numbered so the seller can match a note to what they just
+                looked at, and each one jumps to the step that owns it — a
+                «تعديل» that lands on the wrong screen is worse than none. */}
+            {qualityIssues.length ? (
+              <View style={{
+                marginTop: 12, backgroundColor: theme.surface,
+                borderWidth: 1, borderColor: theme.line, borderRadius: radius.xxl,
+                paddingHorizontal: 14,
+              }}>
+                {qualityIssues.map((issue, i) => (
+                  <View
+                    key={issue.id}
+                    style={{
+                      flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10,
+                      paddingVertical: 12,
+                      borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.line,
+                    }}
+                  >
+                    <View style={{
+                      width: 20, height: 20, borderRadius: 10, marginTop: 1,
+                      backgroundColor: theme.accentSoft, alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 11, color: theme.accentDeep }}>
+                        {String(i + 1)}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink, textAlign: 'right' }}>
+                        {issue.title}
+                      </Text>
+                      <Text style={{ marginTop: 2, fontFamily: fonts.ar, fontSize: 11.5, lineHeight: 18, color: theme.subtle, textAlign: 'right' }}>
+                        {issue.advice}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      onPress={() => {
+                        setErr(''); setFieldErr(null); setStep(issue.step);
+                        qualityScrollRef.current?.scrollTo({ y: 0, animated: true });
+                      }}
+                    >
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.accent }}>تعديل</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </>
         )}
 

@@ -20,9 +20,21 @@ import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 import { Pill } from './ui';
 import { IconCheck } from './icons';
 import { fieldsFor, labelFor, type ConditionDetails } from '../lib/conditionDetails';
+import { ar } from '../i18n/ar';
+
+// Display strings come from i18n when the active language has them, and fall
+// back to the literals in conditionDetails.ts otherwise. That fallback is the
+// point: Sorani has no wording for these yet, and Arabic on screen beats a
+// blank label or a raw key. See the TODO block in i18n/ku.ts.
+const t = (path: string, fallback: string): string => {
+  const parts = path.split('.');
+  let node: any = ar as any;
+  for (const k of parts) { node = node?.[k]; if (node == null) return fallback; }
+  return typeof node === 'string' && node ? node : fallback;
+};
 
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
-const ar = (n: number) => String(Math.max(0, Math.floor(n))).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
+const arNum = (n: number) => String(Math.max(0, Math.floor(n))).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
 
 export function InspectionCard({ condition, value, onChange }: {
   condition: string;
@@ -46,7 +58,7 @@ export function InspectionCard({ condition, value, onChange }: {
       }}>
         <IconCheck size={16} color={theme.success} />
         <Text style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13, lineHeight: 20, color: theme.ink, textAlign: 'right' }}>
-          جهاز جديد — لا أسئلة فحص. انتقل مباشرة إلى السعة واللون.
+          {t('inspect.none', 'جهاز جديد — لا أسئلة فحص. انتقل مباشرة إلى السعة واللون.')}
         </Text>
       </View>
     );
@@ -71,7 +83,7 @@ export function InspectionCard({ condition, value, onChange }: {
             فحص سريع للجهاز
           </Text>
           <Text style={{ marginTop: 3, fontFamily: fonts.ar, fontSize: 11.5, lineHeight: 18, color: theme.subtle, textAlign: 'right' }}>
-            أربعة أسئلة تختصر أول ثلاث رسائل من المشتري. «غير معروف» جواب مقبول.
+            {t('inspect.blurb', 'أربعة أسئلة تختصر أول ثلاث رسائل من المشتري. «غير معروف» جواب مقبول.')}
           </Text>
         </View>
         <View style={{
@@ -116,12 +128,12 @@ export function InspectionCard({ condition, value, onChange }: {
                   <IconCheck size={12} color="#fff" />
                 </View>
                 <Text numberOfLines={1} style={{ flex: 1, fontFamily: fonts.ar, fontSize: 13, color: theme.subtle, textAlign: 'right' }}>
-                  {f.question}
+                  {t(`inspect.q.${f.id}`, f.question)}
                 </Text>
                 <Text numberOfLines={1} style={{ fontFamily: fonts.arBold, fontSize: 13, color: theme.ink }}>
                   {labelFor(f.id, picked) || picked}
                 </Text>
-                <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.accent }}>تغيير</Text>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.accent }}>{t('inspect.change', 'تغيير')}</Text>
               </TouchableOpacity>
             ) : (
               <>
@@ -131,11 +143,11 @@ export function InspectionCard({ condition, value, onChange }: {
                     backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center',
                   }}>
                     <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 11, color: theme.chipInk }}>
-                      {ar(i + 1)}
+                      {arNum(i + 1)}
                     </Text>
                   </View>
                   <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13.5, color: theme.ink, textAlign: 'right' }}>
-                    {f.question}
+                    {t(`inspect.q.${f.id}`, f.question)}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, paddingRight: 30 }}>

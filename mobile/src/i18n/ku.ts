@@ -75,6 +75,21 @@ export const ku = {
     renew: 'نوێکردنەوە',
     buyerChats: 'گفتوگۆی کڕیارەکان',
   },
+  // ── NOT TRANSLATED YET ───────────────────────────────────────────
+  //
+  // `inspect` is deliberately absent. applyInto() copies only keys that
+  // exist HERE, so an absent section leaves the Arabic showing — which is
+  // honest, and better than shipping machine Sorani a seller would have to
+  // decode. The design file for this redesign proposed wording and said, in
+  // as many words, that it needs a native speaker before it ships.
+  //
+  // What a translator needs to fill: ar.inspect (title, blurb, none, change,
+  // four questions, fifteen answers). The keys are stored VALUES, so the
+  // wording can change freely without touching any listing.
+  //
+  // Also still Arabic-only and outside these files entirely: accessory
+  // names, colour names, warranty labels and the listing-quality advice in
+  // lib/listingQuality.ts.
   post: {
     title: 'ڕیکلامی نوێ بڵاوبکەرەوە',
     step1: 'براند و مۆدێل',
