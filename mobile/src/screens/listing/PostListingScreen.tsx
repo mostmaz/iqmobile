@@ -1,6 +1,8 @@
 import { AskingPriceGuidance } from '../../components/AskingPriceGuidance';
 import { listingQuality } from '../../lib/listingQuality';
-import { ListingQualityChecklist } from '../../components/ListingQualityChecklist';
+import { ListingStrengthRail } from '../../components/ListingStrengthRail';
+import { InspectionCard } from '../../components/InspectionCard';
+import { DescriptionField } from '../../components/DescriptionField';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler, Modal, KeyboardAvoidingView } from 'react-native';
 import { Img } from '../../components/Img';
@@ -160,6 +162,11 @@ export default function PostListingScreen({ navigation }: any) {
   const [description, setDescription] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const qualityIssues = listingQuality({ brand, model, condition, description, images, conditionDetails });
+  // The denominator for «قوة الإعلان». Not a constant in listingQuality.ts
+  // because the rules there are conditional — a `new` device raises checks a
+  // used one never sees — so this is the count a typical listing can face.
+  // It only scales the bar; the notes themselves are always the real list.
+  const TOTAL_QUALITY_CHECKS = 9;
   // Optional video: local uri after compression, plus a busy flag while the
   // compressor runs (it can take a few seconds on a long clip).
   const [video, setVideo] = useState<{ uri: string; sizeMB: number | null; compressed: boolean } | null>(null);
@@ -666,6 +673,18 @@ export default function PostListingScreen({ navigation }: any) {
       <Header title={ar.post.title} eyebrow={`الخطوة ${step + 1} من 6`} onBack={() => step === 0 ? navigation.goBack() : setStep(step - 1)} />
       <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
         <StepDots total={6} current={step} />
+        {/* «قوة الإعلان» — the checklist, moved to where it gets read. It
+            used to sit BELOW each step's content, which on a 390pt screen
+            means below the fold, so a seller could finish the whole wizard
+            and press publish having never seen a note. */}
+        <ListingStrengthRail
+          issues={qualityIssues}
+          totalChecks={TOTAL_QUALITY_CHECKS}
+          onEdit={(target) => {
+            setErr(''); setFieldErr(null); setStep(target);
+            qualityScrollRef.current?.scrollTo({ y: 0, animated: true });
+          }}
+        />
       </View>
       {/* automaticallyAdjustKeyboardInsets is iOS-only, so on Android the
           keyboard still opened over «وصف حالة الجهاز» — the last field on
@@ -780,36 +799,14 @@ export default function PostListingScreen({ navigation }: any) {
               {SELLABLE_CONDITIONS.map((c) => <Pill key={c} active={condition === c} onPress={() => setCondition(c)}>{(ar.listing as any)[c]}</Pill>)}
             </View>
 
-            {/* Structured condition. Skipped entirely for new/sealed — a
-                boxed phone has no repair history to ask about, and asking
-                anyway teaches sellers the form is not paying attention.
-                These are SUGGESTIONS, never a gate: leaving them blank still
-                publishes. What they buy is the prose nags standing down and
-                a listing page that answers the buyer's first three questions
-                without a paragraph. */}
-            {fieldsFor(condition).map((f) => (
-              <View key={f.id}>
-                <FieldLabel>{f.question}</FieldLabel>
-                <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                  {f.options.map((o) => (
-                    <Pill
-                      key={o.value}
-                      active={conditionDetails[f.id] === o.value}
-                      onPress={() => setConditionDetails((prev) => (
-                        // Tapping the chosen answer again clears it: an answer
-                        // given by accident must be retractable, and «غير
-                        // معروف» is a different statement from saying nothing.
-                        prev[f.id] === o.value
-                          ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== f.id))
-                          : { ...prev, [f.id]: o.value }
-                      ))}
-                    >
-                      {o.label}
-                    </Pill>
-                  ))}
-                </View>
-              </View>
-            ))}
+            {/* Structured condition, as ONE card rather than four rows of
+                pills indistinguishable from «السعة» and «اللون» above them.
+                An answered row collapses, so the step gets shorter as the
+                seller works — which is the reason anyone reaches the fourth
+                question. Still suggestions, never a gate: leaving them blank
+                publishes. See components/InspectionCard.tsx. */}
+            <InspectionCard condition={condition} value={conditionDetails} onChange={setConditionDetails} />
+
             <FieldLabel>{ar.listing.storage}</FieldLabel>
             <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
               {STORAGE_CHOICES.map((s) => <Pill key={s} active={storage === s} onPress={() => setStorage(s)}>{s}</Pill>)}
@@ -950,9 +947,16 @@ export default function PostListingScreen({ navigation }: any) {
               condition={condition} governorate={GOV_AR_TO_EN[govAr]} askingPrice={Number(askingPrice)} />
             <FieldLabel>{ar.auth.city}</FieldLabel>
             <Input value={city} onChangeText={setCity} placeholder={districtHint(govAr)} />
-            <FieldLabel style={{ marginTop: 12 }}>وصف حالة الجهاز</FieldLabel>
-            <Input value={description} onChangeText={setDescription}
-              placeholder="حالة الشاشة والهيكل، أي إصلاح أو قطع مبدلة، والعيوب إن وجدت. اذكر ما لا تعرفه بوضوح." multiline />
+            {/* The note about the description now lives UNDER the
+                description, and turns green when it is satisfied. It used to
+                be one row in a card at the bottom of the step, which is
+                where a seller who has already scrolled past the field never
+                looks. See components/DescriptionField.tsx. */}
+            <DescriptionField
+              value={description}
+              onChange={setDescription}
+              note={qualityIssues.find((i) => i.id === 'description')?.advice}
+            />
           </>
         )}
         {step === 3 && (
@@ -1280,15 +1284,10 @@ export default function PostListingScreen({ navigation }: any) {
           </>
         )}
 
-        {/* `review` used to be true on step 5 unconditionally, so a clean
-            listing still got a «راجع جودة إعلانك» card saying there was
-            nothing to review. A card whose only content is "no content" is
-            noise at the moment of publishing. */}
-        {[0,2,4,5].includes(step) && (step === 5 ? qualityIssues.length > 0 : true) ? <ListingQualityChecklist
-          issues={step === 5 ? qualityIssues : qualityIssues.filter(issue => issue.step === step)}
-          review={false}
-          onEdit={target => { setErr(''); setFieldErr(null); setStep(target); qualityScrollRef.current?.scrollTo({ y: 0, animated: true }); }}
-        /> : null}
+        {/* The bottom-of-step checklist is gone — it lives in the header
+            rail now, where it cannot be scrolled past. What remains here is
+            the review step's own summary, which is about publishing rather
+            than about any one field. */}
       </ScrollView>
       </KeyboardAvoidingView>
 
