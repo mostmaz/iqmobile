@@ -82,13 +82,9 @@ export default function BrowseScreen({ navigation }: any) {
   const cartCount = useCart().count;
   const { openCompose } = useRequestHub();
   const [filters, setFilters] = useState<BrowseFilters>({});
-  // Search is a real field in this header again (design 8a). It had a tab of
-  // its own for a while; the tab is gone and the slot went to «اطلب جهاز»,
-  // but the SearchScreen it opened is still where results are shown — this
-  // field hands `q` to it rather than filtering in place, because the two
-  // screens answer different questions (a feed you browse vs. a query you
-  // asked).
-  const [q, setQ] = useState('');
+  // Search lives in this header again (design 8a) after a spell as a tab of
+  // its own — but as a doorway to SearchScreen, not as an input. See its
+  // comment in the JSX below.
   const [showFilter, setShowFilter] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -522,46 +518,34 @@ export default function BrowseScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* Search — a real field, not a button that opens one.
+        {/* Search — a doorway, not an input.
         
-            It had a tab of its own, and the tab is what killed it: a buyer
-            who wants to search does it FROM the feed they are already in, and
-            a tab meant leaving the feed to get a brand rail and no text box
-            at all. Typed text goes to the search screen as `q`, which the
-            server folds through the same Arabic/Latin vocabulary the device
-            picker uses, so «ايفون ١٣» and "iPhone 13" find each other. */}
+            It looks like a field and opens the search screen, where the buyer
+            picks a brand and then an exact device. Typing here instead was
+            tried and reverted: the useful part of this control is that it is
+            visible from the feed (a tab of its own was the thing that hid
+            search), and the useful part of the search screen is the catalogue
+            picker, which a free-text box in the header skips past. */}
         <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-          <View style={{
-            flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-            borderRadius: radius.xl, paddingHorizontal: 13, height: 46,
-          }}>
+          <TouchableOpacity
+            onPress={() => navigation.getParent()?.navigate('Search', { screen: 'SearchHome' })}
+            activeOpacity={0.8}
+            accessibilityRole="search"
+            accessibilityLabel="ابحث عن جهاز"
+            style={{
+              flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+              borderRadius: radius.xl, paddingHorizontal: 13, height: 46,
+            }}
+          >
             <IconSearch size={18} color={theme.subtle} sw={1.8} />
-            <TextInput
-              value={q}
-              onChangeText={setQ}
-              placeholder="دوّر على جهاز، ماركة، موديل…"
-              placeholderTextColor={theme.subtle}
-              returnKeyType="search"
-              // submitEditing, not onChangeText: firing a navigation on every
-              // keystroke would push a screen mid-word and take the keyboard
-              // with it.
-              onSubmitEditing={() => {
-                const term = q.trim();
-                if (!term) return;
-                navigation.getParent()?.navigate('Search', { screen: 'SearchHome', params: { q: term } });
-              }}
-              style={{
-                flex: 1, minWidth: 0, textAlign: 'right',
-                fontFamily: fonts.ar, fontSize: 13, color: theme.ink, padding: 0,
-              }}
-            />
-            {q ? (
-              <TouchableOpacity onPress={() => setQ('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="امسح البحث">
-                <IconClose size={15} color={theme.subtle} sw={1.8} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+            <Text numberOfLines={1} style={{
+              flex: 1, minWidth: 0, textAlign: 'right',
+              fontFamily: fonts.ar, fontSize: 13, color: theme.subtle,
+            }}>
+              دوّر على جهاز، ماركة، موديل…
+            </Text>
+          </TouchableOpacity>
           {/* The filter, beside the thing it filters. The accent dot signals
               an active (non-location) filter; the ink fill shows while the
               sheet is open. */}

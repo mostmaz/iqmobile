@@ -52,9 +52,10 @@ export default function SearchScreen({ navigation, route }: any) {
   const [q, setQ] = useState<string>(route?.params?.q ?? '');
   const [brand, setBrand] = useState<string | null>(route?.params?.brand ?? null);
   const [model, setModel] = useState(route?.params?.model ?? '');
-  // The filters open by default only when there is nothing to filter YET.
-  // Arriving with a query, the results are the answer and the controls are a
-  // wall in front of them; arriving empty, the brand rail IS the search.
+  // The filters open by default, because the brand rail IS the search: the
+  // header's search bar is a doorway to this screen, and what it promises to
+  // open is brand → device. They fold away only when a query has already
+  // answered the question they were asking.
   const [showFilters, setShowFilters] = useState(!(route?.params?.q));
   // undefined = the server's default order. Kept across a brand change: a
   // buyer who asked for cheapest-first means it for the next brand too.
@@ -156,7 +157,9 @@ export default function SearchScreen({ navigation, route }: any) {
               placeholder="دوّر على جهاز، ماركة، موديل…"
               placeholderTextColor={theme.subtle}
               returnKeyType="search"
-              autoFocus={!route?.params?.q && !route?.params?.brand}
+              // Never autoFocus. Arriving from the header's search bar, a
+              // keyboard sliding up over the brand rail hides the thing the
+              // buyer was sent here to use.
               style={{
                 flex: 1, minWidth: 0, textAlign: 'right',
                 fontFamily: q ? fonts.arBold : fonts.ar, fontSize: 13, color: theme.ink, padding: 0,
