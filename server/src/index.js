@@ -25,6 +25,7 @@ import cors from 'cors';
 import { db } from './db.js';
 import authRoutes from './routes/auth.js';
 import listingsRoutes from './routes/listings.js';
+import boostRoutes from './routes/boosts.js';
 import chatsRoutes from './routes/chats.js';
 import dealsRoutes from './routes/deals.js';
 import ratingsRoutes from './routes/ratings.js';
@@ -52,6 +53,7 @@ import featuresRoutes from './routes/features.js';
 import shopsRoutes from './routes/shops.js';
 import { startExpirer } from './expirer.js';
 import { startShopJobs } from './shopJobs.js';
+import { warmAdmobKeys } from './admobSsv.js';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -223,6 +225,9 @@ app.use(activityTracker());
 
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);
+// Rewarded-ad boosts. Mounted at the root: it owns /listings/:id/boost* AND
+// the public /admob/ssv callback Google calls, which is not under /listings.
+app.use('/', boostRoutes);
 app.use('/brands', brandsRoutes);
 app.use('/l', webListingRoutes);  // public shareable listing pages: /l/:id
 // Public shop page at /shop/:id — the browser fallback for the shop banner
@@ -319,3 +324,6 @@ app.listen(PORT, () => {
 
 startExpirer();
 startShopJobs();
+// Fetch Google's SSV verifier keys once at boot, so the first real reward is
+// not also the first network round trip to gstatic.
+warmAdmobKeys();

@@ -188,6 +188,17 @@ r.get('/settings', requireAdmin, (_req, res) => {
     overlay_cta_url: getSetting('overlay_cta_url') || '',
     overlay_version: getSetting('overlay_version') || '1',
     overlay_frequency: getSetting('overlay_frequency') || 'once',
+
+    // Rewarded-ad boost. Off until an operator turns it on AND has pasted
+    // the AdMob unit IDs; empty IDs make the app watch Google's test ads,
+    // which are safe but are not revenue.
+    rewarded_boost_enabled: getSetting('rewarded_boost_enabled') === '1',
+    rewarded_boost_max_per_24h: Number(getSetting('rewarded_boost_max_per_24h')) || 2,
+    rewarded_boost_min_interval_hours: Number(getSetting('rewarded_boost_min_interval_hours')) || 4,
+    rewarded_boost_highlight_hours: Number(getSetting('rewarded_boost_highlight_hours')) || 4,
+    rewarded_boost_top_threshold: Number(getSetting('rewarded_boost_top_threshold')) || 20,
+    admob_rewarded_unit_android: getSetting('admob_rewarded_unit_android') || '',
+    admob_rewarded_unit_ios: getSetting('admob_rewarded_unit_ios') || '',
   });
 });
 
@@ -226,6 +237,27 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.overlay_enabled != null) {
     setSettingValue('overlay_enabled', req.body.overlay_enabled ? '1' : '0');
+  }
+  // Rewarded boost. Numbers are floored at 1 rather than rejected: an
+  // operator who types 0 into "boosts per day" means "off", and the switch
+  // beside it is where they should say so.
+  for (const [k, min, max] of [
+    ['rewarded_boost_max_per_24h', 1, 20],
+    ['rewarded_boost_min_interval_hours', 0, 24],
+    ['rewarded_boost_highlight_hours', 1, 48],
+    ['rewarded_boost_top_threshold', 0, 500],
+  ]) {
+    if (req.body?.[k] != null) {
+      const n = Math.round(Number(req.body[k]));
+      if (!Number.isFinite(n) || n < min || n > max) return res.status(400).json({ error: `bad_${k}` });
+      setSettingValue(k, n);
+    }
+  }
+  for (const k of ['admob_rewarded_unit_android', 'admob_rewarded_unit_ios']) {
+    if (req.body?.[k] != null) setSettingValue(k, String(req.body[k]).trim().slice(0, 120));
+  }
+  if (req.body?.rewarded_boost_enabled != null) {
+    setSettingValue('rewarded_boost_enabled', req.body.rewarded_boost_enabled ? '1' : '0');
   }
   res.json({ ok: true });
 });

@@ -2,6 +2,7 @@ import { sendSellerSummaries } from './sellerSummaries.js';
 import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
+import { logEvent } from './eventLog.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
 // Deals time out after 24h in any non-terminal state (so phone numbers aren't
@@ -95,6 +96,70 @@ function tick() {
     const interval = l.boost_interval_ms || 12 * 60 * 60 * 1000;
     db.prepare('UPDATE phone_listings SET boosted_at=?, next_boost_at=? WHERE id=?')
       .run(now, now + interval, l.id);
+  }
+
+  // ─── rewarded-ad boosts ──────────────────────────────────────────────
+  //
+  // Smart Boost's delayed half. A listing that was already near the top got
+  // its highlight immediately and its bump deferred to now, so the reward
+  // lands when it is worth something instead of moving it from rank 3 to
+  // rank 1. This MUST run server-side: the seller has long since closed the
+  // app, and a client timer would simply never fire.
+  const dueBumps = db
+    .prepare(
+      `SELECT id FROM phone_listings
+        WHERE boost_scheduled_bump_at IS NOT NULL
+          AND boost_scheduled_bump_done_at IS NULL
+          AND boost_scheduled_bump_at <= ?
+        LIMIT ?`,
+    )
+    .all(now, TICK_LIMIT);
+  for (const l of dueBumps) {
+    // Narrowed to the exact pre-state, so two ticks overlapping cannot bump
+    // twice — the same guard the deal-timeout sweep above uses. A listing
+    // sold or removed while it waited is stamped done WITHOUT being bumped:
+    // the seller already had their four hours of highlight, and floating a
+    // sold phone to the top of the feed is worse than not floating it.
+    const res = db
+      .prepare(
+        `UPDATE phone_listings
+            SET bumped_at=?, boost_scheduled_bump_done_at=?
+          WHERE id=? AND boost_scheduled_bump_done_at IS NULL
+            AND status IN ('active','reserved') AND COALESCE(is_draft,0)=0`,
+      )
+      .run(now, now, l.id);
+    if (res.changes === 0) {
+      db.prepare(
+        `UPDATE phone_listings SET boost_scheduled_bump_done_at=?
+          WHERE id=? AND boost_scheduled_bump_done_at IS NULL`,
+      ).run(now, l.id);
+      db.prepare(
+        `UPDATE listing_boosts SET status='failed', failure_reason='listing_gone'
+          WHERE listing_id=? AND status='scheduled'`,
+      ).run(l.id);
+      continue;
+    }
+    db.prepare(
+      "UPDATE listing_boosts SET status='completed' WHERE listing_id=? AND status='scheduled'",
+    ).run(l.id);
+    logEvent({ type: 'boost_scheduled_bump_done', listing_id: l.id });
+  }
+
+  // Highlight windows that have elapsed. Clearing the column is what returns
+  // the card to its normal style — `is_boosted` is computed from it on every
+  // response, so nothing else has to be told.
+  const doneHighlights = db
+    .prepare(
+      'SELECT id FROM phone_listings WHERE boost_highlight_until IS NOT NULL AND boost_highlight_until <= ? LIMIT ?',
+    )
+    .all(now, TICK_LIMIT);
+  for (const l of doneHighlights) {
+    db.prepare('UPDATE phone_listings SET boost_highlight_until=NULL WHERE id=?').run(l.id);
+    // Only an immediate boost completes here. A scheduled one is still owed
+    // its bump and is completed by the loop above.
+    db.prepare(
+      "UPDATE listing_boosts SET status='completed' WHERE listing_id=? AND status='boosted'",
+    ).run(l.id);
   }
 
   // ─── stale "last known price" cleanup ────────────────────────────────

@@ -141,6 +141,8 @@ r.get('/app-config', (_req, res) => {
       AND COALESCE(shop_hidden,0)=0 AND COALESCE(shop_status,'approved')='approved'`,
   ).get().n;
 
+  const rewardedOn = getSetting('rewarded_boost_enabled') === '1';
+
   res.set('Cache-Control', 'public, max-age=60').json({
     price_shop_id: priceShop ? priceShop.id : null,
     storefront,
@@ -167,6 +169,22 @@ r.get('/app-config', (_req, res) => {
       image: image ? (image.startsWith('http') ? image : PUBLIC_BASE + image) : '',
       cta_label: getSetting('overlay_cta_label') || '',
       cta_url: getSetting('overlay_cta_url') || '',
+    } : null,
+    // The rewarded boost, or null when an operator has not turned it on.
+    // Null rather than `{ enabled: false }` on purpose — the same shape the
+    // overlay uses, and it means an old build that has never heard of boosts
+    // sees nothing rather than a flag it would have to interpret.
+    //
+    // The ad unit IDs live here so the owner can create them in AdMob and
+    // paste them into the dashboard without an app release. Empty means the
+    // app falls back to Google's official test units, which is what a debug
+    // build should be watching anyway.
+    rewarded_boost: rewardedOn ? {
+      max_per_24h: Number(getSetting('rewarded_boost_max_per_24h')) || 2,
+      min_interval_hours: Number(getSetting('rewarded_boost_min_interval_hours')) || 4,
+      highlight_hours: Number(getSetting('rewarded_boost_highlight_hours')) || 4,
+      ad_unit_android: getSetting('admob_rewarded_unit_android') || '',
+      ad_unit_ios: getSetting('admob_rewarded_unit_ios') || '',
     } : null,
   });
 });

@@ -32,6 +32,7 @@ import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { parseConditionDetails, serializeConditionDetails, annotateDisclosure } from '../conditionDetails.js';
 // Every valid value, not just the sellable ones — see src/conditions.js.
 import { CONDITIONS } from '../conditions.js';
+import { RANK_TS, rankTs } from '../listingRank.js';
 
 const r = Router();
 
@@ -621,11 +622,16 @@ r.get('/', optionalAuth(), (req, res) => {
   // it wins "cheapest" outright and heads the list at one dinar, so both
   // price sorts push those rows to the end first — the same rule the
   // storefront's own price sort has always used.
+  //
+  // Every ORDER BY below ranks on RANK_TS, not created_at — see
+  // listingRank.js. «الأحدث» is the only sort that promises freshness, so it
+  // is the only one where a rewarded boost is the LEAD key; in the price and
+  // most-viewed sorts it stays the tie-break created_at always was.
   const SORTS = {
-    new: 'l.created_at DESC',
-    price_asc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, l.created_at DESC',
-    price_desc: 'COALESCE(l.price_on_request,0) ASC, l.asking_price DESC, l.created_at DESC',
-    viewed: "(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, l.created_at DESC",
+    new: `${RANK_TS} DESC`,
+    price_asc: `COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, ${RANK_TS} DESC`,
+    price_desc: `COALESCE(l.price_on_request,0) ASC, l.asking_price DESC, ${RANK_TS} DESC`,
+    viewed: `(SELECT COUNT(*) FROM events e WHERE e.listing_id=l.id AND e.type='view') DESC, ${RANK_TS} DESC`,
     // Featured devices first, then by the seller's rating, then cheapest —
     // the Shops-tab device search, so a featured, well-reviewed shop's device
     // leads. A pure ordered list, no featured-slot rotation. Built below:
@@ -636,7 +642,7 @@ r.get('/', optionalAuth(), (req, res) => {
   const nowTs = Date.now();
   const orderBy = sort === 'rank'
     ? `(l.featured_until > ${nowTs}) DESC, COALESCE(u.rating_avg, 0) DESC, `
-      + 'COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, l.created_at DESC'
+      + `COALESCE(l.price_on_request,0) ASC, l.asking_price ASC, ${RANK_TS} DESC`
     : SORTS[sort];
 
   // Status visibility depends on the view:
@@ -788,6 +794,10 @@ r.get('/', optionalAuth(), (req, res) => {
   const out = withImgs.map((row) => ({
     ...stripContact(row),
     is_featured: !!(row.featured_until && row.featured_until > nowTs),
+    // Same rule, same reason: the card must not decide a badge by comparing
+    // the device clock to a timestamp. A phone an hour fast would show every
+    // seller's boost as already over.
+    is_boosted: !!(row.boost_highlight_until && row.boost_highlight_until > nowTs),
     seller: sellerCard(row.seller_id),
   }));
 
@@ -827,9 +837,15 @@ r.get('/mine', requireAuth(), (req, res) => {
   const status = req.query.status || 'all';
   let rows;
   if (status === 'all') {
-    rows = db.prepare("SELECT * FROM phone_listings WHERE seller_id=? AND status != 'removed' ORDER BY created_at DESC").all(req.user.id);
+    rows = db.prepare(
+      "SELECT * FROM phone_listings WHERE seller_id=? AND status != 'removed' "
+      + `ORDER BY ${rankTs('phone_listings')} DESC`,
+    ).all(req.user.id);
   } else {
-    rows = db.prepare('SELECT * FROM phone_listings WHERE seller_id=? AND status=? ORDER BY created_at DESC').all(req.user.id, status);
+    rows = db.prepare(
+      'SELECT * FROM phone_listings WHERE seller_id=? AND status=? '
+      + `ORDER BY ${rankTs('phone_listings')} DESC`,
+    ).all(req.user.id, status);
   }
   const withImgs = attachImages(rows);
   if (withImgs.length) {
@@ -1118,6 +1134,8 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     phone_visible: hideContact ? false : !!row.contact_phone,
     is_saved,
     is_price_watched,
+    // Server-computed, like is_featured — the client never compares clocks.
+    is_boosted: !!(row.boost_highlight_until && row.boost_highlight_until > Date.now()),
     // What this device costs new, when the price shop stocks the same model
     // at the same capacity. Null unless the match is confident — see
     // newPriceRef.js for why every ambiguity resolves to showing nothing.

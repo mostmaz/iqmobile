@@ -32,6 +32,7 @@ const GOV_AR = {
   Muthanna: 'المثنى', Salahuddin: 'صلاح الدين', Wasit: 'واسط',
 };
 import { CONDITION_AR as COND_AR } from '../conditions.js';
+import { RANK_TS } from '../listingRank.js';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -81,7 +82,7 @@ r.get('/', (req, res) => {
             l.governorate, l.city, l.status
        FROM phone_listings l JOIN users u ON u.id = l.seller_id
       WHERE ${where}
-      ORDER BY (CASE WHEN l.featured_until > ? THEN 1 ELSE 0 END) DESC, l.created_at DESC
+      ORDER BY (CASE WHEN l.featured_until > ? THEN 1 ELSE 0 END) DESC, ${RANK_TS} DESC
       LIMIT ? OFFSET ?`,
   ).all(...params, Date.now(), PER_PAGE, offset);
 

@@ -12,6 +12,7 @@ import { pushToAdmins } from '../adminPush.js';
 import { uploadLimiter } from '../limits.js';
 import { logEvent } from '../eventLog.js';
 import { channelsFor } from '../contactChannels.js';
+import { rankTs } from '../listingRank.js';
 
 const r = Router();
 
@@ -296,7 +297,7 @@ r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
      ORDER BY
        (CASE WHEN stale_since IS NOT NULL THEN 1 ELSE 0 END) ASC,
        (CASE WHEN featured_until > ? THEN 1 ELSE 0 END) DESC,
-       created_at DESC
+       ${rankTs()} DESC
      LIMIT 300`,
   ).all(...(neverExpire ? [u.id, nowTs] : [u.id, nowTs, nowTs]));
   res.json({

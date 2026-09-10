@@ -297,6 +297,39 @@ CREATE TABLE IF NOT EXISTS feature_requests (
 CREATE INDEX IF NOT EXISTS idx_feature_requests_status ON feature_requests(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feature_requests_user ON feature_requests(user_id, created_at DESC);
 
+-- Rewarded-ad boosts. One row per ATTEMPT, not per grant: a seller who starts
+-- an ad and closes it early leaves a pending row that never becomes a
+-- charge. That is the whole point — a boost is spent only when Google tells
+-- our server, from Google's servers, that the ad was watched to the end.
+--
+-- Two unique indexes carry the anti-abuse weight:
+--   nonce              minted here, sent to AdMob as custom_data, and the
+--                      only way a callback can name an attempt. Unguessable.
+--   ad_transaction_id  Google's id for the reward. UNIQUE means a replayed or
+--                      duplicated callback is a no-op at the storage layer
+--                      rather than something application code has to notice —
+--                      the same trick the wallet uses for idempotent credits.
+CREATE TABLE IF NOT EXISTS listing_boosts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  listing_id INTEGER NOT NULL REFERENCES phone_listings(id) ON DELETE CASCADE,
+  nonce TEXT NOT NULL UNIQUE,
+  ad_transaction_id TEXT UNIQUE,
+  -- pending | reward_earned | boosted | scheduled | completed | failed.
+  -- No CHECK: feature_requests.status has one and SQLite cannot extend it
+  -- without rebuilding the table, which is a trap worth not repeating.
+  status TEXT NOT NULL,
+  boost_type TEXT,
+  rank_at_request INTEGER,
+  requested_at INTEGER NOT NULL,
+  reward_earned_at INTEGER,
+  granted_at INTEGER,
+  failure_reason TEXT
+);
+-- The allowance query: "this user's grants in the last 24h", hottest path.
+CREATE INDEX IF NOT EXISTS idx_listing_boosts_user ON listing_boosts(user_id, granted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_boosts_listing ON listing_boosts(listing_id, requested_at DESC);
+
 -- Wallet. A signed ledger, never a mutable balance column: the balance is
 -- SUM(delta), so it can always be explained line by line, and a bug can be
 -- corrected by posting a compensating row instead of editing history.
@@ -869,6 +902,36 @@ addColumnIfMissing('phone_listings', 'boosted_at INTEGER');
 addColumnIfMissing('phone_listings', 'next_boost_at INTEGER');
 addColumnIfMissing('phone_listings', 'boost_interval_ms INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS idx_listings_featured ON phone_listings(featured_until)');
+
+// ─── the rewarded-ad boost ───────────────────────────────────────────
+//
+// A SECOND, free promotion path, and deliberately a different mechanism from
+// the paid one above. Paid featuring buys 2 rotating PINNED slots; a boost
+// buys a place back at the top of the ordinary recency stream. They must not
+// be confused, which is why none of these columns is named `boost*_at` in the
+// old sense — `boosted_at` above belongs to featuring, is re-stamped by the
+// expirer every few hours, and is inert on a listing that is not featured.
+//
+//   bumped_at                     the ranking timestamp. NULL = never boosted,
+//                                 in which case created_at ranks it. This is
+//                                 the ONLY thing the feed sorts on that a
+//                                 seller can move, and created_at is never
+//                                 touched — it has to keep meaning "posted".
+//   boost_highlight_until         the visual treatment's end. Server compares
+//                                 it to the clock and sends `is_boosted`.
+//   boost_scheduled_bump_at       Smart Boost: a listing already near the top
+//                                 gets its bump LATER, so the reward is not
+//                                 spent moving it from rank 3 to rank 1.
+//   boost_scheduled_bump_done_at  set once the expirer has acted, so a
+//                                 re-run cannot bump twice.
+addColumnIfMissing('phone_listings', 'bumped_at INTEGER');
+addColumnIfMissing('phone_listings', 'boost_highlight_until INTEGER');
+addColumnIfMissing('phone_listings', 'boost_scheduled_bump_at INTEGER');
+addColumnIfMissing('phone_listings', 'boost_scheduled_bump_done_at INTEGER');
+// The feed's ORDER BY is an expression, so the index has to be one too or
+// every browse request falls back to a full scan + sort.
+db.exec('CREATE INDEX IF NOT EXISTS idx_listings_rank ON phone_listings(COALESCE(bumped_at, created_at) DESC)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_listings_sched_bump ON phone_listings(boost_scheduled_bump_at) WHERE boost_scheduled_bump_at IS NOT NULL');
 
 // "Last known price" marker for the price-aggregator shop. Set (to the ms
 // timestamp it dropped off the sources' price lists) when a device is no
@@ -1482,6 +1545,23 @@ setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore T
 // automatically is a separate, deliberate second opt-in.
 setSetting.run('listing_inspection_enabled', '0');
 setSetting.run('listing_inspection_autoreject', '0');
+
+// Rewarded-ad listing boost. OFF by default, like every other new switch
+// here: shipping the code must change nothing until an operator says so.
+// The ad unit IDs are settings rather than constants so the owner can create
+// them in AdMob and paste them into the dashboard without an app release —
+// empty means "use Google's official test units", which is what a debug
+// build should be watching anyway.
+setSetting.run('rewarded_boost_enabled', '0');
+setSetting.run('rewarded_boost_max_per_24h', '2');
+setSetting.run('rewarded_boost_min_interval_hours', '4');
+setSetting.run('rewarded_boost_highlight_hours', '4');
+// "Near the top" for Smart Boost. A listing inside this many places does not
+// spend its bump now; it gets highlighted now and bumped when the highlight
+// ends, so the reward is not wasted moving it from rank 3 to rank 1.
+setSetting.run('rewarded_boost_top_threshold', '20');
+setSetting.run('admob_rewarded_unit_android', '');
+setSetting.run('admob_rewarded_unit_ios', '');
 
 // Minimum supported app version. Both default to '0' = nothing enforced, so
 // shipping this changes nothing until an operator sets a floor.
