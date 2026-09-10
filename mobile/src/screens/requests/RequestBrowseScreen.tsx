@@ -71,6 +71,7 @@ export default function RequestBrowseScreen({ navigation }: any) {
   const [sort, setSort] = useState<BrowseSort | undefined>(undefined);
   const [condition, setCondition] = useState<Condition | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const conditionRailRef = React.useRef<ScrollView>(null);
 
   // ── step 1: brands ──────────────────────────────────────────────────
   const { data: brandRows } = useQuery({
@@ -155,7 +156,15 @@ export default function RequestBrowseScreen({ navigation }: any) {
    */
   const conditionRail = (
     <ScrollView
+      ref={conditionRailRef}
       horizontal showsHorizontalScrollIndicator={false}
+      // A row-reverse content box inside an LTR scroller puts the FIRST pill
+      // at the far right of the content, and the scroller opens at x=0 —
+      // the left. So «كل الحالات» sat off-screen and the rail looked like it
+      // started at «مجدد». scrollToEnd lands on the real beginning; it must
+      // re-run on every content change, because the pill set is the same but
+      // its width is not once a filter is active.
+      onContentSizeChange={() => conditionRailRef.current?.scrollToEnd({ animated: false })}
       contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}
     >
       <Pill active={!condition} onPress={() => setCondition(null)}>كل الحالات</Pill>
