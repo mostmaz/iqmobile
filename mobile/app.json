@@ -11,14 +11,14 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ECE6DA"
+      "backgroundColor": "#FAF8F5"
     },
     "android": {
       "package": "org.iqmobile.app",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ECE6DA"
+        "backgroundColor": "#FAF8F5"
       },
       "versionCode": 56,
       "intentFilters": [

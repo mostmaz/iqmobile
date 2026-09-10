@@ -88,7 +88,7 @@ export default function OtpVerifyScreen({ route, navigation }: any) {
             <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>IQ Mobile</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
-            width: 38, height: 38, borderRadius: 999,
+            width: 38, height: 38, borderRadius: radius.lg,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
             alignItems: 'center', justifyContent: 'center',
           }}>

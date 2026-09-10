@@ -431,7 +431,7 @@ export default function BrowseScreen({ navigation }: any) {
                 accessibilityLabel={`السلة، ${cartCount} عنصر`}
                 hitSlop={6}
                 style={{
-                  width: 38, height: 38, borderRadius: 999,
+                  width: 38, height: 38, borderRadius: radius.lg,
                   backgroundColor: theme.ink,
                   alignItems: 'center', justifyContent: 'center',
                 }}
@@ -459,7 +459,7 @@ export default function BrowseScreen({ navigation }: any) {
               accessibilityLabel="محادثاتي"
               hitSlop={6}
               style={{
-                width: 38, height: 38, borderRadius: 999,
+                width: 38, height: 38, borderRadius: radius.lg,
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
                 alignItems: 'center', justifyContent: 'center',
               }}
@@ -489,7 +489,7 @@ export default function BrowseScreen({ navigation }: any) {
               accessibilityState={{ expanded: showFilter }}
               hitSlop={6}
               style={{
-                width: 38, height: 38, borderRadius: 999,
+                width: 38, height: 38, borderRadius: radius.lg,
                 backgroundColor: showFilter ? theme.ink : theme.surface,
                 borderWidth: 1, borderColor: theme.line,
                 alignItems: 'center', justifyContent: 'center',

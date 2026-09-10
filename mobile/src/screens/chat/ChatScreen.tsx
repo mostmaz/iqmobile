@@ -410,7 +410,7 @@ export default function ChatScreen({ route, navigation }: any) {
           accessibilityLabel="إبلاغ عن المحادثة"
           hitSlop={8}
           style={{
-            width: 38, height: 38, borderRadius: 999,
+            width: 38, height: 38, borderRadius: radius.lg,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
             alignItems: 'center', justifyContent: 'center', marginLeft: 6,
           }}
@@ -418,7 +418,7 @@ export default function ChatScreen({ route, navigation }: any) {
           <IconFlag size={17} color={theme.subtle} />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
-          width: 38, height: 38, borderRadius: 999,
+          width: 38, height: 38, borderRadius: radius.lg,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
           alignItems: 'center', justifyContent: 'center',
         }}>

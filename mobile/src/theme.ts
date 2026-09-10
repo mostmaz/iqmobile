@@ -1,23 +1,44 @@
-// Cream + terracotta design system from /Buyer Screens.html
+// Cream + terracotta design system, restyled to a light surface.
+//
+// The brief for the restyle was "modernise, keep the terracotta exactly as
+// it is". So the accent family, the success/danger families and every ink
+// value below are UNCHANGED, and only the four surfaces lighten: the page
+// goes near-white, cards go pure white, and the chip fill lightens with
+// them. That is the whole colour change — anything that looks different and
+// is not one of those four is a bug, not a redesign.
 export const theme = {
-  bg: '#ECE6DA',
-  surface: '#F5F0E6',
+  bg: '#FAF8F5',
+  surface: '#FFFFFF',
+  /**
+   * The tone for something nested INSIDE a white card — an input, a chip on
+   * a card, a stepper track.
+   *
+   * It exists because `chipBg` no longer works there. On the old cream
+   * surface a chip could share one fill with the page furniture; on white,
+   * `chipBg` is dark enough that a nested chip reads as a second card edge.
+   * `bg` is the other tempting reuse and is wrong for the opposite reason —
+   * it is the page, so a chip painted with it looks like a hole.
+   */
+  inset: '#F7F4EF',
   ink: '#1B1A18',
-  // Secondary text. One token used on three surfaces, and it failed WCAG AA
-  // on two of them: 4.33:1 on bg and 3.90:1 on the chip fill against a 4.5
-  // requirement — it only passed on the lightest surface. Darkened until it
-  // clears AA on the DARKEST surface it is used on (5.29:1 on chipBg,
-  // 5.87 on bg, 6.42 on surface) rather than tuning per-surface variants.
+  // Secondary text. Kept at the value the old cream palette forced: it was
+  // darkened until it cleared WCAG AA on the DARKEST surface it appears on,
+  // which was the old `chipBg` at 5.29:1. Every surface it sits on is now
+  // lighter, so it clears AA everywhere by a wider margin than before —
+  // lightening it back would undo that for no gain.
   subtle: '#5A564F',
-  line: 'rgba(27,26,24,0.08)',
+  // A hair stronger than the 0.08 the cream palette used. The same alpha
+  // over a lighter background is a fainter line, and dividers inside a white
+  // card were disappearing.
+  line: 'rgba(27,26,24,0.09)',
   accent: '#D9583A',
   accentSoft: 'rgba(217,88,58,0.14)',
   accentDeep: '#B23F25',
   accentInk: '#FFFFFF',
-  chipBg: '#E2DBCB',
+  chipBg: '#F2EEE8',
   chipInk: '#3A352D',
   button: '#1B1A18',
-  buttonInk: '#F5F0E6',
+  buttonInk: '#FFFFFF',
   success: '#1F6B5C',
   successSoft: 'rgba(31,107,92,0.14)',
   // Error text sits on an 8%-tint banner of itself, which lightens the
@@ -36,7 +57,14 @@ export const fonts = {
   mono: 'JetBrainsMono_500Medium',
 } as const;
 
-export const radius = { sm: 8, md: 10, lg: 12, xl: 14, xxl: 16, pill: 999 } as const;
+// The whole scale grows by 2 and gains a step at the top. Names are kept so
+// that no call site has to move: what was `radius.xxl` on a card is still
+// `radius.xxl`, it is simply rounder.
+//
+// `xxxl` is new and is for the largest cards only — the profile header, the
+// request card. Bottom sheets round harder still (26) and set that inline;
+// it is one number in two files and does not earn a token.
+export const radius = { sm: 10, md: 12, lg: 14, xl: 16, xxl: 18, xxxl: 20, pill: 999 } as const;
 
 // How far OS font scaling may enlarge text inside a fixed-size control.
 //
@@ -53,26 +81,41 @@ export const radius = { sm: 8, md: 10, lg: 12, xl: 14, xxl: 16, pill: 999 } as c
 export const FONT_SCALE_TIGHT = 1.15;   // pills, buttons, tabs, badges
 export const FONT_SCALE_RELAXED = 1.4;  // titles and single-line labels
 
+// A cream-tinted 24pt blur at 6% was a soft haze under a cream card. Under
+// a WHITE card on a near-white page the same shadow has nothing to sit
+// against and reads as dirt around the edges. Tight and faint instead: the
+// card is separated by being whiter than the page, and the shadow only has
+// to stop it floating.
 export const shadowSoft = {
   shadowColor: '#261C0E',
-  shadowOpacity: 0.06,
-  shadowRadius: 24,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 2,
+  shadowOpacity: 0.05,
+  shadowRadius: 2,
+  shadowOffset: { width: 0, height: 1 },
+  elevation: 1,
 };
 
+// The accent glow survives, tightened, and is now for two things only: the
+// iQ logo tile and a primary accent CTA. Spreading it over every accent
+// surface is what made the old UI look lit from underneath.
 export const shadowAccent = {
   shadowColor: '#D9583A',
-  shadowOpacity: 0.16,
-  shadowRadius: 28,
-  shadowOffset: { width: 0, height: 12 },
+  shadowOpacity: 0.28,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: 8 },
   elevation: 4,
 };
 
-export const shadowHero = {
-  shadowColor: '#D9583A',
-  shadowOpacity: 0.28,
-  shadowRadius: 30,
-  shadowOffset: { width: 0, height: 14 },
-  elevation: 6,
+export const shadowHero = shadowAccent;
+
+/**
+ * For a bar pinned to the bottom of the screen, where the content scrolls
+ * UNDER it — the filter sheet's apply bar, the listing detail's contact bar.
+ * Shadows that fall downward are invisible there; this one falls up.
+ */
+export const shadowUp = {
+  shadowColor: '#261C0E',
+  shadowOpacity: 0.06,
+  shadowRadius: 20,
+  shadowOffset: { width: 0, height: -6 },
+  elevation: 8,
 };

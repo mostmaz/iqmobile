@@ -181,13 +181,19 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
       // actually is. Vertical only — the rails are horizontal, so widening
       // the sides would make neighbouring chips overlap each other's targets.
       hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+      // Filled, not outlined. An inactive chip used to be a white pill with a
+      // hairline; on a white card that hairline was the only thing drawing
+      // it, and a row of them read as a table. A fill states "selectable"
+      // without adding a line to the page, so the only borders left in the
+      // UI belong to cards.
+      //
+      // `inset` rather than `chipBg`: these sit inside white cards and
+      // sheets more often than on the page.
       style={{
-        paddingHorizontal: small ? 11 : 13,
-        paddingVertical: small ? 6 : 7,
+        paddingHorizontal: small ? 11 : 14,
+        paddingVertical: small ? 6 : 8,
         borderRadius: radius.pill,
-        backgroundColor: active ? theme.ink : theme.surface,
-        borderWidth: active ? 0 : 1,
-        borderColor: theme.line,
+        backgroundColor: active ? theme.ink : theme.inset,
         flexDirection: 'row-reverse',
         alignItems: 'center',
         gap: 6,
@@ -197,7 +203,13 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
       <Text
         numberOfLines={1}
         maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-        style={{ fontFamily: fonts.ar, fontSize: small ? 12 : 12.5, color: active ? theme.bg : theme.ink }}
+        // arBold / arRegular, never a fontWeight beside an Arabic family —
+        // Android drops part of the string when the two are paired.
+        style={{
+          fontFamily: active ? fonts.arBold : fonts.arRegular,
+          fontSize: small ? 12 : 12.5,
+          color: active ? theme.accentInk : theme.ink,
+        }}
       >
         {children}
       </Text>
@@ -205,7 +217,7 @@ export function Pill({ active, onPress, children, count, small }: PillProps) {
         <Text
           numberOfLines={1}
           maxFontSizeMultiplier={FONT_SCALE_TIGHT}
-          style={{ fontFamily: fonts.ltr, fontSize: 10.5, color: active ? theme.bg : theme.subtle, opacity: 0.65 }}
+          style={{ fontFamily: fonts.ltr, fontSize: 10.5, color: active ? theme.accentInk : theme.subtle, opacity: 0.68 }}
         >
           {count}
         </Text>

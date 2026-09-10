@@ -150,7 +150,7 @@ export default function OnboardingScreen({ onDone, navigation }: { onDone?: () =
           style={{
             position: 'absolute', zIndex: 10,
             top: insets.top + 14, right: 14,
-            width: 38, height: 38, borderRadius: 999,
+            width: 38, height: 38, borderRadius: radius.lg,
             backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
             alignItems: 'center', justifyContent: 'center',
           }}

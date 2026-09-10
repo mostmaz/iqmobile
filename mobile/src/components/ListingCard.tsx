@@ -40,7 +40,7 @@ export function ListingCard({
   // the right. Yoga runs LTR app-wide (see App.tsx), so plain `row` puts the
   // first child on the left. Image fills the left column edge-to-edge
   // (contentFit="cover") for a tight thumbnail.
-  const imgW = compact ? 104 : 128;
+  const imgW = compact ? 104 : 120;
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl,
@@ -171,11 +171,16 @@ export function ListingCard({
           </View>
         ) : null}
 
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginTop: compact ? 5 : 9, gap: 8 }}>
-          {/* One card split "375,000" from "د.ع" across two lines while its
-              neighbours kept them inline, because a longer location on the
-              same row competed for the width. The price is the thing that
-              must never wrap; the location shrinks instead. */}
+        {/* Price and meta STACK, they do not share a row.
+            
+            They used to sit on one `space-between` row, and the comment that
+            replaced said the location "shrinks instead" — which is true, and
+            is the problem. At seven digits and 19px bold the price takes most
+            of the row, leaving the governorate under 30dp: it ellipsised to
+            nothing and the card showed a pin, a gap and a timestamp. Stacked,
+            the price owns its line and the location owns the next one. */}
+        <View style={{ marginTop: compact ? 5 : 9, gap: 4 }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
           {/* Same sentinel bug as the detail page: without this branch a
               call-for-price listing showed «١ د.ع» on every card in the feed. */}
           {isOnRequest(listing as any) ? (
@@ -196,7 +201,8 @@ export function ListingCard({
               <Text style={{ fontSize: 11, color: theme.subtle, fontFamily: fonts.ar }}>  د.ع</Text>
             </Text>
           )}
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4, flexShrink: 1, minWidth: 0 }}>
+          </View>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
             <IconPin size={12} color={theme.subtle} />
             {/* The location wins the shrink contest and the timestamp keeps
                 its intrinsic width — at a 1.3x font scale the reverse left
