@@ -186,6 +186,10 @@ function SellStackNav() {
       <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       {/* ListingDetail's price-alert buttons need these locally too. */}
       <BrowseStack.Screen name="Wishlist" component={WishlistScreen} />
+      {/* The post-publish screen lists buyers already waiting for the phone
+          just posted, and each one opens its request — where the offer form
+          is. Without the route here that card is a set of dead taps. */}
+      <BrowseStack.Screen name="RequestDetail" component={RequestDetailScreen} />
     </BrowseStack.Navigator>
   );
 }

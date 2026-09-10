@@ -28,6 +28,7 @@ import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { notify, hasNotified } from '../notify.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { norm } from './savedSearches.js';
+import { requestsAnsweredBy } from '../requestMatch.js';
 
 const r = Router();
 
@@ -300,24 +301,18 @@ export function broadcastRequest(request) {
 export function alertRequestsOnListing(listing) {
   try {
     if (!listing || listing.status !== 'active' || listing.is_draft) return;
-    const t = now();
-    // Same 20% slack as the outgoing broadcast, so the two directions never
-    // disagree about whether this listing answers this request.
-    const open = db.prepare(
-      `SELECT * FROM phone_requests
-        WHERE status='open' AND expires_at > ? AND brand=? AND (max_price * ?) >= ?
-        ORDER BY created_at DESC LIMIT 200`,
-    ).all(t, listing.brand, CEILING_SLACK, listing.asking_price);
+    // One rule, shared with GET /listings/:id/matching-requests — the push
+    // and the screen it links to must never disagree about what counts.
+    // No governorate filter here: a notification costs the buyer nothing,
+    // and whether a phone is worth travelling for is the seller's call.
+    const open = requestsAnsweredBy(db, listing, norm, { now: now() });
 
-    const model = norm(listing.model);
     let sent = 0;
     for (const request of open) {
-      if (request.buyer_id === listing.seller_id) continue;
-      if (norm(request.model) !== model) continue;
       // Once per (seller, request): re-posting or editing the listing must
       // not re-nag the seller about the same open request.
       if (hasNotified(listing.seller_id, 'request.match', listing.id)) break;
-      const aboveBudget = Number(listing.asking_price) > Number(request.max_price);
+      const aboveBudget = request.above_budget;
       notify(
         listing.seller_id,
         'request.match',
@@ -379,6 +374,35 @@ r.get('/phone-requests', optionalAuth(), (req, res) => {
 
   const rows = db.prepare(sql).all(...params);
   res.json(rows.map((row) => publicRequest(row, req.user?.id ?? null)));
+});
+
+// Open requests that a listing of MINE answers, in my governorate.
+//
+// The other direction from the board: a seller has just posted a phone and
+// somebody nearby has already written down that they want it. Without this
+// the only way to find that out is a push notification, which is a single
+// alert for however many requests match and is gone once dismissed.
+//
+// Same-governorate only, unlike the push. The screen's promise is "these
+// people are near you and want this today"; a buyer four hours away is a
+// notification, not a to-do list.
+r.get('/listings/:id(\\d+)/matching-requests', requireAuth(), (req, res) => {
+  const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(Number(req.params.id));
+  // 404 then 403, the same order the rest of the app uses: a stranger must
+  // not be able to tell an id that exists from one that does not.
+  if (!listing) return res.status(404).json({ error: 'not_found' });
+  if (listing.seller_id !== req.user.id) return res.status(403).json({ error: 'not_yours' });
+
+  expireStale();
+  const rows = requestsAnsweredBy(db, listing, norm, {
+    now: now(), sameGovernorateOnly: true, limit: 10,
+  });
+  res.json(rows.map((row) => ({
+    ...publicRequest(row, req.user.id),
+    // Computed against THIS listing, so it belongs on the response rather
+    // than on the request itself.
+    above_budget: row.above_budget,
+  })));
 });
 
 // Must precede /:id — otherwise "mine" is parsed as an id.

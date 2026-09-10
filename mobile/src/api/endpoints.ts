@@ -371,6 +371,12 @@ export const Listings = {
   renew: (id: number) => api<Listing>(`/listings/${id}/renew`, { method: 'POST' }),
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),
+  /**
+   * Open requests in my governorate that this listing of mine answers.
+   * Shown on the post-publish screen; 403 for a listing that is not mine.
+   */
+  matchingRequests: (id: number) =>
+    api<Array<PhoneRequest & { above_budget?: boolean }>>(`/listings/${id}/matching-requests`),
   saved: () => api<Listing[]>('/listings/saved/mine'),
   // What ELSE exists, for a search that found nothing. Every option arrives
   // counted and with the exact filter patch to apply, so the number shown is
