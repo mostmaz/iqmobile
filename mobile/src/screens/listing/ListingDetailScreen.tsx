@@ -98,6 +98,14 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // icon + "احفظ"/"محفوظ" button flip instantly on tap — no waiting for
   // the round-trip. Synced back to the server response when the query
   // refetches.
+  // A shop seller has a page; an individual does not. `seller_id` is the
+  // shop's own user id, which is what ShopDetail takes.
+  const isShopSeller = data?.seller?.seller_type === 'shop';
+  const openShopPage = React.useCallback(() => {
+    const id = (data as any)?.seller_id ?? data?.seller?.id;
+    if (id) navigation.navigate('ShopDetail', { id });
+  }, [data, navigation]);
+
   const [isSaved, setIsSaved] = useState(false);
   useEffect(() => {
     if (data) setIsSaved(!!(data as any).is_saved);
@@ -845,7 +853,14 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         {data.seller ? (
           <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
             <Card style={{ padding: 14 }}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* The whole seller row opens the shop's page — for a SHOP.
+                  It carried no navigation at all before: a buyer tapped the
+                  name, the «متجر» badge or the shop's own sign and nothing
+                  happened, with the map row the only live control on the
+                  card. An individual seller has no page to open, so for them
+                  this stays a plain View rather than a control that goes
+                  nowhere. */}
+              <SellerRow onPress={isShopSeller ? openShopPage : null}>
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
                   {/* Unified-account redesign: every seller renders the same.
                       No "shop" avatar variant, no individual/shop stamp. */}
@@ -893,17 +908,30 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                 ) : null}
-              </View>
+                {/* The affordance. Without it the row reads as a label. */}
+                {isShopSeller ? (
+                  <View style={{ marginRight: 2 }}>
+                    <IconChevronLeft size={18} color={theme.subtle} sw={1.8} />
+                  </View>
+                ) : null}
+              </SellerRow>
 
               {/* Shop sign image — only for shop sellers. Stretches across
-                  the card under the name row. */}
-              {data.seller.seller_type === 'shop' && (data.seller as any).shop_image_path ? (
-                <View style={{ marginTop: 10, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.chipBg }}>
+                  the card under the name row, and opens the shop like the
+                  row above it. */}
+              {isShopSeller && (data.seller as any).shop_image_path ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={openShopPage}
+                  accessibilityRole="button"
+                  accessibilityLabel={`افتح صفحة ${data.seller.display_name}`}
+                  style={{ marginTop: 10, borderRadius: radius.md, overflow: 'hidden', backgroundColor: theme.chipBg }}
+                >
                   <Img
                     source={{ uri: fullImageUrl((data.seller as any).shop_image_path) }}
                     style={{ width: '100%', height: 140 }}
                   />
-                </View>
+                </TouchableOpacity>
               ) : null}
 
               {/* Tappable "open in Maps" row — only when shop GPS is set. */}
@@ -1314,3 +1342,24 @@ function FloatBtn({ children, onPress, active }: { children: React.ReactNode; on
   );
 }
 
+/**
+ * The seller row: a control when there is somewhere to go, a plain row when
+ * there is not.
+ *
+ * Rendering a TouchableOpacity with a null handler would look identical and
+ * behave like a dead button for every individual seller on the marketplace,
+ * which is the failure this card already had in a different form.
+ */
+function SellerRow({ onPress, children }: { onPress: (() => void) | null; children: React.ReactNode }) {
+  const style = {
+    flexDirection: 'row-reverse' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+  };
+  if (!onPress) return <View style={style}>{children}</View>;
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} accessibilityRole="button" style={style}>
+      {children}
+    </TouchableOpacity>
+  );
+}
