@@ -392,7 +392,7 @@ function SentOfferRow({ offer, onPress }: { offer: SentOffer; onPress: () => voi
 
 function Empty({ tab, onCompose }: { tab: Tab; onCompose: () => void }) {
   const copy = tab === 'board'
-    ? { title: 'ما في طلبات مفتوحة', body: 'كن أول من ينشر طلباً — تراه المتاجر وترد عليك بعروضها.' }
+    ? { title: 'ما في طلبات مفتوحة', body: 'كن أول من ينشر طلباً — يراه البائعون ويردون عليك بعروضهم.' }
     : tab === 'mine'
       ? { title: 'ما عندك طلبات', body: 'انشر الجهاز الذي تبحث عنه وميزانيتك، ودع البائعين يأتون إليك.' }
       : { title: 'ما قدّمت أي عرض', body: 'افتح «كل الطلبات» واطّلع على المشترين الذين يبحثون عن أجهزة لديك.' };

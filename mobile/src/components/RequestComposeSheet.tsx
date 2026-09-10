@@ -193,7 +193,7 @@ export function RequestComposeSheet({
             automaticallyAdjustKeyboardInsets
           >
             <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', lineHeight: 20, marginBottom: 14 }}>
-              يصل طلبك إلى المتاجر التي لديها الجهاز أو تبيع الماركة نفسها في محافظتك — فترد عليك بعروضها.
+              يصل طلبك إلى من عنده الجهاز — متاجر وأشخاص باعوا نفس الماركة — فيردون عليك بعروضهم.
             </Text>
 
             <Label>الماركة</Label>

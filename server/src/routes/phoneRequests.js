@@ -190,33 +190,54 @@ function sellersWithMatchingListing(request) {
   return seen;
 }
 
-// Shops that plausibly stock it but have nothing listed that matches: same
-// governorate, or a history of selling the brand. Ordered so that the most
-// likely responders survive the MAX_BROADCAST cut.
-function shopsToBroadcast(request, exclude) {
+// Sellers who plausibly have it but have nothing listed that matches.
+//
+// Shops AND individuals. Most phones in Iraq change hands between people,
+// not through shops, and an individual who has sold three Samsungs is a
+// better lead for a Samsung request than a shop across the country — but
+// the two need different thresholds, because there are far more individuals
+// than shops:
+//
+//   shop        — same governorate OR a history of selling the brand.
+//                 A shop is a business that wants leads; being nearby is
+//                 reason enough to tell it.
+//   individual  — a history of selling the brand, full stop. "Lives in
+//                 Baghdad" describes a third of the country and pushing to
+//                 all of them is the blast MAX_BROADCAST exists to prevent.
+//                 Having listed that brand is a real signal.
+//
+// Ordered so the most likely responders survive the MAX_BROADCAST cut, and
+// shops still sort above individuals at equal signal: a shop answers a
+// request as part of its day, a person answers it as a favour.
+function sellersToBroadcast(request, exclude) {
   const rows = db.prepare(
     `SELECT u.id,
+            (u.seller_type='shop') AS is_shop,
             (u.governorate=?) AS same_gov,
             EXISTS(SELECT 1 FROM phone_listings l
                     WHERE l.seller_id=u.id AND l.brand=?
                       AND l.status IN ('active','reserved','sold')) AS sells_brand
        FROM users u
-      WHERE u.seller_type='shop'
+      WHERE COALESCE(u.is_guest,0)=0
+        -- A shop that is hidden, unapproved, contactless or admin-created
+        -- answers nobody: the price book has no operator behind it and an
+        -- admin-made shop's owner never installed the app. These columns are
+        -- NULL for an individual, so COALESCE lets them through.
         AND COALESCE(u.shop_hidden,0)=0
         AND COALESCE(u.shop_status,'approved')='approved'
-        -- The price book answers nobody, and an admin-created shop's owner
-        -- never installed the app: a push to either is noise by construction.
         AND COALESCE(u.shop_no_contact,0)=0
         AND COALESCE(u.shop_origin,'') <> 'admin'
-      ORDER BY same_gov DESC, sells_brand DESC, u.rating_avg DESC, u.rating_count DESC`,
+      ORDER BY same_gov DESC, sells_brand DESC, is_shop DESC,
+               u.rating_avg DESC, u.rating_count DESC`,
   ).all(request.governorate, request.brand);
 
   const out = [];
   for (const row of rows) {
     if (exclude.has(row.id) || row.id === request.buyer_id) continue;
-    // A shop with neither signal is not a lead, it is a bystander.
-    if (!row.same_gov && !row.sells_brand) continue;
-    out.push(row.id);
+    // The thresholds above, as the one line that enforces them.
+    const lead = row.is_shop ? (row.same_gov || row.sells_brand) : row.sells_brand;
+    if (!lead) continue;
+    out.push({ id: row.id, is_shop: !!row.is_shop });
     if (out.length >= MAX_BROADCAST) break;
   }
   return out;
@@ -251,12 +272,18 @@ export function broadcastRequest(request) {
       );
     }
 
-    for (const shopId of shopsToBroadcast(request, matches)) {
+    for (const s of sellersToBroadcast(request, matches)) {
       notify(
-        shopId,
+        s.id,
         'request.new',
         { request_id: request.id, brand: request.brand, model: request.model, max_price: request.max_price, governorate: request.governorate },
-        { title: 'طلب جديد يناسب متجرك', body: `${title} — ${body}` },
+        {
+          // «متجرك» to a person who has no shop is the app talking to
+          // somebody else. An individual is reached because they have sold
+          // this brand before, so say that instead.
+          title: s.is_shop ? 'طلب جديد يناسب متجرك' : 'مشترٍ يدور على جهاز مثل الذي بعته',
+          body: `${title} — ${body}`,
+        },
       );
     }
   } catch (e) {
@@ -541,3 +568,9 @@ r.delete('/phone-requests/:id(\\d+)/offers/mine', requireAuth(), (req, res) => {
 });
 
 export default r;
+
+// Exported for tests only. `sellersToBroadcast` is a SQL query with four
+// COALESCE guards whose whole job is to let an individual's NULL shop
+// columns through — exactly the kind of thing that breaks silently, so it
+// gets tested directly rather than through a push nobody can observe.
+export const __testables = { sellersToBroadcast };

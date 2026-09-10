@@ -185,7 +185,7 @@ function BuyerView({ request, onStatus, busy, navigation }: {
             ما وصلت عروض بعد
           </Text>
           <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
-            وصل طلبك إلى المتاجر التي تبيع هذا الجهاز. تصل العروض الأولى عادةً خلال ساعات.
+            وصل طلبك إلى المتاجر والأشخاص الذين يبيعون هذا الجهاز. تصل العروض الأولى عادةً خلال ساعات.
           </Text>
         </View>
       ) : (
