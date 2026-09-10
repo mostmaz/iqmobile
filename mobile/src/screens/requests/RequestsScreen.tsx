@@ -19,8 +19,10 @@ import { View, Text, FlatList, TouchableOpacity, ScrollView, Alert, Modal } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
-import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme';
+import { theme, fonts, radius, shadowSoft, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Header, Pill, Input, fmtIQD } from '../../components/ui';
+import { Img } from '../../components/Img';
+import { bundledBrandLogo } from '../../lib/brandLogos';
 import {
   IconRequest, IconPlus, IconMinus, IconChevronDown, IconClose, IconPin,
   IconChat, IconTag, IconCheck,
@@ -67,6 +69,16 @@ export default function RequestsScreen({ navigation }: any) {
 
   const active = tab === 'board' ? board : tab === 'mine' ? mine : sent;
 
+  // Offers waiting on the buyer's own OPEN requests. Closed ones are
+  // excluded: a badge that keeps counting offers on a request the buyer
+  // already fulfilled is a notification nobody can clear.
+  const waitingOffers = useMemo(
+    () => ((mine.data as PhoneRequest[] | undefined) || [])
+      .filter((r) => r.status === 'open')
+      .reduce((n, r) => n + (r.offer_count || 0), 0),
+    [mine.data],
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
       <Header
@@ -75,27 +87,43 @@ export default function RequestsScreen({ navigation }: any) {
         // Pushed from the funnel now, not the tab root: without this, iOS —
         // which has no system back button — has no way to leave this screen.
         onBack={() => navigation.goBack()}
+        // A tinted tile, not a bare glyph. In the header a lone «+» has no
+        // edge to aim at and reads as decoration; the tile gives it a body
+        // and a 38pt target.
         right={(
           <TouchableOpacity
             onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
+            accessibilityRole="button"
+            accessibilityLabel="اطلب جهازاً"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              width: 38, height: 38, borderRadius: radius.lg, backgroundColor: theme.accentSoft,
+              alignItems: 'center', justifyContent: 'center',
+            }}
           >
-            <IconPlus size={20} color={theme.accent} sw={2.2} />
+            <IconPlus size={19} color={theme.accentDeep} sw={2.2} />
           </TouchableOpacity>
         )}
       />
 
-      {/* Segmented control */}
-      <View style={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 16, marginBottom: 10 }}>
+      {/* One track, three segments — three separately-outlined buttons read
+          as three independent choices rather than one control with a
+          position. */}
+      <View style={{
+        flexDirection: 'row-reverse', marginHorizontal: 16, marginBottom: 10,
+        padding: 3, borderRadius: radius.pill, backgroundColor: theme.chipBg,
+      }}>
         {([['board', 'كل الطلبات'], ['mine', 'طلباتي'], ['offers', 'عروضي']] as [Tab, string][]).map(([key, label]) => (
           <TouchableOpacity
             key={key}
             onPress={() => setTab(key)}
             activeOpacity={0.8}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === key }}
             style={{
-              flex: 1, paddingVertical: 9, borderRadius: radius.lg, alignItems: 'center',
-              backgroundColor: tab === key ? theme.ink : theme.surface,
-              borderWidth: 1, borderColor: tab === key ? theme.ink : theme.line,
+              flex: 1, paddingVertical: 8, borderRadius: radius.pill,
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 5,
+              backgroundColor: tab === key ? theme.ink : 'transparent',
             }}
           >
             <Text
@@ -103,11 +131,24 @@ export default function RequestsScreen({ navigation }: any) {
               maxFontSizeMultiplier={FONT_SCALE_TIGHT}
               style={{
                 fontFamily: tab === key ? fonts.arBold : fonts.ar, fontSize: 12.5,
-                color: tab === key ? theme.buttonInk : theme.subtle,
+                color: tab === key ? theme.accentInk : theme.subtle,
               }}
             >
               {label}
             </Text>
+            {/* «طلباتي» says how many offers are waiting. The strip should
+                tell a buyer which of the three tabs has something in it —
+                otherwise finding out means visiting all three. */}
+            {key === 'mine' && waitingOffers > 0 ? (
+              <View style={{
+                minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 999,
+                backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.ltrBold, fontSize: 9.5, color: '#fff' }}>
+                  {waitingOffers > 99 ? '99+' : waitingOffers}
+                </Text>
+              </View>
+            ) : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -167,16 +208,33 @@ export default function RequestsScreen({ navigation }: any) {
         />
       )}
 
-      {/* Primary CTA — always reachable, even mid-scroll. */}
+      {/* The screen's one action, as a bar rather than a button floating
+          over the last card. Accent-filled: on a board of white cards a
+          dark button was one more rectangle, and this is the only thing on
+          the screen a buyer is meant to do. */}
       {tab !== 'offers' ? (
-        // `bottom: 16` alone. The screen already ends above the tab bar, so
+        // `bottom: 0` alone. The screen already ends above the tab bar, so
         // adding insets.bottom on top of that double-counted the home
-        // indicator and left the button floating ~50pt clear of the bar,
-        // reading as a stray element rather than the screen's action.
-        <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16 }}>
-          <Btn kind="primary" full onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}>
-            اطلب جهازاً
-          </Btn>
+        // indicator and left the bar floating ~50pt clear of it.
+        <View style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          backgroundColor: theme.surface, borderTopWidth: 1, borderTopColor: theme.line,
+          ...shadowUp, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14,
+        }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            onPress={() => (isReal ? setComposing(true) : navigation.getParent()?.getParent?.()?.navigate('AuthGate'))}
+            style={{
+              minHeight: 50, borderRadius: radius.lg, backgroundColor: theme.accent,
+              flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+            }}
+          >
+            <IconPlus size={17} color="#fff" sw={2.2} />
+            <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 15, color: '#fff' }}>
+              اطلب جهازاً
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -198,31 +256,70 @@ export default function RequestsScreen({ navigation }: any) {
 
 // ─── rows ──────────────────────────────────────────────────────────────
 
+/** «١٢» — counts written in prose are Arabic-Indic, matching the feed. */
+const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+const arNum = (n: number) => String(Math.max(0, Math.floor(n))).replace(/\d/g, (d) => AR_DIGITS[Number(d)]);
+
 function RequestRow({ request, showOffers, onPress }: { request: PhoneRequest; showOffers?: boolean; onPress: () => void }) {
   const closed = request.status !== 'open';
+  const offers = request.offer_count || 0;
+  const mark = bundledBrandLogo(request.brand);
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.88} style={{
       backgroundColor: theme.surface, borderRadius: radius.xxl, borderWidth: 1,
-      borderColor: request.offer_count > 0 && showOffers ? theme.accent : theme.line,
+      borderColor: offers > 0 && showOffers ? theme.accent : theme.line,
       ...shadowSoft, padding: 14, marginBottom: 10, opacity: closed ? 0.6 : 1,
     }}>
       <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 }}>
+        {/* The brand mark, not a generic request glyph. A seller skimming
+            this board is deciding "do I stock that?" — the logo answers it
+            before the words are read, and every row used to carry the same
+            icon. */}
         <View style={{
-          width: 38, height: 38, borderRadius: 12, backgroundColor: theme.chipBg,
-          alignItems: 'center', justifyContent: 'center',
+          width: 40, height: 40, borderRadius: 13, backgroundColor: theme.chipBg,
+          alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
         }}>
-          <IconRequest size={19} color={theme.ink} sw={1.6} />
+          {mark ? (
+            <Img source={mark} contentFit="contain" style={{ width: 24, height: 24 }} />
+          ) : (
+            <IconRequest size={19} color={theme.ink} sw={1.6} />
+          )}
         </View>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={{
-            fontFamily: fonts.arBold, fontSize: 14, color: theme.ink,
-            textAlign: 'right', writingDirection: 'ltr',
-          }}>
-            {deviceTitle(request.brand, request.model)}
-          </Text>
-          <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', marginTop: 3 }}>
-            حتى {fmtIQD(request.max_price)} د.ع · {conditionLabel(request.condition)}
-          </Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 7 }}>
+            <Text numberOfLines={1} style={{
+              flexShrink: 1, fontFamily: fonts.arBold, fontSize: 14.5, color: theme.ink,
+              textAlign: 'right', writingDirection: 'ltr',
+            }}>
+              {deviceTitle(request.brand, request.model)}
+            </Text>
+            {/* The offer count moves up beside the title. At the bottom of
+                the card it was the last thing read; it is the first thing a
+                seller wants to know, because it is the competition. */}
+            <View style={{
+              flexShrink: 0, flexDirection: 'row-reverse', alignItems: 'center', gap: 4,
+              paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill,
+              backgroundColor: offers > 0 ? 'rgba(217,88,58,0.12)' : theme.inset,
+            }}>
+              <IconChat size={11} color={offers > 0 ? theme.accentDeep : theme.subtle} sw={1.7} />
+              <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{
+                fontFamily: offers > 0 ? fonts.arBold : fonts.arRegular, fontSize: 11,
+                color: offers > 0 ? theme.accentDeep : theme.subtle,
+              }}>
+                {offers > 0 ? `${arNum(offers)} عرض` : 'لا عروض'}
+              </Text>
+            </View>
+          </View>
+          {/* The budget is the number a seller decides on, so it is set like
+              a price rather than folded into a grey summary line with the
+              condition. */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'baseline', gap: 5, marginTop: 4 }}>
+            <Text style={{ fontFamily: fonts.arRegular, fontSize: 11.5, color: theme.subtle }}>ميزانيته حتى</Text>
+            <Text style={{ fontFamily: fonts.ltrBold, fontWeight: '700', fontSize: 14, color: theme.accentDeep }}>
+              {fmtIQD(request.max_price)}
+            </Text>
+            <Text style={{ fontFamily: fonts.arRegular, fontSize: 11, color: theme.subtle }}>د.ع</Text>
+          </View>
         </View>
         {closed ? (
           <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: theme.chipBg }}>
@@ -233,33 +330,37 @@ function RequestRow({ request, showOffers, onPress }: { request: PhoneRequest; s
         ) : null}
       </View>
 
+      {/* Condition, place and age as chips rather than a run-on grey line. */}
+      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+        <MetaChip>{conditionLabel(request.condition)}</MetaChip>
+        <MetaChip icon={<IconPin size={11} color={theme.subtle} sw={1.7} />}>{arOf(request.governorate)}</MetaChip>
+        <MetaChip>{timeAgoAr(request.created_at)}</MetaChip>
+      </View>
+
       {request.note ? (
         <Text numberOfLines={2} style={{
-          fontFamily: fonts.ar, fontSize: 12.5, color: theme.ink, textAlign: 'right',
-          marginTop: 8, lineHeight: 20,
+          fontFamily: fonts.arRegular, fontSize: 12.5, color: theme.ink, textAlign: 'right',
+          marginTop: 9, lineHeight: 20,
         }}>
           {request.note}
         </Text>
       ) : null}
-
-      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginTop: 10 }}>
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
-          <IconPin size={12} color={theme.subtle} sw={1.7} />
-          <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>{arOf(request.governorate)}</Text>
-        </View>
-        <Text style={{ fontFamily: fonts.ar, fontSize: 11.5, color: theme.subtle }}>{timeAgoAr(request.created_at)}</Text>
-        <View style={{ flex: 1 }} />
-        <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
-          <IconChat size={12} color={request.offer_count > 0 ? theme.accent : theme.subtle} sw={1.7} />
-          <Text style={{
-            fontFamily: request.offer_count > 0 ? fonts.arBold : fonts.ar, fontSize: 11.5,
-            color: request.offer_count > 0 ? theme.accent : theme.subtle,
-          }}>
-            {request.offer_count > 0 ? `${request.offer_count} عرض` : 'لا عروض بعد'}
-          </Text>
-        </View>
-      </View>
     </TouchableOpacity>
+  );
+}
+
+function MetaChip({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
+  return (
+    <View style={{
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 4,
+      paddingHorizontal: 9, paddingVertical: 4,
+      borderRadius: radius.pill, backgroundColor: theme.inset,
+    }}>
+      {icon}
+      <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.ar, fontSize: 11, color: theme.subtle }}>
+        {children}
+      </Text>
+    </View>
   );
 }
 

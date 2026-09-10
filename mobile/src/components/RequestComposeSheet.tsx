@@ -140,17 +140,31 @@ export function RequestComposeSheet({
         behavior="padding"
         style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
       >
+        {/* 26, not the shared scale's 20 — a sheet rounds harder than the
+            cards inside it, or its corners read as another card. */}
         <View style={{
-          backgroundColor: theme.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          backgroundColor: theme.bg, borderTopLeftRadius: 26, borderTopRightRadius: 26,
           maxHeight: '92%', paddingBottom: 20,
         }}>
           <View style={{
             flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
             paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderColor: theme.line,
           }}>
-            <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink }}>اطلب جهازاً</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <IconClose size={18} color={theme.subtle} sw={1.8} />
+            <Text style={{ fontFamily: fonts.arBold, fontSize: 16, color: theme.ink }}>اطلب جهازاً</Text>
+            {/* A bare glyph on a sheet has no edge to aim at. The tile gives
+                the close button a body, which is what makes it read as a
+                control rather than as decoration in the corner. */}
+            <TouchableOpacity
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 32, height: 32, borderRadius: 11, backgroundColor: theme.chipBg,
+                alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <IconClose size={17} color={theme.subtle} sw={1.8} />
             </TouchableOpacity>
           </View>
 
@@ -212,20 +226,26 @@ export function RequestComposeSheet({
             <Label style={{ marginTop: 14 }}>ميزانيتي (د.ع) أو أقل</Label>
             <View style={{
               flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, borderRadius: radius.lg, padding: 10,
+              backgroundColor: theme.inset, borderRadius: radius.lg, padding: 9,
             }}>
+              {/* The buttons are white ON the track rather than tinted
+                  against a white field — it is the track that has to read as
+                  one control, and two grey circles on a white row read as two
+                  buttons with a number between them. */}
               <TouchableOpacity onPress={() => setMaxPrice((v) => clampPrice(v - PRICE_STEP))} activeOpacity={0.7}
-                style={{ width: 34, height: 34, borderRadius: 999, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center' }}>
+                accessibilityRole="button" accessibilityLabel="أنقص الميزانية"
+                style={{ width: 36, height: 36, borderRadius: 999, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' }}>
                 <IconMinus size={14} color={theme.ink} sw={2.4} />
               </TouchableOpacity>
               <Text numberOfLines={1} adjustsFontSizeToFit style={{
-                flex: 1, textAlign: 'center', fontFamily: fonts.ltrBold, fontSize: 16,
+                flex: 1, textAlign: 'center', fontFamily: fonts.ltrBold, fontSize: 18,
                 fontWeight: '700', color: theme.ink, writingDirection: 'ltr',
               }}>
                 {fmtIQD(maxPrice)}
               </Text>
               <TouchableOpacity onPress={() => setMaxPrice((v) => clampPrice(v + PRICE_STEP))} activeOpacity={0.7}
-                style={{ width: 34, height: 34, borderRadius: 999, backgroundColor: theme.chipBg, alignItems: 'center', justifyContent: 'center' }}>
+                accessibilityRole="button" accessibilityLabel="زد الميزانية"
+                style={{ width: 36, height: 36, borderRadius: 999, backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center' }}>
                 <IconPlus size={14} color={theme.ink} sw={2.4} />
               </TouchableOpacity>
             </View>

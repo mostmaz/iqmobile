@@ -7,7 +7,7 @@ import { Img } from '../../components/Img';
 import { DeviceSpecs } from '../../components/DeviceSpecs';
 import { LoadFailed } from '../../components/LoadFailed';
 import { CompareTray } from '../../components/CompareTray';
-import { deviceTitle, ltrNum } from '../../lib/format';
+import { deviceTitle, ltrNum, timeAgoAr } from '../../lib/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
@@ -518,9 +518,20 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             {data.color ? <ChipTag>{data.color}</ChipTag> : null}
           </View>
 
-          <Text style={{ fontFamily: fonts.arBold, fontSize: 22, color: theme.ink, letterSpacing: -0.3, textAlign: 'right' }}>
+          <Text style={{ fontFamily: fonts.arBold, fontSize: 21, color: theme.ink, lineHeight: 28, letterSpacing: -0.3, textAlign: 'right' }}>
             {deviceTitle(data.brand, data.model)}
           </Text>
+
+          {/* Where and when, on their own line under the title. This used to
+              be the right-hand column of the price row, which meant a long
+              «بغداد · المحمودية» was competing for width with a 30pt price
+              and losing. */}
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 5, marginTop: 6 }}>
+            <IconPin size={13} color={theme.subtle} />
+            <Text style={{ fontFamily: fonts.arRegular, fontSize: 12, color: theme.subtle }}>
+              {arOf(data.governorate)}{data.city ? ` · ${data.city}` : ''} · {timeAgoAr(data.created_at)}
+            </Text>
+          </View>
 
           {stale ? (
             <View style={{
@@ -536,8 +547,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             </View>
           ) : null}
 
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 8 }}>
-            <View>
+          {/* The price gets a card of its own. On a near-white page a bare
+              price reads as a caption; the card is what makes it the thing
+              the eye lands on after the photo. */}
+          <View style={{
+            marginTop: 12, backgroundColor: theme.surface,
+            borderRadius: radius.xxl, borderWidth: 1, borderColor: theme.line,
+            padding: 14, ...shadowSoft,
+            flexDirection: 'row-reverse', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10,
+          }}>
+            <View style={{ flexShrink: 1, minWidth: 0 }}>
               <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle }}>
                 {isOnRequest(data as any) ? 'السعر' : stale ? 'آخر سعر معروف' : 'السعر المطلوب'}
               </Text>
@@ -611,12 +630,6 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                   ) : null}
                 </View>
               ) : null}
-            </View>
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 4 }}>
-              <IconPin size={13} color={theme.subtle} />
-              <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle }}>
-                {arOf(data.governorate)}{data.city ? ` · ${data.city}` : ''}
-              </Text>
             </View>
           </View>
         </View>
