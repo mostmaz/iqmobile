@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { orderBrandsForFunnel, HEAD_BRANDS, brandLabel } from '../src/lib/requestFunnel.ts';
 
-// The live /brands order, deliberately NOT in the owner's order, with counts.
+// The live /brands order, deliberately NOT in supply order, with counts.
 const LIVE = [
   { name: 'Apple', display_ar: 'آبل', position: 1, count: 120 },
   { name: 'Samsung', display_ar: 'سامسونج', position: 2, count: 95 },
@@ -16,10 +16,31 @@ const LIVE = [
   { name: 'POCO', display_ar: 'بوكو', position: 16, count: 12 },
 ];
 
-test("the head is the owner's list, in the owner's order, not the server's", () => {
+test("the head is the owner's list, ordered by what is for sale", () => {
+  // Membership comes from HEAD_BRANDS; the order comes from supply, so the
+  // grid reorders itself as the marketplace changes rather than freezing a
+  // ranking that was true the day it was typed.
   const { head } = orderBrandsForFunnel(LIVE);
   assert.deepEqual(head.map((b) => b.name),
-    ['Apple', 'Samsung', 'Honor', 'Realme', 'Xiaomi', 'Infinix', 'Tecno']);
+    ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Honor', 'Infinix']);
+  const counts = head.map((b) => b.count ?? 0);
+  assert.deepEqual(counts, [...counts].sort((a, b) => b - a), 'descending');
+});
+
+test('the biggest brand is the first entry, which RTL puts top-right', () => {
+  // The grid renders row-reverse, so entry 0 is the top-RIGHT card — where an
+  // Arabic reader's eye starts.
+  const { head } = orderBrandsForFunnel(LIVE);
+  assert.equal(head[0].name, 'Apple');
+});
+
+test('brands tied on count fall back to the owner list, not to chance', () => {
+  // Array.prototype.sort is only stable within one engine's implementation
+  // for a given input; an explicit tie-break keeps an empty marketplace
+  // rendering the same grid every time.
+  const tied = HEAD_BRANDS.map((k) => ({ name: k, count: 0 }));
+  const { head } = orderBrandsForFunnel([...tied].reverse());
+  assert.deepEqual(head.map((b) => b.name), HEAD_BRANDS);
 });
 
 test('Tecno is a head brand, not one of the rest', () => {
@@ -39,7 +60,8 @@ test('a head brand the server does not have is skipped, never invented', () => {
   // A pill for a brand the server does not know would filter on a name it
   // ignores and silently return everything.
   const { head } = orderBrandsForFunnel(LIVE.filter((b) => b.name !== 'Honor'));
-  assert.deepEqual(head.map((b) => b.name), ['Apple', 'Samsung', 'Realme', 'Xiaomi', 'Infinix', 'Tecno']);
+  assert.ok(!head.some((b) => b.name === 'Honor'));
+  assert.deepEqual(head.map((b) => b.name), ['Apple', 'Samsung', 'Xiaomi', 'Realme', 'Tecno', 'Infinix']);
 });
 
 test('the literal "Other" brand is a row in the rest, not the «أخرى» pill', () => {

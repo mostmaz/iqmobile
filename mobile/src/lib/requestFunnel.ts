@@ -1,11 +1,14 @@
 // Which brands the request funnel shows first, and which it hides behind
 // «أخرى». Pure, so the order is testable without rendering anything.
 //
-// The named brands are the owner's list, in the owner's order — they are
-// what Iraqi buyers actually ask for, and a grid of twenty-two would bury
-// them. Everything else waits behind «أخرى», ordered by how much of it
-// is actually for sale (`count`), because that is the only honest ranking
-// for a brand the buyer had to go looking for.
+// The named brands are the owner's list — they are what Iraqi buyers
+// actually ask for, and a grid of twenty-two would bury them. WHICH brands
+// are shown is that list; the ORDER they appear in is supply, biggest first,
+// so the grid reorders itself as the marketplace changes instead of freezing
+// a ranking that was true the day it was typed.
+//
+// Everything else waits behind «أخرى», ordered the same way — the only
+// honest ranking for a brand the buyer had to go looking for.
 //
 // The catalogue has a literal brand called "Other". It is a real row with
 // real listings, so it belongs in the modal like any other — but the «أخرى»
@@ -20,7 +23,12 @@ export interface FunnelBrand {
   logo_path?: string | null;
 }
 
-/** Owner's order. Compared lowercase against `name`. */
+/**
+ * Which brands get a card. Compared lowercase against `name`.
+ *
+ * Membership only — this list does NOT set the order any more. Ties fall
+ * back to it, so an empty marketplace still renders something stable.
+ */
 export const HEAD_BRANDS = ['apple', 'samsung', 'honor', 'realme', 'xiaomi', 'infinix', 'tecno'];
 
 const key = (b: FunnelBrand) => (b.name || '').trim().toLowerCase();
@@ -33,9 +41,17 @@ export function orderBrandsForFunnel(brands: FunnelBrand[] | null | undefined): 
   const byKey = new Map(list.map((b) => [key(b), b]));
 
   // Head brands missing from the server list are skipped, not invented —
-  // only a brand that exists can ever be a pill, or tapping it would filter
+  // only a brand that exists can ever be a card, or tapping it would filter
   // on a name the server does not know and silently return everything.
-  const head = HEAD_BRANDS.map((k) => byKey.get(k)).filter((b): b is FunnelBrand => !!b);
+  //
+  // Sorted by how many devices are actually for sale. The grid is rendered
+  // row-reverse, so the first entry is the top-RIGHT card: the biggest brand
+  // is where an Arabic reader's eye starts.
+  const head = HEAD_BRANDS
+    .map((k) => byKey.get(k))
+    .filter((b): b is FunnelBrand => !!b)
+    .sort((a, b) => (b.count ?? 0) - (a.count ?? 0)
+      || HEAD_BRANDS.indexOf(key(a)) - HEAD_BRANDS.indexOf(key(b)));
   const headKeys = new Set(head.map(key));
 
   const rest = list

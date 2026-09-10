@@ -9,7 +9,7 @@
 // should recognise the other instantly.
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, Modal, KeyboardAvoidingView } from 'react-native';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../theme';
 import { Btn, Pill, Input, fmtIQD } from './ui';
@@ -77,6 +77,9 @@ export function RequestComposeSheet({
     }
   }, [visible, defaultGovAr, initialBrand, initialModel]);
 
+  const brandRailRef = React.useRef<ScrollView>(null);
+  const condRailRef = React.useRef<ScrollView>(null);
+
   const { data: catalogBrands } = useQuery({
     queryKey: ['device-catalog-brands'],
     queryFn: () => DeviceCatalog.brands('phone'),
@@ -128,7 +131,15 @@ export function RequestComposeSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
+      {/* Padding on BOTH platforms. The app is edge-to-edge, so Android's
+          adjustResize no longer resizes the window and the IME is drawn over
+          the sheet — «الحالة», the governorate and the note sat under the
+          keys. ChatScreen carries the same fix and the same comment; no
+          offset here because the sheet is not under a header. */}
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}
+      >
         <View style={{
           backgroundColor: theme.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24,
           maxHeight: '92%', paddingBottom: 20,
@@ -143,13 +154,31 @@ export function RequestComposeSheet({
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          {/* automaticallyAdjustKeyboardInsets, or the keyboard opens straight
+              over «الحالة», the governorate and the note — the fields at the
+              bottom of the sheet — and the buyer types blind. The sell form
+              carries the same prop for the same reason. */}
+          <ScrollView
+            contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            automaticallyAdjustKeyboardInsets
+          >
             <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, textAlign: 'right', lineHeight: 20, marginBottom: 14 }}>
               يصل طلبك إلى المتاجر التي لديها الجهاز أو تبيع الماركة نفسها في محافظتك — فترد عليك بعروضها.
             </Text>
 
             <Label>الماركة</Label>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            {/* row-reverse lays the first brand at the far RIGHT of the
+                content, but a horizontal ScrollView opens at offset 0 — the
+                LEFT edge — so the rail opened on the tail of the list and the
+                buyer saw the rarest brands first. Scrolling to the end on
+                layout puts it back at the RTL start. Browse and Search carry
+                the same fix. */}
+            <ScrollView
+              ref={brandRailRef}
+              horizontal showsHorizontalScrollIndicator={false}
+              onContentSizeChange={() => brandRailRef.current?.scrollToEnd({ animated: false })}
               contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
               {(catalogBrands || []).map((b) => (
                 <Pill key={b.brand} active={brand === b.brand} onPress={() => { setBrand(b.brand); setModel(''); }}>
@@ -202,7 +231,10 @@ export function RequestComposeSheet({
             </View>
 
             <Label style={{ marginTop: 14 }}>الحالة</Label>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            <ScrollView
+              ref={condRailRef}
+              horizontal showsHorizontalScrollIndicator={false}
+              onContentSizeChange={() => condRailRef.current?.scrollToEnd({ animated: false })}
               contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2 }}>
               {CONDITIONS.map((c) => (
                 <Pill key={c.key ?? 'any'} active={condition === c.key} onPress={() => setCondition(c.key)}>
@@ -264,7 +296,7 @@ export function RequestComposeSheet({
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {brand ? (
         <DevicePickerModal

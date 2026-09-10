@@ -2,7 +2,7 @@ import { AskingPriceGuidance } from '../../components/AskingPriceGuidance';
 import { listingQuality } from '../../lib/listingQuality';
 import { ListingQualityChecklist } from '../../components/ListingQualityChecklist';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, TextInput, BackHandler, Modal, KeyboardAvoidingView } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -667,9 +667,12 @@ export default function PostListingScreen({ navigation }: any) {
       <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
         <StepDots total={6} current={step} />
       </View>
-      {/* automaticallyAdjustKeyboardInsets keeps the focused input visible;
-          without it the battery keypad opened directly over its own field
-          and the seller typed blind. */}
+      {/* automaticallyAdjustKeyboardInsets is iOS-only, so on Android the
+          keyboard still opened over «وصف حالة الجهاز» — the last field on
+          step 2 — and the seller typed blind. The app is edge-to-edge, which
+          means adjustResize no longer resizes the window either, so padding
+          on BOTH platforms is what works. ChatScreen documents the same. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
       <ScrollView
         ref={qualityScrollRef}
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
@@ -1287,6 +1290,7 @@ export default function PostListingScreen({ navigation }: any) {
           onEdit={target => { setErr(''); setFieldErr(null); setStep(target); qualityScrollRef.current?.scrollTo({ y: 0, animated: true }); }}
         /> : null}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Sticky footer — soft elevation instead of a hard border so it floats
           cleanly above the wizard content. Always shows the primary action. */}
