@@ -10,7 +10,7 @@ import { CompareTray } from '../../components/CompareTray';
 import { deviceTitle, ltrNum } from '../../lib/format';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { theme, fonts, radius, shadowSoft } from '../../theme';
+import { theme, fonts, radius, shadowSoft, shadowUp, FONT_SCALE_TIGHT } from '../../theme';
 import { Btn, Card, fmtIQD } from '../../components/ui';
 import { IconStar, IconPin, IconArrowLeft, IconShare, IconBookmark, IconPhoneIcon, IconMsgCall, IconChat, IconSpark, IconChevronLeft, IconBell, IconLock, IconCompare } from '../../components/icons';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
@@ -34,6 +34,16 @@ import { FreeBoostCard } from '../../components/FreeBoostCard';
 
 const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
+/**
+ * Gallery height.
+ *
+ * Was 320, which on a 390pt screen pushed the asking price and the contact
+ * button below the fold — a buyer had to scroll before learning either of
+ * the two things they opened the listing for. 236 keeps the photo the
+ * largest element on the screen and still lets the price card and the first
+ * chips land above it.
+ */
+const GALLERY_H = 236;
 
 export default function ListingDetailScreen({ route, navigation }: any) {
   const { id } = route.params;
@@ -385,6 +395,24 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   // sources' lists. Grey the price + show an unavailable banner.
   const stale = !!(data as any).stale_since;
 
+  // One gate for both halves of the contact UI — the number in the flow and
+  // the bar at the bottom. Two reasons to skip it, both about the price
+  // book: with the store button above, this would add a SECOND chat button
+  // bound to the aggregator account; and without it — no shop stocks this
+  // device — the numbers are blank, leaving only that dead chat button.
+  // Normal listings are unaffected: both flags are price-book only.
+  const showContact = !isMine && !isDead
+    && !(data as any).store_chat && !(data as any).contact_suppressed;
+  // The visible number and the bar's call button must report the same
+  // event, or the dashboard's contact column counts one of the two paths.
+  const trackPhoneCall = () => {
+    if (!contactPhone) return;
+    track('listing.contact_call', { listing_id: data.id, brand: data.brand, seller_type: (data as any).seller_type ?? null });
+    logMetaEvent('Contact', { method: 'call', brand: data.brand });
+    Listings.contact(data.id, 'call');
+    callPhone(contactPhone);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <Animated.ScrollView
@@ -396,19 +424,19 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         )}
       >
         {/* Gallery — floating overlay buttons over the image */}
-        <View style={{ position: 'relative', height: 320, backgroundColor: theme.chipBg }}>
+        <View style={{ position: 'relative', height: GALLERY_H, backgroundColor: theme.chipBg }}>
           <ScrollView
             horizontal pagingEnabled showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={(e) => setImgIdx(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
           >
             {(data.images || []).length === 0 ? (
-              <View style={{ width: SCREEN_W, height: 320, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: SCREEN_W, height: GALLERY_H, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ color: theme.subtle, fontFamily: fonts.ar }}>لا توجد صور</Text>
               </View>
             ) : (
               (data.images || []).map((im, i) => (
                 <TouchableOpacity key={im.id} activeOpacity={1} onPress={() => setViewerIdx(i)}>
-                  <Img source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: 320 }} />
+                  <Img source={{ uri: fullImageUrl(im.image_path) }} style={{ width: SCREEN_W, height: GALLERY_H }} />
                 </TouchableOpacity>
               ))
             )}
@@ -719,19 +747,9 @@ export default function ListingDetailScreen({ route, navigation }: any) {
             showing; the store button is the only contact that reaches a
             person. Normal listings are unaffected: both flags are
             price-book only. */}
-        {!isMine && !isDead && !(data as any).store_chat && !(data as any).contact_suppressed ? (
+        {showContact && contactPhone ? (
           <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
-            <ContactRow
-              phone={contactPhone}
-              whatsapp={contactWhatsApp}
-              listingId={data.id}
-              brand={data.brand}
-              sellerType={data.seller?.seller_type}
-              onStartChat={startChat}
-              chatStarting={chatStarting}
-              storefront={isStorefront}
-              chat={data.seller?.channels?.chat ?? true}
-            />
+            <SellerPhoneCard phone={contactPhone} onCall={trackPhoneCall} />
           </View>
         ) : null}
 
@@ -1213,9 +1231,27 @@ export default function ListingDetailScreen({ route, navigation }: any) {
         />
       ) : null}
 
+      {/* Pinned, so chat is reachable from anywhere on the page rather than
+          only after scrolling past the specs. */}
+      {showContact ? (
+        <ContactBar
+          phone={contactPhone}
+          whatsapp={contactWhatsApp}
+          listingId={data.id}
+          brand={data.brand}
+          sellerType={data.seller?.seller_type}
+          onStartChat={startChat}
+          chatStarting={chatStarting}
+          chat={data.seller?.channels?.chat ?? true}
+        />
+      ) : null}
+
       {/* The shortlist, parked above the tab bar. Absent until something is
           in it, so a buyer who never compares never sees it. */}
       <CompareTray
+        // Sits above the contact bar rather than over it. The bar's own
+        // height is its 50pt button plus 12 top, 16-or-inset bottom.
+        bottomOffset={showContact ? 50 + 12 + Math.max(insets.bottom, 16) : 0}
         onOpen={() => navigation.navigate('Compare')}
         // The home feed, not just "back" — back could be the compare page
         // or another listing, neither of which is where you find a device.
@@ -1225,12 +1261,59 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   );
 }
 
-// Always-on contact CTAs. Three actions, all public:
-//   - Call: tap-to-dial via tel:
-//   - WhatsApp: deeplink wa.me, only when seller provided a number
-//   - Chat: opens the in-app chat so buyers can negotiate without leaving
-function ContactRow({
-  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting, storefront, chat = true,
+// The seller's contact, split in two.
+//
+// It used to be one card holding a phone pill and three equal-weight
+// buttons — call, WhatsApp, chat — stacked in the scroll flow, which meant
+// the buyer had to scroll past the specs to reach any of them, and once
+// there had to choose between three things that look equally likely to
+// work. Only chat always works: a listing may have no phone and no
+// WhatsApp, and a phone that is switched off fails silently.
+//
+// So: the NUMBER stays in the flow, because it is information a buyer reads
+// and copies. The ACTIONS move to a bar pinned to the bottom, where chat is
+// the one that gets words and the rest are icons beside it.
+
+/** Just the number, in the flow. Rendered only when the seller exposed one. */
+function SellerPhoneCard({ phone, onCall }: { phone: string; onCall: () => void }) {
+  return (
+    <View style={{
+      backgroundColor: theme.surface,
+      borderColor: theme.line, borderWidth: 1, borderRadius: radius.xxl,
+      padding: 14,
+    }}>
+      <TouchableOpacity
+        onPress={onCall}
+        activeOpacity={0.85}
+        style={{
+          flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
+          paddingHorizontal: 12, paddingVertical: 10,
+          backgroundColor: theme.inset, borderRadius: radius.lg,
+        }}
+      >
+        <Text style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: theme.ink, fontWeight: '700', letterSpacing: 0.3, writingDirection: 'ltr' }}>
+          {phone}
+        </Text>
+        <IconPhoneIcon size={16} color={theme.subtle} sw={1.7} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+/**
+ * The pinned action bar.
+ *
+ * Chat is the primary and the only one with a label. Call and WhatsApp are
+ * 56-wide icon buttons beside it, each rendered only when its backing field
+ * is set — the bar shrinks to a single full-width chat button on a listing
+ * with no phone, rather than showing a dead control.
+ *
+ * The handoff put "compare" in the third slot. Compare already has a
+ * floating button on the gallery two thumb-lengths above, and WhatsApp is a
+ * channel with no other entry point on this screen, so WhatsApp keeps it.
+ */
+function ContactBar({
+  phone, whatsapp, listingId, brand, sellerType, onStartChat, chatStarting, chat = true,
 }: {
   phone: string | null;
   whatsapp: string | null;
@@ -1239,17 +1322,13 @@ function ContactRow({
   sellerType?: string;
   onStartChat: () => void;
   chatStarting: boolean;
-  // A storefront sells through the cart and answers on one support line, so
-  // its listings drop the per-seller chat entirely.
-  storefront?: boolean;
-  // Whether the seller takes in-app chat at all. Off for admin-made shops
-  // (nobody behind them has the app); the server refuses the thread too.
   chat?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const track = useTrack();
-  // The contact-tap is the closest thing this app has to a "sale" —
-  // we wire both the visible phone-number tap and the bottom buttons
-  // through these wrappers so all three paths report the same event.
+  // The contact-tap is the closest thing this app has to a "sale" — the
+  // visible number and these buttons both come through here so all paths
+  // report the same event.
   const trackedCall = () => {
     if (!phone) return;
     track('listing.contact_call', { listing_id: listingId, brand, seller_type: sellerType });
@@ -1270,70 +1349,66 @@ function ContactRow({
     track('listing.contact_chat', { listing_id: listingId, brand, seller_type: sellerType });
     onStartChat();
   };
+  if (!chat && !phone && !whatsapp) return null;
   return (
     <View style={{
       backgroundColor: theme.surface,
-      borderColor: theme.line, borderWidth: 1, borderRadius: radius.xxl,
-      padding: 14,
+      borderTopWidth: 1, borderTopColor: theme.line,
+      ...shadowUp,
+      paddingHorizontal: 16, paddingTop: 12,
+      paddingBottom: Math.max(insets.bottom, 16),
+      flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
     }}>
-      {/* Public phone pill — only when the seller actually exposed a
-          number. Listings without a phone skip straight to the chat
-          button below. */}
+      {chat ? (
+        <TouchableOpacity
+          onPress={trackedChat}
+          disabled={chatStarting}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          style={{
+            flex: 1, minHeight: 50, borderRadius: radius.lg,
+            backgroundColor: theme.accent,
+            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7,
+            opacity: chatStarting ? 0.7 : 1,
+          }}
+        >
+          <IconChat size={17} color="#fff" sw={1.8} />
+          <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 15 }}>
+            {sellerType === 'shop' ? ar.listing.chatShop : ar.listing.chat}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
       {phone ? (
         <TouchableOpacity
           onPress={trackedCall}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="اتصال"
           style={{
-            flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between',
-            paddingHorizontal: 12, paddingVertical: 10,
-            backgroundColor: theme.bg, borderRadius: 12,
-            borderWidth: 1, borderColor: theme.line,
+            width: chat ? 56 : undefined, flex: chat ? 0 : 1,
+            minHeight: 50, borderRadius: radius.lg,
+            backgroundColor: theme.successSoft, borderWidth: 1.5, borderColor: theme.success,
+            alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <Text style={{ fontFamily: fonts.ltrBold, fontSize: 17, color: theme.ink, fontWeight: '700', letterSpacing: 0.3, writingDirection: 'ltr' }}>
-            {phone}
-          </Text>
-          <IconPhoneIcon size={16} color={theme.subtle} sw={1.7} />
+          <IconPhoneIcon size={18} color={theme.success} sw={1.8} />
         </TouchableOpacity>
       ) : null}
-
-      {/* Action row: Call / WhatsApp render only when their backing
-          field is set. We skip the row entirely if neither is available
-          (the chat button below covers reach in that case). */}
-      {phone || whatsapp ? (
-        <View style={{ marginTop: phone ? 8 : 0, flexDirection: 'row-reverse', gap: 8 }}>
-          {phone ? (
-            <Btn kind="success" full onPress={trackedCall}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                <IconPhoneIcon size={15} color="#fff" sw={1.8} />
-                <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>اتصال</Text>
-              </View>
-            </Btn>
-          ) : null}
-          {whatsapp ? (
-            <Btn kind="successSoft" full onPress={trackedWhatsApp}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-                <IconMsgCall size={15} color={theme.success} sw={1.8} />
-                <Text style={{ color: theme.success, fontFamily: fonts.arBold, fontSize: 14 }}>واتساب</Text>
-              </View>
-            </Btn>
-          ) : null}
-        </View>
-      ) : null}
-      {/* Chat on storefront listings used to be suppressed as "a third
-          channel nobody is watching". The operator app now watches it —
-          store chats surface there with a push, and replies go out under
-          the shop's own name — so the reason is gone and the button is
-          back for every listing. */}
-      {chat ? (
-      <View style={{ marginTop: (phone || whatsapp) ? 8 : 0 }}>
-        <Btn kind="primary" full onPress={trackedChat} busy={chatStarting}>
-          <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }}>
-            <IconChat size={15} color="#fff" sw={1.8} />
-            <Text style={{ color: '#fff', fontFamily: fonts.arBold, fontSize: 14 }}>{sellerType === 'shop' ? ar.listing.chatShop : ar.listing.chat}</Text>
-          </View>
-        </Btn>
-      </View>
+      {whatsapp ? (
+        <TouchableOpacity
+          onPress={trackedWhatsApp}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="واتساب"
+          style={{
+            width: chat ? 56 : undefined, flex: chat ? 0 : 1,
+            minHeight: 50, borderRadius: radius.lg,
+            backgroundColor: theme.chipBg,
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <IconMsgCall size={18} color={theme.success} sw={1.8} />
+        </TouchableOpacity>
       ) : null}
     </View>
   );

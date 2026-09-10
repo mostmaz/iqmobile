@@ -17,10 +17,19 @@ import { fullImageUrl } from '../api/upload';
 import { useCompare, COMPARE_MAX, type CompareEntry } from '../lib/compare';
 import { theme, fonts, radius, FONT_SCALE_TIGHT } from '../theme';
 
-export function CompareTray({ onOpen, onFindMore }: {
+export function CompareTray({ onOpen, onFindMore, bottomOffset = 0 }: {
   onOpen: () => void;
   /** Where "add a second one" goes — back to browsing. */
   onFindMore: () => void;
+  /**
+   * Height of anything already pinned to the bottom of this screen.
+   *
+   * The listing detail page has a contact bar down there. The tray is
+   * absolutely positioned, so without this it would sit on top of «راسل
+   * البائع» — hiding the screen's primary action behind a shortlist widget
+   * the buyer opened by accident.
+   */
+  bottomOffset?: number;
 }) {
   const { entries, remove } = useCompare();
   if (!entries.length) return null;
@@ -34,7 +43,7 @@ export function CompareTray({ onOpen, onFindMore }: {
       // bottom: 0 — this screen's viewport already ends above the tab bar,
       // so adding the bar's height (and the home-indicator inset it already
       // carries) floated the tray a bar-and-a-half up the screen.
-      position: 'absolute', left: 0, right: 0, bottom: 0,
+      position: 'absolute', left: 0, right: 0, bottom: bottomOffset,
       backgroundColor: theme.surface,
       borderTopWidth: 1, borderTopColor: theme.line,
       paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10,
