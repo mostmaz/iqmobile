@@ -17,7 +17,7 @@
 
 import { neighboursOf } from './governorates.js';
 
-// Same +20% the buyer-request matcher uses (phoneRequests.js CEILING_SLACK).
+// Same +20% the buyer-request matcher uses (requestMatch.js CEILING_SLACK).
 // A stated budget is an opening position, not a wall — but only just, and the
 // label always says the price is over what was asked for.
 export const BUDGET_SLACK = 1.2;

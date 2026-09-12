@@ -105,7 +105,9 @@ GET    /events                  (SSE — chat.message, deal.*, phone.unlocked, �
 ```
 
 Admin endpoints live under `/admin/*` and back the admin web app — listings,
-users, deals, reports, bypass attempts, settings.
+users, deals, reports, bypass attempts, settings, and device requests
+(`/admin/requests`, `/admin/requests/summary`, `/admin/requests/:id` — demand,
+matched devices and offers; see `docs/request-dashboard.md`).
 
 ## RTL
 

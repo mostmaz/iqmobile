@@ -11,7 +11,16 @@
 // misses would put the seller in front of buyers who asked for something
 // else, which is how a board full of ignored offers starts.
 
-/** Same slack the outgoing broadcast uses — see phoneRequests.js. */
+// A seller holding the exact device, priced a little over the buyer's
+// ceiling, is still the best lead this request has — a stated budget is an
+// opening position, not a wall, and "800k when he asked for ≤700k" is a
+// conversation. Below the ceiling stays the clean match; up to 20% above it
+// gets the same alert, flagged so the copy can say so rather than pretend
+// the price fits. Past that the two of them genuinely want different things.
+//
+// Both directions of the match below use it, and so does the dashboard's
+// supply count — one slack, or the console reports matches the broadcast
+// never sent.
 export const CEILING_SLACK = 1.2;
 
 /**
@@ -64,6 +73,61 @@ export function requestsAnsweredBy(db, listing, norm, {
       // ceiling learns we wasted their time; one who is told can decide to
       // negotiate.
       above_budget: price > Number(request.max_price),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * The same rule read from the other end: listings that satisfy THIS request.
+ *
+ * `requestsAnsweredBy` above asks "which buyers wanted this phone" and is
+ * driven by a new listing. This asks "who is already selling what this buyer
+ * asked for" and is driven by a request. The broadcast needs it to find the
+ * sellers worth telling first; the dashboard needs it to say whether a
+ * request went unanswered because nobody has the phone, or because the
+ * sellers who do have it ignored it. Those are opposite problems and the
+ * operator can only tell them apart if both ends use one rule.
+ *
+ * `reserved` counts as supply, unlike `requestsAnsweredBy` (which runs on the
+ * seller's own freshly-published listing and so only ever sees `active`): a
+ * reserved phone is a deal that has not closed, and its seller is still a
+ * lead worth showing.
+ *
+ * @param db
+ * @param request `{ id, buyer_id, brand, model, max_price }`
+ * @param norm    the shared model normalizer (savedSearches.norm)
+ * @param opts.limit  cap on rows returned — counting callers pass Infinity
+ * @returns rows ordered cheapest first, each carrying `above_budget` (over
+ *          the buyer's stated ceiling but inside the slack) and
+ *          `call_for_price` (the `asking_price = 1` sentinel — a real device,
+ *          but never a price reference).
+ */
+export function listingsAnsweringRequest(db, request, norm, { limit = 50 } = {}) {
+  if (!request || !request.brand) return [];
+  const ceiling = Math.round(Number(request.max_price) * CEILING_SLACK);
+  if (!Number.isFinite(ceiling)) return [];
+
+  const rows = db.prepare(
+    `SELECT l.id, l.seller_id, l.brand, l.model, l.storage, l.color, l.condition,
+            l.asking_price, l.governorate, l.status, l.created_at
+       FROM phone_listings l
+      WHERE l.brand=? AND l.asking_price<=? AND l.status IN ('active','reserved')
+        AND COALESCE(l.is_draft,0)=0
+      ORDER BY l.asking_price ASC`,
+  ).all(request.brand, ceiling);
+
+  const wanted = norm(request.model);
+  const out = [];
+  for (const row of rows) {
+    // Never sell to yourself — the buyer's own listing is not supply.
+    if (row.seller_id === request.buyer_id) continue;
+    if (norm(row.model) !== wanted) continue;
+    out.push({
+      ...row,
+      above_budget: row.asking_price > Number(request.max_price),
+      call_for_price: Number(row.asking_price) <= 1,
     });
     if (out.length >= limit) break;
   }

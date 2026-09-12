@@ -9,8 +9,18 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts';
 
+type RequestsBlock = {
+  open: number; new_7d: number; fulfilled: number; expiring_48h: number;
+  offers: number; offers_7d: number; answer_rate: number | null; unanswered_open: number;
+  median_first_response_ms: number | null;
+  matched_devices: number; open_with_match: number; open_without_match: number;
+  matched_but_unanswered: number; scan_capped: boolean;
+  top_models: Array<{ brand: string; model: string; requests: number; offers: number; matched: number; unanswered: number; median_budget: number | null }>;
+};
+
 type OverviewData = {
   growth: { tracking_start: number; acquisition: { registrations: number; guests: number }; contact_buyers: number };
+  requests: RequestsBlock;
   users: { total: number; real: number; guest: number; suspended: number; new_7d: number; new_30d: number };
   listings: { active: number; sold: number; expired: number; removed: number; new_7d: number; new_30d: number };
   by_brand: Array<{ name: string; count: number }>;
@@ -32,7 +42,15 @@ function fmtIQD(n: number) {
   return new Intl.NumberFormat('en-US').format(n) + ' د.ع';
 }
 
-export function OverviewPage() {
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '—';
+  const m = Math.round(ms / 60000);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
+}
+
+export function OverviewPage({ onGoRequests }: { onGoRequests?: () => void } = {}) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [err, setErr] = useState<string>('');
 
@@ -92,6 +110,54 @@ export function OverviewPage() {
                 <Bar dataKey="count" fill="#5C9EAD" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Demand row. The charts above say what the site HAS; a request says
+          what somebody came for and did not find, and the two readings only
+          mean something side by side. */}
+      <div className="chart-row">
+        <ChartCard title="Device requests">
+          <div className="kpi-row" style={{ marginBottom: 0 }}>
+            <Kpi label="Open requests" value={data.requests.open} sub={`${data.requests.new_7d} new this week`} />
+            <Kpi
+              label="No offers yet"
+              value={data.requests.unanswered_open}
+              sub={`${data.requests.matched_but_unanswered} of them have a matching device listed`}
+            />
+            <Kpi
+              label="Requests we can fill"
+              value={data.requests.open_with_match}
+              sub={`${data.requests.matched_devices.toLocaleString('en-US')} live listings match one`}
+            />
+            <Kpi
+              label="No match at all"
+              value={data.requests.open_without_match}
+              sub="Stock we do not carry — an import decision"
+            />
+          </div>
+          <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>
+            {data.requests.offers.toLocaleString('en-US')} offers sent
+            {data.requests.answer_rate == null ? '' : ` · ${data.requests.answer_rate}% of requests answered`}
+            {data.requests.median_first_response_ms == null ? '' : ` · first reply in ${fmtDuration(data.requests.median_first_response_ms)} (median)`}
+            {data.requests.expiring_48h ? ` · ${data.requests.expiring_48h} expiring within 48h` : ''}
+            {onGoRequests ? <> · <a href="#" onClick={(e) => { e.preventDefault(); onGoRequests(); }}>all requests →</a></> : null}
+          </p>
+        </ChartCard>
+        <ChartCard title="Most requested devices">
+          {data.requests.top_models.length === 0 ? <Empty /> : (
+            <ul className="activity-list">
+              {data.requests.top_models.map((m) => (
+                <li key={`${m.brand}-${m.model}`}>
+                  <strong>{m.brand} {m.model}</strong>
+                  <span className="muted"> · {m.requests} {m.requests === 1 ? 'request' : 'requests'} · {m.matched} matched · {m.offers} offers</span>
+                  {/* Wanted, in stock, and nobody replied — the one row an
+                      operator can act on the same afternoon. */}
+                  {m.unanswered && m.matched ? <span className="ts" style={{ color: 'var(--warn)' }}>{m.unanswered} unanswered</span> : null}
+                </li>
+              ))}
+            </ul>
           )}
         </ChartCard>
       </div>

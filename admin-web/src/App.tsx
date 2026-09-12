@@ -3,6 +3,7 @@ import { Login } from './auth/Login';
 import { ShopPanelPage, ShopLogin, getShopToken } from './pages/ShopPanelPage';
 import { api, getToken, setStoredToken } from './api';
 import { OverviewPage } from './pages/OverviewPage';
+import { RequestsPage } from './pages/RequestsPage';
 import { BrandsPage } from './pages/BrandsPage';
 import { BannersPage } from './pages/BannersPage';
 import { ListingsPage } from './pages/ListingsPage';
@@ -42,7 +43,7 @@ export type Page =
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
   | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
   | 'name_review' | 'store_card' | 'videos' | 'dup_photos'
-  | 'tier_requests' | 'customer_chats';
+  | 'tier_requests' | 'customer_chats' | 'device_requests';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -55,6 +56,10 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
       // for the user table, and two identical labels is a coin toss.
       { key: 'users_daily', label: 'النشاط اليومي' },
       { key: 'analytics', label: 'الطلب والتواصل' },
+      // «الطلبات» alone would collide with the storefront's orders tab, and
+      // the two are different objects entirely: one is a buyer asking for a
+      // phone, the other is a customer buying one.
+      { key: 'device_requests', label: 'طلبات الأجهزة' },
     ],
   },
   {
@@ -217,7 +222,8 @@ export function App() {
           what needs a decision rather than a vanity chart. */}
       {page === 'overview' ? <WorkQueue queue={queue} onGo={setPage} /> : null}
 
-      {page === 'overview' && <OverviewPage />}
+      {page === 'overview' && <OverviewPage onGoRequests={() => setPage('device_requests')} />}
+      {page === 'device_requests' && <RequestsPage />}
       {page === 'users_daily' && <DailyUsersPage />}
       {page === 'analytics' && <AnalyticsPage />}
       {page === 'brands' && <BrandsPage />}

@@ -32,6 +32,11 @@ import { post as walletPost } from '../../wallet.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
 import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
+import { norm as modelNorm } from '../savedSearches.js';
+import { listingsAnsweringRequest } from '../../requestMatch.js';
+import {
+  REQUEST_COLS, decorateRequests, requestOverview, requestSummary,
+} from '../../requestInsights.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -1345,6 +1350,11 @@ r.get('/overview', requireAdmin, (_req, res) => {
 
   res.json({
     growth: growthAnalytics(db, now(), 30),
+    // Buyer demand, beside the supply numbers rather than on a page of its
+    // own: "310 active listings" and "42 open requests nobody answered" are
+    // the same question asked from the two ends, and reading one without the
+    // other is how a catalogue grows in the wrong direction.
+    requests: requestOverview(db, modelNorm, { now: now() }),
     users: {
       total: userTotals.total || 0,
       real: userTotals.real_users || 0,
@@ -1366,6 +1376,217 @@ r.get('/overview', requireAdmin, (_req, res) => {
     by_condition,
     recent_listings,
     recent_signups,
+  });
+});
+
+// ─── device requests («أدور على…») ────────────────────────────────────
+//
+// The buyer-demand side of the console. Listings say what the site HAS;
+// these say what people came looking for and could not find, which is the
+// only signal that tells an operator what to import next.
+//
+// Every screen here answers one question in two halves, and the halves must
+// not be merged: how many DEVICES already on the site match the request, and
+// how many SELLERS actually answered it. Matched-with-no-offers is a
+// broadcast that failed; no-match-at-all is stock we do not carry. Read as a
+// single "unanswered" number they look identical and lead to opposite work.
+//
+// Read-only by design. A request belongs to the buyer who posted it, and the
+// close/fulfil paths carry his own rate limits and notifications — an admin
+// button that quietly reached past them is a bug waiting to be filed.
+
+const REQUEST_LIST_LIMIT = 50;
+const REQUEST_LIST_MAX = 200;
+// `unmatched=1` cannot be expressed in SQL — the model fold runs in JS — so
+// it filters a scanned window instead of the whole table. The response says
+// when that window was hit rather than implying the site is smaller than it
+// is.
+const REQUEST_FILTER_SCAN = 500;
+
+const REQUEST_STATUS_FILTERS = new Set(['live', 'open', 'fulfilled', 'closed', 'expired', 'all']);
+
+r.get('/requests/summary', requireAdmin, (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30));
+  res.json(requestSummary(db, modelNorm, { now: now(), days }));
+});
+
+r.get('/requests', requireAdmin, (req, res) => {
+  const t = now();
+  const status = REQUEST_STATUS_FILTERS.has(String(req.query.status)) ? String(req.query.status) : 'live';
+  const limit = Math.min(REQUEST_LIST_MAX, Math.max(1, Number(req.query.limit) || REQUEST_LIST_LIMIT));
+  const offset = Math.max(0, Number(req.query.offset) || 0);
+  const q = String(req.query.q || '').trim();
+
+  const conds = [];
+  const params = [];
+  // 'live' is the default because it is the only status a seller can still
+  // act on: `open` also contains rows the lazy expirer has not swept yet,
+  // and the board already hides those.
+  if (status === 'live') { conds.push('r.status=? AND r.expires_at > ?'); params.push('open', t); }
+  else if (status !== 'all') { conds.push('r.status=?'); params.push(status); }
+
+  const gov = normalizeGovernorate(req.query.governorate);
+  if (gov) { conds.push('r.governorate=?'); params.push(gov); }
+
+  const brand = String(req.query.brand || '').trim();
+  if (brand) { conds.push('r.brand=?'); params.push(brand); }
+
+  if (req.query.unanswered === '1') {
+    conds.push("NOT EXISTS(SELECT 1 FROM request_offers o WHERE o.request_id=r.id AND o.status='sent')");
+  }
+
+  // Same search surface the listings page offers, for the same reason: the
+  // operator is holding a phone number from a complaint or a device name
+  // from a chat, not a request id.
+  if (q) {
+    const like = `%${q}%`;
+    const idMatch = /^\d+$/.test(q) ? 'r.id = ? OR ' : '';
+    conds.push(`(${idMatch}r.brand LIKE ? OR r.model LIKE ? OR r.note LIKE ?
+                 OR u.display_name LIKE ? OR u.phone LIKE ?
+                 OR ${arabicNormalizeSql('r.model')} LIKE ?)`);
+    if (idMatch) params.push(Number(q));
+    params.push(like, like, like, like, like);
+    params.push(`%${(expandQuery(q).pop() || q).toLowerCase().replace(/\s+/g, '')}%`);
+  }
+
+  const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM phone_requests r JOIN users u ON u.id=r.buyer_id${where}`)
+    .get(...params).n;
+
+  const sql = `SELECT ${REQUEST_COLS} FROM phone_requests r JOIN users u ON u.id=r.buyer_id${where}
+               ORDER BY r.created_at DESC LIMIT ? OFFSET ?`;
+
+  // The supply filters run after the fold, so they page in JS over a scanned
+  // window. Everything else pages in SQL.
+  const supplyFilter = req.query.unmatched === '1' ? 'unmatched'
+    : (req.query.matched === '1' ? 'matched' : null);
+
+  if (!supplyFilter) {
+    const rows = db.prepare(sql).all(...params, limit, offset);
+    return res.json({
+      requests: decorateRequests(db, rows, modelNorm, { now: t }),
+      total, limit, offset, scan_capped: false,
+    });
+  }
+
+  const scanned = db.prepare(
+    `SELECT ${REQUEST_COLS} FROM phone_requests r JOIN users u ON u.id=r.buyer_id${where}
+      ORDER BY r.created_at DESC LIMIT ?`,
+  ).all(...params, REQUEST_FILTER_SCAN + 1);
+  const capped = scanned.length > REQUEST_FILTER_SCAN;
+  const decorated = decorateRequests(db, scanned.slice(0, REQUEST_FILTER_SCAN), modelNorm, { now: t })
+    .filter((x) => (supplyFilter === 'unmatched' ? x.matched_devices === 0 : x.matched_devices > 0));
+
+  res.json({
+    requests: decorated.slice(offset, offset + limit),
+    total: decorated.length,
+    limit,
+    offset,
+    scan_capped: capped,
+  });
+});
+
+// One request in full: who asked, who answered, and every device on the site
+// that could have answered — including whose it is, so "seven sellers hold
+// this phone and none of them replied" is readable rather than inferred.
+r.get('/requests/:id(\\d+)', requireAdmin, (req, res) => {
+  const t = now();
+  const row = db.prepare(
+    `SELECT ${REQUEST_COLS} FROM phone_requests r JOIN users u ON u.id=r.buyer_id WHERE r.id=?`,
+  ).get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+
+  const [request] = decorateRequests(db, [row], modelNorm, { now: t });
+
+  const offers = db.prepare(`
+    SELECT o.id, o.price, o.note, o.status, o.created_at, o.listing_id,
+           u.id AS seller_id, u.display_name, u.shop_name, u.seller_type,
+           u.governorate, u.phone, u.shop_phone, u.rating_avg, u.rating_count, u.verified
+      FROM request_offers o JOIN users u ON u.id = o.seller_id
+     WHERE o.request_id=?
+     ORDER BY (o.status='sent') DESC, o.price ASC, o.created_at ASC
+  `).all(row.id).map((o) => ({
+    id: o.id,
+    price: o.price,
+    note: o.note || null,
+    status: o.status,
+    created_at: o.created_at,
+    // How long the buyer waited for THIS answer. The list's median is built
+    // from the first one; the spread is only visible per offer.
+    waited_ms: o.created_at - row.created_at,
+    above_budget: o.price > row.max_price,
+    listing_id: o.listing_id ?? null,
+    seller: {
+      id: o.seller_id,
+      name: o.seller_type === 'shop' ? (o.shop_name || o.display_name) : o.display_name,
+      is_shop: o.seller_type === 'shop',
+      governorate: o.governorate,
+      phone: (o.seller_type === 'shop' ? o.shop_phone : null) || o.phone || null,
+      rating_avg: o.rating_avg,
+      rating_count: o.rating_count,
+      verified: !!o.verified,
+    },
+  }));
+
+  const matches = listingsAnsweringRequest(db, row, modelNorm, { limit: 60 });
+  const ids = matches.map((m) => m.id);
+  const sellers = new Map();
+  const images = new Map();
+  if (ids.length) {
+    const marks = ids.map(() => '?').join(',');
+    for (const s of db.prepare(
+      `SELECT u.id, u.display_name, u.shop_name, u.seller_type, u.phone, u.shop_phone
+         FROM users u WHERE u.id IN (SELECT seller_id FROM phone_listings WHERE id IN (${marks}))`,
+    ).all(...ids)) sellers.set(s.id, s);
+    // The cover: SQLite's bare-column rule hands back the image_path from the
+    // row MIN(position) picked, which is the gallery's first photo.
+    for (const img of db.prepare(
+      `SELECT listing_id, MIN(position) AS pos, image_path FROM listing_images
+        WHERE listing_id IN (${marks}) GROUP BY listing_id`,
+    ).all(...ids)) images.set(img.listing_id, img.image_path);
+  }
+  const answered = new Set(offers.filter((o) => o.status === 'sent').map((o) => o.seller.id));
+
+  const matched_listings = matches.map((m) => {
+    const s = sellers.get(m.seller_id);
+    return {
+      id: m.id,
+      brand: m.brand,
+      model: m.model,
+      storage: m.storage ?? null,
+      color: m.color ?? null,
+      condition: m.condition ?? null,
+      asking_price: m.asking_price,
+      status: m.status,
+      governorate: m.governorate,
+      created_at: m.created_at,
+      above_budget: m.above_budget,
+      call_for_price: m.call_for_price,
+      image_path: images.get(m.id) || null,
+      seller: s ? {
+        id: s.id,
+        name: s.seller_type === 'shop' ? (s.shop_name || s.display_name) : s.display_name,
+        is_shop: s.seller_type === 'shop',
+        phone: (s.seller_type === 'shop' ? s.shop_phone : null) || s.phone || null,
+      } : null,
+      // The line that makes the screen worth opening: this seller holds the
+      // phone the buyer asked for and said nothing.
+      seller_answered: answered.has(m.seller_id),
+    };
+  });
+
+  res.json({
+    request,
+    offers,
+    matched_listings,
+    stats: {
+      matched_sellers: new Set(matches.map((m) => m.seller_id)).size,
+      matched_sellers_answered: new Set(matches.map((m) => m.seller_id).filter((id) => answered.has(id))).size,
+      // Drift between the denormalised counter the app renders and the rows
+      // themselves. Zero everywhere means the create/withdraw paths are
+      // holding; anything else is a bug with a request id attached to it.
+      offer_count_drift: (request.offer_count_stored || 0) - request.offers,
+    },
   });
 });
 

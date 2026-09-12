@@ -28,7 +28,7 @@ import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { notify, hasNotified } from '../notify.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { norm } from './savedSearches.js';
-import { requestsAnsweredBy } from '../requestMatch.js';
+import { requestsAnsweredBy, listingsAnsweringRequest } from '../requestMatch.js';
 import { requestPulse } from '../requestPulse.js';
 
 const r = Router();
@@ -44,14 +44,6 @@ const MAX_OFFERS_PER_DAY = 30;
 // Ceiling on a single request's broadcast. Beyond this we are no longer
 // matching demand to supply, we are sending everyone in the country a push.
 const MAX_BROADCAST = 40;
-
-// A seller holding the exact device, priced a little over the buyer's
-// ceiling, is still the best lead this request has — a stated budget is an
-// opening position, not a wall, and "800k when he asked for ≤700k" is a
-// conversation. Below the ceiling stays the clean match; up to 20% above it
-// gets the same alert, flagged so the copy can say so rather than pretend
-// the price fits. Past that the two of them genuinely want different things.
-const CEILING_SLACK = 1.2;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -164,28 +156,22 @@ function priceLine(request) {
 // Sellers holding a listing that already satisfies the request. These are
 // the highest-value recipients by a distance: they can answer in one tap,
 // and their offer arrives with a real device attached.
+//
+// The rule itself lives in requestMatch.js, because the dashboard counts the
+// same listings to tell an unanswered request apart from an unfillable one.
+// Two copies of "does this listing satisfy that request" is how the console
+// ends up reporting supply the broadcast never used.
 function sellersWithMatchingListing(request) {
-  const rows = db.prepare(
-    `SELECT l.id AS listing_id, l.model, l.seller_id, l.asking_price
-       FROM phone_listings l
-      WHERE l.brand=? AND l.asking_price<=? AND l.status IN ('active','reserved')
-        AND COALESCE(l.is_draft,0)=0
-      ORDER BY l.asking_price ASC`,
-  ).all(request.brand, Math.round(request.max_price * CEILING_SLACK));
-
-  const wanted = norm(request.model);
   const seen = new Map();
-  for (const row of rows) {
-    if (row.seller_id === request.buyer_id) continue;
-    if (norm(row.model) !== wanted) continue;
+  for (const row of listingsAnsweringRequest(db, request, norm, { limit: Infinity })) {
     // Cheapest match per seller — that is the one he'd quote anyway, and
-    // because the query is ordered by price it is also the one most likely
-    // to be inside the budget rather than over it.
+    // because the rows come back ordered by price it is also the one most
+    // likely to be inside the budget rather than over it.
     if (!seen.has(row.seller_id)) {
       seen.set(row.seller_id, {
-        listing_id: row.listing_id,
+        listing_id: row.id,
         price: row.asking_price,
-        above_budget: row.asking_price > request.max_price,
+        above_budget: row.above_budget,
       });
     }
   }
