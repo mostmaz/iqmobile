@@ -13,7 +13,10 @@ const MAX_PER_USER = 20;
 import { CONDITIONS } from '../conditions.js';
 // Push at most once per search per this window, so a broad search doesn't
 // fire a burst of notifications when several matching listings post together.
-const PUSH_COOLDOWN_MS = 15 * 60 * 1000;
+// The throttle moved to its own module when the production numbers came in
+// — see savedSearchThrottle.js for what 14,055 alerts at a 1.8% read rate
+// actually looked like from the recipient's side.
+import { decideAlert } from '../savedSearchThrottle.js';
 
 // Lower, digit-fold, collapse Arabic orthography, TRANSLITERATE known device
 // words, strip spaces.
@@ -102,6 +105,34 @@ export function matchesCriteria(listing, c) {
   return true;
 }
 
+
+// What the throttle needs to know about a person, as of right now.
+//
+// Read once per listing and shared across that listing's matching searches:
+// the limits are per PERSON, so computing them per search would both cost N
+// queries and let someone with eight searches slip through eight times.
+function alertStateFor(userId, t) {
+  const DAY = 24 * 60 * 60 * 1000;
+  const pushesToday = db.prepare(
+    `SELECT COUNT(*) n FROM notifications
+      WHERE user_id=? AND kind='saved_search.match' AND pushed=1 AND created_at > ?`,
+  ).get(userId, t - DAY).n;
+  const lastPushAt = db.prepare(
+    `SELECT MAX(created_at) m FROM notifications
+      WHERE user_id=? AND kind='saved_search.match' AND pushed=1`,
+  ).get(userId).m || 0;
+  // Consecutive unopened, newest first. Capped at a window because the
+  // question is "have they stopped reading these", not a lifetime tally.
+  const recent = db.prepare(
+    `SELECT read FROM notifications
+      WHERE user_id=? AND kind='saved_search.match'
+      ORDER BY created_at DESC LIMIT 40`,
+  ).all(userId);
+  let unopenedStreak = 0;
+  for (const r of recent) { if (r.read) break; unopenedStreak++; }
+  return { pushesToday, lastPushAt, unopenedStreak };
+}
+
 // Fire alerts for a freshly created listing. Called (best-effort) from the
 // listing-create paths. One alert per user per listing even if several of
 // their searches match; the seller never gets alerted about their own post.
@@ -113,25 +144,29 @@ export function alertOnNewListing(listing) {
     if (searches.length === 0) return;
     const t = now();
     const doneUsers = new Set();
+    const states = new Map();
     for (const s of searches) {
       if (s.user_id === listing.seller_id || doneUsers.has(s.user_id)) continue;
       let c;
       try { c = JSON.parse(s.criteria_json); } catch { continue; }
       if (!matchesCriteria(listing, c)) continue;
 
-      const cooled = !s.last_notified_at || (t - s.last_notified_at) > PUSH_COOLDOWN_MS;
+      const state = states.get(s.user_id) || alertStateFor(s.user_id, t);
+      states.set(s.user_id, state);
+      const { record, push } = decideAlert({ criteria: c, now: t, ...state });
+      if (!record) { doneUsers.add(s.user_id); continue; }
       notify(
         s.user_id,
         'saved_search.match',
         { search_id: s.id, listing_id: listing.id, brand: listing.brand, model: listing.model, price: listing.asking_price },
-        cooled
+        push
           ? {
             title: 'إعلان جديد يطابق بحثك المحفوظ',
             body: `${listing.brand} ${listing.model} — ${Number(listing.asking_price).toLocaleString('en-US')} د.ع`,
           }
           : null,
       );
-      if (cooled) db.prepare('UPDATE saved_searches SET last_notified_at=? WHERE id=?').run(t, s.id);
+      if (push) db.prepare('UPDATE saved_searches SET last_notified_at=? WHERE id=?').run(t, s.id);
       doneUsers.add(s.user_id);
     }
   } catch (e) {
@@ -151,6 +186,7 @@ export function alertOnPriceDrop(listing, oldPrice) {
     if (searches.length === 0) return;
     const t = now();
     const doneUsers = new Set();
+    const states = new Map();
     for (const s of searches) {
       if (s.user_id === listing.seller_id || doneUsers.has(s.user_id)) continue;
       let c;
@@ -161,19 +197,22 @@ export function alertOnPriceDrop(listing, oldPrice) {
       // must not re-alert on every downward crossing.
       if (hasNotified(s.user_id, 'saved_search.match', listing.id)) { doneUsers.add(s.user_id); continue; }
 
-      const cooled = !s.last_notified_at || (t - s.last_notified_at) > PUSH_COOLDOWN_MS;
+      const state = states.get(s.user_id) || alertStateFor(s.user_id, t);
+      states.set(s.user_id, state);
+      const { record, push } = decideAlert({ criteria: c, now: t, ...state });
+      if (!record) { doneUsers.add(s.user_id); continue; }
       notify(
         s.user_id,
         'saved_search.match',
         { search_id: s.id, listing_id: listing.id, brand: listing.brand, model: listing.model, price: listing.asking_price, price_drop: true },
-        cooled
+        push
           ? {
             title: 'جهاز يطابق بحثك أصبح أرخص 🔻',
             body: `${listing.brand} ${listing.model} — الآن ${Number(listing.asking_price).toLocaleString('en-US')} د.ع`,
           }
           : null,
       );
-      if (cooled) db.prepare('UPDATE saved_searches SET last_notified_at=? WHERE id=?').run(t, s.id);
+      if (push) db.prepare('UPDATE saved_searches SET last_notified_at=? WHERE id=?').run(t, s.id);
       doneUsers.add(s.user_id);
     }
   } catch (e) {

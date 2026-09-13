@@ -26,8 +26,8 @@ function deliver(userId, kind, payload, push) {
   if (!decision.deliver) return;
   if (!decision.push) push = null;
   db.prepare(
-    'INSERT INTO notifications(user_id, kind, payload_json, read, created_at) VALUES(?,?,?,?,?)',
-  ).run(userId, kind, JSON.stringify(payload || {}), 0, now());
+    'INSERT INTO notifications(user_id, kind, payload_json, read, pushed, created_at) VALUES(?,?,?,?,?,?)',
+  ).run(userId, kind, JSON.stringify(payload || {}), 0, push ? 1 : 0, now());
   emitTo(userId, kind, payload || {});
   if (push) {
     // pushTo is async and we deliberately don't await it (we want notify

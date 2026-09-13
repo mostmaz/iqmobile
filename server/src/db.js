@@ -769,6 +769,15 @@ addColumnIfMissing('users', 'shop_no_contact INTEGER NOT NULL DEFAULT 0');
 // phone) is never signed in anywhere, so buyer messages were landing in an
 // inbox nobody looked at.
 addColumnIfMissing('users', 'shop_manager_id INTEGER');
+
+// Was this notification an INTERRUPTION, or just a row in the inbox?
+//
+// Without it the two are indistinguishable, which made the saved-search read
+// rate unreadable: 14,055 alerts at 1.8% opened looked like people ignoring
+// pushes, when most of those rows never pushed at all. The throttle in
+// savedSearchThrottle.js counts pushes per person per day, so it needs to
+// know which is which.
+addColumnIfMissing('notifications', 'pushed INTEGER NOT NULL DEFAULT 0');
 // Turns a shop into an order-taking storefront: its listings get an
 // add-to-cart button and the app offers COD checkout instead of "call the
 // seller". Off for every existing shop, so this changes nothing until a
