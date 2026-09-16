@@ -105,6 +105,29 @@ function AppInner() {
   useEffect(() => {
     setupPushTapHandler((data) => {
       switch (data?.kind) {
+        case 'request.match':
+        case 'request.new':
+        case 'request.offer':
+          if (data?.request_id) go('Main', { screen: 'Requests', params: { screen: 'RequestDetail', params: { id: data.request_id } } });
+          break;
+        case 'order.placed':
+        case 'order.confirmed':
+        case 'order.shipped':
+        case 'order.delivered':
+        case 'order.cancelled':
+        case 'order.returned':
+          go('Main', { screen: 'Profile', params: { screen: 'MyOrders' } });
+          break;
+        case 'shop.review.pending':
+        case 'shop.review.approved':
+        case 'shop.review.rejected':
+        case 'shop.review.message':
+          go('Main', { screen: 'Chats', params: { screen: 'ShopReviewChat' } });
+          break;
+        case 'feature.approved':
+        case 'feature.rejected':
+          if (data?.listing_id) go('Main', { screen: 'Browse', params: { screen: 'ListingDetail', params: { id: data.listing_id } } });
+          break;
         case 'seller.weekly':
           go('Main', { screen: 'Profile', params: { screen: 'MyListings' } });
           break;

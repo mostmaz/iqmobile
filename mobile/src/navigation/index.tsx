@@ -12,7 +12,7 @@
 // the primary use case before someone commits to creating an account.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import * as SecureStore from '../lib/secureStore';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { AppGate } from '../components/AppGate';
@@ -63,7 +63,7 @@ import EditProfileScreen from '../screens/profile/EditProfileScreen';
 import ProfileScreen from '../screens/common/ProfileScreen';
 import { TabBar } from './TabBar';
 import { NotificationBanner } from '../components/NotificationBanner';
-import { navigationRef } from './ref';
+import { flushPendingNavigation, navigationRef } from './ref';
 import { handleInstallReferrer } from '../lib/installReferrer';
 import { connectSSE, disconnectSSE } from '../sse/client';
 import { syncPushTokenIfGranted } from '../push/register';
@@ -402,6 +402,10 @@ export default function RootNav() {
       // can justify it: onboarding, the chat gate, and the last step of
       // posting a listing.
       syncPushTokenIfGranted();
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') syncPushTokenIfGranted();
+      });
+      return () => { sub.remove(); disconnectSSE(); };
     } else {
       disconnectSSE();
     }
@@ -469,7 +473,7 @@ export default function RootNav() {
   };
 
   return (
-    <NavigationContainer ref={navigationRef} linking={linking}>
+    <NavigationContainer onReady={flushPendingNavigation} ref={navigationRef} linking={linking}>
       <Root.Navigator screenOptions={{ headerShown: false }}>
         {needsProfileCompletion ? (
           <Root.Screen name="CompleteProfile" component={CompleteProfileScreen} />

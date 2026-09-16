@@ -233,7 +233,7 @@ export const Auth = {
   // First-login completion lives in upload.ts (multipart). Imported as
   // a separate function from there since the JSON `api()` helper here
   // can't send FormData.
-  pushToken: (expo_push_token: string) =>
+  pushToken: (expo_push_token: string | null) =>
     api('/auth/push-token', { method: 'POST', body: JSON.stringify({ expo_push_token }) }),
   // Temporary diagnostic endpoint. Used by registerPushToken to log each
   // step of the token-registration flow server-side so we can see what

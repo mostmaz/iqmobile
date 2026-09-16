@@ -214,6 +214,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     safeTrack(track, 'user.logout');
     resetIdentity();
+    try { await Auth.pushToken(null); } catch {}
     await SecureStore.deleteItem(TOKEN_KEY);
     setToken(null);
     setUser(null);

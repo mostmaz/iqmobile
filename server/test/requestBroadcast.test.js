@@ -1,17 +1,4 @@
-// Who a new device request reaches.
-//
-// The rule is graded, and the grading is the point. Production showed what
-// the old flat "ever listed this brand?" test bought: every request hit the
-// 40-recipient ceiling, and an audit of who got them found almost everyone
-// had a single listing of that brand, often already sold, often in another
-// governorate. 1,958 request notifications in a week produced 13 offers.
-//
-// So these tests care less about "is X reached" and more about ORDER and
-// LENGTH: that holding the actual phone beats having sold the brand, that
-// the newest listing wins, and that the list is allowed to be short.
-//
-// An HTTP-free test against the real DB, because the selection is a SQL
-// query plus a JS fold and the interesting failures live in the seam.
+// Exact matching recipients, eligibility, and the 100-seller cap.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -59,9 +46,8 @@ const REQUEST = {
   max_price: 5_000_000, governorate: 'Baghdad',
 };
 
-const { __testables } = await import('../src/routes/phoneRequests.js');
-const pick = (exclude = new Map()) => __testables.sellersToBroadcast(REQUEST, exclude);
-const ids = (exclude = new Map()) => pick(exclude).map((s) => s.id);
+const { __testables, broadcastRequest } = await import('../src/routes/phoneRequests.js');
+const ids = () => [...__testables.sellersWithMatchingListing(REQUEST).keys()];
 
 test.beforeEach(() => {
   db.prepare('DELETE FROM phone_listings').run();
@@ -70,155 +56,67 @@ test.beforeEach(() => {
 
 // ── the three tightenings ──────────────────────────────────────────────
 
-test('selling the phone STOPS the alerts about it', () => {
-  // The old rule counted status='sold', so the one moment you are provably
-  // not a supplier signed you up for alerts forever.
-  const gone = user();
-  listing(gone, 'Samsung', 'Galaxy S24', { status: 'sold' });
-  assert.ok(!ids().includes(gone));
+test('only exact devices qualify, with no shop or brand-only fallback', () => {
+  const exact = user(); listing(exact, 'Samsung', 'Galaxy S24');
+  const wrong = user(); listing(wrong, 'Samsung', 'Galaxy A14');
+  const nearbyShop = user({ type: 'shop' });
+  broadcastRequest(REQUEST);
+  assert.deepEqual(ids(), [exact]);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id IN (?,?)').get(wrong, nearbyShop).n, 0);
 });
-
-test('a reserved listing still counts — it can fall through', () => {
-  const holding = user();
-  listing(holding, 'Samsung', 'Galaxy S24', { status: 'reserved' });
-  assert.ok(ids().includes(holding));
+test('no exact holders means no broadcast', () => {
+  const wrong = user(); listing(wrong, 'Samsung', 'Galaxy A14');
+  user({ type: 'shop' });
+  broadcastRequest(REQUEST);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM notifications').get().n, 0);
 });
-
-test('holding the exact MODEL shuts the brand tier out entirely', () => {
-  // «Apple» covers an iPhone 11 and an iPhone 17 Pro Max alike, which is how
-  // a request for one reached people holding the other. Once somebody
-  // actually has the phone, the people who merely share a manufacturer are
-  // not a weaker lead — they are not a lead.
-  const brandOnly = user();
-  listing(brandOnly, 'Samsung', 'Galaxy A54', { ageDays: 0 });   // newest, wrong model
-  const exact = user();
-  listing(exact, 'Samsung', 'Galaxy S24', { ageDays: 30 });      // older, right model
-  assert.deepEqual(ids(), [exact],
-    'recency does not promote the wrong phone past the right one');
+test('sold, draft and call-for-price listings are excluded; reserved listings qualify', () => {
+  const sold = user(); listing(sold, 'Samsung', 'Galaxy S24', { status: 'sold' });
+  const draft = user(); const dl = listing(draft, 'Samsung', 'Galaxy S24');
+  db.prepare('UPDATE phone_listings SET is_draft=1 WHERE id=?').run(dl);
+  const unpriced = user(); listing(unpriced, 'Samsung', 'Galaxy S24', { price: 1 });
+  const reserved = user(); listing(reserved, 'Samsung', 'Galaxy S24', { status: 'reserved' });
+  assert.deepEqual(ids(), [reserved]);
 });
-
-test('the list is allowed to be SHORT', () => {
-  // Two people hold the phone and there are no local shops: two people get
-  // told. Padding the rest out of the brand tier is what taught everyone to
-  // ignore these.
-  const a = user(); listing(a, 'Samsung', 'Galaxy S24');
-  const b = user(); listing(b, 'Samsung', 'Galaxy S24');
-  for (let i = 0; i < 20; i++) {
-    const weak = user({ gov: 'Basra' });
-    listing(weak, 'Samsung', 'Galaxy A14');
-  }
-  assert.equal(ids().length, 2);
+test('guest, hidden, unapproved, contactless and admin-made accounts are excluded', () => {
+  const excluded = [user({ guest: 1 }), ...[
+    { shop_hidden: 1 }, { shop_status: 'pending' }, { shop_no_contact: 1 }, { shop_origin: 'admin' },
+  ].map(extra => user({ type: 'shop', extra }))];
+  for (const id of excluded) listing(id, 'Samsung', 'Galaxy S24');
+  broadcastRequest(REQUEST);
+  assert.deepEqual(ids(), []);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM notifications').get().n, 0);
 });
-
-test('with NOBODY holding the phone, the brand tier opens — to the floor only', () => {
-  // The one case weak signal earns: no holder anywhere, so reach a handful
-  // rather than nobody. Still stops at MIN_BROADCAST, not MAX.
-  for (let i = 0; i < 25; i++) {
-    const weak = user({ gov: 'Basra' });
-    listing(weak, 'Samsung', 'Galaxy A14');
-  }
-  const n = ids().length;
-  assert.ok(n > 0, 'a request with weak signal still reaches someone');
-  assert.ok(n <= 8, `topped up to the floor, not the ceiling (got ${n})`);
-});
-
-test('the ceiling still holds when everyone genuinely qualifies', () => {
-  for (let i = 0; i < 50; i++) {
-    const s = user();
-    listing(s, 'Samsung', 'Galaxy S24');
-  }
-  assert.equal(ids().length, 40);
-});
-
-// ── recency ────────────────────────────────────────────────────────────
-
-test('the newest listing wins', () => {
-  const old = user(); listing(old, 'Samsung', 'Galaxy S24', { ageDays: 90 });
-  const fresh = user(); listing(fresh, 'Samsung', 'Galaxy S24', { ageDays: 0 });
-  const mid = user(); listing(mid, 'Samsung', 'Galaxy S24', { ageDays: 10 });
-  assert.deepEqual(ids(), [fresh, mid, old]);
-});
-
-test('a seller is ranked by their NEWEST matching listing, not their oldest', () => {
-  const stale = user(); listing(stale, 'Samsung', 'Galaxy S24', { ageDays: 5 });
-  const mixed = user();
-  listing(mixed, 'Samsung', 'Galaxy S24', { ageDays: 100 });
-  listing(mixed, 'Samsung', 'Galaxy S24', { ageDays: 1 });
-  assert.deepEqual(ids(), [mixed, stale]);
-});
-
-test('a shop breaks a tie, but does not outrank a fresher listing', () => {
-  // Answering a request is a shop's job and a person's favour — but that is
-  // a tiebreak now, not a trump card.
-  const shopOld = user({ type: 'shop' }); listing(shopOld, 'Samsung', 'Galaxy S24', { ageDays: 9 });
-  const personNew = user(); listing(personNew, 'Samsung', 'Galaxy S24', { ageDays: 1 });
-  assert.deepEqual(ids(), [personNew, shopOld]);
-
-  db.prepare('DELETE FROM phone_listings').run();
-  const shopTie = user({ type: 'shop' }); listing(shopTie, 'Samsung', 'Galaxy S24', { ageDays: 3 });
-  const personTie = user(); listing(personTie, 'Samsung', 'Galaxy S24', { ageDays: 3 });
-  assert.equal(ids()[0], shopTie, 'at equal recency the shop sorts first');
-});
-
-// ── the guards that were already right ─────────────────────────────────
-
-test('a nearby shop is still a lead with nothing listed', () => {
-  const shop = user({ type: 'shop' });
-  assert.ok(ids().includes(shop));
-});
-
-test('an individual is NOT reached for merely living in the governorate', () => {
-  const neighbour = user();
-  assert.ok(!ids().includes(neighbour));
-});
-
-test('a distant shop with no stock is a bystander, not a lead', () => {
-  const far = user({ type: 'shop', gov: 'Basra' });
-  assert.ok(!ids().includes(far));
-});
-
-test('guests are never reached, stock or not', () => {
-  const guest = user({ guest: 1 });
-  listing(guest, 'Samsung', 'Galaxy S24');
-  assert.ok(!ids().includes(guest));
-});
-
-test('hidden and admin-made shops stay excluded', () => {
-  // COALESCE-based guards, so they must pass an individual's NULLs through;
-  // a stricter comparison would drop every individual instead.
-  const hidden = user({ type: 'shop', extra: { shop_hidden: 1 } });
-  const pending = user({ type: 'shop', extra: { shop_status: 'pending' } });
-  const silent = user({ type: 'shop', extra: { shop_no_contact: 1 } });
-  const admin = user({ type: 'shop', extra: { shop_origin: 'admin' } });
-  for (const id of [hidden, pending, silent, admin]) listing(id, 'Samsung', 'Galaxy S24');
-  const got = ids();
-  for (const id of [hidden, pending, silent, admin]) assert.ok(!got.includes(id));
-});
-
-test('the buyer is never told about their own request', () => {
+test('one alert per seller even with multiple matches, never to the buyer', () => {
   listing(BUYER, 'Samsung', 'Galaxy S24');
-  assert.ok(!ids().includes(BUYER));
+  const seller = user(); listing(seller, 'Samsung', 'Galaxy S24', { price: 350000 });
+  const cheapest = listing(seller, 'Samsung', 'Galaxy S24', { price: 300000 });
+  broadcastRequest(REQUEST);
+  const rows = db.prepare('SELECT * FROM notifications').all();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].user_id, seller);
+  assert.equal(JSON.parse(rows[0].payload_json).listing_id, cheapest);
+});
+test('full broadcast reaches 100 matching sellers, then stops', () => {
+  for (let i = 0; i < 105; i++) {
+    const holder = user(); listing(holder, 'Samsung', 'Galaxy S24');
+  }
+  broadcastRequest(REQUEST);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM notifications WHERE kind='request.match'").get().n, 100);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM notifications WHERE kind='request.new'").get().n, 0);
+});
+test('Arabic and English device names match the same model', () => {
+  const seller = user(); listing(seller, 'Samsung', 'جالكسي اس ٢٤');
+  assert.deepEqual(ids(), [seller]);
 });
 
-test('sellers already alerted about a matching listing are not alerted twice', () => {
-  const dup = user();
-  listing(dup, 'Samsung', 'Galaxy S24');
-  assert.ok(!ids(new Map([[dup, { listing_id: 1 }]])).includes(dup));
-});
-
-test('each recipient carries whether it is a shop, for the copy', () => {
-  // «طلب جديد يناسب متجرك» sent to someone with no shop is the app talking
-  // to a different person than the one reading it.
-  const shop = user({ type: 'shop' }); listing(shop, 'Samsung', 'Galaxy S24');
-  const person = user(); listing(person, 'Samsung', 'Galaxy S24');
-  const rows = pick();
-  assert.equal(rows.find((s) => s.id === shop).is_shop, true);
-  assert.equal(rows.find((s) => s.id === person).is_shop, false);
-});
-
-test('the model match folds scripts, like everything else', () => {
-  // «جالكسي اس ٢٤» and "Galaxy S24" are the same phone.
-  const ar = user();
-  listing(ar, 'Samsung', 'جالكسي اس ٢٤');
-  assert.ok(ids().includes(ar));
+test('delegated managers count toward the cap and receive only one alert each', () => {
+  const manager = user();
+  for (let i = 0; i < 105; i++) {
+    const shop = user({ type: 'shop', extra: { shop_manager_id: manager } });
+    listing(shop, 'Samsung', 'Galaxy S24');
+  }
+  broadcastRequest(REQUEST);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM notifications').get().n, 100);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id=?').get(manager).n, 1);
 });

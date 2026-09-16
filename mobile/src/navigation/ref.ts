@@ -4,8 +4,18 @@ import { createNavigationContainerRef } from '@react-navigation/native';
 
 export const navigationRef = createNavigationContainerRef<any>();
 
+let pendingNavigation: { name: string; params?: any } | null = null;
+
+export function flushPendingNavigation() {
+  if (!pendingNavigation || !navigationRef.isReady()) return;
+  const { name, params } = pendingNavigation;
+  pendingNavigation = null;
+  go(name, params);
+}
+
 export function go(name: string, params?: any) {
   if (navigationRef.isReady()) (navigationRef as any).navigate(name, params);
+  else pendingNavigation = { name, params };
 }
 
 export function getCurrentRouteName(): string | undefined {

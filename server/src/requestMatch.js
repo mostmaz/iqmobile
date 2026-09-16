@@ -11,17 +11,8 @@
 // misses would put the seller in front of buyers who asked for something
 // else, which is how a board full of ignored offers starts.
 
-// A seller holding the exact device, priced a little over the buyer's
-// ceiling, is still the best lead this request has — a stated budget is an
-// opening position, not a wall, and "800k when he asked for ≤700k" is a
-// conversation. Below the ceiling stays the clean match; up to 20% above it
-// gets the same alert, flagged so the copy can say so rather than pretend
-// the price fits. Past that the two of them genuinely want different things.
-//
-// Both directions of the match below use it, and so does the dashboard's
-// supply count — one slack, or the console reports matches the broadcast
-// never sent.
-export const CEILING_SLACK = 1.2;
+// Exact-device leads must also satisfy the requested condition and budget.
+export const CEILING_SLACK = 1;
 
 /**
  * Open requests that this listing answers, newest first.
@@ -49,14 +40,15 @@ export function requestsAnsweredBy(db, listing, norm, {
   // A call-for-price listing carries the sentinel asking_price = 1. Compared
   // against a ceiling it satisfies EVERY request ever written, which would
   // hand the seller the whole board.
-  if (!Number.isFinite(price) || price <= 1) return [];
+  if (!Number.isFinite(price) || price <= 1 || listing.price_on_request) return [];
 
-  const params = [now, listing.brand, CEILING_SLACK, price];
+  const params = [now, listing.brand, CEILING_SLACK, price, listing.condition || null];
   let sql = `SELECT * FROM phone_requests
               WHERE status='open' AND expires_at > ?
-                AND brand=? AND (max_price * ?) >= ?`;
+                AND brand=? AND (max_price * ?) >= ?
+                AND (condition IS NULL OR condition=?)`;
   if (sameGovernorateOnly) { sql += ' AND governorate=?'; params.push(listing.governorate); }
-  sql += ' ORDER BY created_at DESC LIMIT 200';
+  sql += ' ORDER BY created_at DESC, id DESC';
 
   const wanted = norm(listing.model);
   const out = [];
@@ -68,10 +60,7 @@ export function requestsAnsweredBy(db, listing, norm, {
     if (norm(request.model) !== wanted) continue;
     out.push({
       ...request,
-      // Say the gap out loud rather than hiding it. A seller who opens this
-      // expecting a clean match and finds their price is over the buyer's
-      // ceiling learns we wasted their time; one who is told can decide to
-      // negotiate.
+      // Kept on the response for existing clients; exact matches stay in budget.
       above_budget: price > Number(request.max_price),
     });
     if (out.length >= limit) break;
@@ -100,9 +89,8 @@ export function requestsAnsweredBy(db, listing, norm, {
  * @param norm    the shared model normalizer (savedSearches.norm)
  * @param opts.limit  cap on rows returned — counting callers pass Infinity
  * @returns rows ordered cheapest first, each carrying `above_budget` (over
- *          the buyer's stated ceiling but inside the slack) and
- *          `call_for_price` (the `asking_price = 1` sentinel — a real device,
- *          but never a price reference).
+ *          the buyer's stated ceiling) and
+ *          `call_for_price` (false for eligible, priced matches).
  */
 export function listingsAnsweringRequest(db, request, norm, { limit = 50 } = {}) {
   if (!request || !request.brand) return [];
@@ -113,10 +101,12 @@ export function listingsAnsweringRequest(db, request, norm, { limit = 50 } = {})
     `SELECT l.id, l.seller_id, l.brand, l.model, l.storage, l.color, l.condition,
             l.asking_price, l.governorate, l.status, l.created_at
        FROM phone_listings l
-      WHERE l.brand=? AND l.asking_price<=? AND l.status IN ('active','reserved')
+      WHERE l.brand=? AND l.asking_price>1 AND l.asking_price<=? AND l.status IN ('active','reserved')
+        AND COALESCE(l.price_on_request,0)=0
+        AND (? IS NULL OR l.condition=?)
         AND COALESCE(l.is_draft,0)=0
       ORDER BY l.asking_price ASC`,
-  ).all(request.brand, ceiling);
+  ).all(request.brand, ceiling, request.condition || null, request.condition || null);
 
   const wanted = norm(request.model);
   const out = [];

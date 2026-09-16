@@ -1,4 +1,7 @@
-import React from 'react';
+import { LoadFailed } from '../../components/LoadFailed';
+import React, { useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { subscribeSSE } from '../../sse/client';
 import { View, Text, SectionList, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTabBarClearance } from '../../lib/tabBarClearance';
@@ -127,10 +130,16 @@ export default function NotificationsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const tabClearance = useTabBarClearance();
   const qc = useQueryClient();
-  const { data, refetch, isRefetching, isLoading } = useQuery({
+  const { data, error, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => Notifications.list(),
   });
+
+  useFocusEffect(React.useCallback(() => { refetch(); }, [refetch]));
+  useEffect(() => {
+    const unsub = subscribeSSE(() => qc.invalidateQueries({ queryKey: ['notifications'] }));
+    return () => { unsub(); };
+  }, [qc]);
 
   async function readAll() {
     await Notifications.readAll();
@@ -146,7 +155,9 @@ export default function NotificationsScreen({ navigation }: any) {
   //   - anything else with a listing_id → ListingDetail in the local stack
   //   - otherwise → just mark-read silently
   function onTap(item: NotificationRow) {
-    Notifications.read(item.id);
+    Notifications.read(item.id)
+      .then(() => qc.invalidateQueries({ queryKey: ['notifications'] }))
+      .catch(err => console.warn('mark notification read failed', err));
     if(item.kind==='seller.weekly') { navigation.navigate('MyListings'); return; }
     // A tier decision is not a review thread — opening one would show the
     // shop an unrelated conversation. The row says what happened and the
@@ -251,7 +262,9 @@ export default function NotificationsScreen({ navigation }: any) {
             </TouchableOpacity>
           );
         }}
-        ListEmptyComponent={isLoading ? (
+        ListEmptyComponent={error ? (
+          <LoadFailed error={error} onRetry={() => refetch()} retrying={isRefetching} />
+        ) : isLoading ? (
           <RowListSkeleton count={5} avatar={38} />
         ) : (
           <EmptyState

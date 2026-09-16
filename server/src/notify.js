@@ -41,8 +41,9 @@ function deliver(userId, kind, payload, push) {
   }
 }
 
-export function notify(userId, kind, payload, push) {
+export function notify(userId, kind, payload, push, { forwardToManager = true } = {}) {
   deliver(userId, kind, payload, push);
+  if (!forwardToManager) return;
   // Shop delegation: a shop operated from a personal account forwards every
   // notification to that account, each as the manager's OWN row — their app
   // polls their own inbox, not the shop's. The shop row keeps its copy too,

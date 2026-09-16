@@ -41,13 +41,8 @@ const TTL_MS = 21 * 24 * 60 * 60 * 1000;
 const MAX_OPEN_PER_USER = 5;
 const MAX_CREATES_PER_DAY = 5;
 const MAX_OFFERS_PER_DAY = 30;
-// Ceiling on a single request's broadcast. Beyond this we are no longer
-// matching demand to supply, we are sending everyone in the country a push.
-const MAX_BROADCAST = 40;
-// …and a floor on how far we will reach for weak signals. Above this we stop
-// topping the list up from the brand tier and let it be short — see
-// sellersToBroadcast for what the coarse version cost.
-const MIN_BROADCAST = 8;
+// At most 100 matching sellers per request; no shop or brand-only fallback.
+const MAX_BROADCAST = 100;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -167,7 +162,14 @@ function priceLine(request) {
 // ends up reporting supply the broadcast never used.
 function sellersWithMatchingListing(request) {
   const seen = new Map();
+  const eligible = new Set(db.prepare(`SELECT id FROM users
+    WHERE COALESCE(is_guest,0)=0
+      AND COALESCE(shop_hidden,0)=0
+      AND COALESCE(shop_status,'approved')='approved'
+      AND COALESCE(shop_no_contact,0)=0
+      AND COALESCE(shop_origin,'') <> 'admin'`).all().map(u => u.id));
   for (const row of listingsAnsweringRequest(db, request, norm, { limit: Infinity })) {
+    if (!eligible.has(row.seller_id)) continue;
     // Cheapest match per seller — that is the one he'd quote anyway, and
     // because the rows come back ordered by price it is also the one most
     // likely to be inside the budget rather than over it.
@@ -182,145 +184,27 @@ function sellersWithMatchingListing(request) {
   return seen;
 }
 
-// Sellers who plausibly have it but have nothing listed that matches.
-//
-// This used to ask one question — "has this person ever listed the brand?" —
-// and the production data showed what that buys. Every request hit the
-// MAX_BROADCAST ceiling of 40, and a recipient audit found almost all of
-// them had exactly ONE listing of that brand, frequently already sold, often
-// in another governorate. An iPhone 13 Pro Max request in Baghdad went to 46
-// people in Basra, Diyala and Babil whose whole history was one Apple phone
-// they sold months ago. Nothing was mis-targeted by the letter of the rule;
-// the rule was just too coarse, because "Apple" covers an iPhone 11 and an
-// iPhone 17 Pro Max alike. 1,958 request notifications in a week produced 13
-// offers — 0.7%.
-//
-// So the signal is graded instead, and the list is allowed to be SHORT. A
-// push to five people who each hold the phone beats forty who once sold
-// something from the same manufacturer, and the forty are the reason the
-// five stopped reading their notifications.
-//
-//   A  holds this exact MODEL, listed and still active
-//   B  a shop in the buyer's governorate
-//   C  has an active listing of the BRAND — fallback only, and only enough
-//      of it to reach MIN_BROADCAST
-//
-// Within every tier the NEWEST listing wins: someone who listed this phone
-// yesterday is trading now, and someone whose listing is a year old has
-// probably moved on.
-//
-// Active listings only. The old query counted status 'sold', so selling your
-// phone signed you up for alerts about it forever — the one moment you are
-// provably NOT a supplier.
-function sellersToBroadcast(request, exclude) {
-  // Every active listing of this brand, with the seller and the age. The
-  // model fold has to happen in JS (norm() is not available to SQLite), so
-  // this is one query plus a pass, exactly as sellersWithMatchingListing
-  // does it.
-  const listings = db.prepare(
-    `SELECT l.seller_id, l.model, l.created_at
-       FROM phone_listings l
-      WHERE l.brand=? AND l.status IN ('active','reserved')
-        AND COALESCE(l.is_draft,0)=0`,
-  ).all(request.brand);
-
-  const wanted = norm(request.model);
-  /** seller id → { modelAt, brandAt } — newest active listing of each kind. */
-  const signal = new Map();
-  for (const l of listings) {
-    const isModel = norm(l.model) === wanted;
-    const cur = signal.get(l.seller_id) || { modelAt: 0, brandAt: 0 };
-    cur.brandAt = Math.max(cur.brandAt, l.created_at);
-    if (isModel) cur.modelAt = Math.max(cur.modelAt, l.created_at);
-    signal.set(l.seller_id, cur);
-  }
-
-  const rows = db.prepare(
-    `SELECT u.id,
-            (u.seller_type='shop') AS is_shop,
-            (u.governorate=?) AS same_gov
-       FROM users u
-      WHERE COALESCE(u.is_guest,0)=0
-        -- A shop that is hidden, unapproved, contactless or admin-created
-        -- answers nobody: the price book has no operator behind it and an
-        -- admin-made shop's owner never installed the app. These columns are
-        -- NULL for an individual, so COALESCE lets them through.
-        AND COALESCE(u.shop_hidden,0)=0
-        AND COALESCE(u.shop_status,'approved')='approved'
-        AND COALESCE(u.shop_no_contact,0)=0
-        AND COALESCE(u.shop_origin,'') <> 'admin'`,
-  ).all(request.governorate);
-
-  const A = [], B = [], C = [];
-  for (const row of rows) {
-    if (exclude.has(row.id) || row.id === request.buyer_id) continue;
-    const sig = signal.get(row.id);
-    const entry = { id: row.id, is_shop: !!row.is_shop };
-    if (sig && sig.modelAt) A.push({ ...entry, at: sig.modelAt });
-    else if (row.is_shop && row.same_gov) B.push({ ...entry, at: 0 });
-    else if (sig && sig.brandAt) C.push({ ...entry, at: sig.brandAt });
-  }
-
-  // Newest listing first. A shop breaks a tie, because answering a request
-  // is a shop's job and a person's favour — but it no longer outranks
-  // somebody who listed the actual phone more recently.
-  const byRecency = (x, y) => (y.at - x.at) || (Number(y.is_shop) - Number(x.is_shop));
-  A.sort(byRecency); B.sort(byRecency); C.sort(byRecency);
-
-  const out = [...A, ...B];
-  // The brand tier only opens when NOBODY holds the phone. If two people
-  // have it listed, two people get told — adding six who once sold a
-  // different model of the same make is the padding that taught everyone to
-  // swipe these away. With no holder at all, reach up to MIN_BROADCAST so
-  // the request is not shouted into a void.
-  if (A.length === 0 && out.length < MIN_BROADCAST) {
-    out.push(...C.slice(0, MIN_BROADCAST - out.length));
-  }
-  return out.slice(0, MAX_BROADCAST).map(({ id, is_shop }) => ({ id, is_shop }));
-}
-
 // Announce a new request. Never throws — a failed push must not fail the
 // create, so callers run it inside setImmediate and this swallows.
 export function broadcastRequest(request) {
   try {
     const title = `مطلوب: ${request.brand} ${request.model}`;
     const body = priceLine(request);
-
-    const matches = sellersWithMatchingListing(request);
-    for (const [sellerId, m] of matches) {
-      notify(
-        sellerId,
-        'request.match',
-        {
+    const recipients = new Set();
+    for (const [sellerId, m] of sellersWithMatchingListing(request)) {
+      if (recipients.size >= MAX_BROADCAST) break;
+      const managerId = db.prepare('SELECT shop_manager_id FROM users WHERE id=?').get(sellerId)?.shop_manager_id;
+      // Count delegated operators too, and never alert one operator twice.
+      for (const userId of [sellerId, managerId]) {
+        if (!userId || userId === request.buyer_id || recipients.has(userId)) continue;
+        if (recipients.size >= MAX_BROADCAST) break;
+        notify(userId, 'request.match', {
           request_id: request.id, listing_id: m.listing_id, brand: request.brand, model: request.model,
           max_price: request.max_price, governorate: request.governorate,
-          listing_price: m.price, above_budget: m.above_budget,
-        },
-        {
-          title: m.above_budget ? 'جهاز قريب من طلب مشترٍ' : 'لديك جهاز مطلوب 🎯',
-          // Say the gap out loud. A seller who opens this expecting a clean
-          // match and finds his price is over the budget learns we wasted
-          // his time; one who is told up front can decide to negotiate.
-          body: m.above_budget
-            ? `${title} — ميزانيته ${Number(request.max_price).toLocaleString('en-US')} د.ع وسعرك ${Number(m.price).toLocaleString('en-US')} · ${request.governorate}`
-            : `${title} — ${body}`,
-        },
-      );
-    }
-
-    for (const s of sellersToBroadcast(request, matches)) {
-      notify(
-        s.id,
-        'request.new',
-        { request_id: request.id, brand: request.brand, model: request.model, max_price: request.max_price, governorate: request.governorate },
-        {
-          // «متجرك» to a person who has no shop is the app talking to
-          // somebody else. An individual is reached because they have sold
-          // this brand before, so say that instead.
-          title: s.is_shop ? 'طلب جديد يناسب متجرك' : 'مشترٍ يدور على جهاز مثل الذي بعته',
-          body: `${title} — ${body}`,
-        },
-      );
+          listing_price: m.price, above_budget: false,
+        }, { title: 'لديك جهاز مطلوب 🎯', body: `${title} — ${body}` }, { forwardToManager: false });
+        recipients.add(userId);
+      }
     }
   } catch (e) {
     console.error('[requests] broadcast failed:', e?.message);
@@ -498,6 +382,7 @@ r.get('/phone-requests/offers/mine', requireAuth(), (req, res) => {
 });
 
 r.get('/phone-requests/:id(\\d+)', optionalAuth(), (req, res) => {
+  expireStale();
   const row = db.prepare('SELECT * FROM phone_requests WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   res.json(publicRequest(row, req.user?.id ?? null));
@@ -558,6 +443,7 @@ r.post('/phone-requests', requireAuth(), (req, res) => {
 });
 
 r.patch('/phone-requests/:id(\\d+)', requireAuth(), (req, res) => {
+  expireStale();
   const row = db.prepare('SELECT * FROM phone_requests WHERE id=? AND buyer_id=?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
 
@@ -566,6 +452,11 @@ r.patch('/phone-requests/:id(\\d+)', requireAuth(), (req, res) => {
   // Reopening an expired request would hand it a fresh broadcast for free.
   if (status === 'open' && row.status === 'expired') return res.status(400).json({ error: 'expired' });
 
+  if (status === 'open' && row.status !== 'open') {
+    if (row.expires_at <= now()) return res.status(400).json({ error: 'expired' });
+    const count = db.prepare("SELECT COUNT(*) AS n FROM phone_requests WHERE buyer_id=? AND status='open' AND expires_at>?").get(req.user.id, now()).n;
+    if (count >= MAX_OPEN_PER_USER) return res.status(400).json({ error: 'too_many_open' });
+  }
   db.prepare('UPDATE phone_requests SET status=?, closed_at=? WHERE id=?')
     .run(status, status === 'open' ? null : now(), row.id);
   res.json(publicRequest(db.prepare('SELECT * FROM phone_requests WHERE id=?').get(row.id), req.user.id));
@@ -605,6 +496,12 @@ r.post('/phone-requests/:id(\\d+)/offers', requireAuth(), (req, res) => {
   const t = now();
   const existing = db.prepare('SELECT * FROM request_offers WHERE request_id=? AND seller_id=?')
     .get(request.id, req.user.id);
+
+  // Repeated submissions of an unchanged offer must not ring the buyer again.
+  if (existing?.status === 'sent' && existing.price === price
+      && (existing.note || null) === note && existing.listing_id === listingId) {
+    return res.json(offerRow(existing));
+  }
 
   if (!existing) {
     const todayCount = db.prepare("SELECT COUNT(*) AS n FROM request_offers WHERE seller_id=? AND created_at > ?")
@@ -660,8 +557,5 @@ r.delete('/phone-requests/:id(\\d+)/offers/mine', requireAuth(), (req, res) => {
 
 export default r;
 
-// Exported for tests only. `sellersToBroadcast` is a SQL query with four
-// COALESCE guards whose whole job is to let an individual's NULL shop
-// columns through — exactly the kind of thing that breaks silently, so it
-// gets tested directly rather than through a push nobody can observe.
-export const __testables = { sellersToBroadcast };
+// Exported for focused recipient-selection tests.
+export const __testables = { sellersWithMatchingListing };

@@ -120,9 +120,9 @@ test('a request carries its own supply count, not a guess from its offers', asyn
   assert.equal(byId.get(UNFILLABLE).offers, 0);
 });
 
-test('the ceiling slack counts as supply, and says it is over budget', async () => {
+test('only supply within the requested budget counts', async () => {
   // 520k against a 600k ceiling is a clean match; the 900k listing is past
-  // 600k × 1.2 and is not supply at all.
+  // 600k and is not supply at all.
   const { requests } = await get('/admin/requests');
   const byId = new Map(requests.map((r) => [r.id, r]));
   assert.equal(byId.get(ANSWERED).matched_in_budget, 1);
@@ -132,8 +132,8 @@ test('the ceiling slack counts as supply, and says it is over budget', async () 
   try {
     const after = await get('/admin/requests');
     const row = after.requests.find((r) => r.id === over);
-    // 520000 ≤ 450000 × 1.2 = 540000 → supply, but over what the buyer said.
-    assert.equal(row.matched_devices, 1);
+    // 520000 is above the requested 450000 budget, so it is not supply.
+    assert.equal(row.matched_devices, 0);
     assert.equal(row.matched_in_budget, 0);
   } finally {
     db.prepare('DELETE FROM phone_requests WHERE id=?').run(over);

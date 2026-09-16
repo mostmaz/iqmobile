@@ -10,8 +10,12 @@
 // Re-quoting edits the existing offer rather than adding a second one, so
 // the seller's button says «حدّث عرضك» once he has quoted.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { LoadFailed } from '../../components/LoadFailed';
+import { RowListSkeleton } from '../../components/Skeleton';
+import { subscribeSSE } from '../../sse/client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius, shadowSoft, shadowAccent } from '../../theme';
@@ -45,11 +49,21 @@ export default function RequestDetailScreen({ navigation, route }: any) {
   const { user } = useAuth();
   const id = route?.params?.id;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error, isFetching, refetch } = useQuery({
     queryKey: ['request', id],
     queryFn: () => PhoneRequests.get(id),
     enabled: !!id,
   });
+
+  useFocusEffect(React.useCallback(() => { if (id) refetch(); }, [id, refetch]));
+  useEffect(() => {
+    const unsub = subscribeSSE((event, payload) => {
+      if (event === 'request.offer' && Number(payload?.request_id) === Number(id)) {
+        qc.invalidateQueries({ queryKey: ['request', id] });
+      }
+    });
+    return () => { unsub(); };
+  }, [id, qc]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['request', id] });
@@ -68,6 +82,7 @@ export default function RequestDetailScreen({ navigation, route }: any) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg, paddingTop: insets.top }}>
         <Header title="الطلب" onBack={() => navigation.goBack()} />
+        {error ? <LoadFailed error={error} onRetry={() => refetch()} retrying={isFetching} /> : <RowListSkeleton count={2} />}
       </View>
     );
   }
@@ -428,6 +443,8 @@ function ctaStyle(primary: boolean) {
 // ─── seller ────────────────────────────────────────────────────────────
 
 function SellerView({ request, onDone, navigation }: { request: PhoneRequest; onDone: () => void; navigation: any }) {
+  const { user } = useAuth();
+  const isReal = !!user && !user.is_guest;
   const existing = request.my_offer || null;
   const isOpen = request.status === 'open';
   // Deliberately NOT seeded with request.max_price. Pre-filling the buyer's
@@ -444,7 +461,7 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
   const { data: myListings } = useQuery({
     queryKey: ['my-listings-for-offer'],
     queryFn: () => Listings.mine('all'),
-    enabled: isOpen,
+    enabled: isOpen && isReal,
   });
   const attachable = useMemo(() => {
     const wanted = sameModel(request.model);
@@ -489,6 +506,12 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
   });
 
   if (!isOpen) return null;
+  if (!isReal) return (
+    <View style={{ marginTop: 18, gap: 12 }}>
+      <Text style={{ fontFamily: fonts.ar, color: theme.ink, textAlign: 'right' }}>سجّل الدخول برقم هاتفك لتقديم عرض، حتى يتمكن المشتري من الوصول إليك.</Text>
+      <Btn kind="primary" full onPress={() => navigation.navigate('AuthGate')}>تسجيل الدخول</Btn>
+    </View>
+  );
 
   return (
     <View style={{ marginTop: 18 }}>

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Expo } from 'expo-server-sdk';
 import { normalizeIraqiMobile } from '../iraqiPhone.js';
 import multer from 'multer';
 import path from 'node:path';
@@ -470,7 +471,13 @@ r.post('/profile-image', requireAuth(), profileUpload.single('image'), (req, res
 
 r.post('/push-token', requireAuth(), (req, res) => {
   const { expo_push_token } = req.body || {};
-  db.prepare('UPDATE users SET expo_push_token=? WHERE id=?').run(expo_push_token || null, req.user.id);
+  if (expo_push_token != null && (typeof expo_push_token !== 'string' || !Expo.isExpoPushToken(expo_push_token))) {
+    return res.status(400).json({ error: 'bad_push_token' });
+  }
+  db.transaction(() => {
+    if (expo_push_token) db.prepare('UPDATE users SET expo_push_token=NULL WHERE expo_push_token=? AND id<>?').run(expo_push_token, req.user.id);
+    db.prepare('UPDATE users SET expo_push_token=? WHERE id=?').run(expo_push_token || null, req.user.id);
+  })();
   res.json({ ok: true });
 });
 

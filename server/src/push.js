@@ -13,13 +13,20 @@ export async function pushTo(userIds, title, body, data = {}) {
   const messages = [];
   for (const r of rows) {
     if (!r.expo_push_token || !Expo.isExpoPushToken(r.expo_push_token)) continue;
-    messages.push({ to: r.expo_push_token, sound: 'default', title, body, data });
+    messages.push({ to: r.expo_push_token, sound: 'default', channelId: 'default', title, body, data });
   }
   if (messages.length === 0) return;
   const chunks = expo.chunkPushNotifications(messages);
   for (const chunk of chunks) {
     try {
-      await expo.sendPushNotificationsAsync(chunk);
+      const tickets = await expo.sendPushNotificationsAsync(chunk);
+      tickets.forEach((ticket, i) => {
+        if (ticket.status !== 'error') return;
+        console.error('[push] rejected:', ticket.details?.error || ticket.message);
+        if (ticket.details?.error === 'DeviceNotRegistered') {
+          db.prepare('UPDATE users SET expo_push_token=NULL WHERE expo_push_token=?').run(chunk[i].to);
+        }
+      });
     } catch (err) {
       console.error('push send error', err);
     }

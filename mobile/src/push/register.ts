@@ -34,32 +34,39 @@ Notifications.setNotificationHandler({
   }),
 });
 
+export function permissionGranted(settings: Notifications.NotificationPermissionsStatus) {
+  return settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+    || settings.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED
+    || settings.ios?.status === Notifications.IosAuthorizationStatus.EPHEMERAL;
+}
+
+export async function ensureNotificationChannel() {
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default', importance: Notifications.AndroidImportance.HIGH, sound: 'default',
+    });
+  }
+}
+
 export async function registerPushToken() {
   // Wrapped in Auth.pushDebug() calls so server logs show exactly which
   // step fails on devices we can't debug-attach. Each call is fire-and-
   // forget — failures don't change the control flow.
   try {
     Auth.pushDebug?.(`start platform=${Platform.OS}`);
+    await ensureNotificationChannel();
+
     const settings = await Notifications.getPermissionsAsync();
-    let granted = settings.granted;
+    let granted = permissionGranted(settings);
     Auth.pushDebug?.(`perm initial granted=${granted} status=${settings.status}`);
     if (!granted) {
       const req = await Notifications.requestPermissionsAsync();
-      granted = req.granted;
+      granted = permissionGranted(req);
       Auth.pushDebug?.(`perm requested granted=${granted} status=${req.status}`);
     }
     if (!granted) {
       Auth.pushDebug?.('exit: permission not granted');
       return;
-    }
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
-      });
-      Auth.pushDebug?.('android channel set');
     }
 
     const projectId =
@@ -95,7 +102,7 @@ export async function registerPushToken() {
 export async function syncPushTokenIfGranted() {
   try {
     const settings = await Notifications.getPermissionsAsync();
-    if (!settings.granted) return;
+    if (!permissionGranted(settings)) return;
     await registerPushToken();
   } catch (e: any) {
     console.warn('push sync failed', e?.message || e);
@@ -112,7 +119,10 @@ export function setupPushTapHandler(
   if (tapSub) return;
   tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = (response?.notification?.request?.content?.data || {}) as Record<string, any>;
-    try { onTap(data); } catch (e) { console.warn('push tap handler failed', e); }
+    try {
+      onTap(data);
+      Notifications.clearLastNotificationResponseAsync().catch(() => {});
+    } catch (e) { console.warn('push tap handler failed', e); }
   });
 
   // Cold-start case — app was launched by tapping a notification. The
@@ -125,7 +135,10 @@ export function setupPushTapHandler(
     .then((resp) => {
       if (!resp) return;
       const data = (resp.notification.request.content.data || {}) as Record<string, any>;
-      try { onTap(data); } catch (e) { console.warn('push cold-tap handler failed', e); }
+      try {
+        onTap(data);
+        Notifications.clearLastNotificationResponseAsync().catch(() => {});
+      } catch (e) { console.warn('push cold-tap handler failed', e); }
     })
     .catch((e) => console.warn('push cold-tap lookup failed', e));
 }

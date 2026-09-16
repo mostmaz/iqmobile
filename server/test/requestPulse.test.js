@@ -112,28 +112,9 @@ test('the window constant is the day the copy claims', () => {
 
 // ── seller_reach ───────────────────────────────────────────────────────
 
-test('reach counts the shops in your governorate', () => {
-  shop(); shop();
-  shop({ gov: 'Basra' });
-  assert.equal(pulse().seller_reach, 2);
-});
-
-test('reach excludes the shops that answer nobody', () => {
-  // The same four guards sellersToBroadcast applies. A number that counts
-  // them is a promise the broadcast will not keep.
-  shop();
-  shop({ extra: { shop_hidden: 1 } });
-  shop({ extra: { shop_status: 'pending' } });
-  shop({ extra: { shop_no_contact: 1 } });
-  shop({ extra: { shop_origin: 'admin' } });
-  assert.equal(pulse().seller_reach, 1);
-});
-
-test('reach never exceeds the broadcast cap', () => {
-  // Saying «١٢٤ تاجر» when the push stops at 40 is exactly the copy problem
-  // HowFeaturingWorks.tsx documents an apology for.
-  for (let i = 0; i < 6; i++) shop();
-  assert.equal(pulse({ maxReach: 4 }).seller_reach, 4);
+test('location alone never promises exact-match recipients', () => {
+  shop(); shop(); shop({ gov: 'Basra' });
+  assert.equal(pulse().seller_reach, 0);
 });
 
 test('with no governorate there is no honest reach to quote', () => {

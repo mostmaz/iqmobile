@@ -98,14 +98,10 @@ test('a non-device Arabic word is left alone', () => {
   assert.deepEqual(match(listing({ model: 'جهاز غريب' })), [id]);
 });
 
-test('a price a little over the ceiling still matches, and says so', () => {
-  // A stated budget is an opening position, not a wall. What must not
-  // happen is presenting it as a clean match.
-  const id = request({ max: 500000 });
-  const rows = requestsAnsweredBy(db, listing({ asking_price: 560000 }), norm, { now: NOW });
-  assert.deepEqual(rows.map((r) => r.id), [id]);
-  assert.equal(rows[0].above_budget, true);
-  assert.ok(560000 <= 500000 * CEILING_SLACK, 'inside the slack, by construction');
+test('a price above the requested budget does not match', () => {
+  request({ max: 500000 });
+  assert.deepEqual(match(listing({ asking_price: 500001 })), []);
+  assert.equal(CEILING_SLACK, 1);
 });
 
 test('a price far over the ceiling is not a match at all', () => {
@@ -155,4 +151,17 @@ test('newest first, and the limit is respected', () => {
   for (let i = 0; i < 5; i++) ids.push(request());
   const got = match(listing(), { limit: 3 });
   assert.deepEqual(got, ids.slice(0, 3));
+});
+
+test('requested condition is honored', () => {
+  const id = request();
+  db.prepare('UPDATE phone_requests SET condition=? WHERE id=?').run('new', id);
+  assert.deepEqual(match(listing({ condition: 'used' })), []);
+  assert.deepEqual(match(listing({ condition: 'new' })), [id]);
+});
+test('an exact model beyond 200 newer unrelated requests is still found', () => {
+  const id = request();
+  db.prepare('UPDATE phone_requests SET created_at=? WHERE id=?').run(NOW - 10000, id);
+  for (let i = 0; i < 205; i++) request({ model: 'iPhone 15' });
+  assert.deepEqual(match(listing()), [id]);
 });

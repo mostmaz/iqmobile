@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Linking, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './register';
+import { registerPushToken, ensureNotificationChannel, permissionGranted } from './register';
 
 export type PermState = {
   /** Nothing asked yet — the system prompt is still available. */
@@ -31,11 +31,7 @@ export async function readPermission(): Promise<Omit<PermState, 'loading'>> {
   try {
     const p = await Notifications.getPermissionsAsync();
     return {
-      granted: !!p.granted
-        // iOS provisional / ephemeral authorizations report granted=false but
-        // do deliver notifications; treat them as good enough to pass a gate.
-        || p.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
-        || p.ios?.status === Notifications.IosAuthorizationStatus.AUTHORIZED,
+      granted: permissionGranted(p),
       canAskAgain: p.canAskAgain !== false,
       status: p.status,
     };
@@ -53,11 +49,12 @@ export async function readPermission(): Promise<Omit<PermState, 'loading'>> {
  */
 export async function askPermission(): Promise<boolean> {
   try {
+    await ensureNotificationChannel();
     const before = await Notifications.getPermissionsAsync();
-    let granted = !!before.granted;
+    let granted = permissionGranted(before);
     if (!granted && before.canAskAgain !== false) {
       const res = await Notifications.requestPermissionsAsync();
-      granted = !!res.granted;
+      granted = permissionGranted(res);
     }
     if (granted) {
       // Fire-and-forget: the gate should open the moment the OS says yes,

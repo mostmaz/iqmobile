@@ -14,6 +14,7 @@
 // who has used one should recognise the other instantly — brand pills, the
 // catalog device picker, a stepped budget.
 
+import { LoadFailed } from '../../components/LoadFailed';
 import React, { useMemo, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, ScrollView, Alert, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -110,7 +111,7 @@ export default function RequestsScreen({ navigation }: any) {
         // تبحث عنه» described the button; this describes whether opening the
         // screen was worth it, and it is the same number the tab's badge
         // counts up to — see lib/requestPulse.ts.
-        eyebrow={pulseLine(pulse?.count_24h ?? 0, arOf((user as any)?.governorate) || '')}
+        eyebrow={pulse ? pulseLine(pulse.count_24h, arOf((user as any)?.governorate) || '') : 'جاري تحميل عدد الطلبات…'}
         // No back button: this is the tab root now, not a page pushed from
         // the funnel.
         // A tinted tile, not a bare glyph. In the header a lone «+» has no
@@ -229,6 +230,8 @@ export default function RequestsScreen({ navigation }: any) {
 
       {!isReal && tab !== 'board' ? (
         <SignedOut navigation={navigation} />
+      ) : active.error && !active.data ? (
+        <LoadFailed error={active.error} onRetry={() => active.refetch()} retrying={active.isFetching} />
       ) : active.isLoading ? (
         <TextRowListSkeleton count={4} />
       ) : (
