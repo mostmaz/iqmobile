@@ -779,15 +779,8 @@ addColumnIfMissing('users', 'shop_manager_id INTEGER');
 // know which is which.
 addColumnIfMissing('notifications', 'pushed INTEGER NOT NULL DEFAULT 0');
 
-// Why an offer is unusable, or NULL when it is fine.
-//
-// 16 of the first 43 offers this marketplace carried were under 20,000 IQD —
-// prices typed in thousands, reaching the buyer as a handful of dinars.
-// offerValidation.js stops new ones; this marks the ones already sitting in
-// buyers' lists so the dashboard can filter them and the sellers can be
-// asked to resend. Nullable TEXT rather than a flag, because "too low" and
-// "absurd" want different messages to the seller.
-addColumnIfMissing('request_offers', 'invalid_reason TEXT');
+
+
 // Turns a shop into an order-taking storefront: its listings get an
 // add-to-cart button and the app offers COD checkout instead of "call the
 // seller". Off for every existing shop, so this changes nothing until a
@@ -1749,3 +1742,34 @@ CREATE TABLE IF NOT EXISTS notification_preference_events (
  created_at INTEGER NOT NULL, preferences_json TEXT NOT NULL
 );
 `);
+
+// Columns added to the request tables AFTER their CREATE TABLE above.
+//
+// Placement is load-bearing, not tidiness. addColumnIfMissing is a no-op
+// when the table does not exist yet, and these three sat hundreds of lines
+// earlier in the file — so they applied on a database that already had the
+// tables (production, where a previous boot created them) and silently did
+// nothing on a fresh one. The symptom was a 500 on request-create in the
+// test suite and nowhere else.
+// Why an offer is unusable, or NULL when it is fine.
+//
+// 16 of the first 43 offers this marketplace carried were under 20,000 IQD —
+// prices typed in thousands, reaching the buyer as a handful of dinars.
+// offerValidation.js stops new ones; this marks the ones already sitting in
+// buyers' lists so the dashboard can filter them and the sellers can be
+// asked to resend. Nullable TEXT rather than a flag, because "too low" and
+// "absurd" want different messages to the seller.
+addColumnIfMissing('request_offers', 'invalid_reason TEXT');
+// Does this request accept stock from outside the buyer's governorate?
+//
+// The broadcast has always been nationwide — a notification costs the buyer
+// nothing and whether a phone is worth travelling for is the seller's call —
+// but the BUYER was never asked. 67 of 110 live requests on 18 Sep 2026 had
+// no match anywhere, and a share of the rest had one only in another
+// province, which the buyer was never offered.
+addColumnIfMissing('phone_requests', 'any_governorate INTEGER NOT NULL DEFAULT 0');
+// Set at create time when the stated ceiling is far under what the device
+// actually sells for. Not a block — a buyer may know something the median
+// does not — but the operator needs to tell "nobody answered" apart from
+// "nobody could have answered at that price".
+addColumnIfMissing('phone_requests', 'low_budget INTEGER NOT NULL DEFAULT 0');

@@ -21,6 +21,7 @@ import { foldModelKey, orderComposeBrands } from '../lib/requestFunnel';
 import { GOV_AR_TO_EN } from '../lib/governorates';
 import { SELLABLE_CONDITIONS } from '../lib/conditions';
 import { ar } from '../i18n/ar';
+import { budgetHint } from '../lib/requestBudgetHint';
 
 const PRICE_STEP = 25_000;
 const PRICE_MIN = 50_000;
@@ -130,6 +131,21 @@ export function RequestComposeSheet({
     enabled: visible && !!brand,
     staleTime: 60_000,
   });
+  // The middle price for the device the buyer has chosen, off the same
+  // /top-models rows the availability line already uses. A separate fetch
+  // for one number would be a round trip to tell someone their budget looks
+  // low — which is advice, not a blocker.
+  const medianPrice = React.useMemo(() => {
+    if (!model || !avail.data) return null;
+    const want = foldModelKey(model);
+    return avail.data.find((m) => foldModelKey(m.model) === want)?.median_price ?? null;
+  }, [avail.data, model]);
+
+  const budget = React.useMemo(
+    () => budgetHint(maxPrice, medianPrice),
+    [maxPrice, medianPrice],
+  );
+
   const availableCount = React.useMemo(() => {
     if (!model || !avail.data) return 0;
     const want = foldModelKey(model);
@@ -142,7 +158,30 @@ export function RequestComposeSheet({
       governorate: govAr ? GOV_AR_TO_EN[govAr] : undefined,
       note: note.trim() || null,
     }),
-    onSuccess: (r) => onCreated(r),
+    onSuccess: (created) => {
+      // The buyer is still here and still cares. Asking now costs one tap;
+      // discovering it after 21 days of silence costs the request.
+      const supply = (created as any).supply;
+      if (supply && supply.local === 0 && supply.elsewhere > 0) {
+        Alert.alert(
+          `لا يوجد جهاز مطابق في ${govAr}`,
+          `يوجد ${supply.elsewhere} في محافظات أخرى. توسيع البحث لكل العراق؟`,
+          [
+            { text: 'لا، بمحافظتي فقط', style: 'cancel', onPress: () => onCreated(created) },
+            {
+              text: 'وسّع البحث',
+              onPress: () => {
+                PhoneRequests.setAnyGovernorate(created.id, true)
+                  .catch(() => { /* the request stands either way */ })
+                  .finally(() => onCreated(created));
+              },
+            },
+          ],
+        );
+        return;
+      }
+      onCreated(created);
+    },
     onError: (e: any) => {
       const code = String(e?.message || '');
       // already_open is not a failure — the buyer already has this request
@@ -289,6 +328,26 @@ export function RequestComposeSheet({
                 <IconPlus size={14} color={theme.ink} sw={2.4} />
               </TouchableOpacity>
             </View>
+
+            {/* Advice, never a wall. The buyer may know something the median
+                does not — a cracked screen they will accept, a friend
+                selling cheap — so this says what usually happens and lets
+                them post anyway. Five live requests asked for 400,000-dinar
+                phones with 50,000 ceilings and waited three weeks. */}
+            {budget ? (
+              <View style={{
+                marginTop: 12, padding: 12, borderRadius: radius.lg,
+                backgroundColor: theme.accentSoft,
+                borderWidth: 1, borderColor: theme.accent, gap: 4,
+              }}>
+                <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                  {budget.title}
+                </Text>
+                <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                  {budget.body}
+                </Text>
+              </View>
+            ) : null}
 
             <Label style={{ marginTop: 14 }}>الحالة</Label>
             <ScrollView

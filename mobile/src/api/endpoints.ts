@@ -329,6 +329,8 @@ export interface TopModel {
   count: number;
   /** Ends of the real-price range in the window. Both null when every listing is call-for-price. */
   min_price: number | null;
+  /** Middle of what the device actually sells for; null under 4 listings. */
+  median_price?: number | null;
   max_price: number | null;
   image_path: string | null;
 }
@@ -507,6 +509,10 @@ export interface PhoneRequest {
   created_at: number;
   expires_at: number;
   is_mine: boolean;
+  /** Buyer accepts stock from outside their governorate. */
+  any_governorate: boolean;
+  /** The stated ceiling looked far under the market when this was posted. */
+  low_budget: boolean;
   buyer: { id: number; display_name: string; profile_image_path: string | null } | null;
   /** Buyer's view only. */
   offers?: RequestOffer[];
@@ -534,6 +540,18 @@ export interface RequestPulse {
   governorate: string | null;
   /** Shops in your governorate a request is guaranteed to reach. 0 = unknown. */
   seller_reach: number;
+  /** Open requests this seller's live stock could answer and has not. */
+  matching_for_me: number;
+}
+
+/** What the site can tell a buyer the moment they post. */
+export interface RequestSupply { local: number; elsewhere: number; total: number }
+export interface RequestBudgetVerdict {
+  low: boolean;
+  median: number | null;
+  suggested_min: number | null;
+  suggested_max: number | null;
+  message: string | null;
 }
 
 export const PhoneRequests = {
@@ -561,7 +579,14 @@ export const PhoneRequests = {
   create: (body: {
     brand: string; model: string; max_price: number;
     governorate?: string; condition?: string | null; note?: string | null;
-  }) => api<PhoneRequest>('/phone-requests', { method: 'POST', body: JSON.stringify(body) }),
+  }) => api<PhoneRequest & { budget: RequestBudgetVerdict; supply: RequestSupply }>(
+    '/phone-requests', { method: 'POST', body: JSON.stringify(body) },
+  ),
+  /** Opt the request into stock from any governorate, and re-announce it. */
+  setAnyGovernorate: (id: number, on: boolean) =>
+    api<PhoneRequest>(`/phone-requests/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ any_governorate: on }),
+    }),
   setStatus: (id: number, status: 'open' | 'closed' | 'fulfilled') =>
     api<PhoneRequest>(`/phone-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   remove: (id: number) => api(`/phone-requests/${id}`, { method: 'DELETE' }),

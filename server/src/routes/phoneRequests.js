@@ -31,6 +31,7 @@ import { norm } from './savedSearches.js';
 import { requestsAnsweredBy, listingsAnsweringRequest } from '../requestMatch.js';
 import { requestPulse } from '../requestPulse.js';
 import { validateOffer, medianListingPrice } from '../offerValidation.js';
+import { budgetVerdict } from '../requestBudget.js';
 
 const r = Router();
 
@@ -146,6 +147,13 @@ function publicRequest(row, viewerId) {
     note: row.note || null,
     status: row.status,
     offer_count: row.offer_count,
+    // Whether the buyer opted into stock outside their governorate, and
+    // whether the site warned them the ceiling looked low. Both are the
+    // buyer's own settings, so both are public on the board — a seller
+    // deciding whether to answer benefits from knowing the buyer already
+    // accepts a device from another province.
+    any_governorate: !!row.any_governorate,
+    low_budget: !!row.low_budget,
     created_at: row.created_at,
     expires_at: row.expires_at,
     is_mine: isOwner,
@@ -287,6 +295,20 @@ export function alertRequestsOnListing(listing) {
   }
 }
 
+// What exists for this request, near the buyer and elsewhere.
+//
+// The broadcast has always been nationwide, but the BUYER was never told
+// that their only match is four hours away — so a request with supply in
+// Basra looked identical to one with no supply at all. Splitting the count
+// is what makes «توسيع البحث لكل العراق؟» an honest question rather than a
+// guess.
+function supplySplit(request) {
+  const rows = listingsAnsweringRequest(db, request, norm, { limit: 200 });
+  let local = 0;
+  for (const r of rows) if (r.governorate === request.governorate) local++;
+  return { local, elsewhere: rows.length - local, total: rows.length };
+}
+
 // Lazily retire requests that ran out the clock. Cheap, and it keeps the
 // board honest without a cron: any read of the board sweeps first.
 function expireStale() {
@@ -374,17 +396,51 @@ r.get('/listings/:id(\\d+)/matching-requests', requireAuth(), (req, res) => {
 //
 // optionalAuth: a signed-out browser still sees the feed, so it still gets a
 // headline number. The governorate then has to come from the query string.
+// How many open requests this seller could answer right now.
+//
+// The board has had an «أقدر أجهزها» filter since the funnel shipped, but
+// nothing ever told a seller there was anything behind it — so the one
+// screen that turns their stock into a lead was a filter you had to think to
+// press. This is the number that goes on the tab.
+//
+// Excludes requests they have already answered: a badge that keeps counting
+// after you have replied is a badge nobody can clear.
+function matchingRequestsForSeller(sellerId, t) {
+  const mine = db.prepare(
+    `SELECT id, seller_id, brand, model, asking_price, governorate, status, is_draft
+       FROM phone_listings
+      WHERE seller_id=? AND status IN ('active','reserved') AND COALESCE(is_draft,0)=0`,
+  ).all(sellerId);
+  if (!mine.length) return 0;
+
+  const answered = new Set(db.prepare(
+    "SELECT request_id FROM request_offers WHERE seller_id=? AND status='sent'",
+  ).all(sellerId).map((o) => o.request_id));
+
+  const seen = new Set();
+  for (const listing of mine) {
+    for (const request of requestsAnsweredBy(db, listing, norm, { now: t })) {
+      if (answered.has(request.id) || request.buyer_id === sellerId) continue;
+      seen.add(request.id);
+    }
+  }
+  return seen.size;
+}
+
 r.get('/phone-requests/pulse', optionalAuth(), (req, res) => {
   expireStale();
   const raw = req.query.governorate ?? req.user?.governorate ?? '';
   const g = normalizeGovernorate(String(raw));
   const since = Math.max(0, parseInt(String(req.query.since || '0'), 10) || 0);
-  res.json(requestPulse(db, {
+  res.json({
+    matching_for_me: req.user?.id ? matchingRequestsForSeller(req.user.id, now()) : 0,
+    ...requestPulse(db, {
     governorate: g && isGovernorate(g) ? g : null,
     since,
     now: now(),
     maxReach: MAX_BROADCAST,
-  }));
+  }),
+  });
 });
 
 // Must precede /:id — otherwise "mine" is parsed as an id.
@@ -462,21 +518,48 @@ r.post('/phone-requests', requireAuth(), (req, res) => {
     .get(req.user.id, t - DAY_MS).n;
   if (todayCount >= MAX_CREATES_PER_DAY) return res.status(429).json({ error: 'too_many_today' });
 
+  // Is the ceiling anywhere near what this device sells for? A warning, not
+  // a block — see requestBudget.js for why the site does not get to refuse.
+  const budget = budgetVerdict({
+    maxPrice,
+    median: medianListingPrice(db, { brand, model }, norm),
+  });
+
   const id = db.prepare(
-    `INSERT INTO phone_requests(buyer_id, brand, model, condition, max_price, governorate, note, status, created_at, expires_at)
-     VALUES(?,?,?,?,?,?,?,'open',?,?)`,
-  ).run(req.user.id, brand, model, condition, maxPrice, gov, note, t, t + TTL_MS).lastInsertRowid;
+    `INSERT INTO phone_requests(buyer_id, brand, model, condition, max_price, governorate, note, status, low_budget, created_at, expires_at)
+     VALUES(?,?,?,?,?,?,?,'open',?,?,?)`,
+  ).run(req.user.id, brand, model, condition, maxPrice, gov, note, budget.low ? 1 : 0, t, t + TTL_MS).lastInsertRowid;
 
   const row = db.prepare('SELECT * FROM phone_requests WHERE id=?').get(id);
   // After the response, never before it: the fan-out walks every shop.
   setImmediate(() => broadcastRequest(row));
-  res.json(publicRequest(row, req.user.id));
+  res.json({
+    ...publicRequest(row, req.user.id),
+    // Two things the buyer can act on while they still care, rather than
+    // discovering them after 21 days of silence.
+    budget,
+    supply: supplySplit(row),
+  });
 });
 
 r.patch('/phone-requests/:id(\\d+)', requireAuth(), (req, res) => {
   expireStale();
   const row = db.prepare('SELECT * FROM phone_requests WHERE id=? AND buyer_id=?').get(req.params.id, req.user.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
+
+  // The widening toggle is its own edit, and the only FIELD of a live
+  // request that may change. Model, budget and governorate are deliberately
+  // not editable: the offers already sitting under a request answer the
+  // question it asked when it was broadcast.
+  if (req.body?.any_governorate !== undefined && req.body?.status === undefined) {
+    const on = req.body.any_governorate === true || req.body.any_governorate === 1;
+    db.prepare('UPDATE phone_requests SET any_governorate=? WHERE id=?').run(on ? 1 : 0, row.id);
+    const widened = db.prepare('SELECT * FROM phone_requests WHERE id=?').get(row.id);
+    // Turning it ON re-announces to whoever has not heard yet. The ledger
+    // (request_notifications) is what makes calling this again safe.
+    if (on && widened.status === 'open') setImmediate(() => broadcastRequest(widened));
+    return res.json(publicRequest(widened, req.user.id));
+  }
 
   const status = String(req.body?.status || '');
   if (!['fulfilled', 'closed', 'open'].includes(status)) return res.status(400).json({ error: 'bad_status' });

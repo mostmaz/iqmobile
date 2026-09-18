@@ -26,6 +26,20 @@
  *          best first. min/max are the ends of the real-price range and are
  *          both null when every listing in the group is call-for-price.
  */
+/**
+ * Middle of a price list, or null when there is nothing to be middling about.
+ *
+ * Null rather than 0 for an empty sample: a caller comparing a budget
+ * against it must be able to tell "cheap device" from "no idea", and 0 makes
+ * every budget look generous.
+ */
+function median(prices) {
+  if (!prices || prices.length === 0) return null;
+  const sorted = [...prices].sort((a, b) => a - b);
+  const mid = sorted.length / 2;
+  return sorted.length % 2 ? sorted[Math.floor(mid)] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 export function groupTopModels(rows, { limit = 10 } = {}) {
   const groups = new Map();
 
@@ -34,7 +48,7 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
     if (!key) continue;
     let g = groups.get(key);
     if (!g) {
-      g = { model_key: key, count: 0, spellings: new Map(), min_price: null, max_price: null, newest: -Infinity, image_path: null };
+      g = { model_key: key, count: 0, spellings: new Map(), prices: [], min_price: null, max_price: null, newest: -Infinity, image_path: null };
       groups.set(key, g);
     }
     g.count++;
@@ -52,6 +66,11 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
     if (!r.price_on_request && Number.isFinite(price) && price > 1) {
       g.min_price = g.min_price == null ? price : Math.min(g.min_price, price);
       g.max_price = g.max_price == null ? price : Math.max(g.max_price, price);
+      // Kept for the median, which the request form uses to tell a buyer
+      // their ceiling is far under the market. min/max cannot do that job:
+      // one call-for-price bargain or one optimistic listing moves an
+      // extreme, while the middle of the range is what people actually pay.
+      g.prices.push(price);
     }
 
     // The thumbnail is the newest listing's, so it reflects what is on sale
@@ -70,6 +89,7 @@ export function groupTopModels(rows, { limit = 10 } = {}) {
       count: g.count,
       min_price: g.min_price,
       max_price: g.max_price,
+      median_price: median(g.prices),
       image_path: g.image_path,
       // kept for ordering only; not part of the response shape
       _newest: g.newest,

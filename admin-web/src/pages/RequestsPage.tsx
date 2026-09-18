@@ -125,6 +125,16 @@ const STATUS_TABS: Array<{ k: string; label: string }> = [
 const WINDOWS = [7, 30, 90];
 const PAGE = 50;
 
+/**
+ * «٠٧٧٠••••١٢٣٤» — enough to recognise a number you already have, not
+ * enough to be a contact list. The operator clicks the one they need.
+ */
+function maskPhone(phone: string): string {
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length < 5) return '••••';
+  return `${digits.slice(0, 4)}••••${digits.slice(-4)}`;
+}
+
 export function RequestsPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [days, setDays] = useState(30);
@@ -138,6 +148,17 @@ export function RequestsPage() {
   const [query, setQuery] = useState('');
   const [unanswered, setUnanswered] = useState(false);
   const [unmatched, setUnmatched] = useState(false);
+  // matched + unanswered together: the phones ARE here and the sellers said
+  // nothing. That is a broadcast problem, and it needs a different fix from
+  // "nobody has one", so it needs its own filter rather than a mental
+  // intersection of two others.
+  const [matchedQuiet, setMatchedQuiet] = useState(false);
+  const [invalidOffers, setInvalidOffers] = useState(false);
+  const [lowBudget, setLowBudget] = useState(false);
+  // Buyer phone numbers are masked until asked for. The table is read all
+  // day with other people in the room, and an operator needs the number
+  // maybe once a session.
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [offset, setOffset] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -157,17 +178,21 @@ export function RequestsPage() {
     if (query) p.set('q', query);
     if (unanswered) p.set('unanswered', '1');
     if (unmatched) p.set('unmatched', '1');
+    if (matchedQuiet) { p.set('matched', '1'); p.set('unanswered', '1'); }
+    if (invalidOffers) p.set('invalid_offers', '1');
+    if (lowBudget) p.set('low_budget', '1');
     setLoading(true);
     api<{ requests: Row[]; total: number; scan_capped: boolean }>(`/admin/requests?${p}`)
       .then((r) => { setRows(r.requests); setTotal(r.total); setScanCapped(r.scan_capped); setErr(''); })
       .catch((e) => setErr(String(e?.message || e)))
       .finally(() => setLoading(false));
-  }, [status, gov, brand, query, unanswered, unmatched, offset]);
+  }, [status, gov, brand, query, unanswered, unmatched, matchedQuiet, invalidOffers, lowBudget, offset]);
 
   useEffect(() => { load(); }, [load]);
   // Any change of filter puts you back on page one — page 3 of the previous
   // filter is a different set of rows and lands on nothing.
-  useEffect(() => { setOffset(0); }, [status, gov, brand, query, unanswered, unmatched]);
+  useEffect(() => { setOffset(0); },
+    [status, gov, brand, query, unanswered, unmatched, matchedQuiet, invalidOffers, lowBudget]);
 
   useEffect(() => {
     if (openId == null) { setDetail(null); return; }
@@ -248,6 +273,32 @@ export function RequestsPage() {
           ) : null}
 
           <div className="chart-row">
+            {/* The sourcing list. Demand with no supply behind it is the one
+                table on this page that says what to BUY — everything else
+                says what went wrong with what we already have. */}
+            <div className="card chart-card">
+              <div className="chart-title">الأجهزة المطلوبة بلا مخزون</div>
+              {s.top_models.filter((m) => m.matched === 0).length === 0 ? <Empty /> : (
+                <table>
+                  <thead>
+                    <tr><th>الجهاز</th><th>طلبات</th><th>وسيط الميزانية</th></tr>
+                  </thead>
+                  <tbody>
+                    {s.top_models
+                      .filter((m) => m.matched === 0)
+                      .sort((a, b) => b.requests - a.requests)
+                      .slice(0, 15)
+                      .map((m) => (
+                        <tr key={`ns-${m.brand}-${m.model}`}>
+                          <td>{m.brand} {m.model}</td>
+                          <td>{n(m.requests)}</td>
+                          <td>{iqd(m.median_budget)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
             <div className="card chart-card">
               <div className="chart-title">أكثر الأجهزة طلباً · آخر {s.window_days} يوم</div>
               {s.top_models.length === 0 ? <Empty /> : (
@@ -324,6 +375,9 @@ export function RequestsPage() {
           </form>
           <button className={unanswered ? '' : 'secondary'} onClick={() => setUnanswered((v) => !v)}>بدون عروض</button>
           <button className={unmatched ? '' : 'secondary'} onClick={() => setUnmatched((v) => !v)}>بدون جهاز مطابق</button>
+          <button className={matchedQuiet ? '' : 'secondary'} onClick={() => setMatchedQuiet((v) => !v)}>بلا عرض رغم وجود مطابق</button>
+          <button className={invalidOffers ? '' : 'secondary'} onClick={() => setInvalidOffers((v) => !v)}>عروض بأسعار خاطئة</button>
+          <button className={lowBudget ? '' : 'secondary'} onClick={() => setLowBudget((v) => !v)}>ميزانية منخفضة</button>
           <span className="muted" style={{ marginRight: 'auto', fontSize: 12.5 }}>
             {loading ? '…' : `${n(total)} طلب`}
           </span>
@@ -359,7 +413,23 @@ export function RequestsPage() {
                   </td>
                   <td>
                     {row.buyer.name || '—'}
-                    {row.buyer.phone ? <div className="faint" style={{ fontSize: 12 }}>{row.buyer.phone}</div> : null}
+                    {row.buyer.phone ? (
+                      <div
+                        className="faint"
+                        style={{ fontSize: 12, cursor: 'pointer', userSelect: 'none' }}
+                        title={revealed.has(row.id) ? '' : 'اضغط لإظهار الرقم'}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRevealed((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(row.id)) next.delete(row.id); else next.add(row.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        {revealed.has(row.id) ? row.buyer.phone : maskPhone(row.buyer.phone)}
+                      </div>
+                    ) : null}
                   </td>
                   <td>{iqd(row.max_price)}</td>
                   <td className="muted">{row.governorate}</td>

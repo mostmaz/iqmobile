@@ -97,7 +97,8 @@ export function offerStats(db, ids) {
             SUM(CASE WHEN status='withdrawn' THEN 1 ELSE 0 END) AS withdrawn,
             MIN(CASE WHEN status='sent' THEN price END) AS best_price,
             MIN(CASE WHEN status='sent' THEN created_at END) AS first_at,
-            MAX(CASE WHEN status='sent' THEN created_at END) AS last_at
+            MAX(CASE WHEN status='sent' THEN created_at END) AS last_at,
+            SUM(CASE WHEN status='sent' AND invalid_reason IS NOT NULL THEN 1 ELSE 0 END) AS invalid
        FROM request_offers WHERE request_id IN (${marks})
       GROUP BY request_id`,
   ).all(...ids);
@@ -108,12 +109,13 @@ export function offerStats(db, ids) {
       best_price: row.best_price ?? null,
       first_at: row.first_at ?? null,
       last_at: row.last_at ?? null,
+      invalid: row.invalid || 0,
     });
   }
   return out;
 }
 
-const EMPTY_OFFERS = { sent: 0, withdrawn: 0, best_price: null, first_at: null, last_at: null };
+const EMPTY_OFFERS = { sent: 0, withdrawn: 0, best_price: null, first_at: null, last_at: null, invalid: 0 };
 
 /**
  * Rows as the dashboard's list renders them: the request, who asked, what the
@@ -142,6 +144,10 @@ export function decorateRequests(db, rows, norm, { now = Date.now() } = {}) {
       note: row.note || null,
       status: row.status,
       is_live: row.status === 'open' && row.expires_at > now,
+      // Two flags the operator filters on: a ceiling nobody could meet, and
+      // a buyer who already accepts stock from another province.
+      low_budget: !!row.low_budget,
+      any_governorate: !!row.any_governorate,
       created_at: row.created_at,
       expires_at: row.expires_at,
       closed_at: row.closed_at ?? null,
@@ -173,6 +179,7 @@ export function decorateRequests(db, rows, norm, { now = Date.now() } = {}) {
 /** Columns every list/detail query selects, so the shapes cannot drift. */
 export const REQUEST_COLS = `r.id, r.buyer_id, r.brand, r.model, r.condition, r.max_price,
   r.governorate, r.note, r.status, r.offer_count, r.created_at, r.expires_at, r.closed_at,
+  r.low_budget, r.any_governorate,
   u.display_name AS buyer_name, u.phone AS buyer_phone, u.seller_type AS buyer_seller_type,
   u.governorate AS buyer_governorate`;
 

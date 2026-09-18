@@ -9,7 +9,7 @@
 // It is also the first test of this function at all — it was previously
 // uncovered, which is how a 14,055-alert fanout went unnoticed for a while.
 
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -22,8 +22,17 @@ const { db } = await import('../src/db.js');
 const { alertOnNewListing } = await import('../src/routes/savedSearches.js');
 const { MAX_PUSH_PER_DAY, UNOPENED_LIMIT } = await import('../src/savedSearchThrottle.js');
 
-const NOW = Date.now();
+// A FIXED afternoon, not Date.now().
+//
+// reserveRetention enforces quiet hours — `hour >= 9 && hour < 21` in
+// Baghdad time — so a test that asserts a push went out is asserting what
+// time it is. This file passed every time it was run by day and failed every
+// night, which is the worst kind of red: the suite is honest only during
+// office hours. Freezing the clock at 14:00 Baghdad makes the push rules the
+// only thing under test.
+const NOW = Date.parse('2026-09-15T14:00:00+03:00');
 const DAY = 86400000;
+mock.timers.enable({ apis: ['Date'], now: NOW });
 
 let uid = 200;
 function user() {

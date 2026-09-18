@@ -1431,6 +1431,17 @@ r.get('/requests', requireAdmin, (req, res) => {
   const brand = String(req.query.brand || '').trim();
   if (brand) { conds.push('r.brand=?'); params.push(brand); }
 
+  // Requests carrying an offer nobody can act on — a price typed in
+  // thousands. The buyer sees «400 د.ع» on a phone worth 400,000 and
+  // reasonably concludes the site is broken.
+  if (req.query.invalid_offers === '1') {
+    conds.push("EXISTS(SELECT 1 FROM request_offers o WHERE o.request_id=r.id AND o.status='sent' AND o.invalid_reason IS NOT NULL)");
+  }
+
+  // Posted with a ceiling far under what the device sells for. Nobody could
+  // fill these, so «unanswered» is the wrong place to look for them.
+  if (req.query.low_budget === '1') conds.push('COALESCE(r.low_budget,0)=1');
+
   if (req.query.unanswered === '1') {
     conds.push("NOT EXISTS(SELECT 1 FROM request_offers o WHERE o.request_id=r.id AND o.status='sent')");
   }

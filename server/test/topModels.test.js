@@ -85,7 +85,7 @@ test('the cap holds and the internal ordering field does not leak', () => {
   const out = groupTopModels(rows, { limit: 10 });
   assert.equal(out.length, 10);
   assert.deepEqual(Object.keys(out[0]).sort(),
-    ['count', 'image_path', 'max_price', 'min_price', 'model', 'model_key']);
+    ['count', 'image_path', 'max_price', 'median_price', 'min_price', 'model', 'model_key']);
 });
 
 test('rows with no key are skipped rather than merged into one bucket', () => {
@@ -98,4 +98,39 @@ test('empty and junk input produce an empty list, never a throw', () => {
   assert.deepEqual(groupTopModels([]), []);
   assert.deepEqual(groupTopModels(null), []);
   assert.deepEqual(groupTopModels([null, undefined, {}]), []);
+});
+
+test('the median is the middle of what the device actually sells for', () => {
+  // The request form compares a buyer's ceiling against this. min/max cannot
+  // do that job: one bargain or one optimistic listing moves an extreme.
+  const out = groupTopModels([
+    row({ asking_price: 300000 }), row({ asking_price: 500000 }), row({ asking_price: 700000 }),
+  ]);
+  assert.equal(out[0].median_price, 500000);
+});
+
+test('an even sample averages the middle two', () => {
+  const out = groupTopModels([
+    row({ asking_price: 300000 }), row({ asking_price: 500000 }),
+    row({ asking_price: 600000 }), row({ asking_price: 900000 }),
+  ]);
+  assert.equal(out[0].median_price, 550000);
+});
+
+test('call-for-price rows stay out of the median, as they do of the range', () => {
+  // asking_price=1 is the sentinel. Counting it would halve the median and
+  // tell every buyer their budget was generous.
+  const out = groupTopModels([
+    row({ asking_price: 1, price_on_request: 1 }),
+    row({ asking_price: 500000 }), row({ asking_price: 700000 }),
+  ]);
+  assert.equal(out[0].median_price, 600000);
+  assert.equal(out[0].count, 3, 'still counted as stock, just not as a price');
+});
+
+test('a device with no priced listing has no median rather than zero', () => {
+  // null so a caller can tell "cheap" from "no idea"; 0 makes every budget
+  // look generous.
+  const out = groupTopModels([row({ asking_price: 1, price_on_request: 1 })]);
+  assert.equal(out[0].median_price, null);
 });

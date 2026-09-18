@@ -96,6 +96,9 @@ export default function RequestsScreen({ navigation }: any) {
   // Offers waiting on the buyer's own OPEN requests. Closed ones are
   // excluded: a badge that keeps counting offers on a request the buyer
   // already fulfilled is a notification nobody can clear.
+  // Open requests this seller's live listings could answer and has not.
+  const matchingForMe = pulse?.matching_for_me ?? 0;
+
   const waitingOffers = useMemo(
     () => ((mine.data as PhoneRequest[] | undefined) || [])
       .filter((r) => r.status === 'open')
@@ -166,6 +169,21 @@ export default function RequestsScreen({ navigation }: any) {
             {/* «طلباتي» says how many offers are waiting. The strip should
                 tell a buyer which of the three tabs has something in it —
                 otherwise finding out means visiting all three. */}
+            {/* «كل الطلبات» says how many the seller's own stock could
+                answer. The «أقدر أجهزها» filter has existed since the funnel
+                shipped and nothing ever told anyone there was something
+                behind it — a screen that turns stock into leads, reachable
+                only if you thought to press it. */}
+            {key === 'board' && matchingForMe > 0 ? (
+              <View style={{
+                minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 999,
+                backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.ltrBold, fontSize: 9.5, color: '#fff' }}>
+                  {matchingForMe > 99 ? '99+' : matchingForMe}
+                </Text>
+              </View>
+            ) : null}
             {key === 'mine' && waitingOffers > 0 ? (
               <View style={{
                 minWidth: 17, height: 17, paddingHorizontal: 4, borderRadius: 999,
@@ -183,6 +201,28 @@ export default function RequestsScreen({ navigation }: any) {
       {/* Board filters */}
       {tab === 'board' ? (
         <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          {/* The badge says there is something; this says what and opens it.
+              One tap turns on the filter that was already there. */}
+          {matchingForMe > 0 && !mineToAnswer ? (
+            <TouchableOpacity
+              onPress={() => setMineToAnswer(true)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              style={{
+                flexDirection: 'row-reverse', alignItems: 'center', gap: 8,
+                backgroundColor: theme.accentSoft, borderWidth: 1, borderColor: theme.accent,
+                borderRadius: radius.lg, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8,
+              }}
+            >
+              <IconCheck size={14} color={theme.accentDeep} sw={2.4} />
+              <Text style={{ flex: 1, fontFamily: fonts.arBold, fontSize: 13, color: theme.accentDeep, textAlign: 'right' }}>
+                {matchingForMe === 1
+                  ? 'لديك طلب واحد مطابق لأجهزتك'
+                  : `لديك ${matchingForMe} طلبات مطابقة لأجهزتك`}
+              </Text>
+              <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.accent }}>اعرضها</Text>
+            </TouchableOpacity>
+          ) : null}
           {/* Order the board. «بدون عروض» is the one that changes a seller's
               day: a request with five offers is a bidding war they probably
               lose, and one with none is a reply that wins outright. It was
