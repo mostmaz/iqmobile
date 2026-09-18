@@ -778,6 +778,16 @@ addColumnIfMissing('users', 'shop_manager_id INTEGER');
 // savedSearchThrottle.js counts pushes per person per day, so it needs to
 // know which is which.
 addColumnIfMissing('notifications', 'pushed INTEGER NOT NULL DEFAULT 0');
+
+// Why an offer is unusable, or NULL when it is fine.
+//
+// 16 of the first 43 offers this marketplace carried were under 20,000 IQD —
+// prices typed in thousands, reaching the buyer as a handful of dinars.
+// offerValidation.js stops new ones; this marks the ones already sitting in
+// buyers' lists so the dashboard can filter them and the sellers can be
+// asked to resend. Nullable TEXT rather than a flag, because "too low" and
+// "absurd" want different messages to the seller.
+addColumnIfMissing('request_offers', 'invalid_reason TEXT');
 // Turns a shop into an order-taking storefront: its listings get an
 // add-to-cart button and the app offers COD checkout instead of "call the
 // seller". Off for every existing shop, so this changes nothing until a
@@ -1670,6 +1680,29 @@ CREATE INDEX IF NOT EXISTS idx_requests_buyer ON phone_requests(buyer_id, create
 CREATE INDEX IF NOT EXISTS idx_requests_board ON phone_requests(status, expires_at, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_requests_gov ON phone_requests(governorate, status);
 CREATE INDEX IF NOT EXISTS idx_requests_model ON phone_requests(brand, model);
+
+-- Who has already been told about which request.
+--
+-- The broadcast used to be a one-shot at request-create time, and the
+-- reverse path (a new listing answering an old request) deduped on the
+-- LISTING — so a seller could be re-told about the same request by posting a
+-- second phone, while a request that had no stock the day it was written was
+-- never revisited at all. Measured on 18 Sep 2026: of 84 live requests with
+-- no offer, 49 had never had a matching seller notified.
+--
+-- Keyed on the pair, so every path can ask the same question before it
+-- pushes: has this person already heard about this request?
+CREATE TABLE IF NOT EXISTS request_notifications (
+  request_id INTEGER NOT NULL REFERENCES phone_requests(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- Which direction told them: 'broadcast' (request created/reopened) or
+  -- 'listing' (they posted a phone that answers it). Kept for the dashboard,
+  -- which needs to tell "nobody was told" apart from "told, ignored".
+  source TEXT NOT NULL,
+  notified_at INTEGER NOT NULL,
+  PRIMARY KEY (request_id, seller_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reqnotif_seller ON request_notifications(seller_id, notified_at DESC);
 
 CREATE TABLE IF NOT EXISTS request_offers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -25,11 +25,12 @@ import { db, now } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isBrand } from '../brands.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
-import { notify, hasNotified } from '../notify.js';
+import { notify } from '../notify.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { norm } from './savedSearches.js';
 import { requestsAnsweredBy, listingsAnsweringRequest } from '../requestMatch.js';
 import { requestPulse } from '../requestPulse.js';
+import { validateOffer, medianListingPrice } from '../offerValidation.js';
 
 const r = Router();
 
@@ -43,6 +44,27 @@ const MAX_CREATES_PER_DAY = 5;
 const MAX_OFFERS_PER_DAY = 30;
 // At most 100 matching sellers per request; no shop or brand-only fallback.
 const MAX_BROADCAST = 100;
+// How many open requests one new listing may announce. A seller who lists a
+// popular phone can answer a dozen; telling them about all twelve in twelve
+// pushes is how the useful alert becomes the ignored one. Three is enough to
+// be worth opening the board for, and the board shows the rest.
+const MAX_REQUESTS_PER_LISTING = 3;
+
+// Has this person already been told about this request, by any path?
+//
+// Replaces a per-LISTING check that got both halves wrong: a seller could be
+// re-told about one request by posting a second matching phone, while a
+// request whose stock appeared later was never revisited.
+function alreadyToldAbout(requestId, sellerId) {
+  return !!db.prepare('SELECT 1 FROM request_notifications WHERE request_id=? AND seller_id=?')
+    .get(requestId, sellerId);
+}
+
+function recordTold(requestId, sellerId, source) {
+  db.prepare(`INSERT INTO request_notifications(request_id, seller_id, source, notified_at)
+              VALUES(?,?,?,?) ON CONFLICT(request_id, seller_id) DO NOTHING`)
+    .run(requestId, sellerId, source, now());
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -198,6 +220,10 @@ export function broadcastRequest(request) {
       for (const userId of [sellerId, managerId]) {
         if (!userId || userId === request.buyer_id || recipients.has(userId)) continue;
         if (recipients.size >= MAX_BROADCAST) break;
+        // Reopening a request, or a second broadcast after an edit, must not
+        // re-ring the same phone about the same demand.
+        if (alreadyToldAbout(request.id, userId)) { recipients.add(userId); continue; }
+        recordTold(request.id, userId, 'broadcast');
         notify(userId, 'request.match', {
           request_id: request.id, listing_id: m.listing_id, brand: request.brand, model: request.model,
           max_price: request.max_price, governorate: request.governorate,
@@ -228,9 +254,12 @@ export function alertRequestsOnListing(listing) {
 
     let sent = 0;
     for (const request of open) {
-      // Once per (seller, request): re-posting or editing the listing must
-      // not re-nag the seller about the same open request.
-      if (hasNotified(listing.seller_id, 'request.match', listing.id)) break;
+      // Once per (seller, request). This used to dedupe on the LISTING and
+      // `break` on a hit, which meant a seller's second phone re-announced a
+      // request they had already been told about, and — because it broke
+      // rather than continued — one already-seen request hid every other
+      // request behind it in the same pass.
+      if (alreadyToldAbout(request.id, listing.seller_id)) continue;
       const aboveBudget = request.above_budget;
       notify(
         listing.seller_id,
@@ -247,9 +276,11 @@ export function alertRequestsOnListing(listing) {
             : `${request.brand} ${request.model} — ${priceLine(request)}`,
         },
       );
-      // One push per new listing, however many requests it answers; the
-      // seller opens the board and sees the rest.
-      if (++sent >= 1) break;
+      recordTold(request.id, listing.seller_id, 'listing');
+      // A few, not one and not all — see MAX_REQUESTS_PER_LISTING. The old
+      // cap of one is why a listing that answered five open requests told
+      // the seller about a single buyer and left the other four unmet.
+      if (++sent >= MAX_REQUESTS_PER_LISTING) break;
     }
   } catch (e) {
     console.error('[requests] listing alert failed:', e?.message);
@@ -459,7 +490,15 @@ r.patch('/phone-requests/:id(\\d+)', requireAuth(), (req, res) => {
   }
   db.prepare('UPDATE phone_requests SET status=?, closed_at=? WHERE id=?')
     .run(status, status === 'open' ? null : now(), row.id);
-  res.json(publicRequest(db.prepare('SELECT * FROM phone_requests WHERE id=?').get(row.id), req.user.id));
+  const updated = db.prepare('SELECT * FROM phone_requests WHERE id=?').get(row.id);
+  // Back on the board: tell whoever holds the phone NOW. Stock turns over
+  // faster than a 21-day request window, so the sellers who can answer today
+  // are usually not the ones who could when it was written. request_notifications
+  // keeps anyone who already heard about it from hearing again.
+  if (status === 'open' && row.status !== 'open') {
+    setImmediate(() => broadcastRequest(updated));
+  }
+  res.json(publicRequest(updated, req.user.id));
 });
 
 r.delete('/phone-requests/:id(\\d+)', requireAuth(), (req, res) => {
@@ -481,7 +520,20 @@ r.post('/phone-requests/:id(\\d+)/offers', requireAuth(), (req, res) => {
 
   const price = Math.floor(Number(req.body?.price));
   const note = req.body?.note ? String(req.body.note).trim().slice(0, 300) : null;
-  if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: 'bad_price' });
+  // The same rule the app runs, enforced here too: the app is the thing a
+  // seller can skip. 16 of this marketplace's first 43 offers were under
+  // 20,000 dinars — see offerValidation.js.
+  const verdict = validateOffer({
+    price,
+    maxPrice: request.max_price,
+    median: medianListingPrice(db, { brand: request.brand, model: request.model }, norm),
+    confirmedAboveCap: req.body?.confirm_above_cap === true,
+  });
+  if (!verdict.ok) {
+    return res.status(400).json({
+      error: verdict.code, message: verdict.message, needs_confirm: verdict.needsConfirm,
+    });
+  }
 
   let listingId = null;
   if (req.body?.listing_id != null) {

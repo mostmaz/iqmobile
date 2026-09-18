@@ -45,12 +45,26 @@ const REQUEST = {
   id: 1, buyer_id: BUYER, brand: 'Samsung', model: 'Galaxy S24',
   max_price: 5_000_000, governorate: 'Baghdad',
 };
+// A real row, not just the object above: the broadcast now records who it
+// told in request_notifications, whose foreign key points here. Passing a
+// synthetic request made that insert fail, and because broadcastRequest
+// swallows its own errors the symptom was every seller silently unnotified —
+// which is the exact production bug this ledger exists to prevent.
+db.prepare(`INSERT INTO phone_requests
+  (id, buyer_id, brand, model, max_price, governorate, status, offer_count, created_at, expires_at)
+  VALUES(?,?,?,?,?,?,'open',0,?,?)`)
+  .run(REQUEST.id, BUYER, REQUEST.brand, REQUEST.model, REQUEST.max_price, REQUEST.governorate,
+       NOW, NOW + 21 * 86400000);
 
 const { __testables, broadcastRequest } = await import('../src/routes/phoneRequests.js');
 const ids = () => [...__testables.sellersWithMatchingListing(REQUEST).keys()];
 
 test.beforeEach(() => {
   db.prepare('DELETE FROM phone_listings').run();
+  // The dedupe ledger is keyed on (request, seller) and these tests reuse
+  // one request id, so without this every case after the first sees its
+  // whole cast as "already told" and asserts against zero notifications.
+  db.prepare('DELETE FROM request_notifications').run();
   db.prepare('DELETE FROM users WHERE id <> ?').run(BUYER);
 });
 

@@ -566,7 +566,11 @@ export const PhoneRequests = {
     api<PhoneRequest>(`/phone-requests/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
   remove: (id: number) => api(`/phone-requests/${id}`, { method: 'DELETE' }),
   /** Re-offering EDITS the seller's existing offer rather than adding one. */
-  offer: (id: number, body: { price: number; note?: string | null; listing_id?: number | null }) =>
+  offer: (id: number, body: {
+    price: number; note?: string | null; listing_id?: number | null;
+    /** The seller tapped through «سعرك أعلى من سقف المشتري». */
+    confirm_above_cap?: boolean;
+  }) =>
     api<RequestOffer>(`/phone-requests/${id}/offers`, { method: 'POST', body: JSON.stringify(body) }),
   withdrawOffer: (id: number) => api(`/phone-requests/${id}/offers/mine`, { method: 'DELETE' }),
 };

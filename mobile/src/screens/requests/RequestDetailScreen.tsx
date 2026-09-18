@@ -30,6 +30,7 @@ import { bundledBrandLogo } from '../../lib/brandLogos';
 import { fullImageUrl } from '../../api/upload';
 import { PhoneRequests, Listings, type PhoneRequest, type RequestOffer, type Listing } from '../../api/endpoints';
 import { deviceTitle, timeAgoAr } from '../../lib/format';
+import { formatOfferPrice, parseOfferPrice, checkOfferPrice } from '../../lib/offerPrice';
 import { arOf } from '../../lib/governorates';
 import { callPhone, openWhatsApp } from '../../lib/contact';
 import { useAuth } from '../../auth/AuthContext';
@@ -479,10 +480,11 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
   }, [myListings, request.brand, request.model]);
 
   const send = useMutation({
-    mutationFn: () => PhoneRequests.offer(request.id, {
-      price: Number(String(price).replace(/[^\d]/g, '')),
+    mutationFn: (confirmAboveCap?: boolean) => PhoneRequests.offer(request.id, {
+      price: parseOfferPrice(price),
       note: note.trim() || null,
       listing_id: listingId,
+      confirm_above_cap: confirmAboveCap === true,
     }),
     onSuccess: () => {
       onDone();
@@ -494,6 +496,11 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
         code.includes('request_closed') ? 'أُغلق هذا الطلب.'
         : code.includes('too_many_offers_today') ? 'أرسلت عروضاً كثيرة اليوم. حاول غداً.'
         : code.includes('guest_not_allowed') ? 'سجّل الدخول برقم هاتفك ليتمكن المشتري من الوصول إليك.'
+        : code.includes('price_too_low') ? 'السعر يبدو ناقصاً — اكتب السعر الكامل بالدينار.'
+        // Only the server knows the device's median, so this one can only
+        // ever arrive from it. Its wording is the server's, verbatim.
+        : code.includes('price_absurd') ? 'السعر خارج النطاق المعقول.'
+        : code.includes('above_cap') ? 'سعرك أعلى من سقف المشتري.'
         : code.includes('bad_price') ? 'اكتب سعراً صحيحاً.'
         : 'حاول مرة أخرى.');
     },
@@ -531,7 +538,15 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
         <Text style={{ fontFamily: fonts.arBold, fontSize: 11.5, color: theme.subtle, marginBottom: 6, textAlign: 'right' }}>
           سعرك (د.ع)
         </Text>
-        <Input value={price} onChangeText={setPrice} numeric ltr placeholder="0" />
+        {/* Grouped as they type. A seller reading back «200000» cannot see
+            at a glance whether it is two hundred thousand; «200,000» can be
+            checked without counting zeros, which is the whole failure this
+            box has — 16 of the first 43 offers arrived under 20,000 د.ع. */}
+        <Input
+          value={price}
+          onChangeText={(t) => setPrice(formatOfferPrice(t))}
+          numeric ltr placeholder="0"
+        />
 
         {attachable.length ? (
           <>
@@ -570,9 +585,23 @@ function SellerView({ request, onDone, navigation }: { request: PhoneRequest; on
         <View style={{ marginTop: 16, gap: 8 }}>
           <View style={{ borderRadius: radius.lg, ...shadowAccent }}>
             <Btn kind="accent" full busy={send.isPending} onPress={() => {
-              const n = Number(String(price).replace(/[^\d]/g, ''));
-              if (!Number.isFinite(n) || n <= 0) { Alert.alert('اكتب سعرك', 'السعر مطلوب لإرسال العرض.'); return; }
-              send.mutate();
+              // The same rule the server runs (lib/offerPrice.ts mirrors
+              // offerValidation.js). Catching it here is not the guard — the
+              // server is — it is so a typo is corrected while the seller is
+              // still looking at the number, rather than bounced back as an
+              // error after they thought they had sent it.
+              const v = checkOfferPrice(parseOfferPrice(price), request.max_price);
+              if (v.ok) { send.mutate(undefined); return; }
+              if (v.code === 'above_cap') {
+                // A ceiling is an opening position, so this is a second tap
+                // rather than a wall.
+                Alert.alert(v.title, v.message, [
+                  { text: 'تعديل السعر', style: 'cancel' },
+                  { text: 'أرسل', onPress: () => send.mutate(true) },
+                ]);
+                return;
+              }
+              Alert.alert(v.title, v.message);
             }}>
               {existing ? 'حدّث عرضك' : 'أرسل العرض'}
             </Btn>
