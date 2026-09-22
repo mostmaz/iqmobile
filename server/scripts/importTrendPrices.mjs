@@ -74,6 +74,15 @@ function rom(cell) {
   return caps ? caps[caps.length - 1].replace(/\s+/g, '').toUpperCase() : null;
 }
 
+// Sorted token bag, so "iPad Pro 13-inch M5" and the stored "iPad Pro 13 M5"
+// are one device. Without this the sheet reads as 128 new products and the
+// shops fill with near-duplicates.
+const key = (brand, model, storage) => {
+  const m = String(model || '').toLowerCase().replace(/inch|["']/g, ' ').match(/[a-z0-9]+/g) || [];
+  const st = String(storage || '').toLowerCase().replace(/[^0-9a-z]/g, '');
+  return `${String(brand).toLowerCase()}|${m.sort().join('')}|${st}`;
+};
+
 function readSheet(file) {
   const wb = xlsx.readFile(file.replace(/^~/, process.env.HOME || '~'));
   const sheet = wb.Sheets[wb.SheetNames.includes('Prices') ? 'Prices' : wb.SheetNames[0]];
@@ -99,18 +108,20 @@ function readSheet(file) {
 
   // Lowest per brand|model|ROM. The sheet prices RAM variants separately and
   // the listing has nowhere to put RAM, so the cheapest is the honest one to
-  // show — the same rule the Free Zone import used.
+  // show — the same rule the Free Zone import used. Deduped on the same key
+  // the listings are matched on, so two spellings of one device cannot both
+  // survive and then fight over (or both create) one listing.
   const best = new Map();
   let collapsed = 0;
   for (const r of parsed) {
-    const k = `${r.brand}|${r.model.toLowerCase()}|${r.storage}`;
+    const k = key(r.brand, r.model, r.storage);
     const prev = best.get(k);
     if (!prev) best.set(k, r);
     else { collapsed++; if (r.price < prev.price) best.set(k, r); }
   }
   const out = [...best.values()];
   console.log(`sheet: ${raw.length} rows -> ${parsed.length} available+priced -> ${out.length} unique`
-    + ` (${collapsed} RAM variants collapsed to the cheaper)`);
+    + ` (${collapsed} RAM variants / duplicate spellings collapsed to the cheaper)`);
   return out;
 }
 
@@ -120,15 +131,6 @@ const STORE = { id: 5587, phone: '07360007001', label: 'IQ Mobile store', all: t
 const PRICE = { id: 2548, phone: '07360007000', label: 'price shop', all: false, contact: '07811000038' };
 const TREND = { id: 488, phone: '07811000038', label: 'Trend ترند', all: false };
 
-// Sorted token bag, so "iPad Pro 13-inch M5" and the stored "iPad Pro 13 M5"
-// are one device. Without this the sheet reads as 128 new products and the
-// shops fill with near-duplicates.
-const key = (brand, model, storage) => {
-  const m = String(model || '').toLowerCase().replace(/inch|["']/g, ' ').match(/[a-z0-9]+/g) || [];
-  const st = String(storage || '').toLowerCase().replace(/[^0-9a-z]/g, '');
-  return `${String(brand).toLowerCase()}|${m.sort().join('')}|${st}`;
-};
-
 const TTL_MS = (Number(getSetting('listing_ttl_days')) || 30) * 24 * 60 * 60 * 1000;
 const journal = { at: new Date().toISOString(), file: fileArg, updated: [], created: [] };
 // Call-for-price rows the sheet has a number for. Reported, never written.
@@ -137,46 +139,58 @@ const sentinel = [];
 function sync(target) {
   const wanted = target.all ? rows : rows.filter((r) => r.kind !== 'other');
   const existing = db.prepare(
-    "SELECT id, brand, model, storage, asking_price FROM phone_listings WHERE seller_id=? AND status='active'",
+    `SELECT id, brand, model, storage, asking_price, price_on_request FROM phone_listings
+      WHERE seller_id=? AND status='active' AND condition='new'`,
   ).all(target.id);
+  // Every match, not the last one: a shop can carry one device in several
+  // colours, and each of them is that device at the sheet's price — the same
+  // rule storeImport.js applies. Only 'new' listings: the sheet prices new
+  // stock, and a used unit must not inherit the new-device price.
   const idx = new Map();
-  for (const l of existing) idx.set(key(l.brand, l.model, l.storage), l);
+  for (const l of existing) {
+    const k = key(l.brand, l.model, l.storage);
+    if (!idx.has(k)) idx.set(k, []);
+    idx.get(k).push(l);
+  }
 
   let updated = 0, created = 0, unchanged = 0, delta = 0;
   const t = now();
   for (const r of wanted) {
-    const hit = idx.get(key(r.brand, r.model, r.storage));
-    if (hit) {
-      // asking_price <= 1 is the call-for-price sentinel, not a cheap phone.
-      // Writing a real number over it converts «اتصل للسعر» into a quoted
-      // price, which is a different decision from refreshing a price — so it
-      // is reported and skipped, exactly as fixThousandPrices.js leaves the
-      // same rows alone.
-      if (hit.asking_price <= 1) {
-        sentinel.push({ shop: target.id, listing_id: hit.id, would_be: r.price,
-          device: `${r.brand} ${r.model} ${r.storage || ''}`.trim() });
-        continue;
+    const hits = idx.get(key(r.brand, r.model, r.storage));
+    const device = `${r.brand} ${r.model} ${r.storage || ''}`.trim();
+    if (hits) {
+      for (const hit of hits) {
+        // «اتصل للسعر» is price_on_request, or the older asking_price <= 1
+        // sentinel. Writing a real number over it converts call-for-price
+        // into a quoted price, which is a different decision from refreshing
+        // a price — so it is reported and skipped, exactly as
+        // fixThousandPrices.js leaves the same rows alone.
+        if (hit.price_on_request || hit.asking_price <= 1) {
+          sentinel.push({ shop: target.id, listing_id: hit.id, would_be: r.price, device });
+          continue;
+        }
+        if (hit.asking_price === r.price) { unchanged++; continue; }
+        delta += r.price - hit.asking_price;
+        journal.updated.push({ shop: target.id, listing_id: hit.id, from: hit.asking_price, to: r.price, device });
+        if (apply) {
+          db.prepare('UPDATE phone_listings SET asking_price=?, price_on_request=0, updated_at=?, expires_at=? WHERE id=?')
+            .run(r.price, t, t + TTL_MS, hit.id);
+        }
+        updated++;
       }
-      if (hit.asking_price === r.price) { unchanged++; continue; }
-      delta += r.price - hit.asking_price;
-      journal.updated.push({ shop: target.id, listing_id: hit.id, from: hit.asking_price, to: r.price,
-        device: `${r.brand} ${r.model} ${r.storage || ''}`.trim() });
-      if (apply) {
-        db.prepare('UPDATE phone_listings SET asking_price=?, updated_at=?, expires_at=? WHERE id=?')
-          .run(r.price, t, t + TTL_MS, hit.id);
-      }
-      updated++;
     } else {
-      journal.created.push({ shop: target.id, device: `${r.brand} ${r.model} ${r.storage || ''}`.trim(), price: r.price });
+      const entry = { shop: target.id, listing_id: null, device, price: r.price };
+      journal.created.push(entry);
       if (apply) {
         const contact = target.contact || target.phone;
-        db.prepare(`INSERT INTO phone_listings(
+        const info = db.prepare(`INSERT INTO phone_listings(
             seller_id, brand, model, storage, color, condition,
             battery_health, warranty_status, accessories_json, asking_price,
             governorate, city, description, status, contact_phone, contact_whatsapp,
             created_at, expires_at, updated_at)
           VALUES(?,?,?,?,?, 'new', NULL, NULL, '[]', ?, 'Baghdad', NULL, NULL, 'active', ?, ?, ?, ?, ?)`)
           .run(target.id, r.brand, r.model, r.storage || null, null, r.price, contact, contact, t, t + TTL_MS, t);
+        entry.listing_id = Number(info.lastInsertRowid);
       }
       created++;
     }
