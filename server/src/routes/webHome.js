@@ -20,7 +20,9 @@ import { detect } from './getApp.js';
 
 const r = Router();
 
-const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+import { SITE_URL, MEDIA_URL, jsonLd } from '../seo.js';
+
+const PUBLIC_BASE = MEDIA_URL;
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=org.iqmobile.app';
 const APPSTORE_URL = 'https://apps.apple.com/app/id6776442942';
 
@@ -125,7 +127,7 @@ r.get('/', (req, res) => {
     const im = imgFor.get(l.id);
     const src = im ? PUBLIC_BASE + im.image_path : '';
     const badge = l.status === 'reserved' ? '<span class="badge res">محجوز</span>' : '';
-    return `<a class="card" href="${PUBLIC_BASE}/l/${l.id}">
+    return `<a class="card" href="${SITE_URL}/l/${l.id}">
       <div class="thumb">${src
         ? `<img src="${esc(src)}" alt="${esc(l.brand)} ${esc(l.model)}" loading="lazy">`
         : `<span class="ph">${esc(l.brand)}</span>`}</div>
@@ -147,7 +149,23 @@ r.get('/', (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iQ Mobile — سوق الموبايلات في العراق</title>
 <meta name="description" content="بيع واشترِ الموبايلات في العراق. ${fmt(total)} إعلان من بائعين ومتاجر بمحافظتك.">
-<link rel="canonical" href="https://iqmobile.org/">
+<link rel="canonical" href="${SITE_URL}/">
+${jsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'iQ Mobile',
+  alternateName: 'اي كيو موبايل',
+  url: `${SITE_URL}/`,
+  inLanguage: 'ar-IQ',
+})}
+${jsonLd({
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'iQ Mobile',
+  url: `${SITE_URL}/`,
+  logo: `${MEDIA_URL}/app-icon.png`,
+  areaServed: { '@type': 'Country', name: 'Iraq' },
+})}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="iQ Mobile">
 <meta property="og:title" content="iQ Mobile — سوق الموبايلات في العراق">

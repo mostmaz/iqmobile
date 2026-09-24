@@ -16,7 +16,10 @@ import { db, getSetting } from '../db.js';
 
 const r = Router();
 
-const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+// Page addresses on the brand domain; images from the host that stores them.
+import { SITE_URL, MEDIA_URL, jsonLd, shopJsonLd, breadcrumbJsonLd } from '../seo.js';
+
+const PUBLIC_BASE = MEDIA_URL;
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=org.iqmobile.app';
 const APPSTORE_URL = 'https://apps.apple.com/app/id6776442942';
 
@@ -83,7 +86,7 @@ r.get('/shop/:id(\\d+)', (req, res) => {
   const cover = logo ? PUBLIC_BASE + logo : (listings.length && imgFor.get(listings[0].id)
     ? PUBLIC_BASE + imgFor.get(listings[0].id).image_path : '');
   const desc = u.shop_bio || `${count} إعلان · ${locality}`;
-  const pageUrl = `${PUBLIC_BASE}/shop/${u.id}`;
+  const pageUrl = `${SITE_URL}/shop/${u.id}`;
 
   const cards = listings.map((l) => {
     const im = imgFor.get(l.id);
@@ -94,7 +97,7 @@ r.get('/shop/:id(\\d+)', (req, res) => {
     // data-q is the pre-lowercased haystack the search box matches against, so
     // the filter never has to read text out of the DOM on every keystroke.
     const hay = `${l.brand || ''} ${l.model || ''} ${l.storage || ''}`.toLowerCase();
-    return `<a class="card" data-brand="${esc(l.brand || '')}" data-q="${esc(hay)}" href="${PUBLIC_BASE}/l/${l.id}">
+    return `<a class="card" data-brand="${esc(l.brand || '')}" data-q="${esc(hay)}" href="${SITE_URL}/l/${l.id}">
       <div class="thumb">${src ? `<img src="${esc(src)}" alt="${esc(l.brand)} ${esc(l.model)}" loading="lazy">` : `<span class="ph">${esc(l.brand)}</span>`}</div>
       <div class="meta">
         <div class="t">${esc(l.brand)} ${esc(l.model)}${badge}</div>
@@ -185,6 +188,11 @@ ${cover ? `<meta property="og:image" content="${esc(cover)}">` : ''}
   .btn.primary{background:var(--accent);color:#fff}
   .btn.dark{background:var(--ink);color:#fff}
 </style>
+${jsonLd(shopJsonLd(u, { logo: cover || null, listingCount: listings.length }))}
+${jsonLd(breadcrumbJsonLd([
+  { name: 'iQ Mobile', url: `${SITE_URL}/` },
+  { name: u.shop_name || u.display_name, url: pageUrl },
+]))}
 </head>
 <body>
 <div class="wrap">

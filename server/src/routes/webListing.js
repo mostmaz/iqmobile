@@ -13,7 +13,12 @@ import { db } from '../db.js';
 
 const r = Router();
 
-const PUBLIC_BASE = (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
+// The page's own address is the BRAND domain; the images still come from
+// the API host that stores them. These were one constant and it pointed at
+// the API, so every page canonicalised itself away from iqmobile.org.
+import { SITE_URL, MEDIA_URL, jsonLd, listingJsonLd, breadcrumbJsonLd } from '../seo.js';
+
+const PUBLIC_BASE = MEDIA_URL;
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=org.iqmobile.app';
 const APPSTORE_URL = 'https://apps.apple.com/app/id6776442942';
 
@@ -41,7 +46,8 @@ function notAvailablePage(res) {
 <html lang="ar" dir="rtl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>الإعلان غير متوفر — iQ Mobile</title>
-<meta name="robots" content="noindex"></head>
+<meta name="robots" content="noindex">
+</head>
 <body style="font-family:system-ui,sans-serif;background:#ECE6DA;color:#1B1A18;text-align:center;padding:60px 20px">
 <h1 style="color:#D9583A">iQ Mobile</h1>
 <p style="font-size:18px">هذا الإعلان لم يعد متوفراً.</p>
@@ -98,7 +104,7 @@ r.get('/:id(\\d+)', async (req, res) => {
     } catch { coverDims = null; }
   }
 
-  const pageUrl = `${PUBLIC_BASE}/l/${l.id}`;
+  const pageUrl = `${SITE_URL}/l/${l.id}`;
   const soldBadge = l.status === 'sold' ? '<span class="sold">تم البيع</span>'
     : l.status === 'reserved' ? '<span class="sold" style="background:#f59e0b">محجوز</span>' : '';
 
@@ -119,6 +125,11 @@ r.get('/:id(\\d+)', async (req, res) => {
 <title>${title} — iQ Mobile</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${pageUrl}">
+${l.status === 'active' ? '' : `<!-- Sold and reserved listings stay REACHABLE — a shared link must not
+     break — but they leave the index. A classifieds site that lets every
+     gone listing accumulate teaches the crawler that most of what it is
+     offered is already over, and the fresh ones wait behind them. -->
+<meta name="robots" content="noindex, follow">`}
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="iQ Mobile">
 <meta property="og:title" content="${title}">
@@ -138,6 +149,11 @@ ${coverDims ? `<!-- WhatsApp is picky without dimensions: with none it often fal
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${esc(desc)}">
 <meta name="twitter:image" content="${esc(cover)}">
+${jsonLd(listingJsonLd(l, { images: imgUrls, sellerName: l.seller_name || null }))}
+${jsonLd(breadcrumbJsonLd([
+  { name: 'iQ Mobile', url: `${SITE_URL}/` },
+  { name: title, url: pageUrl },
+]))}
 <style>
   :root{--accent:#D9583A;--deep:#B23F25;--cream:#ECE6DA;--ink:#1B1A18;--line:#e5ddd0}
   *{box-sizing:border-box}
