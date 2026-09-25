@@ -159,10 +159,18 @@ export default function NotificationsScreen({ navigation }: any) {
       .then(() => qc.invalidateQueries({ queryKey: ['notifications'] }))
       .catch(err => console.warn('mark notification read failed', err));
     if(item.kind==='seller.weekly') { navigation.navigate('MyListings'); return; }
-    // A tier decision is not a review thread — opening one would show the
-    // shop an unrelated conversation. The row says what happened and the
-    // dashboard it points at is on the web, so tapping just marks it read.
-    if (item.payload?.kind === 'tier') return;
+    // A tier APPROVAL now has somewhere to go. It used to be a dead tap on
+    // purpose — the row said what happened, the panel it pointed at was on
+    // the web, and there was no thread to open. The approval now files the
+    // panel address and the feature list into the shop's own admin thread
+    // (see server/src/shopPanelInvite.js), which is both where the link is
+    // and where it still is tomorrow, so it falls through to the
+    // shop.review branch below.
+    //
+    // A REJECTION still has nothing behind it: the reason is in the row and
+    // opening a thread would show the shop a conversation about something
+    // else.
+    if (item.payload?.kind === 'tier' && item.kind === 'shop.review.rejected') return;
     // Shop review has no chat_id and no listing — it's its own thread.
     if (item.kind.startsWith('shop.review')) {
       if (navigationRef.isReady()) {
