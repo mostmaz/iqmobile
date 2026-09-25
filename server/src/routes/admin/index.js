@@ -37,6 +37,7 @@ import { listingsAnsweringRequest } from '../../requestMatch.js';
 import {
   REQUEST_COLS, decorateRequests, requestOverview, requestSummary,
 } from '../../requestInsights.js';
+import { panelInviteMessage, panelInvitePayload, PANEL_URL } from '../../shopPanelInvite.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2315,14 +2316,36 @@ r.post('/tier-requests/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, r
 
   audit('admin', req.admin?.id ?? null, approve ? 'tier.approve' : 'tier.reject',
     { kind: 'shop', id: tr.shop_id }, { request_id: tr.id, note });
+  // The approval message carries the panel's ADDRESS and what the tier
+  // unlocks — see shopPanelInvite.js. Telling a merchant they have been
+  // given a panel without saying where it is was the whole gap.
   notify(tr.shop_id, approve ? 'shop.review.approved' : 'shop.review.rejected',
-    { kind: 'tier' }, {
-      title: approve ? 'صار عندك لوحة إدارة متجرك' : 'لم يُقبل طلب الترقية',
-      body: approve
-        ? 'سجّل دخولك للوحة وشوف الأدوات الجديدة.'
-        : (note || 'تواصل معنا للتفاصيل.'),
+    approve ? panelInvitePayload() : { kind: 'tier' },
+    approve ? panelInviteMessage() : {
+      title: 'لم يُقبل طلب الترقية',
+      body: note || 'تواصل معنا للتفاصيل.',
     });
   res.json({ ok: true });
+});
+
+// Send a shop its panel link again.
+//
+// Two shops were promoted before the approval message carried the address,
+// so they hold a tier they were never told how to reach. Also the answer to
+// "the owner lost the link" — which, for a web panel reached from a phone
+// notification, is a question that will keep being asked.
+//
+// Advanced shops only: the link works for any shop, but an invite listing
+// bulk edit and quick replies sent to a shop that has neither is a promise
+// the panel will not keep.
+r.post('/shops/:id(\\d+)/panel-invite', requireAdmin, (req, res) => {
+  const u = db.prepare("SELECT id, shop_tier FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) return res.status(404).json({ error: 'not_found' });
+  if (u.shop_tier !== 'advanced') return res.status(400).json({ error: 'not_advanced' });
+
+  notify(u.id, 'shop.review.approved', panelInvitePayload(), panelInviteMessage());
+  audit('admin', req.admin?.id ?? null, 'tier.panel_invite', { kind: 'shop', id: u.id }, {});
+  res.json({ ok: true, panel_url: PANEL_URL });
 });
 
 // Manual grant / revoke, bypassing every signal (spec §1).
@@ -2335,9 +2358,11 @@ r.post('/shops/:id(\\d+)/tier', requireAdmin, (req, res) => {
     .run(tier, now(), u.id);
   audit('admin', req.admin?.id ?? null, tier === 'advanced' ? 'tier.grant' : 'tier.revoke',
     { kind: 'shop', id: u.id }, { manual: true });
-  notify(u.id, 'shop.review.approved', { kind: 'tier' }, {
-    title: tier === 'advanced' ? 'صار عندك لوحة إدارة متجرك' : 'تغيّرت صلاحيات لوحتك',
-    body: tier === 'advanced' ? 'سجّل دخولك للوحة وشوف الأدوات الجديدة.' : 'راجعنا للتفاصيل.',
+  notify(u.id, 'shop.review.approved',
+    tier === 'advanced' ? panelInvitePayload() : { kind: 'tier' }, {
+    ...(tier === 'advanced' ? panelInviteMessage() : {
+      title: 'تغيّرت صلاحيات لوحتك', body: 'راجعنا للتفاصيل.',
+    }),
   });
   res.json({ ok: true, tier });
 });
