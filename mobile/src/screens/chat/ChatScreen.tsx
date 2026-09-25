@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView,
-  Platform, Alert, Modal,
+  Platform, Alert, Modal, Linking,
 } from 'react-native';
 import { Img } from '../../components/Img';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,6 +9,7 @@ import { launchLibrary, ensureLibraryPermission } from '../../lib/imagePicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { theme, fonts, radius } from '../../theme';
+import { linkify } from '../../lib/linkify';
 import { Btn, fmtIQD } from '../../components/ui';
 import { IconArrowLeft, IconFlag } from '../../components/icons';
 import { Chats, Deals, Reports, type Chat, type ChatMessage } from '../../api/endpoints';
@@ -610,7 +611,19 @@ function MessageBubble({ m, mine }: { m: ChatMessage; mine: boolean }) {
       ) : null}
       {m.body ? (
         <Text style={{ fontFamily: fonts.ar, fontSize: 14, color: mine ? theme.bg : theme.ink, lineHeight: 20, textAlign: 'right' }}>
-          {m.body}
+          {/* Links are tappable. Buyers and sellers paste addresses at each
+              other all day — a shop's page, a video of the phone — and a URL
+              rendered as inert characters is one the other person has to
+              retype off a screen. Same helper the admin thread uses. */}
+          {linkify(m.body).map((seg, i) => (seg.url ? (
+            <Text
+              key={i}
+              style={{ textDecorationLine: 'underline' }}
+              onPress={() => Linking.openURL(seg.url!).catch(() => {})}
+            >
+              {seg.text}
+            </Text>
+          ) : seg.text))}
         </Text>
       ) : null}
       {/* Mask warning retired — chat phones are public now. */}
