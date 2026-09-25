@@ -153,6 +153,10 @@ app.use('/uploads', express.static('./uploads', {
 // Public static pages (privacy policy, etc.). Nginx fronts both
 // api.iqmobile.org and iqmobile.org with the same upstream, so this
 // URL works at both — Play Store wants iqmobile.org/privacy.
+// Search Console's verification file. Served from ./static like the rest,
+// but called out because it is the one file here whose NAME is the payload —
+// renaming or tidying it away silently un-verifies the domain, and the only
+// symptom is that Search Console stops reporting weeks later.
 app.use(express.static('./static', { maxAge: '1h' }));
 app.get('/privacy', (_req, res) => res.sendFile('privacy.html', { root: './static' }));
 app.get('/terms', (_req, res) => res.sendFile('terms.html', { root: './static' }));
