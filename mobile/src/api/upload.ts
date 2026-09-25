@@ -183,3 +183,18 @@ export async function updateShopImage(localUri: string): Promise<{ user: User }>
   fd.append('shop_image', { uri: localUri, name: filename, type: mimeFromExt(filename) } as any);
   return postForm(`${getBaseUrl()}/auth/shop-image`, fd);
 }
+
+/**
+ * The photo that claims the free week: the QR sticker up in the shop.
+ *
+ * A multipart POST rather than the JSON api() helper for the same reason
+ * every other photo here is — and it goes through the app instead of
+ * WhatsApp so it arrives already attached to the shop that sent it.
+ */
+export async function uploadStickerProof(uri: string, note?: string): Promise<{ ok: boolean; id: number; listings: number }> {
+  const filename = uri.split('/').pop() || 'sticker.jpg';
+  const fd = new FormData();
+  fd.append('photo', { uri, name: filename, type: mimeFromExt(filename) } as any);
+  if (note) fd.append('note', note);
+  return postForm(`${getBaseUrl()}/shops/me/sticker-proof`, fd);
+}

@@ -83,6 +83,9 @@ function routeFor(kind?: string): string | null {
   if (kind === 'report.new') return 'Moderation';
   if (kind === 'device.suggested') return 'Moderation';
   if (kind === 'feature.requested') return 'Promote';
+  // Sticker requests are fulfilled on the web dashboard (printing, an
+  // address, a photo to judge) — there is no screen for them here, so the
+  // tap opens the app and the notification text carries the whole fact.
   return null; // the rest land on the queue, which is the default screen
 }
 

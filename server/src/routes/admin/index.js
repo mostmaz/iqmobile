@@ -38,6 +38,10 @@ import {
   REQUEST_COLS, decorateRequests, requestOverview, requestSummary,
 } from '../../requestInsights.js';
 import { panelInviteMessage, panelInvitePayload, sendPanelInvite, PANEL_URL } from '../../shopPanelInvite.js';
+import {
+  advanceSticker, decideStickerProof, stickerPageUrl, activeListingCount, stickerScans,
+  STICKER_STATUSES, REWARD_DAYS, REWARD_MIN_LISTINGS,
+} from '../../shopSticker.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2332,6 +2336,76 @@ r.post('/tier-requests/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, r
   res.json({ ok: true });
 });
 
+// ─── printed QR sticker requests ─────────────────────────────────────
+// The fulfilment queue: who asked, where it goes, and a link to the exact
+// page that gets printed. Each row carries the shop's address and phone
+// because the operator hands both to the courier, and joining them here
+// saves a second lookup per request.
+r.get('/sticker-requests', requireAdmin, (req, res) => {
+  const status = STICKER_STATUSES.includes(req.query.status) ? req.query.status : 'pending';
+  const rows = db.prepare(`
+    SELECT t.*, u.shop_name, u.display_name, u.governorate AS shop_governorate,
+           u.phone AS account_phone, u.shop_phone, u.shop_whatsapp,
+           u.shop_tier, u.verified,
+           (SELECT COUNT(*) FROM shop_sticker_requests p
+             WHERE p.shop_id = t.shop_id AND p.status='shipped') AS shipped_before
+      FROM shop_sticker_requests t
+      JOIN users u ON u.id = t.shop_id
+     WHERE t.status=? ORDER BY t.created_at DESC LIMIT 200
+  `).all(status);
+  const counts = {};
+  for (const s of STICKER_STATUSES) {
+    counts[s] = db.prepare('SELECT COUNT(*) AS n FROM shop_sticker_requests WHERE status=?').get(s).n;
+  }
+
+  // The free-week claims ride along, whatever fulfilment state they are in —
+  // they are a different decision (is the sticker really up?) made by the
+  // same person on the same visit, and a shop can send the photo before we
+  // have marked its sticker shipped.
+  const proofs = db.prepare(`
+    SELECT t.id, t.shop_id, t.proof_image_path, t.proof_at, t.proof_listings, t.proof_note,
+           t.sticker_kind, t.status, u.shop_name, u.display_name,
+           u.governorate AS shop_governorate, u.shop_phone, u.shop_whatsapp,
+           u.shop_featured_until
+      FROM shop_sticker_requests t
+      JOIN users u ON u.id = t.shop_id
+     WHERE t.proof_status='pending' ORDER BY t.proof_at ASC LIMIT 100
+  `).all();
+
+  const withEvidence = (r2) => ({
+    ...r2,
+    sticker_url: stickerPageUrl(r2.shop_id),
+    // Live counts, read now rather than stored: both are the evidence the
+    // operator is deciding on, and a snapshot would go stale in the queue.
+    active_listings: activeListingCount(r2.shop_id),
+    scans: stickerScans(r2.shop_id),
+  });
+
+  res.json({
+    requests: rows.map(withEvidence),
+    proofs: proofs.map(withEvidence),
+    counts,
+    reward: { days: REWARD_DAYS, min_listings: REWARD_MIN_LISTINGS },
+  });
+});
+
+// The free week: grant it or send the shop back for a better photo.
+r.post('/sticker-requests/:id(\\d+)/proof/:action(grant|reject)', requireAdmin, (req, res) => {
+  const out = decideStickerProof(
+    Number(req.params.id), req.params.action, req.admin?.id ?? null, req.body?.note || '',
+  );
+  if (out.error) return res.status(out.status).json(out);
+  res.json(out);
+});
+
+r.post('/sticker-requests/:id(\\d+)/:action(printing|shipped|reject)', requireAdmin, (req, res) => {
+  const out = advanceSticker(
+    Number(req.params.id), req.params.action, req.admin?.id ?? null, req.body?.note || '',
+  );
+  if (out.error) return res.status(out.status).json(out);
+  res.json({ ok: true });
+});
+
 // Send a shop its panel link again.
 //
 // Two shops were promoted before the approval message carried the address,
@@ -2970,6 +3044,10 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
   const count = (sql, ...args) => db.prepare(sql).get(...args).n;
   res.json({
     tier_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_tier_requests WHERE status='pending'").get().n,
+    // Stickers to print and post. 'printing' is deliberately excluded — it
+    // means an operator already picked the job up, and a count that cannot
+    // be cleared by acting is the exact kind of number this queue avoids.
+    sticker_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_sticker_requests WHERE status='pending'").get().n,
     shop_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_feature_requests WHERE status='pending'").get().n
       + db.prepare("SELECT COUNT(*) AS n FROM shop_verification_requests WHERE status='pending'").get().n,
     // Flagged listings awaiting a human verdict. Matches the الفحص queue's

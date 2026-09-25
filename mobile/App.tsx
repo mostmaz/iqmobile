@@ -131,6 +131,15 @@ function AppInner() {
         case 'seller.weekly':
           go('Main', { screen: 'Profile', params: { screen: 'MyListings' } });
           break;
+        // The whole sticker life — printing, posted, and the free week the
+        // photo earns — lands on the one screen that shows all of it.
+        case 'sticker.printing':
+        case 'sticker.shipped':
+        case 'sticker.rejected':
+        case 'sticker.reward_granted':
+        case 'sticker.reward_rejected':
+          go('Main', { screen: 'Profile', params: { screen: 'Sticker' } });
+          break;
         case 'chat.message':
           go('Main', { screen: 'Profile', params: { screen: 'Notifications' } });
           break;

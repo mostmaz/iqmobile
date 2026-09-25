@@ -33,6 +33,7 @@ import { StoreCardPage } from './pages/StoreCardPage';
 import { InspectionPage } from './pages/InspectionPage';
 import { AppControlPage } from './pages/AppControlPage';
 import { TierRequestsPage } from './pages/TierRequestsPage';
+import { StickerRequestsPage } from './pages/StickerRequestsPage';
 import { ChatsConsolePage } from './pages/ChatsConsolePage';
 import { ShopNotifier } from './ShopNotifier';
 import { WorkQueue, type Queue } from './WorkQueue';
@@ -43,7 +44,7 @@ export type Page =
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
   | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
   | 'name_review' | 'store_card' | 'videos' | 'dup_photos'
-  | 'tier_requests' | 'customer_chats' | 'device_requests';
+  | 'tier_requests' | 'customer_chats' | 'device_requests' | 'sticker_requests';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -104,6 +105,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
       { key: 'shops', label: 'المتاجر' },
       { key: 'shop_review', label: 'مراجعة المتاجر', badgeKey: 'new_shops' },
       { key: 'tier_requests', label: 'ترقية لوحات المتاجر', badgeKey: 'tier_requests' },
+      { key: 'sticker_requests', label: 'ملصقات QR', badgeKey: 'sticker_requests' },
       { key: 'banners', label: 'البانرات' },
       { key: 'featured', label: 'الترويج', badgeKey: 'feature_requests' },
       { key: 'users', label: 'المستخدمون' },
@@ -121,7 +123,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
 
 const EMPTY_QUEUE: Queue = {
   orders: 0, videos: 0, dup_photos: 0, inspection: 0, inspection_errors: 0, devices: 0,
-  reports: 0, feature_requests: 0, new_shops: 0, tier_requests: 0,
+  reports: 0, feature_requests: 0, new_shops: 0, tier_requests: 0, sticker_requests: 0,
 };
 
 // The merchant-facing entry point. Kept deliberately loose about the trailing
@@ -255,6 +257,7 @@ export function App() {
       {page === 'settings' && <SettingsPage />}
       {page === 'appcontrol' && <AppControlPage />}
       {page === 'tier_requests' && <TierRequestsPage onChanged={refreshQueue} />}
+      {page === 'sticker_requests' && <StickerRequestsPage onChanged={refreshQueue} />}
       {page === 'customer_chats' && <ChatsConsolePage />}
     </div>
   );

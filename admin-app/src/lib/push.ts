@@ -26,7 +26,7 @@ Notifications.setNotificationHandler({
 
 export type AdminPushKind =
   | 'order.new' | 'video.new' | 'listing.new' | 'shop.new'
-  | 'report.new' | 'device.suggested' | 'feature.requested';
+  | 'report.new' | 'device.suggested' | 'feature.requested' | 'sticker.request';
 
 export const KIND_LABEL: Record<AdminPushKind, string> = {
   'order.new': 'طلب جديد',
@@ -36,6 +36,7 @@ export const KIND_LABEL: Record<AdminPushKind, string> = {
   'report.new': 'بلاغ جديد',
   'device.suggested': 'جهاز مقترح',
   'feature.requested': 'طلب ترويج',
+  'sticker.request': 'ملصق QR',
 };
 
 let cachedToken: string | null = null;

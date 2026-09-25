@@ -12,7 +12,9 @@
 // app. Shops flagged shop_no_contact have none to show anyway.
 
 import { Router } from 'express';
+import QRCode from 'qrcode';
 import { db, getSetting } from '../db.js';
+import { logEvent } from '../eventLog.js';
 
 const r = Router();
 
@@ -53,8 +55,113 @@ function notFoundPage(res) {
 </body></html>`);
 }
 
+// ─── the printable sticker ───────────────────────────────────────────
+// One page, A5, that both the operator and the shop print. Deliberately a
+// web page rather than a generated PNG: the artwork is Arabic, and shaping
+// Arabic through sharp/librsvg depends on whatever fonts the droplet
+// happens to have, while every browser already does it correctly. "Print
+// to PDF" from here is the print file.
+//
+// Public on purpose — it contains only what the shop's own page already
+// shows, and the shop must be able to open it from the app without an
+// admin token.
+r.get('/shop/:id(\\d+)/sticker', async (req, res) => {
+  const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  if (!u) return notFoundPage(res);
+
+  const name = u.shop_name || u.display_name || '';
+  const where = [govAr(u.governorate), u.city].filter(Boolean).join(' — ');
+  // ?src=sticker is what makes a scan countable — see shopSticker.js. The
+  // preview link below deliberately drops it, so an operator checking the
+  // page does not inflate the count the operator is about to read.
+  const target = `${SITE_URL}/shop/${u.id}?src=sticker`;
+  const plain = `${SITE_URL}/shop/${u.id}`;
+
+  // Q, not M: a sticker on a shop window collects dust, glare and fingers,
+  // and 25% recovery is what survives that. The extra modules cost nothing
+  // at this print size.
+  const qr = await QRCode.toString(target, {
+    type: 'svg', margin: 0, errorCorrectionLevel: 'Q',
+    color: { dark: '#1B1A18', light: '#FFFFFF' },
+  });
+
+  const badge = (glyph, small, big) => `<div style="display:flex;align-items:center;gap:2mm;background:#1B1A18;border-radius:2mm;padding:1.6mm 3mm;direction:ltr">
+${glyph}<div style="display:flex;flex-direction:column;line-height:1.05">
+<span style="font-size:5.5pt;color:#fff;font-family:Helvetica,Arial,sans-serif;letter-spacing:.3px">${small}</span>
+<span style="font-size:10pt;font-weight:700;color:#fff;font-family:Helvetica,Arial,sans-serif">${big}</span>
+</div></div>`;
+
+  const playGlyph = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 2.2 L14.4 12 L3.6 21.8 Z" fill="#00D3FF"/><path d="M3.6 2.2 L17.6 9.4 L14.4 12 Z" fill="#00F076"/><path d="M14.4 12 L17.6 14.6 L3.6 21.8 Z" fill="#FF3A44"/><path d="M17.6 9.4 L21.4 12 L17.6 14.6 Z" fill="#FFCE00"/></svg>`;
+  const appleGlyph = `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="#fff"><path d="M15.8 2.1c.2.9-.2 1.8-.7 2.5-.6.7-1.5 1.3-2.5 1.2-.2-.9.3-1.8.8-2.4.6-.7 1.6-1.2 2.4-1.3z"/><path d="M19.5 8.9c-1.7 1-2.7 2.5-2.7 4.4 0 2.1 1.4 3.6 2.9 4.2-.4 1.1-.9 2.1-1.6 3-.9 1.2-1.8 2.4-3.1 2.4-1.3 0-1.7-.7-3.2-.7-1.5 0-1.9.7-3.1.8-1.3 0-2.3-1.3-3.2-2.5-1.8-2.6-3.2-7.3-1.3-10.5.9-1.6 2.6-2.6 4.4-2.6 1.3 0 2.5.8 3.2.8.7 0 2.2-1 3.7-.9.6 0 2.4.3 3.6 1.9z"/></svg>`;
+
+  res.set('Content-Type', 'text/html; charset=utf-8')
+    .set('Cache-Control', 'public, max-age=300')
+    .send(`<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ملصق ${esc(name)} — iQ Mobile</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;700&display=swap">
+<style>
+  @page { size: A5 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #6B6660; font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 6mm; padding: 8mm 0; }
+  .sheet { width: 148mm; height: 210mm; background: #FAF8F5; display: flex; flex-direction: column;
+           overflow: hidden; box-shadow: 0 2mm 8mm rgba(0,0,0,.35); }
+  .band { height: 25mm; background: #B23F25; padding: 0 11mm; display: flex; align-items: center; gap: 4mm; }
+  .logo { width: 14mm; height: 14mm; border-radius: 4mm; background: #fff; color: #B23F25;
+          font: 700 15pt/1 Helvetica, Arial, sans-serif; display: flex; align-items: center;
+          justify-content: center; direction: ltr; }
+  .mid { flex: 1; padding: 9mm 11mm; display: flex; flex-direction: column; align-items: center; }
+  .scan { font-size: 40pt; font-weight: 700; color: #1B1A18; line-height: 1.1; margin: 0; }
+  .sub { font-size: 13pt; color: #3A352D; margin: 1mm 0 0; }
+  .qr { margin-top: 6mm; background: #fff; border: .7mm solid #1B1A18; border-radius: 4mm; padding: 4mm; }
+  .qr svg { width: 62mm; height: 62mm; display: block; }
+  .name { margin: 6mm 0 0; font-size: 19pt; font-weight: 700; color: #1B1A18; text-align: center; line-height: 1.25; }
+  .where { font-size: 11pt; color: #3A352D; margin: 1mm 0 0; }
+  .foot { height: 26mm; background: #F2EEE8; border-top: .3mm solid rgba(27,26,24,.25);
+          padding: 0 9mm; display: flex; align-items: center; gap: 3mm; }
+  .foot p { flex: 1; margin: 0; font-size: 10.5pt; font-weight: 700; color: #3A352D; line-height: 1.35; }
+  .bar { width: 148mm; display: flex; gap: 3mm; align-items: center; justify-content: center; }
+  .bar button, .bar a { font: 600 14px/1 'IBM Plex Sans Arabic', system-ui, sans-serif; color: #1B1A18;
+    background: #FAF8F5; border: 1px solid rgba(255,255,255,.4); border-radius: 10px; padding: 10px 16px;
+    cursor: pointer; text-decoration: none; }
+  @media print { body { background: #fff; padding: 0; gap: 0; } .sheet { box-shadow: none; } .bar { display: none; } }
+</style></head>
+<body>
+<div class="bar"><button onclick="window.print()">اطبع الملصق</button><a href="${esc(plain)}">صفحة المتجر</a></div>
+<div class="sheet">
+  <div class="band">
+    <div class="logo">iQ</div>
+    <div style="flex:1">
+      <div style="font-size:13pt;font-weight:700;color:#fff">متجرنا على تطبيق iQ موبايل</div>
+      <div style="font-size:9.5pt;color:#FBE7E0;margin-top:.5mm">أجهزة وأسعار محدّثة يومياً</div>
+    </div>
+  </div>
+  <div class="mid">
+    <h1 class="scan">امسح الكود</h1>
+    <p class="sub">وشوف كل أجهزتنا وأسعارنا</p>
+    <div class="qr">${qr}</div>
+    <p class="name">${esc(name)}</p>
+    ${where ? `<p class="where">${esc(where)}</p>` : ''}
+  </div>
+  <div class="foot">
+    <p>ما عندك<br>التطبيق؟ نزّله:</p>
+    ${badge(playGlyph, 'GET IT ON', 'Google Play')}
+    ${badge(appleGlyph, 'Download on the', 'App Store')}
+  </div>
+</div>
+</body></html>`);
+});
+
 r.get('/shop/:id(\\d+)', (req, res) => {
   const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
+  // A hit that came off the printed sticker. Logged before the 404 check is
+  // pointless, so it sits here — a scan of a sticker for a deleted shop is
+  // not a scan anyone can act on.
+  if (u && req.query.src === 'sticker') logEvent({ type: 'shop.sticker_scan', shop_id: u.id });
   // Hidden shops stay reachable by direct id — that is the whole point of the
   // flag (a banner links straight here); it only removes them from the
   // directory. Only a non-existent shop 404s.

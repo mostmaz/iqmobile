@@ -744,6 +744,47 @@ export interface ShopTierStatus {
   signals: { active_listings: number; listings_30d: number; contacts_30d: number };
 }
 
+// The printed QR sticker a shop can ask for, and the free week of shop
+// featuring it earns once the sticker is up and five devices are listed.
+// Every rule lives on the server — the screen renders this and nothing else.
+export interface ShopStickerRequest {
+  id: number;
+  status: 'pending' | 'printing' | 'shipped' | 'rejected' | string;
+  sticker_kind: 'window' | 'stand' | string;
+  qty: number;
+  address: string | null;
+  created_at: number;
+  printing_at: number | null;
+  shipped_at: number | null;
+  admin_note: string | null;
+  proof_status: 'pending' | 'granted' | 'rejected' | null;
+  proof_at: number | null;
+  proof_image_path: string | null;
+  proof_note: string | null;
+  reward_until: number | null;
+}
+
+export interface ShopStickerStatus {
+  can_request: boolean;
+  reason: 'request_open' | null;
+  open: ShopStickerRequest | null;
+  last: ShopStickerRequest | null;
+  shop: { name: string; governorate: string; address: string; phone: string };
+  shop_url: string;
+  sticker_url: string;
+  reward: {
+    days: number;
+    min_listings: number;
+    listings: number;
+    listings_ok: boolean;
+    whatsapp: string;
+    status: 'pending' | 'granted' | 'rejected' | null;
+    can_submit: boolean;
+    featured_until: number | null;
+    scans: number;
+  };
+}
+
 export type NotificationPreferences = { matches: number; prices: number; chat_push: number; seller_summary: number; daily_limit: number; experiment: number; experiment_group: string | null };
 export const Notifications = {
   preferences: () => api<NotificationPreferences>('/notifications/preferences'),
@@ -962,6 +1003,10 @@ export const Shops = {
   myTier: () => api<ShopTierStatus>('/shops/me/tier'),
   requestTier: (body: Record<string, unknown>) =>
     api<{ ok: true; id: number }>('/shops/me/tier-request', { method: 'POST', body: JSON.stringify(body) }),
+  // Same 404 contract again: not a shop → nothing to show.
+  sticker: () => api<ShopStickerStatus>('/shops/me/sticker'),
+  requestSticker: (body: { sticker_kind?: string; qty?: number; address?: string; phone?: string }) =>
+    api<{ ok: true; id: number }>('/shops/me/sticker-request', { method: 'POST', body: JSON.stringify(body) }),
   sendReviewMessage: (body: string) =>
     api('/shops/me/review/messages', { method: 'POST', body: JSON.stringify({ body }) }),
   list: (governorate?: string) =>

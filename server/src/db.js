@@ -1773,3 +1773,54 @@ addColumnIfMissing('phone_requests', 'any_governorate INTEGER NOT NULL DEFAULT 0
 // does not — but the operator needs to tell "nobody answered" apart from
 // "nobody could have answered at that price".
 addColumnIfMissing('phone_requests', 'low_budget INTEGER NOT NULL DEFAULT 0');
+// Printed QR stickers a shop asks us to make for its window or counter.
+//
+// A whole table rather than a couple of columns on `users` because a shop
+// can ask more than once — it moves, it opens a second branch, the sticker
+// peels off — and each ask has its own address and its own fulfilment
+// state. `users` would only ever remember the last one.
+//
+// Reversible: DROP TABLE shop_sticker_requests (nothing else references it).
+db.exec(`
+CREATE TABLE IF NOT EXISTS shop_sticker_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shop_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sticker_kind TEXT NOT NULL DEFAULT 'window',
+  qty INTEGER NOT NULL DEFAULT 1,
+  store_name TEXT,
+  governorate TEXT,
+  address TEXT,
+  phone TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  admin_note TEXT,
+  created_at INTEGER NOT NULL,
+  printing_at INTEGER,
+  shipped_at INTEGER,
+  reviewed_at INTEGER,
+  reviewed_by INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shop_sticker_requests ON shop_sticker_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_shop_sticker_requests_shop ON shop_sticker_requests(shop_id, created_at DESC);
+`);
+
+// The reward half of the sticker flow: a shop that puts the sticker up AND
+// keeps at least five devices listed gets a free week of shop featuring.
+//
+// These hang off the sticker request rather than a table of their own
+// because the thing being proved IS that request's sticker — a proof with
+// no request behind it would have no sticker to be a photo of.
+//
+// Reversible: the columns are nullable, so dropping the feature means
+// dropping the table above; nothing reads them elsewhere.
+addColumnIfMissing('shop_sticker_requests', 'proof_image_path TEXT');
+addColumnIfMissing('shop_sticker_requests', 'proof_at INTEGER');
+// none (NULL) | pending | granted | rejected
+addColumnIfMissing('shop_sticker_requests', 'proof_status TEXT');
+// Active-listing count AT THE MOMENT the photo was sent. Kept because the
+// count moves: a shop that qualified on Monday and sold down to three by
+// Thursday still earned the week, and the operator should see the number
+// the gate actually read rather than today's.
+addColumnIfMissing('shop_sticker_requests', 'proof_listings INTEGER');
+addColumnIfMissing('shop_sticker_requests', 'proof_note TEXT');
+addColumnIfMissing('shop_sticker_requests', 'reward_granted_at INTEGER');
+addColumnIfMissing('shop_sticker_requests', 'reward_until INTEGER');

@@ -29,6 +29,7 @@ export const ADMIN_PUSH_KINDS = [
   'report.new',
   'device.suggested',
   'feature.requested',
+  'sticker.request',
 ];
 
 /**

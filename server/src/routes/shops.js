@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { tierStatus, createTierRequest } from '../shopTier.js';
+import { stickerStatus, createStickerRequest, submitStickerProof } from '../shopSticker.js';
 import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -453,6 +454,38 @@ r.post('/shops/me/tier-request', requireAuth(), (req, res) => {
   const r2 = createTierRequest(req.user.id, req.body || {}, 'shop');
   if (r2.error) return res.status(r2.status).json(r2);
   res.json({ ok: true, id: r2.id });
+});
+
+// ─── printed QR sticker for the shop's window ────────────────────────
+// Same two-door shape as the tier request above: a status read the screen
+// renders from, and a create that the same screen posts. No rate limiter —
+// the one-open-request rule in shopSticker.js is the real cap, and it is
+// stricter than any per-minute limit would be.
+r.get('/shops/me/sticker', requireAuth(), (req, res) => {
+  const st = stickerStatus(req.user.id);
+  if (!st) return res.status(404).json({ error: 'not_a_shop' });
+  res.json(st);
+});
+
+r.post('/shops/me/sticker-request', requireAuth(), (req, res) => {
+  const r2 = createStickerRequest(req.user.id, req.body || {}, 'shop');
+  if (r2.error) return res.status(r2.status).json(r2);
+  res.json({ ok: true, id: r2.id });
+});
+
+// The free-week claim: a photo of the sticker actually up in the shop.
+//
+// Uploading here rather than sending it to WhatsApp is the whole point — the
+// photo arrives attached to the shop that sent it, next to its live device
+// count, so the review is one tap instead of matching an image to a phone
+// number. The WhatsApp number stays in the response as a fallback for shops
+// that would rather use it.
+r.post('/shops/me/sticker-proof', requireAuth(), uploadLimiter, shopImgUpload.single('photo'), (req, res) => {
+  const cleanup = () => { try { if (req.file) fs.unlinkSync(req.file.path); } catch {} };
+  if (!req.file) return res.status(400).json({ error: 'no_file' });
+  const out = submitStickerProof(req.user.id, '/uploads/' + req.file.filename, req.body?.note || '');
+  if (out.error) { cleanup(); return res.status(out.status).json(out); }
+  res.json({ ok: true, id: out.id, listings: out.listings });
 });
 
 r.get('/shops/me/review', requireAuth(), (req, res) => {

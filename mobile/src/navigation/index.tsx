@@ -40,6 +40,7 @@ import ShopScreen from '../screens/shops/ShopScreen';
 import ShopRegisterScreen from '../screens/shops/ShopRegisterScreen';
 import ShopReviewChatScreen from '../screens/shops/ShopReviewChatScreen';
 import ShopUpgradeScreen from '../screens/profile/ShopUpgradeScreen';
+import StickerScreen from '../screens/shops/StickerScreen';
 import CompareScreen from '../screens/listing/CompareScreen';
 import StoreHomeScreen from '../screens/store/StoreHomeScreen';
 import StoreProductScreen from '../screens/store/StoreProductScreen';
@@ -90,6 +91,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
       <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="ShopUpgrade" component={ShopUpgradeScreen} />
+      <BrowseStack.Screen name="Sticker" component={StickerScreen} />
       <BrowseStack.Screen name="Compare" component={CompareScreen} />
       <BrowseStack.Screen name="Deals" component={DealsScreen} />
       <BrowseStack.Screen name="RateUser" component={RateUserScreen} />
@@ -142,6 +144,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="ShopRegister" component={ShopRegisterScreen} />
       <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="ShopUpgrade" component={ShopUpgradeScreen} />
+      <BrowseStack.Screen name="Sticker" component={StickerScreen} />
       <BrowseStack.Screen name="Compare" component={CompareScreen} />
       <BrowseStack.Screen name="Advertise" component={AdvertiseScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
@@ -211,6 +214,7 @@ function ChatsStackNav() {
           has to live in THIS stack as well as the profile one. */}
       <BrowseStack.Screen name="ShopReviewChat" component={ShopReviewChatScreen} />
       <BrowseStack.Screen name="ShopUpgrade" component={ShopUpgradeScreen} />
+      <BrowseStack.Screen name="Sticker" component={StickerScreen} />
       <BrowseStack.Screen name="Compare" component={CompareScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />

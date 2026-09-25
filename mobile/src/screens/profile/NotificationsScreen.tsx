@@ -72,6 +72,11 @@ const KIND_LABEL: Record<string, string> = {
   // listing, because finishing (or abandoning) the promotion is the only
   // thing this notification is asking about.
   'feature.reminder': 'هل ما زلت تريد أن تميّز إعلانك؟',
+  'sticker.printing': 'ملصق متجرك قيد الطباعة',
+  'sticker.shipped': 'ملصق متجرك بالطريق 🏷️',
+  'sticker.rejected': 'ما كدرنا ننفّذ طلب الملصق',
+  'sticker.reward_granted': 'متجرك صار مميّز مجاناً 🎉',
+  'sticker.reward_rejected': 'ما كدرنا نعتمد صورة الملصق',
 };
 
 // The tier decision reuses the shop.review.* kinds, so the label map alone
@@ -215,6 +220,13 @@ export default function NotificationsScreen({ navigation }: any) {
     // he is being asked to answer.
     if (item.payload?.request_id) {
       navigation.navigate('RequestDetail', { id: item.payload.request_id });
+      return;
+    }
+    // Deliberately keyed on the kind, not on a payload id: sticker payloads
+    // carry sticker_request_id precisely so they can never be mistaken for a
+    // phone request by the branch above.
+    if (item.kind.startsWith('sticker.')) {
+      navigation.navigate('Sticker');
       return;
     }
     if (item.payload?.listing_id) {

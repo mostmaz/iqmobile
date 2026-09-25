@@ -114,6 +114,10 @@ export default function ProfileScreen({ navigation }: any) {
         { Icon: IconTag, label: ar.profile.listings, value: stats.listings ? String(stats.listings) : undefined, onPress: () => navigation.navigate('MyListings') },
         { Icon: IconStore, label: user.seller_type === 'shop' ? ar.profile.shopManage : ar.profile.shopRegister, onPress: () => navigation.navigate('ShopRegister') },
         { Icon: IconSpark, label: ar.profile.advertise, onPress: () => navigation.navigate('Advertise') },
+        // Shops only: an individual seller has no window to put a sticker in.
+        ...(user.seller_type === 'shop'
+          ? [{ Icon: IconStore, label: 'ملصق QR للمتجر', onPress: () => navigation.navigate('Sticker') }]
+          : []),
         ...(SHOW_PROMOTE ? [{ Icon: IconSpark, label: ar.profile.wallet, value: `${fmtIQD(wallet?.balance ?? 0)} د.ع`, onPress: () => navigation.navigate('Wallet') }] : []),
       ],
     },
