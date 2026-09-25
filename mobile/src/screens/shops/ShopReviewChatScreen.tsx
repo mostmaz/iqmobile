@@ -11,7 +11,7 @@
 
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity, FlatList, Linking,
   KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,6 +21,7 @@ import { theme, fonts, radius } from '../../theme';
 import { IconChevronLeft } from '../../components/icons';
 import { Shops, type ShopReviewMessage } from '../../api/endpoints';
 import { timeAgoAr } from '../../lib/format';
+import { linkify } from '../../lib/linkify';
 import { useKeyboardHeight, bottomBarPadding } from '../../lib/useKeyboard';
 
 const STATUS: Record<string, { label: string; body: string; tone: string }> = {
@@ -146,11 +147,22 @@ export default function ShopReviewChatScreen({ navigation }: any) {
                 backgroundColor: mine ? theme.chipBg : theme.accentSoft,
                 borderRadius: radius.lg, paddingHorizontal: 12, paddingVertical: 9,
               }}>
+                {/* Linkified. The admin sends shops the address of their
+                    panel here, and a URL rendered as inert characters is one
+                    the merchant has to retype off a phone screen by hand. */}
                 <Text style={{
                   fontFamily: fonts.ar, fontSize: 13.5, color: theme.ink,
                   textAlign: 'right', lineHeight: 21,
                 }}>
-                  {item.body}
+                  {linkify(item.body).map((seg, i) => (seg.url ? (
+                    <Text
+                      key={i}
+                      style={{ color: theme.accent, textDecorationLine: 'underline' }}
+                      onPress={() => Linking.openURL(seg.url!).catch(() => {})}
+                    >
+                      {seg.text}
+                    </Text>
+                  ) : seg.text))}
                 </Text>
                 <Text style={{
                   fontFamily: fonts.ar, fontSize: 10, color: theme.subtle,

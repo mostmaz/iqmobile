@@ -37,7 +37,7 @@ import { listingsAnsweringRequest } from '../../requestMatch.js';
 import {
   REQUEST_COLS, decorateRequests, requestOverview, requestSummary,
 } from '../../requestInsights.js';
-import { panelInviteMessage, panelInvitePayload, PANEL_URL } from '../../shopPanelInvite.js';
+import { panelInviteMessage, panelInvitePayload, sendPanelInvite, PANEL_URL } from '../../shopPanelInvite.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2319,12 +2319,16 @@ r.post('/tier-requests/:id(\\d+)/:action(approve|reject)', requireAdmin, (req, r
   // The approval message carries the panel's ADDRESS and what the tier
   // unlocks — see shopPanelInvite.js. Telling a merchant they have been
   // given a panel without saying where it is was the whole gap.
-  notify(tr.shop_id, approve ? 'shop.review.approved' : 'shop.review.rejected',
-    approve ? panelInvitePayload() : { kind: 'tier' },
-    approve ? panelInviteMessage() : {
+  if (approve) {
+    // Push AND thread: the push says it happened, the thread is where the
+    // address still is tomorrow.
+    sendPanelInvite(tr.shop_id);
+  } else {
+    notify(tr.shop_id, 'shop.review.rejected', { kind: 'tier' }, {
       title: 'لم يُقبل طلب الترقية',
       body: note || 'تواصل معنا للتفاصيل.',
     });
+  }
   res.json({ ok: true });
 });
 
@@ -2343,7 +2347,7 @@ r.post('/shops/:id(\\d+)/panel-invite', requireAdmin, (req, res) => {
   if (!u) return res.status(404).json({ error: 'not_found' });
   if (u.shop_tier !== 'advanced') return res.status(400).json({ error: 'not_advanced' });
 
-  notify(u.id, 'shop.review.approved', panelInvitePayload(), panelInviteMessage());
+  sendPanelInvite(u.id);
   audit('admin', req.admin?.id ?? null, 'tier.panel_invite', { kind: 'shop', id: u.id }, {});
   res.json({ ok: true, panel_url: PANEL_URL });
 });
@@ -2358,12 +2362,13 @@ r.post('/shops/:id(\\d+)/tier', requireAdmin, (req, res) => {
     .run(tier, now(), u.id);
   audit('admin', req.admin?.id ?? null, tier === 'advanced' ? 'tier.grant' : 'tier.revoke',
     { kind: 'shop', id: u.id }, { manual: true });
-  notify(u.id, 'shop.review.approved',
-    tier === 'advanced' ? panelInvitePayload() : { kind: 'tier' }, {
-    ...(tier === 'advanced' ? panelInviteMessage() : {
+  if (tier === 'advanced') {
+    sendPanelInvite(u.id);
+  } else {
+    notify(u.id, 'shop.review.approved', { kind: 'tier' }, {
       title: 'تغيّرت صلاحيات لوحتك', body: 'راجعنا للتفاصيل.',
-    }),
-  });
+    });
+  }
   res.json({ ok: true, tier });
 });
 
