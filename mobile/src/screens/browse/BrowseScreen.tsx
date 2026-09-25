@@ -22,6 +22,7 @@ import { BannerCarousel, FeedBanner } from '../../components/BannerCarousel';
 import { type Storefront } from '../../components/StorefrontCard';
 import { HomeHubCard, type HomeShop } from '../../components/HomeHubCard';
 import { ShopUpgradeCard } from '../../components/ShopUpgradeCard';
+import { StickerOfferCard, stickerCardHasSomethingToSay } from '../../components/StickerOfferCard';
 import { useCompare, COMPARE_MAX } from '../../lib/compare';
 
 // How far back the sorted home feed reaches. The caption in the filter
@@ -294,6 +295,14 @@ export default function BrowseScreen({ navigation }: any) {
     enabled: !!user && (user as any).seller_type === 'shop',
     staleTime: 5 * 60 * 1000,
   });
+  // The free QR sticker, on the same terms as the tier offer above: shops
+  // only, a failure means "no card" rather than an error.
+  const { data: stickerStatus } = useQuery({
+    queryKey: ['shop-sticker'],
+    queryFn: () => Shops.sticker().catch(() => null),
+    enabled: !!user && (user as any).seller_type === 'shop',
+    staleTime: 5 * 60 * 1000,
+  });
   const { data: feedBanners } = useQuery({
     queryKey: ['banners', 'feed', bannerGov ?? '__all__'],
     queryFn: () => Banners.feed(bannerGov),
@@ -385,7 +394,16 @@ export default function BrowseScreen({ navigation }: any) {
     // owner only. It is the one place the offer reaches shops that never
     // open the merchant dashboard — but it costs a listing, so it shows
     // only while the shop is eligible and has not been upgraded.
-    const upgrade = (tierStatus && tierStatus.tier !== 'advanced'
+    // ONE offer card, never two. Both of these cost a listing's slot, and a
+    // feed that opens with two pitches gets neither of them read.
+    //
+    // The sticker wins the slot while it still has something to ask for: it
+    // needs no eligibility signals (every shop has a window), it is free on
+    // both sides, and it expires into silence once the free week is granted —
+    // at which point the tier offer gets the slot back.
+    const sticker = stickerCardHasSomethingToSay(stickerStatus)
+      ? [{ __shopSticker: stickerStatus }] : [];
+    const upgrade = (sticker.length === 0 && tierStatus && tierStatus.tier !== 'advanced'
       && (tierStatus.eligible || tierStatus.state === 'pending_review'))
       ? [{ __shopUpgrade: tierStatus }] : [];
     // The "nothing found" state has to ride in the data, not in
@@ -396,9 +414,9 @@ export default function BrowseScreen({ navigation }: any) {
     // screen rather than «لا توجد إعلانات»: the message existed, but the list
     // was never empty enough to reach it.
     const tail = out.length === 0 ? [{ __noResults: true }] : [];
-    if (bannerPool.length === 0) return [...hub, ...recent, ...upgrade, ...out, ...tail];
-    return [{ __bannerPool: bannerPool }, ...hub, ...recent, ...upgrade, ...out, ...tail];
-  }, [items, bannerPool, feedBanners, storefront, homeShops, tierStatus]);
+    if (bannerPool.length === 0) return [...hub, ...recent, ...sticker, ...upgrade, ...out, ...tail];
+    return [{ __bannerPool: bannerPool }, ...hub, ...recent, ...sticker, ...upgrade, ...out, ...tail];
+  }, [items, bannerPool, feedBanners, storefront, homeShops, tierStatus, stickerStatus]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -802,6 +820,7 @@ export default function BrowseScreen({ navigation }: any) {
             : item.__homeHub ? 'home-hub'
             : item.__recentlyViewed ? 'recently-viewed'
             : item.__shopUpgrade ? 'shop-upgrade'
+            : item.__shopSticker ? 'shop-sticker'
             : item.__requestInvite ? 'request-invite'
             : item.__feedBanner ? `feed-banner-${item.__slot}`
               : String(item.id)
@@ -848,6 +867,11 @@ export default function BrowseScreen({ navigation }: any) {
             <RequestInviteCard
               style={{ marginBottom: 12 }}
               onPress={() => openCompose({ brand: filters.brand ?? null })}
+            />
+          ) : item.__shopSticker ? (
+            <StickerOfferCard
+              status={item.__shopSticker}
+              onPress={() => navigation.navigate('Sticker')}
             />
           ) : item.__shopUpgrade ? (
             <ShopUpgradeCard
