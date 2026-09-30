@@ -2,6 +2,7 @@ import { sendSellerSummaries } from './sellerSummaries.js';
 import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
+import { runChatNudges } from './chatNudge.js';
 import { logEvent } from './eventLog.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
@@ -189,6 +190,19 @@ async function nudgeTick() {
   } finally { nudging = false; }
 }
 
+// The unanswered-chat WhatsApp. Every 15 minutes, sending one message a
+// sweep: the pacing IS the safety mechanism (chatNudge.js explains what it
+// is protecting against), not a performance choice. Its own guard — it
+// awaits a third party and must never stack on a slow run.
+let chatNudging = false;
+async function chatNudgeTick() {
+  if (chatNudging) return;
+  chatNudging = true;
+  try { await runChatNudges(); } catch (e) {
+    console.error('[expirer] chat nudge failed', e?.message);
+  } finally { chatNudging = false; }
+}
+
 export function startExpirer() {
   // Run once on boot so a long-offline server doesn't wait 30s before
   // catching up on its backlog.
@@ -205,4 +219,7 @@ export function startExpirer() {
   setInterval(summaryTick, 60 * 60 * 1000);
   setTimeout(nudgeTick, 60 * 1000);
   setInterval(nudgeTick, 15 * 60 * 1000);
+
+  setTimeout(chatNudgeTick, 3 * 60 * 1000);
+  setInterval(chatNudgeTick, 15 * 60 * 1000);
 }

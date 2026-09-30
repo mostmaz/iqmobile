@@ -1824,3 +1824,45 @@ addColumnIfMissing('shop_sticker_requests', 'proof_listings INTEGER');
 addColumnIfMissing('shop_sticker_requests', 'proof_note TEXT');
 addColumnIfMissing('shop_sticker_requests', 'reward_granted_at INTEGER');
 addColumnIfMissing('shop_sticker_requests', 'reward_until INTEGER');
+
+// One WhatsApp nudge per unanswered chat — the ledger that makes it one.
+//
+// chat_id is the PRIMARY KEY, not an indexed column: "مرة واحدة فقط" for
+// something that costs money and lands in a stranger's WhatsApp has to be a
+// constraint, not a query someone can forget to write. A second INSERT for
+// the same chat cannot happen, whatever the sweep believes.
+//
+// Reversible: DROP TABLE chat_nudges (nothing else references it).
+db.exec(`
+CREATE TABLE IF NOT EXISTS chat_nudges (
+  chat_id INTEGER PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  phone TEXT,
+  outcome TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_nudges_user ON chat_nudges(user_id, created_at DESC);
+`);
+
+// Notifications are how a seller learns a buyer wrote to them, so the app
+// asks for the permission before it will do anything else. Three modes:
+//   hard — a full-screen gate; nothing is usable until the OS says yes
+//   soft — the app runs, the ask appears where it can be justified
+//   off  — never gate
+//
+// Per platform, and NOT the same value, because the two stores disagree:
+// Apple's guideline 4.5.4 says push must not be REQUIRED for an app to
+// function, so iOS ships soft. Android has no such rule, so it ships hard.
+// Both are settings rather than constants so the answer to a review
+// objection is one toggle, not a build and a re-review.
+setSetting.run('push_gate_android', 'hard');
+setSetting.run('push_gate_ios', 'soft');
+// The 24-hour unanswered-chat WhatsApp. Both default to the safe value: off,
+// and dry-run once turned on.
+setSetting.run('chat_nudge_enabled', '0');
+setSetting.run('chat_nudge_dry_run', '1');
+// One message per 15-minute sweep, 200 per rolling 24h — see chatNudge.js
+// for why the cap is about Meta's tier and the number's quality rating
+// rather than throughput.
+setSetting.run('chat_nudge_per_run', '1');
+setSetting.run('chat_nudge_daily_cap', '200');

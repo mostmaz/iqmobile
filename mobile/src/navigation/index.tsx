@@ -16,6 +16,7 @@ import { ActivityIndicator, AppState, View } from 'react-native';
 import * as SecureStore from '../lib/secureStore';
 import { NavigationContainer, CommonActions } from '@react-navigation/native';
 import { AppGate } from '../components/AppGate';
+import { NotificationWall } from '../components/NotificationWall';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { RequestHubProvider } from '../lib/requestHub';
@@ -504,6 +505,11 @@ export default function RootNav() {
       {/* Sits above the navigator so the update wall covers every screen,
           not just the one the user happens to be on. */}
       <AppGate />
+      {/* Last, so it paints over AppGate's overlay too: a promo behind a
+          "turn notifications on" wall would be a modal race. The update wall
+          itself is a full-screen Modal and still wins, which is right —
+          being told to update beats being told to allow notifications. */}
+      <NotificationWall />
     </NavigationContainer>
   );
 }

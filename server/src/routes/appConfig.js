@@ -13,6 +13,12 @@
 
 import { Router } from 'express';
 import { db, getSetting } from '../db.js';
+
+/** Whitelist the three modes so a typo'd setting cannot lock anyone out. */
+function gateMode(key, fallback) {
+  const v = getSetting(key);
+  return ['hard', 'soft', 'off'].includes(v) ? v : fallback;
+}
 import { resolveStorefrontCard, houseShopId } from '../storefrontCard.js';
 
 const r = Router();
@@ -148,6 +154,13 @@ r.get('/app-config', (_req, res) => {
     storefront,
     home_shops: homeShops,
     shops_total: shopsTotal,
+    // How hard the app insists on notification permission, per platform —
+    // Apple forbids requiring it, Google does not. Read by every build; an
+    // old build that has never heard of the key simply ignores it.
+    push_gate: {
+      android: gateMode('push_gate_android', 'hard'),
+      ios: gateMode('push_gate_ios', 'soft'),
+    },
     update: {
       // The app compares its own version against these. Doing the comparison
       // client-side (rather than the server reading x-app-version) means the

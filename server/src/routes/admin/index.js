@@ -42,6 +42,8 @@ import {
   advanceSticker, decideStickerProof, stickerPageUrl, activeListingCount, stickerScans,
   STICKER_STATUSES, REWARD_DAYS, REWARD_MIN_LISTINGS,
 } from '../../shopSticker.js';
+import { pendingNudges, withinSendingHours } from '../../chatNudge.js';
+import { sendUtilityTemplate, utilityProvider } from '../../whatsappTemplate.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2404,6 +2406,40 @@ r.post('/sticker-requests/:id(\\d+)/:action(printing|shipped|reject)', requireAd
   );
   if (out.error) return res.status(out.status).json(out);
   res.json({ ok: true });
+});
+
+// ─── the 24-hour unanswered-chat WhatsApp ────────────────────────────
+// Who it would write to RIGHT NOW, with the transport's own state beside
+// them. This exists so the switch is never flipped blind: the first real run
+// writes to strangers' WhatsApp from the business number, and a bad selection
+// there is not something an apology fixes.
+r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
+  const at = Date.now();
+  res.json({
+    transport: utilityProvider(),
+    enabled: getSetting('chat_nudge_enabled') === '1',
+    dry_run: getSetting('chat_nudge_dry_run') !== '0',
+    within_sending_hours: withinSendingHours(at),
+    due: pendingNudges(db, at),
+    sent_so_far: db.prepare('SELECT COUNT(*) AS n FROM chat_nudges').get().n,
+    by_outcome: db.prepare('SELECT outcome, COUNT(*) AS n FROM chat_nudges GROUP BY outcome').all(),
+  });
+});
+
+// One real message to one number — the only way to prove the Cloud API
+// credentials, the template name and its parameter count all line up before
+// a sweep sends dozens. Ignores the dry-run setting on purpose: a test that
+// does not send tests nothing.
+r.post('/chat-nudge/test', requireAdmin, async (req, res) => {
+  const phone = String(req.body?.phone || '').trim();
+  if (!phone) return res.status(400).json({ error: 'phone_required' });
+  const out = await sendUtilityTemplate(
+    phone,
+    [String(req.body?.name || 'صاحب المتجر'), String(req.body?.device || 'iPhone 13')],
+    { dryRun: false },
+  );
+  audit('admin', req.admin?.id ?? null, 'chat_nudge.test', { kind: 'phone', id: 0 }, { phone, outcome: out.outcome });
+  res.status(out.ok ? 200 : 502).json(out);
 });
 
 // Send a shop its panel link again.
