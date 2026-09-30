@@ -2472,9 +2472,18 @@ r.post('/whatsapp/unlink', requireAdmin, (req, res) => {
 r.post('/chat-nudge/test', requireAdmin, async (req, res) => {
   const phone = String(req.body?.phone || '').trim();
   if (!phone) return res.status(400).json({ error: 'phone_required' });
+  // user_id picks the wording: the text is hashed from the recipient's id
+  // (whatsapp.js), so previewing a different variant means asking as a
+  // different recipient. Without this the test could only ever show one of
+  // the sixty-four.
   const out = await sendWhatsApp(
     phone,
-    { name: String(req.body?.name || 'صاحب المتجر'), device: String(req.body?.device || 'iPhone 13'), userId: 1 },
+    {
+      name: String(req.body?.name || 'صاحب المتجر'),
+      device: String(req.body?.device || 'iPhone 13'),
+      waiting: Number(req.body?.waiting) || 1,
+      userId: Number(req.body?.user_id) || 1,
+    },
     { dryRun: false },
   );
   audit('admin', req.admin?.id ?? null, 'chat_nudge.test', { kind: 'phone', id: 0 }, { phone, outcome: out.outcome });
