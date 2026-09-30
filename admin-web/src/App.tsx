@@ -34,6 +34,7 @@ import { InspectionPage } from './pages/InspectionPage';
 import { AppControlPage } from './pages/AppControlPage';
 import { TierRequestsPage } from './pages/TierRequestsPage';
 import { StickerRequestsPage } from './pages/StickerRequestsPage';
+import { WhatsAppPage } from './pages/WhatsAppPage';
 import { ChatsConsolePage } from './pages/ChatsConsolePage';
 import { ShopNotifier } from './ShopNotifier';
 import { WorkQueue, type Queue } from './WorkQueue';
@@ -44,7 +45,7 @@ export type Page =
   | 'devices' | 'device_catalog' | 'inspection' | 'appcontrol' | 'orders' | 'store'
   | 'store_overview' | 'store_traffic' | 'store_customers' | 'store_fulfilment' | 'shop_review'
   | 'name_review' | 'store_card' | 'videos' | 'dup_photos'
-  | 'tier_requests' | 'customer_chats' | 'device_requests' | 'sticker_requests';
+  | 'tier_requests' | 'customer_chats' | 'device_requests' | 'sticker_requests' | 'whatsapp';
 
 // Nav grouped by what the operator is trying to do, rather than one flat row
 // of fifteen equally-weighted links where nothing stands out.
@@ -117,6 +118,7 @@ const NAV_GROUPS: Array<{ label: string; items: Array<{ key: Page; label: string
     items: [
       { key: 'settings', label: 'الإعدادات' },
       { key: 'appcontrol', label: 'تحكّم التطبيق' },
+      { key: 'whatsapp', label: 'ربط واتساب' },
     ],
   },
 ];
@@ -258,6 +260,7 @@ export function App() {
       {page === 'appcontrol' && <AppControlPage />}
       {page === 'tier_requests' && <TierRequestsPage onChanged={refreshQueue} />}
       {page === 'sticker_requests' && <StickerRequestsPage onChanged={refreshQueue} />}
+      {page === 'whatsapp' && <WhatsAppPage />}
       {page === 'customer_chats' && <ChatsConsolePage />}
     </div>
   );

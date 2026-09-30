@@ -8,6 +8,7 @@ import multer from 'multer';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import QRCode from 'qrcode';
 import { db, now, getSetting, setSettingValue } from '../../db.js';
 import { parseShopPhones, sanitizeUrl, shopImages } from '../shops.js';
 import { issueToken, requireAdmin } from '../../auth.js';
@@ -2428,36 +2429,33 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
 });
 
 // ─── linking the WhatsApp number ─────────────────────────────────────
-// The one-time pairing: open this, scan the QR from the phone that owns
-// 07502062804 (WhatsApp → Settings → Linked devices → Link a device). The
-// session then lives in server/data/wa-auth and survives deploys.
+// The one-time pairing. The dashboard polls this and draws the code; the
+// operator scans it from the phone that owns 07502062804 (WhatsApp →
+// Settings → Linked devices → Link a device). The session then lives in
+// server/data/wa-auth and survives deploys.
 //
-// A QR expires in about 20 seconds, so this page refreshes itself rather
-// than handing the operator a code that has already died.
-r.get('/whatsapp/qr', requireAdmin, async (_req, res) => {
-  await startBot();
-  const qr = botQr();
+// The QR is rendered HERE, with the qrcode dependency, and never handed to
+// an external image service: the pairing string is a credential — whoever
+// scans it links a device to the account — and posting it to a third party
+// to be drawn would be posting the key.
+r.get('/whatsapp/status', requireAdmin, async (_req, res) => {
   const st = botStatus();
-  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8">
-<title>ربط واتساب — iQ Mobile</title>
-<meta name="robots" content="noindex">
-<meta http-equiv="refresh" content="${st.linked ? 30 : 8}">
-<style>body{font-family:system-ui,sans-serif;background:#FAF8F5;color:#1B1A18;text-align:center;padding:40px 20px}
-img{margin:24px auto;display:block;border:8px solid #fff;border-radius:12px}
-.ok{color:#1F6B5C;font-weight:700}.bad{color:#9C3126}</style></head><body>
-<h2>ربط رقم واتساب المتجر</h2>
-${st.linked
-    ? '<p class="ok">مربوط ويشتغل ✓</p><p>تقدر تشوفه بالهاتف: واتساب ← الإعدادات ← الأجهزة المرتبطة ← «iQ Mobile».</p>'
-    : qr
-      ? `<p>افتح واتساب على الهاتف صاحب الرقم ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، وامسح:</p>
-         <img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(qr)}" width="280" height="280" alt="QR">
-         <p style="color:#5A564F;font-size:13px">الكود ينتهي خلال ثوانٍ — الصفحة تحدّث نفسها.</p>`
-      : `<p class="bad">لا يوجد كود بعد (${st.connection}).</p><p style="color:#5A564F;font-size:13px">${st.last_error || 'انتظر لحظة وحدّث الصفحة.'}</p>`}
-</body></html>`);
+  const qr = botQr();
+  let qr_svg = null;
+  if (qr) {
+    try {
+      qr_svg = await QRCode.toString(qr, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    } catch (e) { console.warn('[whatsapp] qr render failed', e?.message); }
+  }
+  res.set('Cache-Control', 'no-store').json({ ...st, qr_svg });
 });
 
-r.get('/whatsapp/status', requireAdmin, (_req, res) => res.json(botStatus()));
+// Start connecting (and so start producing a QR) without waiting for the
+// first message to need it.
+r.post('/whatsapp/connect', requireAdmin, async (_req, res) => {
+  await startBot();
+  res.json(botStatus());
+});
 
 // Unlink: wipes the session so a different number can be paired. The phone
 // side stays linked until it is removed there too, so say that.
