@@ -145,8 +145,8 @@ export function WhatsAppPage() {
           <div className="card" style={{ marginTop: 12 }}>
             <div className="chart-title">تذكير المحادثات غير المقروءة</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.9 }}>
-              رسالة واحدة لكل إعلان، للي وصلته رسالة من ٢٤ ساعة وما فتحها — مرة
-              وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
+              رسالة واحدة لكل إعلان، للي وصلته رسالة بين ٢٤ ساعة وأسبوع وما فتحها —
+              مرة وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
             </div>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
               <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>

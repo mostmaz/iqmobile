@@ -77,7 +77,13 @@ test('a day-old unanswered message is', () => {
   assert.equal(due[0].device, 'Apple iPhone 13');
 });
 
-test('a week-old one is left alone — the buyer has moved on', () => {
+test('a three-day-old one is still chased — the window runs to a week', () => {
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats;');
+  chat({ buyer, seller, from: buyer, ageMs: 3 * DAY });
+  assert.equal(pendingNudges(db, NOW).length, 1);
+});
+
+test('one older than the window is left alone — the buyer has moved on', () => {
   db.exec('DELETE FROM chat_messages; DELETE FROM chats;');
   chat({ buyer, seller, from: buyer, ageMs: NUDGE_MAX_AGE_MS + DAY });
   assert.equal(pendingNudges(db, NOW).length, 0);

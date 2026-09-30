@@ -22,9 +22,12 @@
 // naming the count, not twenty messages. Without this the first run would
 // have sent well over a thousand.
 //
-// Only 24–72h old. Older than that and the buyer has moved on, so the message
-// is no longer a fact the seller can act on — it is nagging. It also stops the
-// first run after deploy from chasing a year of backlog.
+// Only 24h–7d old. The floor is the owner's rule: a day is long enough that
+// the push has plainly failed. The ceiling is where a fact turns into
+// nagging — past a week the buyer has bought elsewhere, and it also stops
+// the first run after deploy from chasing a backlog of 2,458 chats older
+// than that (measured 30 Sep 2026), which at one message per 15 minutes
+// would take a month and read as a mail-out.
 //
 // Daytime only. Same 09:00–21:00 Baghdad window the retention pushes use. A
 // WhatsApp at 3am about a phone is worse than silence.
@@ -32,7 +35,7 @@ import { db, now as dbNow, getSetting } from './db.js';
 import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
 
 export const NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
-export const NUDGE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+export const NUDGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const QUIET_FROM_HOUR = 9;
 export const QUIET_TO_HOUR = 21;
 
