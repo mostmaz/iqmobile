@@ -31,6 +31,7 @@ type Settings = {
   chat_nudge_dry_run: boolean;
   chat_nudge_per_run: number;
   chat_nudge_daily_cap: number;
+  chat_nudge_only_no_push: boolean;
 };
 
 type Status = {
@@ -164,6 +165,14 @@ export function WhatsAppPage() {
                   onChange={(e) => save({ chat_nudge_dry_run: e.target.checked })}
                 />
                 <span>وضع التجربة <span className="muted">(يحدد المستلمين بدون ما يرسل)</span></span>
+              </label>
+              <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox" disabled={busy}
+                  checked={!!cfg?.chat_nudge_only_no_push}
+                  onChange={(e) => save({ chat_nudge_only_no_push: e.target.checked })}
+                />
+                <span>فقط اللي ما يوصلهم بوش <span className="muted">(بدون توكن إشعارات)</span></span>
               </label>
               <span className="muted" style={{ fontSize: 12.5, marginInlineStart: 'auto' }}>
                 {pv?.within_sending_hours ? 'داخل وقت الإرسال' : 'خارج وقت الإرسال — ما ترسل الآن'}

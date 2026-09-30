@@ -220,6 +220,7 @@ r.get('/settings', requireAdmin, (_req, res) => {
     chat_nudge_dry_run: getSetting('chat_nudge_dry_run') !== '0',
     chat_nudge_per_run: Number(getSetting('chat_nudge_per_run')) || 1,
     chat_nudge_daily_cap: Number(getSetting('chat_nudge_daily_cap')) || 200,
+    chat_nudge_only_no_push: getSetting('chat_nudge_only_no_push') !== '0',
     push_gate_android: getSetting('push_gate_android') || 'hard',
     push_gate_ios: getSetting('push_gate_ios') || 'soft',
   });
@@ -248,6 +249,9 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.chat_nudge_dry_run != null) {
     setSettingValue('chat_nudge_dry_run', req.body.chat_nudge_dry_run ? '1' : '0');
+  }
+  if (req.body?.chat_nudge_only_no_push != null) {
+    setSettingValue('chat_nudge_only_no_push', req.body.chat_nudge_only_no_push ? '1' : '0');
   }
   for (const key of ['chat_nudge_per_run', 'chat_nudge_daily_cap']) {
     if (req.body?.[key] != null) {
@@ -2456,7 +2460,7 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
     // The whole queue, not the next batch: the sweep's own limit is one per
     // run, and a preview that showed one name changing every quarter hour
     // read as a bug rather than as a queue.
-    due: pendingNudges(db, at, { limit: 200 }),
+    due: pendingNudges(db, at, { limit: 200, onlyNoPush: getSetting('chat_nudge_only_no_push') !== '0' }),
     sent_so_far: db.prepare('SELECT COUNT(*) AS n FROM chat_nudges').get().n,
     by_outcome: db.prepare('SELECT outcome, COUNT(*) AS n FROM chat_nudges GROUP BY outcome').all(),
   });

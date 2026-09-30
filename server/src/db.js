@@ -1874,4 +1874,6 @@ setSetting.run('chat_nudge_dry_run', '1');
 // for why the cap is about Meta's tier and the number's quality rating
 // rather than throughput.
 setSetting.run('chat_nudge_per_run', '1');
+// Only people with no push token — the ones no push could ever have reached.
+setSetting.run('chat_nudge_only_no_push', '1');
 setSetting.run('chat_nudge_daily_cap', '200');

@@ -73,7 +73,7 @@ export function withinSendingHours(timestamp) {
  *
  * Exported for the test and for a dry-run count from the dashboard.
  */
-export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
+export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = true } = {}) {
   const rows = db_.prepare(`
     SELECT c.id AS chat_id, c.listing_id,
            CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END AS user_id,
@@ -92,6 +92,13 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
              SELECT 1 FROM chat_nudges n
               WHERE n.listing_id = c.listing_id
                 AND n.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
+       -- Only people a push could never have reached. Someone WITH a token
+       -- was already told the moment the message arrived; writing to them
+       -- again on WhatsApp is a second nag, and the ban risk is spent on the
+       -- one group that does not need it. Off by setting for the day the
+       -- owner wants everyone.
+       AND (? = 0 OR (SELECT expo_push_token FROM users
+                       WHERE id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END) IS NULL)
      -- Freshest first. The buyer who wrote yesterday is still shopping; the
      -- one who wrote six days ago has very likely bought elsewhere, and with
      -- one message per quarter hour the queue never reaches everyone anyway.
@@ -100,7 +107,7 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
      -- minutes as messages aged out of the window.
      ORDER BY m.created_at DESC
      LIMIT ?
-  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, limit * 4);
+  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0, limit * 4);
 
   // One per person, freshest first, plus the count of everything else of
   // theirs that is waiting — so the message can say "٣ محادثات" instead of
@@ -174,7 +181,8 @@ export async function runChatNudges({ at = dbNow() } = {}) {
 
   const perRun = Math.max(1, Number(getSetting('chat_nudge_per_run')) || PER_RUN_LIMIT);
   const dryRun = getSetting('chat_nudge_dry_run') !== '0';
-  const due = pendingNudges(db, at, { limit: Math.min(perRun, dailyCap - already) });
+  const onlyNoPush = getSetting('chat_nudge_only_no_push') !== '0';
+  const due = pendingNudges(db, at, { limit: Math.min(perRun, dailyCap - already), onlyNoPush });
   if (due.length === 0) return { considered: 0, sent: 0 };
 
   if (!utilityConfigured()) {

@@ -348,3 +348,22 @@ test('the freshest unanswered chat is first in the queue, not the oldest', () =>
   assert.equal(due[0].chat_id, fresh);
   assert.equal(due.length, 3);
 });
+
+test('by default only people with NO push token are written to', () => {
+  // A person with a token was told the moment the message arrived. Writing
+  // to them again on WhatsApp is a second nag, and it spends the ban risk on
+  // the one group that never needed the fallback.
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const withToken = user();
+  db.prepare("UPDATE users SET expo_push_token='ExponentPushToken[x]' WHERE id=?").run(withToken);
+  chat({ buyer, seller: withToken, from: buyer, ageMs: 30 * HOUR });
+  chat({ buyer, seller, from: buyer, ageMs: 30 * HOUR });   // `seller` has no token
+
+  const due = pendingNudges(db, NOW, { limit: 10 });
+  assert.equal(due.length, 1);
+  assert.equal(due[0].user_id, seller);
+  assert.equal(due[0].has_push_token, false);
+
+  // The switch widens it to everyone.
+  assert.equal(pendingNudges(db, NOW, { limit: 10, onlyNoPush: false }).length, 2);
+});
