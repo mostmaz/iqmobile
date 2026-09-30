@@ -43,7 +43,8 @@ import {
   STICKER_STATUSES, REWARD_DAYS, REWARD_MIN_LISTINGS,
 } from '../../shopSticker.js';
 import { pendingNudges, withinSendingHours } from '../../chatNudge.js';
-import { sendUtilityTemplate, utilityProvider } from '../../whatsappTemplate.js';
+import { sendWhatsApp, utilityProvider } from '../../whatsapp.js';
+import { startBot, botQr, botStatus, unlinkBot } from '../../whatsappBot.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2426,6 +2427,46 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
   });
 });
 
+// ─── linking the WhatsApp number ─────────────────────────────────────
+// The one-time pairing: open this, scan the QR from the phone that owns
+// 07502062804 (WhatsApp → Settings → Linked devices → Link a device). The
+// session then lives in server/data/wa-auth and survives deploys.
+//
+// A QR expires in about 20 seconds, so this page refreshes itself rather
+// than handing the operator a code that has already died.
+r.get('/whatsapp/qr', requireAdmin, async (_req, res) => {
+  await startBot();
+  const qr = botQr();
+  const st = botStatus();
+  res.set('Content-Type', 'text/html; charset=utf-8').send(`<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<title>ربط واتساب — iQ Mobile</title>
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="${st.linked ? 30 : 8}">
+<style>body{font-family:system-ui,sans-serif;background:#FAF8F5;color:#1B1A18;text-align:center;padding:40px 20px}
+img{margin:24px auto;display:block;border:8px solid #fff;border-radius:12px}
+.ok{color:#1F6B5C;font-weight:700}.bad{color:#9C3126}</style></head><body>
+<h2>ربط رقم واتساب المتجر</h2>
+${st.linked
+    ? '<p class="ok">مربوط ويشتغل ✓</p><p>تقدر تشوفه بالهاتف: واتساب ← الإعدادات ← الأجهزة المرتبطة ← «iQ Mobile».</p>'
+    : qr
+      ? `<p>افتح واتساب على الهاتف صاحب الرقم ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، وامسح:</p>
+         <img src="https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(qr)}" width="280" height="280" alt="QR">
+         <p style="color:#5A564F;font-size:13px">الكود ينتهي خلال ثوانٍ — الصفحة تحدّث نفسها.</p>`
+      : `<p class="bad">لا يوجد كود بعد (${st.connection}).</p><p style="color:#5A564F;font-size:13px">${st.last_error || 'انتظر لحظة وحدّث الصفحة.'}</p>`}
+</body></html>`);
+});
+
+r.get('/whatsapp/status', requireAdmin, (_req, res) => res.json(botStatus()));
+
+// Unlink: wipes the session so a different number can be paired. The phone
+// side stays linked until it is removed there too, so say that.
+r.post('/whatsapp/unlink', requireAdmin, (req, res) => {
+  unlinkBot();
+  audit('admin', req.admin?.id ?? null, 'whatsapp.unlink', { kind: 'system', id: 0 }, {});
+  res.json({ ok: true, note: 'احذف «iQ Mobile» من الأجهزة المرتبطة بالهاتف أيضاً.' });
+});
+
 // One real message to one number — the only way to prove the Cloud API
 // credentials, the template name and its parameter count all line up before
 // a sweep sends dozens. Ignores the dry-run setting on purpose: a test that
@@ -2433,9 +2474,9 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
 r.post('/chat-nudge/test', requireAdmin, async (req, res) => {
   const phone = String(req.body?.phone || '').trim();
   if (!phone) return res.status(400).json({ error: 'phone_required' });
-  const out = await sendUtilityTemplate(
+  const out = await sendWhatsApp(
     phone,
-    [String(req.body?.name || 'صاحب المتجر'), String(req.body?.device || 'iPhone 13')],
+    { name: String(req.body?.name || 'صاحب المتجر'), device: String(req.body?.device || 'iPhone 13'), userId: 1 },
     { dryRun: false },
   );
   audit('admin', req.admin?.id ?? null, 'chat_nudge.test', { kind: 'phone', id: 0 }, { phone, outcome: out.outcome });

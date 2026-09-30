@@ -56,3 +56,6 @@ mobile/android/local.properties
 # blocked by PAT scope), so we serve the pre-built dist from disk.
 !admin-web/dist
 !admin-web/dist/**
+
+wa-auth/
+server/data/wa-auth/

@@ -1843,6 +1843,15 @@ CREATE TABLE IF NOT EXISTS chat_nudges (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_nudges_user ON chat_nudges(user_id, created_at DESC);
 `);
+// One message per person per LISTING, not per chat.
+//
+// A chat is UNIQUE(listing_id, buyer_id), so three buyers asking about the
+// same phone are three chats — and keying the ledger on the chat would have
+// sent that seller three WhatsApps about one device. The unique index is the
+// rule; the chat_id primary key above merely records which conversation
+// triggered it.
+addColumnIfMissing('chat_nudges', 'listing_id INTEGER');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_nudges_once ON chat_nudges(user_id, listing_id)');
 
 // Notifications are how a seller learns a buyer wrote to them, so the app
 // asks for the permission before it will do anything else. Three modes:

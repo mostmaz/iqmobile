@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@sentry/node": "^10.53.1",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.3.0",
     "compression": "^1.8.1",

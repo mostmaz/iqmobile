@@ -13,10 +13,10 @@
 //
 // ── The rules, and why each one is here ─────────────────────────────────
 //
-// ONE per chat, ever. The ledger's primary key is the chat id, so a second
-// message for the same conversation is not rate-limited, it is impossible.
-// That is what "مرة واحدة فقط" has to mean for something that costs money and
-// lands in a stranger's WhatsApp.
+// ONE per person per LISTING, ever, enforced by a unique index rather than
+// by this query remembering to check. A chat is UNIQUE(listing_id, buyer_id),
+// so three buyers asking about one phone are three chats — keyed on the chat,
+// that seller would get three WhatsApps about the same device.
 //
 // ONE per person per sweep. A shop with twenty stale chats gets one message
 // naming the count, not twenty messages. Without this the first run would
@@ -29,7 +29,7 @@
 // Daytime only. Same 09:00–21:00 Baghdad window the retention pushes use. A
 // WhatsApp at 3am about a phone is worse than silence.
 import { db, now as dbNow, getSetting } from './db.js';
-import { sendUtilityTemplate, utilityConfigured } from './whatsappTemplate.js';
+import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
 
 export const NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
 export const NUDGE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
@@ -72,7 +72,7 @@ export function withinSendingHours(timestamp) {
  */
 export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
   const rows = db_.prepare(`
-    SELECT c.id AS chat_id,
+    SELECT c.id AS chat_id, c.listing_id,
            CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END AS user_id,
            m.created_at AS waiting_since,
            l.brand, l.model
@@ -85,14 +85,18 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
        -- the recipient has not opened the thread since that message landed
        AND COALESCE(CASE WHEN m.sender_id = c.buyer_id THEN c.seller_last_read_at
                          ELSE c.buyer_last_read_at END, 0) < m.created_at
-       AND NOT EXISTS (SELECT 1 FROM chat_nudges n WHERE n.chat_id = c.id)
+       AND NOT EXISTS (
+             SELECT 1 FROM chat_nudges n
+              WHERE n.listing_id = c.listing_id
+                AND n.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
      ORDER BY m.created_at ASC
      LIMIT ?
   `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, limit * 4);
 
-  // One per person, oldest chat first, plus the count of everything else of
-  // theirs that is waiting — so the message can say "٣ رسائل" instead of
-  // arriving three times.
+  // One per person, oldest first, plus the count of everything else of
+  // theirs that is waiting — so the message can say "٣ محادثات" instead of
+  // arriving three times. Two buyers on the SAME listing collapse here as
+  // well as in the ledger, so the count is conversations, not listings.
   const byUser = new Map();
   for (const r of rows) {
     const seen = byUser.get(r.user_id);
@@ -108,6 +112,7 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
     if (!u || !u.phone) continue;
     out.push({
       chat_id: pick.chat_id,
+      listing_id: pick.listing_id,
       user_id: pick.user_id,
       phone: u.phone,
       name: u.shop_name || u.display_name || '',
@@ -128,13 +133,16 @@ export function sentInLast24h(db_, at) {
   ).get(at - 24 * 60 * 60 * 1000).n;
 }
 
-/** Record the attempt. The chat_id PK is what makes "once, ever" true. */
-function record(chatId, userId, phone, outcome, at) {
+/**
+ * Record the attempt. The unique index on (user_id, listing_id) is what makes
+ * "once, ever" true; DO NOTHING covers the race where two sweeps overlap.
+ */
+function record(n, outcome, at) {
   db.prepare(`
-    INSERT INTO chat_nudges(chat_id, user_id, phone, outcome, created_at)
-    VALUES(?,?,?,?,?)
-    ON CONFLICT(chat_id) DO NOTHING
-  `).run(chatId, userId, phone, outcome, at);
+    INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at)
+    VALUES(?,?,?,?,?,?)
+    ON CONFLICT DO NOTHING
+  `).run(n.chat_id, n.listing_id, n.user_id, n.phone, outcome, at);
 }
 
 /**
@@ -170,9 +178,10 @@ export async function runChatNudges({ at = dbNow() } = {}) {
 
   let sent = 0;
   for (const n of due) {
-    // {{1}} name, {{2}} device — must match the registered template exactly.
-    const r = await sendUtilityTemplate(n.phone, [n.name || 'صاحب المتجر', n.device || 'جهازك'], { dryRun });
-    record(n.chat_id, n.user_id, n.phone, r.outcome, at);
+    const r = await sendWhatsApp(n.phone, {
+      name: n.name, device: n.device, waiting: n.waiting, userId: n.user_id,
+    }, { dryRun });
+    record(n, r.outcome, at);
     if (r.ok) sent += 1;
   }
   console.log(`[chat-nudge] ${due.length} due, ${sent} ${dryRun ? 'dry-run' : 'sent'}`);

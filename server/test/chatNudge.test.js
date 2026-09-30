@@ -124,21 +124,55 @@ test('a user with no phone is skipped rather than crashing the sweep', () => {
 
 // ── the two caps ───────────────────────────────────────────────────────
 
-test('a chat already nudged is never nudged again', () => {
+const nudged = db.prepare(
+  'INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?,?)',
+);
+const listingOf = (chatId) => db.prepare('SELECT listing_id AS l FROM chats WHERE id=?').get(chatId).l;
+
+test('a listing already nudged is never nudged again', () => {
   db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
   const c = chat({ buyer, seller, from: buyer, ageMs: 30 * HOUR });
   assert.equal(pendingNudges(db, NOW).length, 1);
-  db.prepare('INSERT INTO chat_nudges(chat_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?)')
-    .run(c, seller, '07700000001', 'sent', NOW - HOUR);
+  nudged.run(c, listingOf(c), seller, '07700000001', 'sent', NOW - HOUR);
   assert.equal(pendingNudges(db, NOW).length, 0);
 });
 
-test('the ledger makes a second row for one chat impossible, not merely unlikely', () => {
-  db.exec('DELETE FROM chat_nudges;');
-  const c = chat({ buyer, seller, from: buyer, ageMs: 31 * HOUR });
-  const ins = db.prepare('INSERT INTO chat_nudges(chat_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?)');
-  ins.run(c, seller, '0770', 'sent', NOW);
-  assert.throws(() => ins.run(c, seller, '0770', 'sent', NOW), /UNIQUE|PRIMARY/i);
+test('a SECOND buyer on the same listing earns no second message', () => {
+  // The bug this pins: chats are UNIQUE(listing_id, buyer_id), so two buyers
+  // asking about one phone are two chats. Keyed on the chat, that seller
+  // would have been written to twice about the same device.
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const lst = listing(seller);
+  const mkChat = (b, ageMs) => {
+    const id = ++cid + 500;
+    const at = NOW - ageMs;
+    db.prepare(`INSERT INTO chats(id, listing_id, buyer_id, seller_id, created_at, last_message_at)
+                VALUES(?,?,?,?,?,?)`).run(id, lst, b, seller, at - HOUR, at);
+    db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+      .run(++mid, id, b, 'موجود؟', at);
+    return id;
+  };
+  const b2 = user();
+  const first = mkChat(buyer, 30 * HOUR);
+  mkChat(b2, 29 * HOUR);
+
+  const due = pendingNudges(db, NOW, { limit: 10 });
+  assert.equal(due.length, 1, 'one message for one listing');
+  assert.equal(due[0].waiting, 2, 'and it says two are waiting');
+
+  nudged.run(first, lst, seller, '0770', 'sent', NOW);
+  assert.equal(pendingNudges(db, NOW, { limit: 10 }).length, 0, 'the other chat is covered too');
+});
+
+test('the ledger makes a second message for one listing impossible, not merely unlikely', () => {
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const c1 = chat({ buyer, seller, from: buyer, ageMs: 31 * HOUR });
+  const l = listingOf(c1);
+  nudged.run(c1, l, seller, '0770', 'sent', NOW);
+  // A different chat row, same person, same listing — the unique index is
+  // the rule, not the chat_id primary key.
+  const c2 = chat({ buyer, seller, from: buyer, ageMs: 32 * HOUR });
+  assert.throws(() => nudged.run(c2, l, seller, '0770', 'sent', NOW), /UNIQUE/i);
 });
 
 test('a shop with three stale chats gets ONE message that names all three', () => {
@@ -179,7 +213,7 @@ test('the window is read in Baghdad time, not the server\'s', () => {
 
 // ── the Cloud API request ──────────────────────────────────────────────
 
-const { buildCloudBody } = await import('../src/whatsappTemplate.js');
+const { buildCloudBody } = await import('../src/whatsapp.js');
 
 test('the Cloud API body matches what Meta expects for a template', () => {
   const b = buildCloudBody('+9647701234567', ['موبايلات النخبة', 'Apple iPhone 13']);
@@ -206,11 +240,33 @@ test('parameter count is exactly two — Meta silently delivers nothing on a mis
 });
 
 test('an unconfigured transport refuses instead of pretending', async () => {
-  const { sendUtilityTemplate } = await import('../src/whatsappTemplate.js');
-  // No WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_TOKEN in the test env.
-  const r = await sendUtilityTemplate('07701234567', ['a', 'b'], { dryRun: false });
+  const { sendWhatsApp } = await import('../src/whatsapp.js');
+  // No linked bot session and no cloud credentials in the test env.
+  const r = await sendWhatsApp('07701234567', { name: 'a', device: 'b' }, { dryRun: false });
   assert.equal(r.ok, false);
   assert.equal(r.outcome, 'unconfigured');
+});
+
+test('the bot text names the device and, when there are several, the count', async () => {
+  const { botText } = await import('../src/whatsapp.js');
+  const one = botText({ name: 'أبو علي', device: 'iPhone 13', waiting: 1, userId: 7 });
+  assert.match(one, /أبو علي/);
+  assert.match(one, /iPhone 13/);
+  assert.doesNotMatch(one, /محادثات/);
+
+  const many = botText({ name: 'أبو علي', device: 'iPhone 13', waiting: 3, userId: 7 });
+  assert.match(many, /3 محادثات/);
+});
+
+test('the same person always gets the same opening — a resend must not look careless', async () => {
+  const { botText } = await import('../src/whatsapp.js');
+  const a = botText({ name: 'س', device: 'x', userId: 42 });
+  const b = botText({ name: 'س', device: 'x', userId: 42 });
+  assert.equal(a, b);
+  // ...while different people do not all get a byte-identical string, which
+  // is the pattern an automated sender is spotted by.
+  const openings = new Set([11, 12, 13, 14].map((id) => botText({ name: 's', device: 'x', userId: id })));
+  assert.ok(openings.size > 1, 'openings must vary across recipients');
 });
 
 // ── pacing ─────────────────────────────────────────────────────────────
@@ -229,14 +285,14 @@ test('the rolling 24h count ignores failures and forgets yesterday', () => {
   const c2 = chat({ buyer, seller, from: buyer, ageMs: 31 * HOUR });
   const c3 = chat({ buyer, seller, from: buyer, ageMs: 32 * HOUR });
   const c4 = chat({ buyer, seller, from: buyer, ageMs: 33 * HOUR });
-  const ins = db.prepare('INSERT INTO chat_nudges(chat_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?)');
-  ins.run(c1, buyer, '0770', 'sent', NOW - HOUR);
-  ins.run(c2, buyer, '0770', 'dry_run', NOW - 2 * HOUR);
+  const ins = db.prepare('INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?,?)');
+  ins.run(c1, listingOf(c1), buyer, '0770', 'sent', NOW - HOUR);
+  ins.run(c2, listingOf(c2), buyer, '0770', 'dry_run', NOW - 2 * HOUR);
   // A rejected attempt burned no conversation, so it must not count toward
   // the tier limit — otherwise a bad token could starve the real budget.
-  ins.run(c3, buyer, '0770', 'rejected', NOW - 3 * HOUR);
+  ins.run(c3, listingOf(c3), buyer, '0770', 'rejected', NOW - 3 * HOUR);
   // 25 hours ago is outside the rolling window Meta measures.
-  ins.run(c4, buyer, '0770', 'sent', NOW - 25 * HOUR);
+  ins.run(c4, listingOf(c4), buyer, '0770', 'sent', NOW - 25 * HOUR);
 
   assert.equal(sentInLast24h(db, NOW), 2);
   assert.ok(DAILY_CAP <= 250, 'must stay under a new WABA\'s 250/24h opening tier');

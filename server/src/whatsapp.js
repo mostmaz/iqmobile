@@ -1,59 +1,48 @@
-// Outbound WhatsApp on a Meta UTILITY template, from iQ Mobile's own number.
+// One way out to WhatsApp, three transports behind it.
 //
-// Separate from otp.js on purpose. That file is a verification flow with its
-// own pending table, rate ledger and error vocabulary; this is one function
-// that posts a template and reports whether it went. Sharing the transport
-// would tangle two lifecycles that have nothing in common.
+//   bot   (default) — a linked session sending as 07502062804. Unofficial,
+//                     against WhatsApp's terms, and the ban risk is the
+//                     business's own number. See whatsappBot.js.
+//   cloud           — Meta's official Cloud API on an approved UTILITY
+//                     template. Switch with WHATSAPP_PROVIDER=cloud; nothing
+//                     else changes.
+//   arqam           — the OTP vendor's template endpoint. Their docs are
+//                     behind a dashboard login, so this path is a best-effort
+//                     guess and is not a default.
 //
-// ── Transport ───────────────────────────────────────────────────────────
+// Callers pass FACTS (who, which device, how many are waiting) and never a
+// string: the bot sends free text and the two template transports send
+// numbered parameters, and only this file knows which.
 //
-// Meta's WhatsApp Cloud API, sending as 07502062804 (+964 750 206 2804).
-// Not a bot library driving WhatsApp Web: bulk sending from an unofficial
-// client is what gets a number banned, and this number is the business's.
+// ── The template, for the cloud/arqam path ──────────────────────────────
 //
-// ARQAM stays behind WHATSAPP_PROVIDER=arqam as a fallback. Its OTP endpoint
-// is confirmed and in daily use; its template endpoint is not documented
-// publicly (their docs sit behind a dashboard login), so that path is a
-// best-effort guess and is not the default.
+//   name:     unanswered_chat
+//   category: UTILITY   (a marketing template to someone who never opted in
+//                        is what gets a WhatsApp account restricted)
+//   language: ar
+//   body:     مرحباً {{1}}، عندك رسالة على iQ Mobile بخصوص {{2}} من ٢٤ ساعة
+//             وما انفتحت بعد. افتح التطبيق للرد.
 //
-// ── What has to exist before a single message can go out ────────────────
+// Not «رسالة من مشتري»: the sweep follows the unread message whichever side
+// it is on, so the same text also reaches a buyer waiting on a seller's
+// answer. Naming the wrong role would read as a mistake.
 //
-// 1. A Meta Business account with a WhatsApp Business Account (WABA), and
-//    +9647502062804 registered ON it. THE NUMBER CANNOT BE IN BOTH PLACES:
-//    moving it to the Cloud API removes it from the WhatsApp / WhatsApp
-//    Business app on the phone, and its chat history goes with it. If that
-//    number is answered by hand today, register a second number instead.
+// {{1}} = the recipient's name, {{2}} = the device. Change the ORDER or
+// COUNT here and in chatNudge.js together — Meta rejects a mismatch by
+// delivering nothing.
 //
-// 2. A permanent access token (Meta Business Settings → System users → a
-//    system user with the whatsapp_business_messaging permission on the
-//    WABA). The temporary token in the developer console expires in 24h and
-//    will strand the sweep silently.
+// ── For the cloud path only, before anything can send ───────────────────
 //
-// 3. The template, approved by Meta as UTILITY (a marketing template to a
-//    number that never opted in is what gets an account restricted):
-//
-//      name:     unanswered_chat
-//      category: UTILITY
-//      language: ar
-//      body:     مرحباً {{1}}، عندك رسالة على iQ Mobile بخصوص {{2}} من ٢٤ ساعة
-//                وما انفتحت بعد. افتح التطبيق للرد.
-//
-//    Not «رسالة من مشتري»: the sweep follows the unread message whichever
-//    side it is on, so the same template also reaches a buyer waiting on a
-//    seller's answer. Naming the wrong role would read as a mistake.
-//
-//    {{1}} = the recipient's name, {{2}} = the device. Change the ORDER or
-//    COUNT here and in chatNudge.js together — Meta rejects a mismatch by
-//    delivering nothing.
-//
-// 4. WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_TOKEN in the server env, then
-//    chat_nudge_dry_run=0 in the dashboard.
-//
-// Every one of those is a place the send can fail silently, which is why the
-// sweep records an outcome per attempt and why the dry run is the default.
+// A Meta Business account with a WABA and +9647502062804 registered ON it —
+// THE NUMBER CANNOT BE IN BOTH PLACES, so registering it removes it from the
+// WhatsApp app on the phone and its history goes with it. Then a permanent
+// access token from a System user (the developer console's expires in 24h
+// and would strand the sweep silently), then WHATSAPP_PHONE_NUMBER_ID and
+// WHATSAPP_TOKEN in the env.
 import { toE164 } from './iraqiPhone.js';
+import { sendBotMessage, botStatus } from './whatsappBot.js';
 
-const PROVIDER = (process.env.WHATSAPP_PROVIDER || 'cloud').toLowerCase();
+const PROVIDER = (process.env.WHATSAPP_PROVIDER || 'bot').toLowerCase();
 
 // ── Meta Cloud API ──
 const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || 'v21.0';
@@ -72,14 +61,38 @@ const TIMEOUT_MS = 15000;
 
 /** Can this send at all? False means the sweep records `unconfigured` and stops. */
 export function utilityConfigured() {
-  return PROVIDER === 'arqam'
-    ? !!ARQAM_KEY && !!ARQAM_TEMPLATE
-    : !!PHONE_NUMBER_ID && !!TOKEN;
+  if (PROVIDER === 'bot') return botStatus().linked;
+  if (PROVIDER === 'arqam') return !!ARQAM_KEY && !!ARQAM_TEMPLATE;
+  return !!PHONE_NUMBER_ID && !!TOKEN;
 }
 
 /** Which transport is live, for the dashboard to show rather than guess. */
 export function utilityProvider() {
-  return { provider: PROVIDER, configured: utilityConfigured(), template: PROVIDER === 'arqam' ? ARQAM_TEMPLATE : TEMPLATE };
+  return {
+    provider: PROVIDER,
+    configured: utilityConfigured(),
+    template: PROVIDER === 'cloud' ? TEMPLATE : PROVIDER === 'arqam' ? ARQAM_TEMPLATE : null,
+    bot: PROVIDER === 'bot' ? botStatus() : undefined,
+  };
+}
+
+/**
+ * What the bot actually types.
+ *
+ * Four openings, picked from the recipient's own id rather than at random,
+ * so one person always gets the same wording (a different greeting on a
+ * resend would read as a second, careless message) while the outbound stream
+ * is not the identical string a thousand times — which is exactly the
+ * pattern an automated sender is spotted by.
+ */
+export function botText({ name, device, waiting = 1, userId = 0 }) {
+  const openings = ['مرحباً', 'السلام عليكم', 'هلا', 'مساء الخير'];
+  const hi = openings[Math.abs(Number(userId) || 0) % openings.length];
+  const who = name ? `${hi} ${name}` : hi;
+  const more = waiting > 1
+    ? ` وعندك ${waiting} محادثات تنتظر ردك.`
+    : '';
+  return `${who} 👋\nعندك رسالة على iQ Mobile بخصوص ${device || 'جهازك'} من ٢٤ ساعة وما انفتحت بعد.${more}\nافتح التطبيق للرد قبل ما يشتري من غيرك.`;
 }
 
 /**
@@ -138,7 +151,9 @@ async function post(url, headers, body) {
  *
  * outcome: sent | dry_run | unconfigured | bad_phone | rejected | transport
  */
-export async function sendUtilityTemplate(phone, params, { dryRun = true } = {}) {
+export async function sendWhatsApp(phone, facts, { dryRun = true } = {}) {
+  const params = [facts.name || 'صاحب المتجر', facts.device || 'جهازك'];
+
   if (!utilityConfigured()) return { ok: false, outcome: 'unconfigured' };
 
   const to = toE164(phone);
@@ -147,9 +162,12 @@ export async function sendUtilityTemplate(phone, params, { dryRun = true } = {})
   if (dryRun) {
     // The point of the dry run: prove the selection is right, against real
     // production rows, before one message reaches a real person.
-    console.log(`[whatsapp][dry-run] ${PROVIDER}:${TEMPLATE} → ${to} params=${JSON.stringify(params)}`);
+    const preview = PROVIDER === 'bot' ? botText(facts).replace(/\n/g, ' | ') : JSON.stringify(params);
+    console.log(`[whatsapp][dry-run] ${PROVIDER} → ${to} :: ${preview}`);
     return { ok: true, outcome: 'dry_run' };
   }
+
+  if (PROVIDER === 'bot') return sendBotMessage(to, botText(facts));
 
   if (PROVIDER === 'arqam') {
     const r = await post(`${ARQAM_BASE}${ARQAM_PATH}`, { 'X-API-Key': ARQAM_KEY }, buildArqamBody(to, params));
