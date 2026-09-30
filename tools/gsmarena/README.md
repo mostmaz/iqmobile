@@ -25,10 +25,12 @@ python3 gsm_export.py    # review sheet -> device-specs-review.xlsx
 listings with its listing count. Regenerate it from the droplet with
 
 ```
-ssh iqmobile@<host> "cd ~/iqmobile/server && node -e \"...\"" > targets.json
+ssh iqmobile@<host> "cd ~/iqmobile/server && node scripts/exportSpecTargets.js" > targets.json
 ```
 
-(the query lives in the git history of this file's commit message).
+Run `server/scripts/cleanDeviceNames.js` first when listing names have
+drifted: it rewrites them to the catalogue's (GSMArena's) spelling, so
+most of the matching below becomes exact.
 
 Then load it into the database:
 
