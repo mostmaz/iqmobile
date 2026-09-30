@@ -31,7 +31,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from '../src/db.js';
-import { resolveListingName } from '../src/listingNameNormalize.js';
+import { resolveListingName, stripLeadingBrand } from '../src/listingNameNormalize.js';
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
@@ -46,25 +46,6 @@ const setSetting = db.prepare(
 const sinceId = sinceArg >= 0
   ? Number(args[sinceArg + 1])
   : Number(getSetting.get(WATERMARK_KEY)?.value || 0);
-
-// Brand names only. Line words are NOT here on purpose: "iPhone" and
-// "Galaxy" are part of the model that the catalogue and the app both print
-// ("Apple iPhone 13"), so stripping them would rename every Apple and
-// Samsung listing down to a bare number.
-const BRANDS = {
-  poco: 'POCO', redmi: 'Redmi', xiaomi: 'Xiaomi',
-  honor: 'Honor', huawei: 'Huawei', samsung: 'Samsung', apple: 'Apple',
-  oppo: 'OPPO', vivo: 'Vivo', realme: 'Realme', tecno: 'Tecno',
-  techno: 'Tecno', infinix: 'Infinix', nokia: 'Nokia', motorola: 'Motorola',
-  google: 'Google', itel: 'Itel', oneplus: 'OnePlus', blackview: 'Blackview',
-  oukitel: 'Oukitel', nubia: 'Nubia', zte: 'ZTE', lenovo: 'Lenovo',
-  sony: 'Sony', doogee: 'Doogee', ulefone: 'Ulefone', tcl: 'TCL',
-  // Arabic spellings sellers type — same brand, different alphabet.
-  'بوكو': 'POCO', 'ريدمي': 'Redmi', 'شاومي': 'Xiaomi', 'هونر': 'Honor',
-  'هواوي': 'Huawei', 'سامسونك': 'Samsung', 'سامسونج': 'Samsung', 'ابل': 'Apple',
-  'اوبو': 'OPPO', 'فيفو': 'Vivo', 'ريلمي': 'Realme', 'تكنو': 'Tecno',
-  'انفنكس': 'Infinix', 'نوكيا': 'Nokia', 'موتورولا': 'Motorola',
-};
 
 // A brand the app doesn't offer is worse than a wrong one: the listing
 // disappears from every brand filter. ZTE is the live example — sellers
@@ -83,23 +64,12 @@ const plan = { brand: [], strip: [], mismatch: [] };
 for (const r of rows) {
   // Only LEADING brand words are touched — "Galaxy Z Fold" has no brand in
   // it, and a trailing one ("Note 14 Redmi") is rare enough that guessing
-  // would cost more than it saves. Several can stack ("ZTE Nubia Neo 5G"),
-  // so walk them all and keep the last one the app actually offers.
-  let rest = String(r.model || '').trim();
-  let target;
-  for (;;) {
-    const m = /^([A-Za-z؀-ۿ]+)[\s\-_.]+(.+)$/.exec(rest);
-    if (!m) break;
-    const b = BRANDS[m[1].toLowerCase()];
-    if (!b) break;
-    rest = m[2].trim();
-    if (AVAILABLE.has(b)) target = b;         // ignore brands with no home
-  }
-  // "Poco" on its own is a brand, not a device — nothing would be left to
-  // call it.
-  if (target && rest) {
-    const row = { ...r, to_brand: target, to_model: rest };
-    if (target !== r.brand) plan.brand.push(row);
+  // would cost more than it saves. stripLeadingBrand walks stacked ones
+  // ("ZTE Nubia Neo 5G") and keeps the last the app actually offers.
+  const { brand: target, model: rest } = stripLeadingBrand(r.model, AVAILABLE);
+  if (rest !== String(r.model || '').trim()) {
+    const row = { ...r, to_brand: target || r.brand, to_model: rest };
+    if (row.to_brand !== r.brand) plan.brand.push(row);
     else plan.strip.push(row);
   }
 
