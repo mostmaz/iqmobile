@@ -92,11 +92,17 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT } = {}) {
              SELECT 1 FROM chat_nudges n
               WHERE n.listing_id = c.listing_id
                 AND n.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
-     ORDER BY m.created_at ASC
+     -- Freshest first. The buyer who wrote yesterday is still shopping; the
+     -- one who wrote six days ago has very likely bought elsewhere, and with
+     -- one message per quarter hour the queue never reaches everyone anyway.
+     -- Oldest-first spent the day's budget on the coldest leads and, because
+     -- the seven-day ceiling slides, the "next" name changed every few
+     -- minutes as messages aged out of the window.
+     ORDER BY m.created_at DESC
      LIMIT ?
   `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, limit * 4);
 
-  // One per person, oldest first, plus the count of everything else of
+  // One per person, freshest first, plus the count of everything else of
   // theirs that is waiting — so the message can say "٣ محادثات" instead of
   // arriving three times. Two buyers on the SAME listing collapse here as
   // well as in the ledger, so the count is conversations, not listings.

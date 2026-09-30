@@ -2453,7 +2453,10 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
     enabled: getSetting('chat_nudge_enabled') === '1',
     dry_run: getSetting('chat_nudge_dry_run') !== '0',
     within_sending_hours: withinSendingHours(at),
-    due: pendingNudges(db, at),
+    // The whole queue, not the next batch: the sweep's own limit is one per
+    // run, and a preview that showed one name changing every quarter hour
+    // read as a bug rather than as a queue.
+    due: pendingNudges(db, at, { limit: 200 }),
     sent_so_far: db.prepare('SELECT COUNT(*) AS n FROM chat_nudges').get().n,
     by_outcome: db.prepare('SELECT outcome, COUNT(*) AS n FROM chat_nudges GROUP BY outcome').all(),
   });

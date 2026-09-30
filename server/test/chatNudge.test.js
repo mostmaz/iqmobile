@@ -334,3 +334,17 @@ test('the rolling 24h count ignores failures and forgets yesterday', () => {
   assert.ok(DAILY_CAP <= 250, 'must stay under a new WABA\'s 250/24h opening tier');
   db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
 });
+
+test('the freshest unanswered chat is first in the queue, not the oldest', () => {
+  // With one message a quarter hour and a sliding seven-day ceiling,
+  // oldest-first spent the whole day on leads that had gone cold and made the
+  // "next" name change every few minutes as messages aged out of the window.
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const s2 = user(), s3 = user();
+  chat({ buyer, seller, from: buyer, ageMs: 6 * DAY });
+  const fresh = chat({ buyer, seller: s2, from: buyer, ageMs: 25 * HOUR });
+  chat({ buyer, seller: s3, from: buyer, ageMs: 3 * DAY });
+  const due = pendingNudges(db, NOW, { limit: 10 });
+  assert.equal(due[0].chat_id, fresh);
+  assert.equal(due.length, 3);
+});
