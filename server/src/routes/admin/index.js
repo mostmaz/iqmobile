@@ -213,6 +213,15 @@ r.get('/settings', requireAdmin, (_req, res) => {
     rewarded_boost_top_threshold: Number(getSetting('rewarded_boost_top_threshold')) || 20,
     admob_rewarded_unit_android: getSetting('admob_rewarded_unit_android') || '',
     admob_rewarded_unit_ios: getSetting('admob_rewarded_unit_ios') || '',
+
+    // The unanswered-chat WhatsApp, and how hard each platform insists on
+    // notification permission.
+    chat_nudge_enabled: getSetting('chat_nudge_enabled') === '1',
+    chat_nudge_dry_run: getSetting('chat_nudge_dry_run') !== '0',
+    chat_nudge_per_run: Number(getSetting('chat_nudge_per_run')) || 1,
+    chat_nudge_daily_cap: Number(getSetting('chat_nudge_daily_cap')) || 200,
+    push_gate_android: getSetting('push_gate_android') || 'hard',
+    push_gate_ios: getSetting('push_gate_ios') || 'soft',
   });
 });
 
@@ -232,6 +241,28 @@ r.patch('/settings', requireAdmin, (req, res) => {
   if (listings_never_expire != null) {
     setSettingValue('listings_never_expire', listings_never_expire ? '1' : '0');
   }
+  // The nudge. dry_run is deliberately independent of enabled: turning the
+  // sweep on only starts it PICKING rows; it does not start it sending.
+  if (req.body?.chat_nudge_enabled != null) {
+    setSettingValue('chat_nudge_enabled', req.body.chat_nudge_enabled ? '1' : '0');
+  }
+  if (req.body?.chat_nudge_dry_run != null) {
+    setSettingValue('chat_nudge_dry_run', req.body.chat_nudge_dry_run ? '1' : '0');
+  }
+  for (const key of ['chat_nudge_per_run', 'chat_nudge_daily_cap']) {
+    if (req.body?.[key] != null) {
+      const n = Number(req.body[key]);
+      if (!Number.isFinite(n) || n < 1) return res.status(400).json({ error: `bad_${key}` });
+      setSettingValue(key, String(Math.floor(n)));
+    }
+  }
+  for (const key of ['push_gate_android', 'push_gate_ios']) {
+    if (req.body?.[key] != null) {
+      if (!['hard', 'soft', 'off'].includes(req.body[key])) return res.status(400).json({ error: `bad_${key}` });
+      setSettingValue(key, req.body[key]);
+    }
+  }
+
   // AI listing inspection. Auto-reject is deliberately independent: turning
   // inspection on only starts flagging, never removing.
   if (req.body?.listing_inspection_enabled != null) {

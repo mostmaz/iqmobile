@@ -10,6 +10,29 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 
+type Due = {
+  chat_id: number; listing_id: number; user_id: number; phone: string;
+  name: string; device: string; waiting: number; waiting_since: number;
+  has_push_token: boolean;
+};
+
+type Preview = {
+  transport: { provider: string; configured: boolean; bot?: any };
+  enabled: boolean;
+  dry_run: boolean;
+  within_sending_hours: boolean;
+  due: Due[];
+  sent_so_far: number;
+  by_outcome: { outcome: string; n: number }[];
+};
+
+type Settings = {
+  chat_nudge_enabled: boolean;
+  chat_nudge_dry_run: boolean;
+  chat_nudge_per_run: number;
+  chat_nudge_daily_cap: number;
+};
+
 type Status = {
   connection: string;
   linked: boolean;
@@ -30,16 +53,29 @@ const CONNECTION_AR: Record<string, string> = {
 
 export function WhatsAppPage() {
   const [st, setSt] = useState<Status | null>(null);
+  const [pv, setPv] = useState<Preview | null>(null);
+  const [cfg, setCfg] = useState<Settings | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const timer = useRef<any>(null);
 
   const load = useCallback(async () => {
     try {
-      setSt(await api<Status>('/admin/whatsapp/status'));
+      const [s1, s2, s3] = await Promise.all([
+        api<Status>('/admin/whatsapp/status'),
+        api<Preview>('/admin/chat-nudge/preview'),
+        api<Settings>('/admin/settings'),
+      ]);
+      setSt(s1); setPv(s2); setCfg(s3);
       setErr('');
     } catch (e: any) { setErr(e.message); }
   }, []);
+
+  async function save(patch: Partial<Settings>) {
+    setBusy(true);
+    try { await api('/admin/settings', { method: 'PATCH', body: JSON.stringify(patch) }); await load(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
 
   useEffect(() => {
     load();
@@ -95,12 +131,89 @@ export function WhatsAppPage() {
       </div>
 
       {st?.linked ? (
-        <div className="card" style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 14, lineHeight: 1.9 }}>
-            الرقم مربوط ويقدر يرسل. تشوفه بالهاتف: واتساب ← الإعدادات ← الأجهزة
-            المرتبطة ← «iQ Mobile». إلغاؤه من هناك يوقف الإرسال فوراً.
+        <>
+          <div className="card" style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 14, lineHeight: 1.9 }}>
+              الرقم مربوط ويقدر يرسل. تشوفه بالهاتف: واتساب ← الإعدادات ← الأجهزة
+              المرتبطة ← «iQ Mobile». إلغاؤه من هناك يوقف الإرسال فوراً.
+            </div>
           </div>
-        </div>
+
+          {/* The two switches, and why they are two. Turning the sweep on
+              only starts it PICKING rows; the dry run is what stands between
+              that and a stranger's phone. */}
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="chart-title">تذكير المحادثات غير المقروءة</div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.9 }}>
+              رسالة واحدة لكل إعلان، للي وصلته رسالة من ٢٤ ساعة وما فتحها — مرة
+              وحدة للأبد. رسالة كل كنسة، كنسة كل ١٥ دقيقة، بين ٩ صباحاً و٩ مساءً.
+            </div>
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
+              <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox" disabled={busy}
+                  checked={!!cfg?.chat_nudge_enabled}
+                  onChange={(e) => save({ chat_nudge_enabled: e.target.checked })}
+                />
+                <span>الكنسة شغالة</span>
+              </label>
+              <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox" disabled={busy}
+                  checked={!!cfg?.chat_nudge_dry_run}
+                  onChange={(e) => save({ chat_nudge_dry_run: e.target.checked })}
+                />
+                <span>تجربة جافة <span className="muted">(تختار بدون ما ترسل)</span></span>
+              </label>
+              <span className="muted" style={{ fontSize: 12.5, marginInlineStart: 'auto' }}>
+                {pv?.within_sending_hours ? 'داخل وقت الإرسال' : 'خارج وقت الإرسال — ما ترسل الآن'}
+                {' · '}انرسل سابقاً: {pv?.sent_so_far ?? 0}
+              </span>
+            </div>
+            {cfg?.chat_nudge_enabled && !cfg?.chat_nudge_dry_run ? (
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'rgba(217,88,58,0.14)', fontSize: 13 }}>
+                ⚠️ الإرسال الحقيقي شغال — الرسائل تطلع من رقمك فعلاً.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="chart-title">منو راح يستلم الآن ({pv?.due.length ?? 0})</div>
+            {!pv?.due.length ? (
+              <div className="muted" style={{ marginTop: 8 }}>ما في أحد مستحق حالياً.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
+                <thead><tr>
+                  {['المستلم', 'الهاتف', 'الجهاز', 'محادثات تنتظر', 'عنده إشعارات؟'].map((h) => (
+                    <th key={h} style={{ textAlign: 'right', fontSize: 12.5, color: '#888', padding: '0 8px 8px' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {pv.due.map((d) => (
+                    <tr key={d.chat_id}>
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>
+                        {d.name || `#${d.user_id}`}
+                      </td>
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{d.phone}</td>
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{d.device}</td>
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{d.waiting}</td>
+                      {/* The whole reason this feature exists: a "لا" here is
+                          someone no push could ever have reached. */}
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)', color: d.has_push_token ? undefined : '#f59e0b' }}>
+                        {d.has_push_token ? 'نعم' : 'لا — ما يوصله بوش'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {pv?.by_outcome?.length ? (
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 12 }}>
+                السجل: {pv.by_outcome.map((o) => `${o.outcome}: ${o.n}`).join(' · ')}
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : (
         <div className="card" style={{ marginTop: 12 }}>
           <ol style={{ fontSize: 14, lineHeight: 2, paddingInlineStart: 20, margin: '0 0 12px' }}>
