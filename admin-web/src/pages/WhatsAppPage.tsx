@@ -146,7 +146,7 @@ export function WhatsAppPage() {
             <div className="chart-title">تذكير المحادثات غير المقروءة</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.9 }}>
               رسالة واحدة لكل إعلان، للي وصلته رسالة من ٢٤ ساعة وما فتحها — مرة
-              وحدة للأبد. رسالة كل كنسة، كنسة كل ١٥ دقيقة، بين ٩ صباحاً و٩ مساءً.
+              وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
             </div>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
               <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
@@ -155,7 +155,7 @@ export function WhatsAppPage() {
                   checked={!!cfg?.chat_nudge_enabled}
                   onChange={(e) => save({ chat_nudge_enabled: e.target.checked })}
                 />
-                <span>الكنسة شغالة</span>
+                <span>التذكير التلقائي شغال</span>
               </label>
               <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
                 <input
@@ -163,7 +163,7 @@ export function WhatsAppPage() {
                   checked={!!cfg?.chat_nudge_dry_run}
                   onChange={(e) => save({ chat_nudge_dry_run: e.target.checked })}
                 />
-                <span>تجربة جافة <span className="muted">(تختار بدون ما ترسل)</span></span>
+                <span>وضع التجربة <span className="muted">(يحدد المستلمين بدون ما يرسل)</span></span>
               </label>
               <span className="muted" style={{ fontSize: 12.5, marginInlineStart: 'auto' }}>
                 {pv?.within_sending_hours ? 'داخل وقت الإرسال' : 'خارج وقت الإرسال — ما ترسل الآن'}
@@ -178,7 +178,7 @@ export function WhatsAppPage() {
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>
-            <div className="chart-title">منو راح يستلم الآن ({pv?.due.length ?? 0})</div>
+            <div className="chart-title">منو راح يستلم بالجولة الجاية ({pv?.due.length ?? 0})</div>
             {!pv?.due.length ? (
               <div className="muted" style={{ marginTop: 8 }}>ما في أحد مستحق حالياً.</div>
             ) : (
