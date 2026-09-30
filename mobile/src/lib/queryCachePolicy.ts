@@ -20,6 +20,10 @@ const PRIVATE_KEYS = [
   // THIS person last opened the feed, so restoring it under the next account
   // on a shared phone puts another city's badge on their tab.
   'request-pulse',
+  // A shop's own offer state. Seen leaking on 30 Sep 2026: a test shop's
+  // «ملصق متجرك بالطريق» card rendered for the next account on the same
+  // simulator, because the persisted query outlived the sign-out.
+  'shop-sticker', 'shop-tier',
 ];
 
 /**
