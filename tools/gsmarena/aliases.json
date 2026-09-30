@@ -32,7 +32,11 @@
     "apple watch 10 46mm": "Watch Series 10",
     "apple watch ultra 1": "Watch Ultra",
     "ساعة ابل الترا 1": "Watch Ultra",
-    "ايفون اس اي الجيل ال3": "iPhone SE (2022)"
+    "ايفون اس اي الجيل ال3": "iPhone SE (2022)",
+    "watch ultra 3 (49mm)": "Watch Ultra 3",
+    "watch series 11 (42mm)": "Watch Series 11",
+    "watch series 11 (46mm)": "Watch Series 11",
+    "watch se3 (44mm)": "Watch SE 3"
   },
   "Honor": {
     "pad 10 paper matte": "Pad 10",
@@ -44,5 +48,17 @@
   },
   "Xiaomi": {
     "mix flio": "Mix Flip"
+  },
+  "Samsung": {
+    "galaxy watch 7 44mm": "Galaxy Watch7",
+    "galaxy watch 8 (40mm)": "Galaxy Watch8",
+    "galaxy watch 8 (44mm)": "Galaxy Watch8",
+    "galaxy watch 8 40mm": "Galaxy Watch8",
+    "galaxy watch 8 44mm": "Galaxy Watch8",
+    "galaxy watch 8 classic (47mm)": "Galaxy Watch8 Classic",
+    "galaxy watch 8 classic 46mm": "Galaxy Watch8 Classic",
+    "galaxy watch 8 ultra 47mm": "Galaxy Watch Ultra",
+    "galaxy watch 9 (40mm)": "Galaxy Watch9",
+    "galaxy watch 9 (44mm)": "Galaxy Watch9"
   }
 }

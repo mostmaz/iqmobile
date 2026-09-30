@@ -81,7 +81,10 @@ def index_variants(key, brand=None):
             out.append(key[len(pre):])
     seen, ordered = set(), []
     for k in out:
-        if len(k) >= 2 and k not in seen:
+        # The maker's own key may be a single character ("Realme 6",
+        # "Honor 9"); only the shaved forms need two, so a bare "5" left
+        # over from "5G" cannot become a device.
+        if (k == key or len(k) >= 2) and k not in seen:
             seen.add(k)
             ordered.append(k)
     return ordered
