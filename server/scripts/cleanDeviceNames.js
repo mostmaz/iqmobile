@@ -27,6 +27,7 @@
 import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { db } from '../src/db.js';
 import {
   resolveListingName, stripLeadingBrand, resetCatalogCache, primeCatalog,
@@ -53,6 +54,7 @@ const CATALOG_DELETE = new Set([
   'Other|Anker Soundcore Sport X20', 'Other|Realme 13 Pro+ 512GB 12GB RAM',
   'Other|Realme 13 Pro+ 5G', 'Other|Sony experia Mark ii', 'Other|Xperia',
   'Realme|A3', 'Realme|GT 20 pro', 'Realme|Realme 50', 'Realme|Realme GT Master Edition',
+  'Realme|Realme Q3 pro سبيشل',
   'Redmi|30', 'Redmi|C53',
   'Samsung|Samsung Tab A', 'Samsung|S26 Ultra', 'Samsung|Galaxy Tab A7',
   'Tecno|Tecno Spark 4C', 'Tecno|Tecno 30 Pro 5G',
@@ -76,7 +78,6 @@ const CATALOG_RENAME = {
   'Other|TCL 10 plos': { brand: 'Other', model: 'TCL 10 Plus', device_type: 'phone' },
   'Other|سوني اكس بيريه 1 مارك 4': { brand: 'Other', model: 'Sony Xperia 1 IV', device_type: 'phone' },
   'Realme|Realme C53': { brand: 'Realme', model: 'C53', device_type: 'phone' },
-  'Realme|Realme Q3 pro سبيشل': { brand: 'Realme', model: 'Q3 Pro', device_type: 'phone' },
   'Realme|Realme x2 pro': { brand: 'Realme', model: 'X2 Pro', device_type: 'phone' },
   'Redmi|Redmi 17': { brand: 'Redmi', model: '17', device_type: 'phone' },
 };
@@ -368,7 +369,10 @@ const INDEX_BRAND = {
 const typeOf = (m) => (/pad|\btab\b|tablet/i.test(m) ? 'tablet' : /watch|\bband\b|\bfit\b/i.test(m) ? 'watch' : 'phone');
 const gsmIndex = new Map(); // "Brand|key" → model
 {
-  const file = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../tools/gsmarena/gsm_index.json');
+  // fileURLToPath, not .pathname: the repo path has spaces, which the URL
+  // form percent-encodes and existsSync then cannot find.
+  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../tools/gsmarena/gsm_index.json');
+  if (!fs.existsSync(file)) console.warn(`gsm_index.json not found at ${file} — no top-ups`);
   const idx = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   const put = (brand, model) => {
     const k = keyOf(model);
@@ -435,7 +439,8 @@ function decide(l) {
   const m = MANUAL[k2(l.brand, raw)];
   if (m) {
     const [brand, model] = Array.isArray(m) ? m : [l.brand, m];
-    return { brand, model, rule: 'manual' };
+    // A row the table already describes is done, not a rename.
+    return brand === l.brand && model === raw ? null : { brand, model, rule: 'manual' };
   }
   const s = stripLeadingBrand(raw, AVAILABLE);
   let brand = s.brand || l.brand;
