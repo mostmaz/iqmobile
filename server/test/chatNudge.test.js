@@ -252,21 +252,51 @@ test('the bot text names the device and, when there are several, the count', asy
   const one = botText({ name: 'أبو علي', device: 'iPhone 13', waiting: 1, userId: 7 });
   assert.match(one, /أبو علي/);
   assert.match(one, /iPhone 13/);
-  assert.doesNotMatch(one, /محادثات/);
+  assert.doesNotMatch(one, /محادث/);
 
   const many = botText({ name: 'أبو علي', device: 'iPhone 13', waiting: 3, userId: 7 });
-  assert.match(many, /3 محادثات/);
+  assert.match(many, /محادثات/);
 });
 
-test('the same person always gets the same opening — a resend must not look careless', async () => {
+test('the count is written the way Arabic counts, in Arabic-Indic digits', async () => {
+  const { waitingPhrase } = await import('../src/whatsapp.js');
+  assert.equal(waitingPhrase(1), '', 'one conversation is the default case, not a count');
+  assert.match(waitingPhrase(2), /محادثتين/, 'two is a dual word, not "2 محادثات"');
+  assert.match(waitingPhrase(5), /٥ محادثات/);
+  assert.match(waitingPhrase(14), /١٤ محادثة/, 'eleven and up take the singular');
+  // The rest of the message says «٢٤ ساعة»; a Western 5 beside it is the
+  // kind of seam a reader notices instantly.
+  assert.doesNotMatch(waitingPhrase(5), /[0-9]/);
+});
+
+test('the same person always gets the same wording — a resend must not look careless', async () => {
   const { botText } = await import('../src/whatsapp.js');
   const a = botText({ name: 'س', device: 'x', userId: 42 });
   const b = botText({ name: 'س', device: 'x', userId: 42 });
   assert.equal(a, b);
-  // ...while different people do not all get a byte-identical string, which
-  // is the pattern an automated sender is spotted by.
-  const openings = new Set([11, 12, 13, 14].map((id) => botText({ name: 's', device: 'x', userId: id })));
-  assert.ok(openings.size > 1, 'openings must vary across recipients');
+});
+
+test('the corpus is actually varied — every combination is reachable', async () => {
+  const { botText } = await import('../src/whatsapp.js');
+  // The bug this pins: plain FNV-1a barely mixes its low bits, and `% 4`
+  // reads exactly those. Ids 1–8 produced FOUR messages on a period of four,
+  // with all three lists advancing in lockstep — a thousand near-identical
+  // messages from one number, which is the signal this whole design exists
+  // to avoid.
+  const seen = new Set();
+  for (let id = 1; id <= 400; id++) seen.add(botText({ name: 'س', device: 'x', userId: id }));
+  assert.equal(seen.size, 64, `expected all 4×4×4 combinations, got ${seen.size}`);
+
+  // And the distribution is not PERIODIC, which is the shape the bug had:
+  // every id matched id+4 exactly. Demanding that no two of a handful of ids
+  // ever collide would be wrong — eight draws from sixty-four collide about
+  // a third of the time by birthday — so count the period-4 matches instead.
+  // Broken: 100. Healthy: one or two.
+  let periodic = 0;
+  for (let id = 1; id <= 100; id++) {
+    if (botText({ name: 'س', device: 'x', userId: id }) === botText({ name: 'س', device: 'x', userId: id + 4 })) periodic += 1;
+  }
+  assert.ok(periodic < 10, `${periodic}/100 ids repeat at period 4 — the hash is not mixing`);
 });
 
 // ── pacing ─────────────────────────────────────────────────────────────

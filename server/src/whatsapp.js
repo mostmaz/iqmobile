@@ -77,25 +77,6 @@ export function utilityProvider() {
 }
 
 /**
- * What the bot actually types.
- *
- * Four openings, picked from the recipient's own id rather than at random,
- * so one person always gets the same wording (a different greeting on a
- * resend would read as a second, careless message) while the outbound stream
- * is not the identical string a thousand times — which is exactly the
- * pattern an automated sender is spotted by.
- */
-export function botText({ name, device, waiting = 1, userId = 0 }) {
-  const openings = ['مرحباً', 'السلام عليكم', 'هلا', 'مساء الخير'];
-  const hi = openings[Math.abs(Number(userId) || 0) % openings.length];
-  const who = name ? `${hi} ${name}` : hi;
-  const more = waiting > 1
-    ? ` وعندك ${waiting} محادثات تنتظر ردك.`
-    : '';
-  return `${who} 👋\nعندك رسالة على iQ Mobile بخصوص ${device || 'جهازك'} من ٢٤ ساعة وما انفتحت بعد.${more}\nافتح التطبيق للرد قبل ما يشتري من غيرك.`;
-}
-
-/**
  * The Cloud API body. Isolated because every field here is a thing Meta can
  * reject the whole message over.
  *
@@ -122,35 +103,96 @@ export function buildArqamBody(to, params) {
   return { phoneNumber: to, templateName: ARQAM_TEMPLATE, parameters: params };
 }
 
-async function post(url, headers, body) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    let data = null;
-    try { data = await res.json(); } catch { data = null; }
-    return { httpStatus: res.status, ok: res.ok, data };
-  } catch (e) {
-    // Never surface the exception text — it can carry the URL and the token.
-    return { httpStatus: 0, ok: false, data: null, transport: e?.name === 'AbortError' ? 'timeout' : 'network' };
-  } finally {
-    clearTimeout(timer);
-  }
-}
+/**
+ * What the bot actually types.
+ *
+ * ── Why this is built out of parts ─────────────────────────────────────
+ *
+ * A thousand byte-identical messages leaving one number is the clearest
+ * signal there is that a human is not typing them, and it is the signal
+ * WhatsApp's spam detection is looking for. So the text is assembled from
+ * four openings, four ways of stating the fact and four closings — 64
+ * distinct messages before the device name and the waiting count are even
+ * substituted in.
+ *
+ * ── ...and why the choice is a hash, not a random ───────────────────────
+ *
+ * Picked from the RECIPIENT's id, so one person always gets exactly the same
+ * wording. If it were random, a resend would arrive rephrased, which reads
+ * as a second careless message rather than the same one — and the whole
+ * point of the once-per-listing ledger is that it never looks like a chase.
+ *
+ * Each part is hashed with its own salt, so consecutive user ids do not walk
+ * the three lists in lockstep and hand neighbouring sellers the same
+ * combination.
+ */
+const OPENINGS = [
+  (n) => `مرحباً ${n} 👋`,
+  (n) => `السلام عليكم ${n}`,
+  (n) => `هلا ${n}`,
+  (n) => `هلا بيك ${n}`,
+];
+
+const FACTS = [
+  (d) => `عندك رسالة على iQ Mobile بخصوص ${d} من ٢٤ ساعة وما انفتحت بعد.`,
+  (d) => `وصلتك رسالة على تطبيق iQ Mobile بخصوص ${d} من أمس، وبعدها ما انقرأت.`,
+  (d) => `أحد راسلك على iQ Mobile يسأل عن ${d}، وصار لها يوم ما انفتحت.`,
+  (d) => `من يوم وأكو رسالة تنتظرك على iQ Mobile بخصوص ${d}.`,
+];
+
+const CLOSINGS = [
+  'افتح التطبيق وردّ عليه قبل ما يشتري من غيره.',
+  'ادخل التطبيق وردّ — الزبون ينتظر.',
+  'افتح iQ Mobile وشوفها، الرد السريع يفرق بالبيع.',
+  'ردّ عليه من التطبيق حتى ما تضيع الصفقة.',
+];
 
 /**
- * Send one templated message.
+ * FNV-1a plus MurmurHash3's finalizer. Small, stable, and not tied to any
+ * Node version's own hashing.
  *
- * Returns { ok, outcome, detail } and NEVER throws — a nudge must not be able
- * to break the sweep that sends it, let alone the request that scheduled it.
- *
- * outcome: sent | dry_run | unconfigured | bad_phone | rejected | transport
+ * The finalizer is not decoration. Plain FNV-1a barely mixes its LOW bits,
+ * and `% 4` reads exactly those: without it, ids 1–8 produced four messages
+ * repeating with period four, and the three lists walked in lockstep no
+ * matter what the salt was. The point of this function is variety, so a hash
+ * that is only varied in bits nobody reads is no hash at all.
  */
+function pick(list, userId, salt) {
+  const s = `${salt}:${userId}`;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  h ^= h >>> 16; h = Math.imul(h, 2246822507) >>> 0;
+  h ^= h >>> 13; h = Math.imul(h, 3266489909) >>> 0;
+  h ^= h >>> 16;
+  return list[(h >>> 0) % list.length];
+}
+
+/** The rest of the message is in Arabic-Indic digits; the count has to match. */
+const arNum = (n) => String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[+d]);
+
+/**
+ * Arabic counts the way Arabic counts: two is a dual word, three to ten take
+ * the plural, eleven and up take the singular. Getting this wrong is the
+ * kind of thing a reader notices instantly and a template never survives.
+ */
+export function waitingPhrase(n) {
+  if (n <= 1) return '';
+  if (n === 2) return ' وعندك محادثتين تنتظران ردك.';
+  if (n <= 10) return ` وعندك ${arNum(n)} محادثات تنتظر ردك.`;
+  return ` وعندك ${arNum(n)} محادثة تنتظر ردك.`;
+}
+
+export function botText({ name, device, waiting = 1, userId = 0 }) {
+  const id = Number(userId) || 0;
+  const who = name ? pick(OPENINGS, id, 'open')(name) : pick(OPENINGS, id, 'open')('').trim();
+  const fact = pick(FACTS, id, 'fact')(device || 'جهازك');
+  const close = pick(CLOSINGS, id, 'close');
+  return `${who}\n${fact}${waitingPhrase(waiting)}\n${close}`;
+}
+
 export async function sendWhatsApp(phone, facts, { dryRun = true } = {}) {
   const params = [facts.name || 'صاحب المتجر', facts.device || 'جهازك'];
 
