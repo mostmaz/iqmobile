@@ -40,7 +40,7 @@
 // and would strand the sweep silently), then WHATSAPP_PHONE_NUMBER_ID and
 // WHATSAPP_TOKEN in the env.
 import { toE164 } from './iraqiPhone.js';
-import { sendBotMessage, botStatus } from './whatsappBot.js';
+import { sendBotMessage, botStatus, botLinkable } from './whatsappBot.js';
 
 const PROVIDER = (process.env.WHATSAPP_PROVIDER || 'bot').toLowerCase();
 
@@ -61,7 +61,10 @@ const TIMEOUT_MS = 15000;
 
 /** Can this send at all? False means the sweep records `unconfigured` and stops. */
 export function utilityConfigured() {
-  if (PROVIDER === 'bot') return botStatus().linked;
+  // Linkable, not linked: the socket opens lazily inside sendBotMessage, so
+  // requiring it to be open here would refuse every send after a restart and
+  // never let the code that reconnects run. See botLinkable.
+  if (PROVIDER === 'bot') return botLinkable();
   if (PROVIDER === 'arqam') return !!ARQAM_KEY && !!ARQAM_TEMPLATE;
   return !!PHONE_NUMBER_ID && !!TOKEN;
 }

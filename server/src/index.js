@@ -53,6 +53,7 @@ import bannersRoutes from './routes/banners.js';
 import featuresRoutes from './routes/features.js';
 import shopsRoutes from './routes/shops.js';
 import { startExpirer } from './expirer.js';
+import { startBot, botLinkable } from './whatsappBot.js';
 import { startShopJobs } from './shopJobs.js';
 import { warmAdmobKeys } from './admobSsv.js';
 import path from 'node:path';
@@ -331,6 +332,18 @@ app.listen(PORT, () => {
 });
 
 startExpirer();
+
+// Reconnect the WhatsApp session on boot.
+//
+// The credentials survive a deploy (untracked files in server/data), but the
+// socket does not — and nothing else brings it back, because the sweep only
+// asks for a socket when it already has a message to send. Without this,
+// every restart silently stopped the nudges until someone opened the
+// dashboard page. Only when there is a session to resume: a server with no
+// linked number must not sit there generating QR codes nobody will scan.
+if ((process.env.WHATSAPP_PROVIDER || 'bot').toLowerCase() === 'bot' && botLinkable()) {
+  setTimeout(() => { startBot().catch((e) => console.error('[whatsapp-bot] boot reconnect failed', e?.message)); }, 5000);
+}
 startShopJobs();
 // Fetch Google's SSV verifier keys once at boot, so the first real reward is
 // not also the first network round trip to gstatic.

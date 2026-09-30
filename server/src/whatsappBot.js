@@ -49,10 +49,26 @@ const silent = {
   trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {},
 };
 
+/**
+ * Is there a session on disk to reconnect with?
+ *
+ * This, not `linked`, is what "configured" means for the bot: the socket is
+ * opened lazily by sendBotMessage, so asking whether it is open right now —
+ * before anything has asked it to open — is a deadlock. It was one: every
+ * send returned `unconfigured` after a deploy, because nothing reconnected
+ * and nothing could, since the guard ran before the code that connects.
+ */
+export function botLinkable() {
+  try {
+    return fs.existsSync(AUTH_DIR) && fs.readdirSync(AUTH_DIR).some((f) => f.startsWith('creds'));
+  } catch { return false; }
+}
+
 export function botStatus() {
   return {
     connection,
     linked: connection === 'open',
+    linkable: botLinkable(),
     // A QR older than a minute has already expired on WhatsApp's side; say
     // so rather than showing a code that cannot work.
     qr_available: !!lastQr && Date.now() - lastQrAt < 60_000,
