@@ -5,11 +5,20 @@ import { api } from '../api';
 // is what the checkbox reflects — it is disabled without a key anyway, so
 // showing it unchecked matches what the server will actually do.
 // `enabled_setting` is the stored switch position, kept for diagnosis.
+type CatalogModel = { id: string; vendor: 'openai' | 'anthropic'; label: string; per_1000: number; note?: string };
 type InspectionStatus = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean;
   autoreject: boolean; hold: boolean; pending: number; held: number;
+  // The model in effect, the env var it needs, what the dashboard stored
+  // ('' = default), the default, the catalogue, and which keys exist.
   model?: string; key_env?: string;
+  model_setting?: string; model_default?: string;
+  models?: CatalogModel[];
+  keys?: Record<string, boolean>;
 };
+
+const VENDOR_KEY: Record<string, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
+const vendorOf = (id: string) => (/^claude-/i.test(id) ? 'anthropic' : 'openai');
 
 export function SettingsPage() {
   const [ttl, setTtl] = useState<string>('30');
@@ -28,19 +37,36 @@ export function SettingsPage() {
     api<InspectionStatus>('/admin/inspection/status').then(setInsp).catch(() => {});
   }, []);
 
-  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'autoreject' | 'hold'>>) {
-    const body: Record<string, boolean> = {};
+  // Free-text model id, for one the catalogue doesn't list yet.
+  const [customModel, setCustomModel] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+  const [modelErr, setModelErr] = useState('');
+
+  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'autoreject' | 'hold' | 'model_setting'>>) {
+    const body: Record<string, boolean | string> = {};
     if (patch.enabled !== undefined) body.listing_inspection_enabled = patch.enabled;
     if (patch.autoreject !== undefined) body.listing_inspection_autoreject = patch.autoreject;
     if (patch.hold !== undefined) body.listing_inspection_hold = patch.hold;
+    if (patch.model_setting !== undefined) body.listing_inspection_model = patch.model_setting;
+    setModelErr('');
     setInsp((s) => (s ? { ...s, ...patch } : s)); // optimistic
     try {
       await api('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) });
       setInsp(await api<InspectionStatus>('/admin/inspection/status'));
+      if (patch.model_setting !== undefined) setShowCustom(false);
     } catch {
+      if (patch.model_setting !== undefined) setModelErr('اسم نموذج غير مقبول — يجب أن يبدأ بـ gpt- أو claude-');
       setInsp(await api<InspectionStatus>('/admin/inspection/status')); // roll back to truth
     }
   }
+
+  // The selected row of the picker: a catalogue id, '' for the default, or
+  // 'custom' when the stored id is not in the catalogue.
+  const catalogue = insp?.models || [];
+  const stored = insp?.model_setting || '';
+  const pickerValue = showCustom ? 'custom' : !stored ? '' : catalogue.some((m) => m.id === stored) ? stored : 'custom';
+  const keyFor = (id: string) => VENDOR_KEY[vendorOf(id)];
+  const hasKey = (id: string) => !!insp?.keys?.[keyFor(id)];
 
   async function save() {
     await api('/admin/settings', {
@@ -84,8 +110,6 @@ export function SettingsPage() {
             {insp.model ? <> (النموذج الحالي: <code>{insp.model}</code>)</> : null}.
             بدونها يبقى الفحص متوقفاً مهما كان وضع المفتاح.
           </p>
-        ) : insp.model ? (
-          <p style={{ color: '#9ca3af', fontSize: 13 }}>النموذج: <code>{insp.model}</code> — يُغيَّر عبر <code>LISTING_INSPECT_MODEL</code> في <code>.env</code>.</p>
         ) : null}
 
         <div style={{ marginBottom: 12, opacity: insp?.configured ? 1 : 0.5 }}>
@@ -99,6 +123,64 @@ export function SettingsPage() {
             <span>تفعيل الفحص</span>
           </label>
         </div>
+
+        {/* Which model judges. Saved on change like the switches. The API
+            keys stay in .env — this only picks between the vendors whose
+            key is there, and says plainly when the chosen one is missing. */}
+        {insp ? (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: 'block', marginBottom: 6, color: '#9ca3af' }}>النموذج الذي يحكم على الإعلان</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                value={pickerValue}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'custom') { setCustomModel(stored); setShowCustom(true); return; }
+                  setShowCustom(false);
+                  setInspection({ model_setting: v });
+                }}
+              >
+                <option value="">الافتراضي ({insp.model_default})</option>
+                <optgroup label="OpenAI — يحتاج OPENAI_API_KEY">
+                  {catalogue.filter((m) => m.vendor === 'openai').map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · ≈ ${m.per_1000} / 1000 إعلان{m.note ? ` · ${m.note}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Anthropic — يحتاج ANTHROPIC_API_KEY">
+                  {catalogue.filter((m) => m.vendor === 'anthropic').map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · ≈ ${m.per_1000} / 1000 إعلان{m.note ? ` · ${m.note}` : ''}
+                    </option>
+                  ))}
+                </optgroup>
+                <option value="custom">اسم نموذج آخر…</option>
+              </select>
+              {pickerValue === 'custom' ? (
+                <>
+                  <input
+                    placeholder="gpt-… أو claude-…"
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    style={{ minWidth: 220, direction: 'ltr' }}
+                  />
+                  <button onClick={() => setInspection({ model_setting: customModel.trim() })}>حفظ</button>
+                </>
+              ) : null}
+            </div>
+            <p style={{ margin: '6px 0 0', fontSize: 12.5, color: insp.model && hasKey(insp.model) ? '#9ca3af' : '#facc15' }}>
+              المستخدم الآن: <code>{insp.model}</code>
+              {insp.model && hasKey(insp.model)
+                ? <> — المفتاح <code>{keyFor(insp.model)}</code> موجود ✓</>
+                : <> — ⚠️ المفتاح <code>{insp.model ? keyFor(insp.model) : ''}</code> غير موجود في <code>.env</code>؛ الفحص لن يعمل حتى يُضاف.</>}
+            </p>
+            {modelErr ? <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#f87171' }}>{modelErr}</p> : null}
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
+              التكلفة تقديرية لثلاث صور ووصف لكل إعلان — التفاصيل في <code>docs/listing-quality-ai-review.md</code>.
+            </p>
+          </div>
+        ) : null}
 
         <div style={{ marginBottom: 12, opacity: insp?.configured && insp?.enabled ? 1 : 0.5 }}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>

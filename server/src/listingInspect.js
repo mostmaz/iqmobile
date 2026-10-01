@@ -40,14 +40,33 @@ const publicBase = () =>
 const MAX_IMAGES_INSPECTED = 3;
 
 // Which model does the judging. The name picks the vendor: gpt-* goes to
-// OpenAI, claude-* to Anthropic, so switching is one line in .env and no
-// deploy. Default is GPT-6 Luna, the cheapest vision model in the comparison
-// in docs/listing-quality-ai-review.md (≈ $0.6 per 1,000 listings).
-const DEFAULT_MODEL = 'gpt-6-luna';
-export const MODEL = () => process.env.LISTING_INSPECT_MODEL || DEFAULT_MODEL;
+// OpenAI, claude-* to Anthropic. Chosen in the dashboard (Settings →
+// listing_inspection_model), falling back to LISTING_INSPECT_MODEL in .env,
+// then to GPT-6 Luna, the cheapest vision model in the comparison in
+// docs/listing-quality-ai-review.md (≈ $0.6 per 1,000 listings). The API
+// keys stay in .env: a secret has no business in a settings table.
+export const DEFAULT_MODEL = 'gpt-6-luna';
+export const MODEL = () =>
+  getSetting('listing_inspection_model') || process.env.LISTING_INSPECT_MODEL || DEFAULT_MODEL;
 export function providerFor(model = MODEL()) {
   return /^claude-/i.test(model) ? 'anthropic' : 'openai';
 }
+/** A model id the dashboard may store: a vendor prefix we route, sane chars. */
+export function isValidModelId(id) {
+  return typeof id === 'string' && /^(gpt|claude)-[a-z0-9.\-]{1,60}$/i.test(id);
+}
+
+// What the dashboard offers. `per_1000` is the ≈ USD estimate from the doc
+// (3 photos + description per listing); anything not listed can still be
+// typed in, as long as isValidModelId accepts it.
+export const MODEL_CATALOG = [
+  { id: 'gpt-6-luna', vendor: 'openai', label: 'OpenAI GPT-6 Luna', per_1000: 0.6, note: 'الأرخص — الافتراضي' },
+  { id: 'gpt-5.6-luna', vendor: 'openai', label: 'OpenAI GPT-5.6 Luna', per_1000: 1.2 },
+  { id: 'gpt-5-mini', vendor: 'openai', label: 'OpenAI GPT-5 mini', per_1000: 1.5 },
+  { id: 'claude-haiku-4-5', vendor: 'anthropic', label: 'Claude Haiku 4.5', per_1000: 5.6 },
+  { id: 'claude-sonnet-5-5', vendor: 'anthropic', label: 'Claude Sonnet 5.5', per_1000: 11, note: 'رؤية قوية' },
+  { id: 'claude-opus-5-5', vendor: 'anthropic', label: 'Claude Opus 5.5', per_1000: 22, note: 'الأدق — أقل حجب خاطئ' },
+];
 /** Which env var the chosen model needs — shown in the dashboard when missing. */
 export function keyEnvFor(model = MODEL()) {
   return providerFor(model) === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';

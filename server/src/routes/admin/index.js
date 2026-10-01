@@ -35,6 +35,8 @@ import { alertOnPriceChange } from '../priceWatches.js';
 import {
   inspectionConfigured, inspectionEnabled, inspectListingAsync, resolveInspection,
   MODEL as inspectionModel, keyEnvFor as inspectionKeyEnv,
+  isValidModelId as isValidInspectionModel, MODEL_CATALOG as inspectionCatalog,
+  DEFAULT_MODEL as inspectionDefaultModel,
 } from '../../listingInspect.js';
 import { norm as modelNorm } from '../savedSearches.js';
 import { listingsAnsweringRequest } from '../../requestMatch.js';
@@ -280,6 +282,14 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.listing_inspection_hold != null) {
     setSettingValue('listing_inspection_hold', req.body.listing_inspection_hold ? '1' : '0');
+  }
+  // The judging model. Empty string = back to the .env / built-in default.
+  // Only ids with a vendor prefix we can route are stored; a typo here would
+  // otherwise turn every inspection into an error row.
+  if (req.body?.listing_inspection_model != null) {
+    const id = String(req.body.listing_inspection_model).trim();
+    if (id && !isValidInspectionModel(id)) return res.status(400).json({ error: 'bad_model' });
+    setSettingValue('listing_inspection_model', id);
   }
   // Update floor + home overlay. Free-text so the operator controls copy,
   // link and image without a deploy; stored verbatim and escaped at render.
@@ -4105,6 +4115,16 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     // name the missing key rather than guess a vendor.
     model: inspectionModel(),
     key_env: inspectionKeyEnv(),
+    // For the picker: what was chosen in the dashboard ('' = default), the
+    // default it falls back to, the catalogue, and which keys the server
+    // has — presence only, never the values.
+    model_setting: getSetting('listing_inspection_model') || '',
+    model_default: process.env.LISTING_INSPECT_MODEL || inspectionDefaultModel,
+    models: inspectionCatalog,
+    keys: {
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+      ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
+    },
     // Report the EFFECTIVE state, not the raw setting. The switch can be on
     // while the API key is absent, and inspectListingAsync gates on
     // both — so returning the bare setting would have the dashboard announce

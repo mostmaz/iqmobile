@@ -1570,6 +1570,9 @@ setSetting.run('listing_inspection_autoreject', '0');
 // stays live. Defaults ON because that is the point of the check — but it
 // is still inert until listing_inspection_enabled is flipped above.
 setSetting.run('listing_inspection_hold', '1');
+// Which model judges, chosen in the dashboard. Empty = LISTING_INSPECT_MODEL
+// from .env, else the built-in default (see listingInspect.js).
+setSetting.run('listing_inspection_model', '');
 
 // Rewarded-ad listing boost. OFF by default, like every other new switch
 // here: shipping the code must change nothing until an operator says so.

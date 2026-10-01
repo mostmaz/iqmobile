@@ -20,7 +20,7 @@ const { db, now, setSettingValue } = await import('../src/db.js');
 const { issueToken } = await import('../src/auth.js');
 const { default: listings } = await import('../src/routes/listings.js');
 const {
-  applyInspectionResult, resolveInspection, holdEnabled, MODEL, providerFor, keyEnvFor,
+  applyInspectionResult, resolveInspection, holdEnabled, MODEL, providerFor, keyEnvFor, isValidModelId,
 } = await import('../src/listingInspect.js');
 
 const app = express();
@@ -84,6 +84,21 @@ test('the model name picks the vendor and the key it needs', () => {
   assert.equal(providerFor('claude-sonnet-5-5'), 'anthropic');
   assert.equal(keyEnvFor('claude-sonnet-5-5'), 'ANTHROPIC_API_KEY');
   assert.equal(providerFor('gpt-5.6-luna'), 'openai');
+
+  // The dashboard's choice wins over the default; clearing it goes back.
+  setSettingValue('listing_inspection_model', 'claude-haiku-4-5');
+  try {
+    assert.equal(MODEL(), 'claude-haiku-4-5');
+    assert.equal(keyEnvFor(), 'ANTHROPIC_API_KEY');
+  } finally {
+    setSettingValue('listing_inspection_model', '');
+  }
+  assert.equal(MODEL(), 'gpt-6-luna');
+
+  assert.equal(isValidModelId('gpt-6-luna'), true);
+  assert.equal(isValidModelId('claude-sonnet-5-5'), true);
+  assert.equal(isValidModelId('gemini-2.5-flash'), false, 'no client for it');
+  assert.equal(isValidModelId('gpt-6 luna; drop'), false);
 });
 
 test('a bad verdict holds the listing: hidden from buyers, visible to its seller, seller notified', async () => {

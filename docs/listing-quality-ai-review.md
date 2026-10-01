@@ -59,7 +59,8 @@ Seller-facing surfaces:
 | Where | Key | Default | Effect |
 |---|---|---|---|
 | `.env` | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | unset | the key for the chosen model; nothing runs without it |
-| `.env` | `LISTING_INSPECT_MODEL` | `gpt-6-luna` | which model judges; `gpt-*` → OpenAI, `claude-*` → Anthropic |
+| settings | `listing_inspection_model` | empty | **the model picker in dashboard → Settings**; `gpt-*` → OpenAI, `claude-*` → Anthropic |
+| `.env` | `LISTING_INSPECT_MODEL` | `gpt-6-luna` | fallback when the dashboard picker is on "default" |
 | `.env` | `LISTING_INSPECT_DEBOUNCE_MS` | 20000 | wait for photo uploads to go quiet |
 | settings | `listing_inspection_enabled` | 0 | master switch (dashboard → Settings) |
 | settings | `listing_inspection_hold` | 1 | bad = held. Off: bad only queues, listing stays live |
@@ -142,7 +143,7 @@ kept as labels from day one.
 
 The default is GPT-6 Luna, chosen on price. Watch the queue for the first
 few hundred listings: if the crew is approving most of what Luna holds, the
-model is over-holding, and the same listings can be re-run through
-`claude-sonnet-5-5` or `claude-opus-5-5` by changing `LISTING_INSPECT_MODEL`
-(and setting `ANTHROPIC_API_KEY`) to compare against those labels. Both
+model is over-holding, and the same listings can be re-run through Claude
+Sonnet 5.5 or Opus 5.5 by picking them in dashboard → Settings (with
+`ANTHROPIC_API_KEY` in `.env`) to compare against those labels. Both
 vendors' clients ship with the server; Gemini would need a third.
