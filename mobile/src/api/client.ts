@@ -55,7 +55,10 @@ const baseUrl: string =
 // gate from 1.0.0), and a dev build reporting '0' would never see it.
 // Falls back to '0' rather than 'unknown' so an unparseable value still
 // sorts below every real release in a comparison.
-const APP_VERSION: string = Constants.expoConfig?.version || Application.nativeApplicationVersion || '0';
+const APP_VERSION: string = Constants.expoConfig?.version
+  || (Constants as any).nativeAppVersion
+  || Application.nativeApplicationVersion
+  || '0';
 
 let _token: string | null = null;
 export function setToken(token: string | null) {

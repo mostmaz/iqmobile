@@ -110,7 +110,9 @@ function rowOut(r) {
  */
 export function stickerStatus(shopId) {
   const u = db.prepare('SELECT * FROM users WHERE id=?').get(shopId);
-  if (!u || u.seller_type !== 'shop') return null;
+  // Registered shops only: a shop still waiting for review has no shop
+  // page for the QR to open, and an individual has no window.
+  if (!u || u.seller_type !== 'shop' || (u.shop_status || 'approved') !== 'approved') return null;
 
   const open = db.prepare(
     `SELECT * FROM shop_sticker_requests

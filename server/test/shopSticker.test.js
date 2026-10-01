@@ -211,3 +211,14 @@ test('a non-shop account has no sticker status at all', () => {
   assert.equal(stickerStatus(200), null);
   assert.equal(createStickerRequest(200, {}).error, 'not_a_shop');
 });
+
+test('the offer is for registered shops: a shop under review, or an individual, gets no status', () => {
+  shop(901);
+  db.prepare("UPDATE users SET shop_status='pending' WHERE id=901").run();
+  assert.equal(stickerStatus(901), null);
+  db.prepare("UPDATE users SET shop_status='approved' WHERE id=901").run();
+  assert.ok(stickerStatus(901));
+  shop(902);
+  db.prepare("UPDATE users SET seller_type='individual' WHERE id=902").run();
+  assert.equal(stickerStatus(902), null);
+});

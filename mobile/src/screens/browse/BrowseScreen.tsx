@@ -300,7 +300,7 @@ export default function BrowseScreen({ navigation }: any) {
   const { data: stickerStatus } = useQuery({
     queryKey: ['shop-sticker'],
     queryFn: () => Shops.sticker().catch(() => null),
-    enabled: !!user && (user as any).seller_type === 'shop',
+    enabled: !!user && (user as any).seller_type === 'shop' && ((user as any).shop_status ?? 'approved') === 'approved',
     staleTime: 5 * 60 * 1000,
   });
   const { data: feedBanners } = useQuery({

@@ -73,6 +73,9 @@ function publicUser(row) {
     rating_count: row.rating_count,
     verified: !!row.verified,
     seller_type: row.seller_type || 'individual',
+    // 'pending' while a self-registered shop waits for review; the app
+    // keeps shop-only offers (the QR sticker) for approved shops.
+    shop_status: row.seller_type === 'shop' ? (row.shop_status || 'approved') : null,
     shop_years: row.shop_years,
     shop_image_path: row.shop_image_path || null,
     shop_lat: row.shop_lat ?? null,

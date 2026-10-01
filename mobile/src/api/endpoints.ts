@@ -16,6 +16,8 @@ export interface User {
   rating_count: number;
   verified: boolean;
   seller_type: SellerType;
+  /** Shops only: 'approved' once registered, 'pending' while under review. */
+  shop_status?: 'approved' | 'pending' | 'rejected' | null;
   shop_years?: number | null;
   // Shop-specific fields, populated only when seller_type === 'shop' and
   // the user has completed the shop sub-flow.
