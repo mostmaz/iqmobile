@@ -1,4 +1,5 @@
 import { sendSellerSummaries } from './sellerSummaries.js';
+import { startDeviceNameDaily } from './deviceNameDaily.js';
 import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
@@ -204,6 +205,10 @@ async function chatNudgeTick() {
 }
 
 export function startExpirer() {
+  // Device names: catalogue hygiene, suggestion queue, new listing names.
+  // Once a day at 04:00 Baghdad — see deviceNameDaily.js.
+  startDeviceNameDaily();
+
   // Run once on boot so a long-offline server doesn't wait 30s before
   // catching up on its backlog.
   try { tick(); } catch (e) { console.error('[expirer] initial tick failed', e); }

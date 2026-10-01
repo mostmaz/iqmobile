@@ -213,10 +213,14 @@ function modelTokens(model) {
 // network tag name a DIFFERENT device than the run that matched: "Play 20a"
 // is not the Honor "Play", whatever the longest run says.
 const HARMLESS_NUMBER = /^(?:(?:1|2|3|4|6|8|12|16|24|32|64|128|256|512|1024|2048)(?:gb|tb|g)?|20[12]\d|\d+(?:mm|inch|hz|w|mah|mp|k|x|%)|[45]g|lte)$/;
+// A number right after one of these words is a reading, not a model:
+// "بطاريه 98", "صحه 87", "ذاكره 256", "رام 8".
+const READING_WORDS = /^(?:بطاري[هة]|البطاري[هة]|صح[هة]|الصح[هة]|battery|health|ذاكر[هة]|الذاكر[هة]|رام|ram|storage|مساح[هة]|شحن|سعر|السعر)$/;
 function leftoverObjection(tokens, from, to) {
   for (let i = 0; i < tokens.length; i++) {
     if (i >= from && i < to) continue;
     const t = tokens[i];
+    if (i > 0 && READING_WORDS.test(String(tokens[i - 1]).toLowerCase()) && /^\d+%?$/.test(t)) continue;
     if (/\d/.test(t) && !HARMLESS_NUMBER.test(t)) return `leftover:${t}`;
   }
   return null;
