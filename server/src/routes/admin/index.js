@@ -17,7 +17,6 @@ import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
-import { runDeviceNameDaily, lastDeviceNameReport } from '../../deviceNameDaily.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
 import { Expo } from 'expo-server-sdk';
@@ -4111,20 +4110,6 @@ r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
   res.json({ ok: true, brand, model, device_type: type });
 });
 
-// The daily device-name pass (deviceNameDaily.js): last report, and a
-// manual run. ?dry=1 plans without writing.
-r.get('/device-names/daily', requireAdmin, (_req, res) => {
-  res.json(lastDeviceNameReport());
-});
-r.post('/device-names/daily/run', requireAdmin, (req, res) => {
-  const dry = String(req.query.dry || '') === '1';
-  const report = runDeviceNameDaily({
-    apply: !dry,
-    backupDir: path.resolve(process.cwd(), 'data', 'backups'),
-  });
-  res.json(report);
-});
-
 r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
   const s = db.prepare('SELECT * FROM device_suggestions WHERE id=?').get(req.params.id);
   if (!s) return res.status(404).json({ error: 'not_found' });
@@ -4206,11 +4191,6 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error' AND created_at > ?")
       .get(now() - 7 * 24 * 60 * 60 * 1000).n,
     errors_total: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
-    // How much of the pending queue is the keyword gate rather than the model.
-    pending_words: db.prepare(
-      `SELECT COUNT(*) AS n FROM listing_inspections i JOIN phone_listings l ON l.id=i.listing_id
-        WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1) AND i.judged_by='words'`,
-    ).get().n,
   });
 });
 

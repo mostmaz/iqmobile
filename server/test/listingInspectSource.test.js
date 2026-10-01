@@ -1,6 +1,6 @@
-// Every row in listing_inspections says who judged it — the keyword gate
-// or a model — so the queue can tell a hit on «ضد الكسر» from a verdict
-// that looked at the photos.
+// Every row in listing_inspections says who judged it. The keyword gate
+// that used to write 'words' rows is retired; only the model writes now,
+// and the old rows keep their label so the queue still tells them apart.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,6 @@ process.env.DB_PATH = path.join(tmp, 'test.db');
 process.env.JWT_SECRET = 'test-secret';
 
 const { db } = await import('../src/db.js');
-const { flagListingForReview } = await import('../src/listingFlag.js');
 const { applyInspectionResult } = await import('../src/listingInspect.js');
 
 const NOW = Date.now();
@@ -25,16 +24,15 @@ function listing(id) {
   return id;
 }
 const row = (id) => db.prepare('SELECT verdict, judged_by, status FROM listing_inspections WHERE listing_id=?').get(id);
+function oldWordsRow(id) {
+  db.prepare(`INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, created_at, judged_by)
+              VALUES(?,'suspect','medium',?,'pending',?,'words')`)
+    .run(id, JSON.stringify([{ kind: 'cracked_screen', source: 'description', evidence: 'الوصف يذكر: «كسر»' }]), NOW);
+}
 
-test('the keyword gate signs its rows as words', () => {
-  const id = listing(1);
-  flagListingForReview(id, [{ kind: 'cracked_screen', term: 'كسر' }]);
-  assert.deepEqual(row(id), { verdict: 'suspect', judged_by: 'words', status: 'pending' });
-});
-
-test('a model verdict signs as model, and replaces a gate row on the same listing', () => {
+test('a model verdict signs as model, and replaces a leftover gate row on the same listing', () => {
   const id = listing(2);
-  flagListingForReview(id, [{ kind: 'cracked_screen', term: 'كسر' }]);
+  oldWordsRow(id);
   applyInspectionResult(id, { verdict: 'clean', confidence: 'high', defects: [] });
   assert.deepEqual(row(id), { verdict: 'clean', judged_by: 'model', status: 'pending' });
 });

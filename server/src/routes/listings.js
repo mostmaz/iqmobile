@@ -14,8 +14,7 @@ import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
 import { detectBrand } from '../importParse.js';
-import { checkListingQuality, reviewListingQuality } from '../listingQuality.js';
-import { flagListingForReview } from '../listingFlag.js';
+import { checkListingQuality } from '../listingQuality.js';
 import { promotionPerformance } from '../promotionPerformance.js';
 import { logEvent } from '../eventLog.js';
 import { alertOnNewListing } from './savedSearches.js';
@@ -29,7 +28,7 @@ import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
 import { uploadLimiter, createLimiter } from '../limits.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
-import { parseConditionDetails, serializeConditionDetails, annotateDisclosure } from '../conditionDetails.js';
+import { parseConditionDetails, serializeConditionDetails } from '../conditionDetails.js';
 // Every valid value, not just the sellable ones — see src/conditions.js.
 import { CONDITIONS } from '../conditions.js';
 import { RANK_TS, rankTs } from '../listingRank.js';
@@ -400,19 +399,13 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   // Quality gate — refuse a device that is not sellable here at all:
   // doesn't work, stolen, locked to someone else's account. Negation-aware,
   // so "بدون مشكلة" / "مو مقفول" still pass. Admin quick-add is exempt.
+  // Disclosed damage ("شاشة مكسورة") is NOT refused and no longer queues
+  // the listing by itself: the review queue is fed by the photo check in
+  // listingInspect.js alone. The keyword rows it used to write drowned the
+  // operator in «ضد الكسر» hits that were never defects.
   if (checkListingQuality(model, description)) {
     return res.status(400).json({ error: 'listing_quality' });
   }
-  // Disclosed damage is a different answer: the listing goes live and an
-  // operator sees it. Held until the row exists, since the queue is keyed
-  // on the listing id.
-  // Annotated with what the seller already ticked, so the operator can tell
-  // a seller confessing a crack from one hiding it. Both still reach the
-  // queue; only the framing differs.
-  const damage = annotateDisclosure(
-    reviewListingQuality(model, description),
-    req.body.condition_details,
-  );
   const rawPrice = Number(asking_price);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) return res.status(400).json({ error: 'bad_price' });
   // "500" means 500,000 — see priceScale.js. Applied here rather than in the
@@ -502,10 +495,6 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   if (priceScaled) {
     console.log(`[price-scale] listing ${row.id}: ${rawPrice} -> ${price} (${finalBrand} ${model})`);
   }
-  // Disclosed damage — live, but queued. The seller is told nothing: they
-  // described the phone honestly and the listing worked, which is exactly
-  // the behaviour to encourage.
-  if (damage) flagListingForReview(row.id, damage.defects);
   res.json({ ...attachImages([row])[0], price_corrected: priceScaled ? rawPrice : null });
 });
 
@@ -1348,17 +1337,6 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   // Post-response so alert fan-out can't slow or fail the edit itself.
   if (updatedRow.asking_price < row.asking_price) {
     setImmediate(() => alertOnPriceChange(updatedRow, row.asking_price));
-  }
-  // Damage added by an edit reaches the queue the same way it would have at
-  // creation. Re-checked on every text edit rather than once, because a
-  // description that changes after an operator approved it is new
-  // information — flagListingForReview decides whether that reopens the row.
-  if (textChanged) {
-    const damage = annotateDisclosure(
-      reviewListingQuality(updatedRow.model, updatedRow.description),
-      updatedRow.condition_details_json,
-    );
-    if (damage) flagListingForReview(updatedRow.id, damage.defects);
   }
   res.json(attachImages([updatedRow])[0]);
 });

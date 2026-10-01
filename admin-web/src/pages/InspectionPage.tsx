@@ -28,7 +28,7 @@ type Row = {
 type Last7 = { checked: number; errors: number; clean: number; suspect: number; defective: number; held: number; rejected: number };
 type Status = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean; decide: boolean;
-  pending: number; held: number; errors: number; errors_total?: number; pending_words?: number; last7?: Last7;
+  pending: number; held: number; errors: number; errors_total?: number; last7?: Last7;
   model?: string; key_env?: string;
 };
 
@@ -121,7 +121,6 @@ export function InspectionPage() {
               ? <strong style={{ color: '#e5e7eb' }}>الذكاء الاصطناعي يقرر</strong>
               : <>يسجّل النتائج فقط — <span style={{ color: '#facc15' }}>كل الإعلانات تبقى ظاهرة</span></>}
             {' · '}<strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
-            {status.pending_words ? <span className="muted"> (منها {status.pending_words} من فلتر الكلمات، بلا ذكاء اصطناعي)</span> : null}
             {status.held > 0 ? <> · <strong style={{ color: '#fb923c' }}>{status.held}</strong> محجوب عن النشر — البائع ينتظر</> : null}
             {/* Recent failures only. The all-time number was 373 rows from an
                 August key with no credit, and it read as "the check is broken". */}
