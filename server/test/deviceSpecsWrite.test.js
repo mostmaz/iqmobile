@@ -12,7 +12,7 @@ process.env.JWT_SECRET = 'specs-test-only';
 
 const { db } = await import('../src/db.js');
 const { issueToken } = await import('../src/auth.js');
-const { parseGsmParts, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs } =
+const { parseGsmParts, partsFromHtml, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs } =
   await import('../src/deviceSpecsWrite.js');
 const { specsFor } = await import('../src/deviceSpecs.js');
 const { default: express } = await import('express');
@@ -62,6 +62,27 @@ test('parseGsmParts mirrors the Python parser', () => {
 test('highlight watts only fill what the Charging row lacks', () => {
   const p = parseGsmParts({ ds: { chipset: 'x' }, pairs: [], hl: '<i class="icon-wired-charging"></i>PD<i class="icon-wireless-charging"></i>15W' });
   assert.equal(p.charge_w, null);
+  assert.equal(p.charge_w_wireless, 15);
+});
+
+const PAGE = `<h1 class="specs-phone-name-title" data-spec="modelname">Nothing Phone (2)</h1>
+<div data-spec="battype-hl"><i class="head-icon icon-wired-charging"></i>45W</div>
+<table><tr><td class="ttl"><a href="x">Size</a></td><td class="nfo" data-spec="displaysize">6.7 inches, 108.4 cm<sup>2</sup></td></tr>
+<tr><td class="ttl">Chipset</td><td class="nfo" data-spec="chipset">Qualcomm SM8475 Snapdragon 8+ Gen 1 (4 nm)</td></tr>
+<tr><td class="ttl">Internal</td><td class="nfo" data-spec="internalmemory">128GB 8GB RAM, 256GB 12GB RAM</td></tr>
+<tr><td class="ttl">Single</td><td class="nfo" data-spec="cam1modules">50 MP, f/1.9 (wide)<br>50 MP, f/2.2 (ultrawide)</td></tr>
+<tr><td class="ttl">Type</td><td class="nfo" data-spec="batdescription1">Li-Ion 4700 mAh</td></tr>
+<tr><td class="ttl">Charging</td><td class="nfo">45W wired, PD3.0<br>15W wireless (Qi)<br>5W reverse wired</td></tr></table>`;
+
+test('partsFromHtml reads the page the way gsm_specs.py does', () => {
+  const { name, parts } = partsFromHtml(PAGE);
+  assert.equal(name, 'Nothing Phone (2)');
+  const p = parseGsmParts(parts);
+  assert.equal(p.display_inches, 6.7);
+  assert.equal(p.camera_main, '50 MP, f/1.9 (wide) 50 MP, f/2.2 (ultrawide)');
+  assert.deepEqual(p.ram_gb, [8, 12]);
+  assert.equal(p.battery_mah, 4700);
+  assert.equal(p.charge_w, 45);
   assert.equal(p.charge_w_wireless, 15);
 });
 
@@ -128,6 +149,19 @@ test('admin endpoints: missing list, add from GSMArena, map a second spelling', 
     const map = await call('/device-specs/map', { spec_id: add.json.spec_id, models: [{ brand: 'Apple', model: 'iPhone17' }] });
     assert.equal(map.status, 200);
     assert.ok(specsFor('Apple', 'iPhone17'));
+    // A script on gsmarena.com posts the raw page with an upload token.
+    const ut = (await call('/import/upload-token', {})).json.token;
+    const viaPage = await fetch(`${base}/device-specs/gsmarena?ut=${ut}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'nothing_phone_(2)-12386.php', html: PAGE, models: [{ brand: 'Apple', model: 'Phone 2 test' }] }),
+    }).then(async (r) => ({ status: r.status, json: await r.json() }));
+    assert.equal(viaPage.status, 200);
+    assert.equal(viaPage.json.device, 'Nothing Phone (2)');
+    assert.equal(specsFor('Apple', 'Phone 2 test').battery_mah, 4700);
+    const noAuth = await fetch(`${base}/device-specs/gsmarena?ut=nope`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    });
+    assert.equal(noAuth.status, 401);
     const unknown = await call('/device-specs/map', { spec_id: add.json.spec_id, models: [{ brand: 'Nope', model: 'x' }] });
     assert.equal(unknown.status, 400);
   } finally {

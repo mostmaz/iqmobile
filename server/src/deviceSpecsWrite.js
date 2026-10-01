@@ -107,6 +107,42 @@ export function parseGsmParts(parts) {
   };
 }
 
+const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", apos: "'", nbsp: ' ' };
+const unescape = (s) => String(s).replace(/&(#\d+|#x[0-9a-f]+|[a-z0-9]+);/gi, (m, e) => {
+  if (ENT[e.toLowerCase()] != null) return ENT[e.toLowerCase()];
+  if (e[0] === '#') {
+    const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+    return Number.isFinite(n) ? String.fromCodePoint(n) : m;
+  }
+  return m;
+});
+const htmlText = (s) => unescape(String(s ?? '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' '))
+  .replace(/\s+/g, ' ').trim();
+
+/**
+ * Split GSMArena page HTML (the whole page, or just the h1 + highlights +
+ * #specs-list fragments) into the same {ds, pairs, hl} pieces
+ * parseGsmParts() takes, plus the device name from the page title.
+ * Same regexes as tools/gsmarena/gsm_specs.py rows().
+ */
+export function partsFromHtml(html) {
+  const page = String(html || '');
+  const ds = {};
+  for (const m of page.matchAll(/data-spec="([a-z0-9_-]+)"[^>]*>([\s\S]*?)<\/(?:td|div|span|strong)>/gi)) {
+    const v = htmlText(m[2]);
+    if (v && ds[m[1]] == null) ds[m[1]] = v;
+  }
+  const pairs = [];
+  for (const m of page.matchAll(/<td class="ttl"[^>]*>([\s\S]*?)<\/td>\s*<td class="nfo"[^>]*>([\s\S]*?)<\/td>/gi)) {
+    const k = htmlText(m[1]);
+    const v = htmlText(m[2]);
+    if (k && v) pairs.push([k, v]);
+  }
+  const hl = (/data-spec="battype-hl"[^>]*>([\s\S]*?)<\/div>/i.exec(page) || [])[1] || '';
+  const name = htmlText((/<h1[^>]*specs-phone-name-title[^>]*>([\s\S]*?)<\/h1>/i.exec(page) || [])[1] || '');
+  return { name, parts: { ds, pairs, hl } };
+}
+
 /** A GSMArena device page path, normalised to the form the bulk import stores ("apple_iphone_17-14000.php"). */
 export function gsmPagePath(url) {
   const m = /^(?:https?:\/\/(?:www\.|m\.)?gsmarena\.com\/)?([a-z0-9_()+.-]+-\d+\.php)$/i.exec(String(url || '').trim());

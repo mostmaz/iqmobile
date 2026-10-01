@@ -18,7 +18,7 @@ import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import {
-  parseGsmParts, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs,
+  parseGsmParts, partsFromHtml, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs,
 } from '../../deviceSpecsWrite.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
@@ -1762,8 +1762,8 @@ r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
 // one of these via curl (Authorization header), then passes it to the
 // in-page script as a query param.
 //
-// Scope: works only for POST /admin/import/:id/images (no other admin
-// action). Lifetime: 30 minutes. Single-use: marked used on first
+// Scope: works only for POST /admin/import/:id/images and
+// POST /admin/device-specs/gsmarena (no other admin action). Lifetime: 30 minutes. Single-use: marked used on first
 // successful upload. Stored in-memory (Map) — fine because admin
 // sessions are short and a server restart simply invalidates pending
 // tokens; the admin re-issues one.
@@ -4169,16 +4169,27 @@ r.post('/device-specs/map', requireAdmin, (req, res) => {
   res.json({ ok: true, spec_id: spec.id, device: spec.source_name, mapped: written });
 });
 
-// parts = what the browser read off the GSMArena page:
-//   ds:    { [data-spec]: text }   pairs: [[label, value], …]   hl: battery highlight HTML
-r.post('/device-specs/gsmarena', requireAdmin, (req, res) => {
+// The sheet comes either as
+//   html:  the page's HTML (or its h1 + highlights + #specs-list fragments),
+//          parsed here — what a script on gsmarena.com itself sends, or
+//   parts: { ds: {[data-spec]: text}, pairs: [[label, value]], hl } already
+//          split by the caller.
+// Also accepts a short-lived upload token (?ut=) so a script running on
+// gsmarena.com can post the page straight here without carrying the admin
+// token — same arrangement as the Facebook image import.
+r.post('/device-specs/gsmarena', requireAdminOrUploadToken, (req, res) => {
   const { error, targets } = readSpecTargets(req.body);
   if (error) return res.status(400).json({ error });
   const page = gsmPagePath(req.body?.url);
   if (!page) return res.status(400).json({ error: 'bad_gsmarena_url' });
-  const name = String(req.body?.name || '').trim().slice(0, 120);
+  let parts = req.body?.parts;
+  let pageName = '';
+  if (typeof req.body?.html === 'string' && req.body.html) {
+    ({ parts, name: pageName } = partsFromHtml(req.body.html));
+  }
+  const name = String(req.body?.name || pageName || '').trim().slice(0, 120);
   if (!name) return res.status(400).json({ error: 'name_required' });
-  const parsed = parseGsmParts(req.body?.parts);
+  const parsed = parseGsmParts(parts);
   // A page that parsed to nothing is a wrong page or a changed layout —
   // either way a blank sheet under a listing helps nobody.
   if (!parsed.display_inches && !parsed.chipset && !parsed.battery_mah) {
