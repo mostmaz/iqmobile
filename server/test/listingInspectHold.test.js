@@ -19,7 +19,9 @@ const { default: express } = await import('express');
 const { db, now, setSettingValue } = await import('../src/db.js');
 const { issueToken } = await import('../src/auth.js');
 const { default: listings } = await import('../src/routes/listings.js');
-const { applyInspectionResult, resolveInspection, holdEnabled } = await import('../src/listingInspect.js');
+const {
+  applyInspectionResult, resolveInspection, holdEnabled, MODEL, providerFor, keyEnvFor,
+} = await import('../src/listingInspect.js');
 
 const app = express();
 app.use(express.json());
@@ -73,6 +75,15 @@ const BAD = {
 
 test('hold is on by default', () => {
   assert.equal(holdEnabled(), true);
+});
+
+test('the model name picks the vendor and the key it needs', () => {
+  assert.equal(MODEL(), 'gpt-6-luna');
+  assert.equal(providerFor(), 'openai');
+  assert.equal(keyEnvFor(), 'OPENAI_API_KEY');
+  assert.equal(providerFor('claude-sonnet-5-5'), 'anthropic');
+  assert.equal(keyEnvFor('claude-sonnet-5-5'), 'ANTHROPIC_API_KEY');
+  assert.equal(providerFor('gpt-5.6-luna'), 'openai');
 });
 
 test('a bad verdict holds the listing: hidden from buyers, visible to its seller, seller notified', async () => {

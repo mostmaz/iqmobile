@@ -20,15 +20,16 @@
 //   model to answer suspect when unsure, so a hesitant bad verdict is not a
 //   strong enough reason to hide someone's ad.
 //
-// Off unless: ANTHROPIC_API_KEY is set AND listing_inspection_enabled=1.
+// Off unless: the chosen model's API key is set AND listing_inspection_enabled=1.
 // Nothing here ever throws into a request path — every entry point is wrapped.
 
+import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { db, now, getSetting } from './db.js';
 import { notifyListingReview } from './notify.js';
 import { pushToAdmins } from './adminPush.js';
 
-// The public origin Claude fetches images from. Same default as the social
+// The public origin the model fetches images from. Same default as the social
 // publisher — override with PUBLIC_BASE_URL if the API ever moves.
 const publicBase = () =>
   (process.env.PUBLIC_BASE_URL || 'https://api.iqmobile.org').replace(/\/+$/, '');
@@ -38,10 +39,19 @@ const publicBase = () =>
 // back, and one angle; more adds cost without catching much extra.
 const MAX_IMAGES_INSPECTED = 3;
 
-// Which Claude model does the judging. Overridable so the operator can trade
-// accuracy for cost without a deploy (see docs/listing-quality-ai-review.md
-// for the per-1000-listings comparison).
-const MODEL = () => process.env.LISTING_INSPECT_MODEL || 'claude-opus-5-5';
+// Which model does the judging. The name picks the vendor: gpt-* goes to
+// OpenAI, claude-* to Anthropic, so switching is one line in .env and no
+// deploy. Default is GPT-6 Luna, the cheapest vision model in the comparison
+// in docs/listing-quality-ai-review.md (≈ $0.6 per 1,000 listings).
+const DEFAULT_MODEL = 'gpt-6-luna';
+export const MODEL = () => process.env.LISTING_INSPECT_MODEL || DEFAULT_MODEL;
+export function providerFor(model = MODEL()) {
+  return /^claude-/i.test(model) ? 'anthropic' : 'openai';
+}
+/** Which env var the chosen model needs — shown in the dashboard when missing. */
+export function keyEnvFor(model = MODEL()) {
+  return providerFor(model) === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+}
 
 // The app uploads photos ONE AT A TIME, each hitting POST /listings/:id/images.
 // Inspecting on every upload meant three or four concurrent checks of the
@@ -49,14 +59,19 @@ const MODEL = () => process.env.LISTING_INSPECT_MODEL || 'claude-opus-5-5';
 // full price. Wait for the uploads to go quiet, then look once at all of them.
 const INSPECT_DEBOUNCE_MS = Number(process.env.LISTING_INSPECT_DEBOUNCE_MS) || 20_000;
 
-let _client = null;
-function client() {
-  if (!_client) _client = new Anthropic();
-  return _client;
+let _anthropic = null;
+function anthropic() {
+  if (!_anthropic) _anthropic = new Anthropic();
+  return _anthropic;
+}
+let _openai = null;
+function openai() {
+  if (!_openai) _openai = new OpenAI();
+  return _openai;
 }
 
 export function inspectionConfigured() {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return !!process.env[keyEnvFor()];
 }
 export function inspectionEnabled() {
   return inspectionConfigured() && getSetting('listing_inspection_enabled') === '1';
@@ -72,8 +87,10 @@ export function holdEnabled() {
   return getSetting('listing_inspection_hold') !== '0';
 }
 
-// Schema the model's answer is constrained to. With output_config.format the
-// response is guaranteed to parse — no prose to scrape, no defensive regex.
+// Schema the model's answer is constrained to. Both vendors' structured
+// output modes guarantee the response parses — no prose to scrape, no
+// defensive regex. OpenAI's strict mode additionally requires every object
+// to list all its properties as required and forbid extras; this does.
 const SCHEMA = {
   type: 'object',
   properties: {
@@ -142,23 +159,62 @@ const SYSTEM = `أنت مُدقّق جودة في سوق موبايلات عرا
 إذا شككت، اختر suspect وليس defective — القرار النهائي لموظف بشري.
 اكتب evidence بجملة عربية قصيرة تصلح لعرضها على البائع.`;
 
+/** The listing as the model reads it, after the photos. */
+function listingText(listing) {
+  return [
+    `الجهاز: ${listing.brand} ${listing.model}`,
+    `الحالة المعلنة: ${listing.condition}`,
+    `السعر: ${listing.asking_price}`,
+    `الوصف: ${listing.description || '(بدون وصف)'}`,
+  ].join('\n');
+}
+
 // Ask the model about one listing. Returns the parsed result, or null if the
-// model declined to answer.
+// model gave no answer. A refusal throws, so it lands in the dashboard as an
+// error row rather than passing as "clean".
 export async function inspectListing(listing, imagePaths) {
   const urls = (imagePaths || []).slice(0, MAX_IMAGES_INSPECTED).map((p) => `${publicBase()}${p}`);
-  const parts = urls.map((url) => ({ type: 'image', source: { type: 'url', url } }));
-  parts.push({
-    type: 'text',
-    text: [
-      `الجهاز: ${listing.brand} ${listing.model}`,
-      `الحالة المعلنة: ${listing.condition}`,
-      `السعر: ${listing.asking_price}`,
-      `الوصف: ${listing.description || '(بدون وصف)'}`,
-    ].join('\n'),
+  const model = MODEL();
+  return providerFor(model) === 'anthropic'
+    ? inspectWithAnthropic(model, listing, urls)
+    : inspectWithOpenAI(model, listing, urls);
+}
+
+async function inspectWithOpenAI(model, listing, urls) {
+  const content = urls.map((url) => ({ type: 'image_url', image_url: { url } }));
+  content.push({ type: 'text', text: listingText(listing) });
+
+  const response = await openai().chat.completions.create({
+    model,
+    max_completion_tokens: 1024,
+    // Bounded classification, not research: the lowest effort that still
+    // reasons. Luna is a reasoning model, so "none" is not an option.
+    reasoning_effort: 'low',
+    response_format: {
+      type: 'json_schema',
+      json_schema: { name: 'listing_quality', schema: SCHEMA, strict: true },
+    },
+    messages: [
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content },
+    ],
   });
 
-  const response = await client().messages.create({
-    model: MODEL(),
+  const choice = response.choices?.[0];
+  if (!choice) return null;
+  if (choice.message?.refusal) throw new Error(`model refused: ${choice.message.refusal.slice(0, 120)}`);
+  if (choice.finish_reason === 'content_filter') throw new Error('model refused (content_filter)');
+  if (choice.finish_reason === 'length') throw new Error('answer cut off (max_completion_tokens)');
+  const text = choice.message?.content;
+  return text ? JSON.parse(text) : null;
+}
+
+async function inspectWithAnthropic(model, listing, urls) {
+  const parts = urls.map((url) => ({ type: 'image', source: { type: 'url', url } }));
+  parts.push({ type: 'text', text: listingText(listing) });
+
+  const response = await anthropic().messages.create({
+    model,
     max_tokens: 1024,
     // The system prompt is byte-identical every call, so caching it means we
     // only pay full price for it once per 5-minute window.
@@ -169,7 +225,6 @@ export async function inspectListing(listing, imagePaths) {
   });
 
   // A safety-classifier decline comes back as a normal 200 with no answer.
-  // Recorded as an error row so it shows in the dashboard, never as "clean".
   if (response.stop_reason === 'refusal') {
     throw new Error(`model refused (${response.stop_details?.category || 'unspecified'})`);
   }

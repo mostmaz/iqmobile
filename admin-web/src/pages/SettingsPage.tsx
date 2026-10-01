@@ -8,6 +8,7 @@ import { api } from '../api';
 type InspectionStatus = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean;
   autoreject: boolean; hold: boolean; pending: number; held: number;
+  model?: string; key_env?: string;
 };
 
 export function SettingsPage() {
@@ -79,9 +80,12 @@ export function SettingsPage() {
           <p style={{ color: '#9ca3af' }}>جارٍ التحميل…</p>
         ) : !insp.configured ? (
           <p style={{ color: '#facc15', fontSize: 13.5 }}>
-            ⚠️ يتطلّب إضافة <code>ANTHROPIC_API_KEY</code> في ملف <code>.env</code> على الخادم.
+            ⚠️ يتطلّب إضافة <code>{insp.key_env || 'OPENAI_API_KEY'}</code> في ملف <code>.env</code> على الخادم
+            {insp.model ? <> (النموذج الحالي: <code>{insp.model}</code>)</> : null}.
             بدونها يبقى الفحص متوقفاً مهما كان وضع المفتاح.
           </p>
+        ) : insp.model ? (
+          <p style={{ color: '#9ca3af', fontSize: 13 }}>النموذج: <code>{insp.model}</code> — يُغيَّر عبر <code>LISTING_INSPECT_MODEL</code> في <code>.env</code>.</p>
         ) : null}
 
         <div style={{ marginBottom: 12, opacity: insp?.configured ? 1 : 0.5 }}>

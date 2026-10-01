@@ -58,8 +58,8 @@ Seller-facing surfaces:
 
 | Where | Key | Default | Effect |
 |---|---|---|---|
-| `.env` | `ANTHROPIC_API_KEY` | unset | nothing runs without it |
-| `.env` | `LISTING_INSPECT_MODEL` | `claude-opus-5-5` | which Claude model judges |
+| `.env` | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | unset | the key for the chosen model; nothing runs without it |
+| `.env` | `LISTING_INSPECT_MODEL` | `gpt-6-luna` | which model judges; `gpt-*` → OpenAI, `claude-*` → Anthropic |
 | `.env` | `LISTING_INSPECT_DEBOUNCE_MS` | 20000 | wait for photo uploads to go quiet |
 | settings | `listing_inspection_enabled` | 0 | master switch (dashboard → Settings) |
 | settings | `listing_inspection_hold` | 1 | bad = held. Off: bad only queues, listing stays live |
@@ -94,7 +94,7 @@ cloud.google.com/vertex-ai/generative-ai/pricing (same as the Gemini API).
 |---|---|---|---|
 | Claude Haiku 4.5 | 1.00 / 5.00 | **5.6** | cheapest Claude; weakest judgement |
 | Claude Sonnet 5.5 | 2.00 / 10.00 | **11** | hi-res image tier; strong vision |
-| Claude Opus 5.5 (default) | 4.00 / 20.00 | **22** | best judgement, lowest false holds |
+| Claude Opus 5.5 | 4.00 / 20.00 | **22** | best judgement, lowest false holds |
 | Claude Opus 5 (previous default) | 5.00 / 25.00 | 28 | superseded; switch off it |
 | Gemini 2.5 Flash-Lite | 0.10 / 0.40 | **0.5** | ≈1,290 tokens per 1024² image |
 | Gemini 3.1 Flash-Lite | 0.25 / 1.50 | 1.4 | |
@@ -110,7 +110,7 @@ vendors' pages; confirm before budgeting on them.
 
 | Model | $/1M in / out | ≈ $ per 1,000 listings | Image rule (snippet) |
 |---|---|---|---|
-| OpenAI GPT-6 Luna (22 Sep 2026) | 0.10 / 0.50, cached 0.01 | **0.6** | 32-px patches × 1.2, cap 2,500 → ≈1,440 / photo |
+| OpenAI GPT-6 Luna (22 Sep 2026) — **default** | 0.10 / 0.50, cached 0.01 | **0.6** | 32-px patches × 1.2, cap 2,500 → ≈1,440 / photo |
 | OpenAI GPT-5.6 Luna (Jul 2026, cut 30 Jul) | 0.20 / 1.20 | 1.2 | same rule |
 | OpenAI GPT-6 Sol / Astra | not found | — | larger tiers above Luna; prices unconfirmed |
 | OpenAI gpt-5-mini / gpt-5-nano | 0.25 / 2.00 · 0.05 / 0.40 | 1.5 · 0.4 | previous generation |
@@ -134,16 +134,15 @@ live. Prompt caching is already on for the system prompt.
 ### Reading the table
 
 Every option is cheap in absolute terms: even Opus 5.5 is about 2 cents a
-listing, Haiku about half a cent, and a Flash-Lite model a twentieth of a
-cent. The expensive event is a **wrong hold**: a seller with a clean phone
-told their ad "may not be published" and made to wait. That is why the
-default stays on the strongest model and why the hold needs medium or high
-confidence.
+listing, Haiku about half a cent, Luna a sixteenth of a cent. The expensive
+event is a **wrong hold**: a seller with a clean phone told their ad "may
+not be published" and made to wait. That is why the hold needs medium or
+high confidence, and why the operators' approve/remove decisions should be
+kept as labels from day one.
 
-Suggested path: run Opus 5.5 for the first few hundred listings and keep the
-operators' approve/remove decisions as labels. Then re-run the same listings
-through Sonnet 5.5 and Haiku 4.5 with `LISTING_INSPECT_MODEL` and compare
-against those labels. Drop to the cheapest model whose false-hold rate the
-crew accepts. Switching vendor (Gemini, OpenAI) would need a new client
-module; the server already ships the Anthropic SDK and the structured-output
-schema this module relies on.
+The default is GPT-6 Luna, chosen on price. Watch the queue for the first
+few hundred listings: if the crew is approving most of what Luna holds, the
+model is over-holding, and the same listings can be re-run through
+`claude-sonnet-5-5` or `claude-opus-5-5` by changing `LISTING_INSPECT_MODEL`
+(and setting `ANTHROPIC_API_KEY`) to compare against those labels. Both
+vendors' clients ship with the server; Gemini would need a third.

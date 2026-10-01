@@ -26,6 +26,7 @@ type Row = {
 type Status = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean; autoreject: boolean;
   hold: boolean; pending: number; held: number; errors: number;
+  model?: string; key_env?: string;
 };
 
 const DEFECT_AR: Record<string, string> = {
@@ -92,13 +93,14 @@ export function InspectionPage() {
         <h2>فحص الإعلانات بالذكاء الاصطناعي</h2>
         {!status ? <p style={{ color: '#9ca3af' }}>جارٍ التحميل…</p> : !status.configured ? (
           <p style={{ color: '#facc15' }}>
-            غير مُفعّل — يجب إضافة <code>ANTHROPIC_API_KEY</code> في ملف <code>.env</code> على الخادم أولاً.
+            غير مُفعّل — يجب إضافة <code>{status.key_env || 'OPENAI_API_KEY'}</code> في ملف <code>.env</code> على الخادم أولاً
+            {status.model ? <> (النموذج: <code>{status.model}</code>)</> : null}.
           </p>
         ) : !status.enabled ? (
           <p style={{ color: '#9ca3af' }}>الفحص متوقف. فعّله من صفحة الإعدادات.</p>
         ) : (
           <p style={{ color: '#9ca3af' }}>
-            الفحص يعمل · <strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
+            الفحص يعمل{status.model ? <> (<code>{status.model}</code>)</> : null} · <strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
             {status.held > 0 ? <> · <strong style={{ color: '#fb923c' }}>{status.held}</strong> محجوب عن النشر — البائع ينتظر</> : null}
             {status.errors > 0 ? <> · <span style={{ color: '#f87171' }}>{status.errors} فشل</span></> : null}
           </p>

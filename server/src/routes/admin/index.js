@@ -32,7 +32,10 @@ import { applyFeature } from '../../featuring.js';
 import { post as walletPost } from '../../wallet.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
-import { inspectionConfigured, inspectionEnabled, inspectListingAsync, resolveInspection } from '../../listingInspect.js';
+import {
+  inspectionConfigured, inspectionEnabled, inspectListingAsync, resolveInspection,
+  MODEL as inspectionModel, keyEnvFor as inspectionKeyEnv,
+} from '../../listingInspect.js';
 import { norm as modelNorm } from '../savedSearches.js';
 import { listingsAnsweringRequest } from '../../requestMatch.js';
 import {
@@ -4093,13 +4096,17 @@ r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
 
 // ─── AI listing inspection ────────────────────────────────────────────
 // Drives the dashboard's switches + review queue. `configured` reports
-// whether ANTHROPIC_API_KEY exists at all, so the UI can explain *why* the
+// whether the model's API key exists at all, so the UI can explain *why* the
 // switch is unavailable instead of silently doing nothing when flipped.
 r.get('/inspection/status', requireAdmin, (_req, res) => {
   res.json({
     configured: inspectionConfigured(),
+    // Which model judges and which env var it needs, so the dashboard can
+    // name the missing key rather than guess a vendor.
+    model: inspectionModel(),
+    key_env: inspectionKeyEnv(),
     // Report the EFFECTIVE state, not the raw setting. The switch can be on
-    // while ANTHROPIC_API_KEY is absent, and inspectListingAsync gates on
+    // while the API key is absent, and inspectListingAsync gates on
     // both — so returning the bare setting would have the dashboard announce
     // "الفحص يعمل" for a feature that cannot run.
     enabled: inspectionEnabled(),

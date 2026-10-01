@@ -108,7 +108,8 @@ New listings go through an AI quality check once their photos are up: a
 good device (new, like new, scratches) stays published; a bad one (broken
 screen, dead touch, shattered back, "not working") is held, the seller is
 notified, and an operator approves or rejects it from the dashboard. Off
-until `ANTHROPIC_API_KEY` is set and the switch is on — see
+until the model's API key is set (`OPENAI_API_KEY` for the default GPT-6
+Luna) and the switch is on — see
 `docs/listing-quality-ai-review.md`, which also has the per-1,000-listings
 cost comparison across models.
 
