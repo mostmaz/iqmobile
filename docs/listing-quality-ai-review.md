@@ -110,12 +110,22 @@ vendors' pages; confirm before budgeting on them.
 
 | Model | $/1M in / out | ≈ $ per 1,000 listings | Image rule (snippet) |
 |---|---|---|---|
-| OpenAI gpt-5-nano | 0.05 / 0.40 | 0.4 | 32-px patches × 1.5 → ≈1,800 / photo |
-| OpenAI gpt-5-mini | 0.25 / 2.00 | 1.5 | 32-px patches × 1.2 → ≈1,440 / photo |
-| OpenAI gpt-5.5 | 5.00 / 30.00 | ≈ 30 | image rule not found |
+| OpenAI GPT-6 Luna (22 Sep 2026) | 0.10 / 0.50, cached 0.01 | **0.6** | 32-px patches × 1.2, cap 2,500 → ≈1,440 / photo |
+| OpenAI GPT-5.6 Luna (Jul 2026, cut 30 Jul) | 0.20 / 1.20 | 1.2 | same rule |
+| OpenAI GPT-6 Sol / Astra | not found | — | larger tiers above Luna; prices unconfirmed |
+| OpenAI gpt-5-mini / gpt-5-nano | 0.25 / 2.00 · 0.05 / 0.40 | 1.5 · 0.4 | previous generation |
 | Mistral Small 4 | 0.15 / 0.60 | ≈ 0.8 | image rule not found |
 | Qwen3-VL-Flash (Alibaba) | 0.05 / 0.40 | ≈ 0.4 | image rule not found |
 | Amazon Nova Lite | 0.06 / 0.24 | ≈ 0.4 | snippet dated 2025 |
+
+On Luna specifically: it is OpenAI's cheapest current vision model and the
+snippets agree on its price (requesty.ai, openrouter.ai, pricepertoken.com,
+developersdigest.tech). Two cautions before betting on it. The quoted
+per-1,000 figure is at the price every third-party tracker reports, not a
+page from openai.com. And several reports (alphasignal.ai, OpenAI developer
+community) describe a silent image-understanding bug in GPT-6 Sol and Luna
+that OpenAI patched server-side around 25 Sep 2026; for a job that is
+entirely about reading photos, run a labelled sample before trusting it.
 
 Batch APIs (50 % off at every vendor above) do not fit this job: results
 arrive within hours, and the seller has already been told the listing is
