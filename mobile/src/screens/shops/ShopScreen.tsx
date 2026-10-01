@@ -21,7 +21,7 @@ import {
   IconStar, IconPin, IconSpark, IconArrowLeft, IconMsgCall, IconPlus,
   IconSearch, IconClose, IconChevronDown, IconShare, IconChat, IconPhoneIcon,
 } from '../../components/icons';
-import { Shops, Chats } from '../../api/endpoints';
+import { Shops } from '../../api/endpoints';
 import { useCart } from '../../lib/cart';
 import { fullImageUrl } from '../../api/upload';
 import { arOf } from '../../lib/governorates';
@@ -63,11 +63,9 @@ export default function ShopScreen({ navigation, route }: any) {
     const target = ((shop as any)?.listings || []).find((l: any) => l.status === 'active')?.id
       ?? ((shop as any)?.listings || [])[0]?.id;
     if (!target || chatStarting) return;
+    // The thread itself is created by ChatScreen on the first message.
     setChatStarting(true);
-    try {
-      const chat = await Chats.startForListing(target);
-      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
-    } catch {}
+    (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { listingId: target } });
     setChatStarting(false);
   }
 

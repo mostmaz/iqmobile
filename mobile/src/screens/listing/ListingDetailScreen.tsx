@@ -19,7 +19,7 @@ import { conditionRows } from '../../lib/conditionDetails';
 import { noteViewed } from '../../lib/recentlyViewed';
 import { isOnRequest, isNegotiable, ON_REQUEST_LABEL, NEGOTIABLE_LABEL } from '../../lib/priceMode';
 import { ListingDetailSkeleton } from '../../components/Skeleton';
-import { Listings, Reports, Chats, PriceWatches } from '../../api/endpoints';
+import { Listings, Reports, PriceWatches } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { FullScreenGallery } from '../../components/FullScreenGallery';
 import { ar } from '../../i18n/ar';
@@ -337,15 +337,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
       Alert.alert('خطأ', (ar.errors as any).cannot_chat_self);
       return;
     }
+    // No request here. ChatScreen creates the thread on the first message,
+    // so a tap that opens the screen and leaves puts nothing in the
+    // seller's inbox — which is what 898 of 3,815 taps in 60 days did.
     setChatStarting(true);
-    try {
-      const chat = await Chats.startForListing(id);
-      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
-    } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
-    } finally {
-      setChatStarting(false);
-    }
+    (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { listingId: id } });
+    setChatStarting(false);
   }
 
   // "Talk to the shop" on a price-book listing. The chat is opened on the
@@ -357,14 +354,8 @@ export default function ListingDetailScreen({ route, navigation }: any) {
     const target = (data as any)?.store_chat;
     if (!target) return;
     setStoreChatStarting(true);
-    try {
-      const chat = await Chats.startForListing(target.listing_id);
-      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
-    } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
-    } finally {
-      setStoreChatStarting(false);
-    }
+    (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { listingId: target.listing_id } });
+    setStoreChatStarting(false);
   }
 
   // Seller-side: jump to ChatsList filtered to this listing.

@@ -12,7 +12,7 @@ import { theme, fonts, radius } from '../../theme';
 import { linkify } from '../../lib/linkify';
 import { Btn, fmtIQD } from '../../components/ui';
 import { IconArrowLeft, IconFlag } from '../../components/icons';
-import { Chats, Deals, Reports, type Chat, type ChatMessage } from '../../api/endpoints';
+import { Chats, Deals, Listings, Reports, type Chat, type ChatMessage, type Listing } from '../../api/endpoints';
 import { sendChatImage, fullImageUrl } from '../../api/upload';
 import { compressForChatBubble } from '../../lib/imageCompress';
 import { parsePrice } from '../../lib/format';
@@ -36,7 +36,17 @@ import { isAcknowledged, type OutboxEntry } from '../../lib/chatOutboxCore';
 const DEAL_FLOW_ENABLED = false;
 
 export default function ChatScreen({ route, navigation }: any) {
-  const { id } = route.params as { id: number };
+  const params = route.params as { id?: number; listingId?: number };
+  // Opened from a listing, the screen arrives with a listingId and NO chat:
+  // nothing exists on the server until the first message is sent. Before
+  // this, «مراسلة» created the thread on the tap, and 898 of the 3,815
+  // threads opened in 60 days stayed empty — each one at the top of a
+  // seller's inbox as "لا رسائل بعد". `id` is undefined while drafting and
+  // every query below is gated on it.
+  const [chatId, setChatId] = useState<number | undefined>(params.id);
+  const id = chatId as number;
+  const isDraft = !chatId;
+  const draftListingId = isDraft ? params.listingId : undefined;
   const insets = useSafeAreaInsets();
   const kbHeight = useKeyboardHeight();
   const { user } = useAuth();
@@ -69,10 +79,12 @@ export default function ChatScreen({ route, navigation }: any) {
   const { data: chat } = useQuery<Chat>({
     queryKey: ['chat', id],
     queryFn: () => Chats.get(id),
+    enabled: !!chatId,
   });
   const { data: messages } = useQuery<ChatMessage[]>({
     queryKey: ['messages', id],
     queryFn: () => Chats.messages(id),
+    enabled: !!chatId,
     // Belt-and-suspenders alongside SSE: a dropped event (mobile flake,
     // background tab, server emit racing with addClient) used to leave
     // the screen stale until manual refresh. Polling at 3s keeps live
@@ -83,9 +95,56 @@ export default function ChatScreen({ route, navigation }: any) {
     // cannot. On a dead connection this was 20 requests a minute, each
     // burning a full 20s deadline — pure battery for guaranteed failures.
     // Reachability re-dials SSE and refetches the moment it returns.
-    refetchInterval: online ? 3000 : false,
+    refetchInterval: online && chatId ? 3000 : false,
   });
   const { data: quick } = useQuery({ queryKey: ['quickMessages'], queryFn: Chats.quickMessages });
+
+  // Drafting: the buyer may already have a thread for this listing. Find it
+  // rather than open an empty screen over an existing conversation.
+  const { data: existing } = useQuery<Chat[]>({
+    queryKey: ['chat-for-listing', draftListingId],
+    queryFn: () => Chats.listForListing(draftListingId!),
+    enabled: !!draftListingId && !!user,
+  });
+  useEffect(() => {
+    const mine = existing?.find((c) => c.buyer_id === user?.id);
+    if (mine && !chatId) { setChatId(mine.id); navigation.setParams({ id: mine.id }); }
+  }, [existing, user?.id, chatId, navigation]);
+  // The header needs a name and a device before any chat row exists.
+  const { data: draftListing } = useQuery<Listing>({
+    queryKey: ['listing', draftListingId],
+    queryFn: () => Listings.get(draftListingId!),
+    enabled: !!draftListingId,
+  });
+
+  // The chip row renders exactly where the thumb was when it tapped
+  // «مراسلة» on the listing page, and on production 41% of first-chip sends
+  // landed within three seconds of the thread opening — the tap that
+  // started the navigation, or its double, arriving on the new screen as
+  // "هل المنتج متوفر؟". The row is inert until the screen has been up a
+  // moment.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setArmed(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  /** The chat id — creating the thread now if this is still a draft. */
+  const creating = useRef<Promise<number | null> | null>(null);
+  async function ensureChat(): Promise<number | null> {
+    if (chatId) return chatId;
+    if (!draftListingId) return null;
+    if (!creating.current) {
+      creating.current = Chats.startForListing(draftListingId)
+        .then((c) => { setChatId(c.id); navigation.setParams({ id: c.id }); return c.id; })
+        .catch((e: any) => {
+          Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
+          return null;
+        })
+        .finally(() => { creating.current = null; });
+    }
+    return creating.current;
+  }
 
   // Queued messages render after everything the server knows about — they
   // are, by definition, the newest thing in the conversation.
@@ -94,9 +153,12 @@ export default function ChatScreen({ route, navigation }: any) {
     ...outbox.map((e) => ({ __outbox: e })),
   ];
 
-  const refresh = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['chat', id] });
-    qc.invalidateQueries({ queryKey: ['messages', id] });
+  // `cid` is passed explicitly right after a draft becomes a thread: the
+  // closure that sent the first message still holds `id` as undefined.
+  const refresh = useCallback((cid: number = id) => {
+    qc.invalidateQueries({ queryKey: ['chat', cid] });
+    qc.invalidateQueries({ queryKey: ['messages', cid] });
+    qc.invalidateQueries({ queryKey: ['chats'] });
   }, [id, qc]);
 
   // SSE — refresh on any chat-related event for this chat.
@@ -135,19 +197,21 @@ export default function ChatScreen({ route, navigation }: any) {
   async function send() {
     const text = body.trim();
     if (!text || !user) return;
-    const entry = queueMessage(id, text);
+    const cid = await ensureChat();
+    if (!cid) return;
+    const entry = queueMessage(cid, text);
     setBody('');
     setWarning(null);
-    deliver(entry.key, text);
+    deliver(entry.key, text, cid);
   }
 
-  async function deliver(key: string, text: string) {
+  async function deliver(key: string, text: string, cid: number = id) {
     markPending(key);
     try {
-      const r = await Chats.sendText(id, text);
+      const r = await Chats.sendText(cid, text);
       markSent(key);
       if (r.blocked) setWarning(ar.chat.blockedHint);
-      refresh();
+      refresh(cid);
     } catch (e: any) {
       markFailed(key, e?.message || 'network_error');
     }
@@ -174,19 +238,14 @@ export default function ChatScreen({ route, navigation }: any) {
   }, [messages, outbox.length, user?.id]);
 
   async function sendQuick(s: string) {
-    // Early-return when already sending — rapid taps on a quick-reply chip
-    // used to fire two parallel sends and clobber the typed draft.
-    if (sending) return;
-    // Don't replace the user's typed draft. Pass `s` directly so whatever
-    // they were typing stays in the input.
-    setSending(true);
-    try {
-      const r = await Chats.sendText(id, s);
-      if (r.blocked) setWarning(ar.chat.blockedHint);
-      refresh();
-    } catch (e: any) {
-      Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
-    } finally { setSending(false); }
+    // Through the outbox like a typed message, so the bubble shows at once.
+    // The old path showed nothing until the next poll, and people tapped
+    // the chip again — one thread on production holds 145 copies.
+    if (sending || !armed || !user) return;
+    const cid = await ensureChat();
+    if (!cid) return;
+    const entry = queueMessage(cid, s);
+    deliver(entry.key, s, cid);
   }
 
   async function pickAndSendImage() {
@@ -200,14 +259,16 @@ export default function ChatScreen({ route, navigation }: any) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 1,
     });
     if (!r || r.canceled || !r.assets?.[0]?.uri) return;
+    const cid = await ensureChat();
+    if (!cid) return;
     setSending(true);
     try {
       // Wrap BOTH compress + send in the try — a corrupt HEIC or OOM
       // during compression used to throw outside the catch, leaving
       // `sending` stuck true and the user with no error message.
       const compressed = await compressForChatBubble(r.assets[0].uri);
-      await sendChatImage(id, compressed);
-      refresh();
+      await sendChatImage(cid, compressed);
+      refresh(cid);
     } catch (e: any) {
       Alert.alert('خطأ', (ar.errors as any)[e?.message] || (ar.errors as any).network);
     } finally { setSending(false); }
@@ -257,17 +318,21 @@ export default function ChatScreen({ route, navigation }: any) {
     ]);
   }
 
-  if (!chat) return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
+  if (!chat && !(isDraft && draftListing)) return <View style={{ flex: 1, backgroundColor: theme.bg }} />;
 
-  const role = chat.role;
-  const deal = chat.active_deal;
+  const role = chat?.role ?? 'buyer';
+  const deal = chat?.active_deal ?? null;
   // Counterparty is whichever party isn't the viewer. Server already
   // strips sensitive fields from each side; we just need the display
-  // name + avatar shape here.
-  const counterparty = role === 'buyer' ? chat.seller : chat.buyer;
+  // name + avatar shape here. A draft has only the listing to go on.
+  const counterparty = chat
+    ? (role === 'buyer' ? chat.seller : chat.buyer)
+    : (draftListing?.seller ?? null);
   const counterpartyName = counterparty?.display_name || 'مستخدم';
-  const listingId = chat.listing?.id;
-  const listingLabel = chat.listing ? `${chat.listing.brand} ${chat.listing.model}` : null;
+  const listingRef = chat?.listing
+    ?? (draftListing ? { id: draftListing.id, brand: draftListing.brand, model: draftListing.model, asking_price: draftListing.asking_price } : null);
+  const listingId = listingRef?.id;
+  const listingLabel = listingRef ? `${listingRef.brand} ${listingRef.model}` : null;
 
   // The gate. Rendered instead of the conversation until the OS says yes.
   // `loading` renders blank rather than the gate so a granted user never sees
@@ -313,6 +378,7 @@ export default function ChatScreen({ route, navigation }: any) {
    * one-sided block would be worse than saying so. See docs/reporting.md.
    */
   function reportChat() {
+    if (!chatId) return;   // nothing exists to report yet
     // A guest tapping this used to hit a bare `return` — the flag icon did
     // nothing at all, silently. Guests can open and hold conversations, so
     // the person most exposed to a scammer was the one person with no way to
@@ -395,17 +461,18 @@ export default function ChatScreen({ route, navigation }: any) {
                 }}>
                   {listingLabel}
                 </Text>
-                {chat.listing ? (
+                {listingRef ? (
                   <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: theme.subtle }}>
-                    · {fmtIQD(chat.listing.asking_price)} د.ع
+                    · {fmtIQD(listingRef.asking_price)} د.ع
                   </Text>
                 ) : null}
               </View>
             </TouchableOpacity>
           ) : null}
         </View>
-        {/* The only way to report abuse from where abuse happens. */}
-        <TouchableOpacity
+        {/* The only way to report abuse from where abuse happens. Not
+            offered on a draft: there is no thread to report. */}
+        {chatId ? <TouchableOpacity
           onPress={reportChat}
           activeOpacity={0.7}
           accessibilityRole="button"
@@ -418,7 +485,7 @@ export default function ChatScreen({ route, navigation }: any) {
           }}
         >
           <IconFlag size={17} color={theme.subtle} />
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
         <TouchableOpacity onPress={() => navigation.goBack()} activeOpacity={0.7} style={{
           width: 38, height: 38, borderRadius: radius.lg,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
@@ -459,7 +526,7 @@ export default function ChatScreen({ route, navigation }: any) {
         // either reuses or creates), so the most useful prompt is "say
         // hi" rather than just blank space.
         ListEmptyComponent={
-          messages === undefined || feed.length > 0 ? null : (
+          (messages === undefined && !isDraft) || feed.length > 0 ? null : (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
               <Text style={{ fontFamily: fonts.arBold, fontSize: 15, color: theme.ink, textAlign: 'center', marginBottom: 6 }}>
                 {ar.chat.noMessagesTitle}
@@ -481,9 +548,9 @@ export default function ChatScreen({ route, navigation }: any) {
       {quick && quick.length > 0 ? (
         <View style={{ paddingHorizontal: 12, marginBottom: 6, flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 6 }}>
           {quick.map((q) => (
-            <TouchableOpacity key={q} onPress={() => sendQuick(q)} disabled={sending} style={{
+            <TouchableOpacity key={q} onPress={() => sendQuick(q)} disabled={!armed || sending} style={{
               paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: theme.surface,
-              borderWidth: 1, borderColor: theme.line,
+              borderWidth: 1, borderColor: theme.line, opacity: armed ? 1 : 0.45,
             }}>
               <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.ink }}>{q}</Text>
             </TouchableOpacity>

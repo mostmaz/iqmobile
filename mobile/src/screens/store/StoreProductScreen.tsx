@@ -24,7 +24,7 @@ import { SkBlock } from '../../components/Skeleton';
 import {
   IconArrowLeft, IconMsgCall, IconBox, IconPlus, IconMinus, IconCheck, IconShield, IconChat,
 } from '../../components/icons';
-import { Storefront, Chats, type StoreVariant } from '../../api/endpoints';
+import { Storefront, type StoreVariant } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { useCart } from '../../lib/cart';
 import { deliveryWindowAr } from '../../lib/format';
@@ -123,15 +123,10 @@ export default function StoreProductScreen({ navigation, route }: any) {
   async function startStoreChat() {
     const target = selected?.id ?? product?.variants?.[0]?.id;
     if (!target) return;
+    // The thread itself is created by ChatScreen on the first message.
     setChatStarting(true);
-    try {
-      const chat = await Chats.startForListing(target);
-      (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { id: chat.id } });
-    } catch (e: any) {
-      Alert.alert('خطأ', 'تعذّر فتح المحادثة، حاول مرة أخرى.');
-    } finally {
-      setChatStarting(false);
-    }
+    (navigation as any).getParent()?.navigate('Chats', { screen: 'Chat', params: { listingId: target } });
+    setChatStarting(false);
   }
 
   const deliveryWindow = deliveryWindowAr(
