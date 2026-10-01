@@ -38,6 +38,7 @@ import {
   MODEL as inspectionModel, keyEnvFor as inspectionKeyEnv,
   isValidModelId as isValidInspectionModel, MODEL_CATALOG as inspectionCatalog,
   DEFAULT_MODEL as inspectionDefaultModel, testConnection as testInspectionConnection,
+  apiKeyFor as inspectionApiKey, apiKeySourceFor as inspectionKeySource,
 } from '../../listingInspect.js';
 import { norm as modelNorm } from '../savedSearches.js';
 import { listingsAnsweringRequest } from '../../requestMatch.js';
@@ -280,6 +281,16 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.listing_inspection_decide != null) {
     setSettingValue('listing_inspection_decide', req.body.listing_inspection_decide ? '1' : '0');
+  }
+  // Vendor API keys pasted into the dashboard. Stored as-is; an empty
+  // string removes one. A key in .env still wins over these. Never echoed
+  // back — the status route reports presence and the last four characters.
+  for (const vendor of ['openai', 'anthropic']) {
+    const field = `listing_inspection_key_${vendor}`;
+    if (req.body?.[field] == null) continue;
+    const key = String(req.body[field]).trim();
+    if (key.length > 400 || /\s/.test(key)) return res.status(400).json({ error: 'bad_key' });
+    setSettingValue(field, key);
   }
   // The judging model. Empty string = back to the .env / built-in default.
   // Only ids with a vendor prefix we can route are stored; a typo here would
@@ -4142,10 +4153,16 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     model_setting: getSetting('listing_inspection_model') || '',
     model_default: process.env.LISTING_INSPECT_MODEL || inspectionDefaultModel,
     models: inspectionCatalog,
-    keys: {
-      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
-      ANTHROPIC_API_KEY: !!process.env.ANTHROPIC_API_KEY,
-    },
+    // Presence and origin only — the value never leaves the server. The
+    // hint is the last four characters, enough to tell two keys apart.
+    keys: Object.fromEntries(['gpt-6-luna', 'claude-sonnet-5-5'].map((m) => {
+      const k = inspectionApiKey(m);
+      return [inspectionKeyEnv(m), {
+        present: !!k,
+        source: inspectionKeySource(m),
+        hint: k ? k.slice(-4) : null,
+      }];
+    })),
     // Report the EFFECTIVE state, not the raw setting. The switch can be on
     // while the API key is absent, and inspectListingAsync gates on
     // both — so returning the bare setting would have the dashboard announce

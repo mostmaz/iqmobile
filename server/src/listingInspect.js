@@ -131,19 +131,43 @@ export function keyEnvFor(model = MODEL()) {
 // full price. Wait for the uploads to go quiet, then look once at all of them.
 const INSPECT_DEBOUNCE_MS = Number(process.env.LISTING_INSPECT_DEBOUNCE_MS) || 20_000;
 
+// Where a vendor's key may come from, in order: the server's .env (an
+// operator with shell access), else the dashboard (app_settings, pasted by
+// an admin on the Settings card). The dashboard copy is a convenience for
+// a team without shell access; the row is readable by anyone who can read
+// the database, which already holds everything else about the marketplace.
+export function keySettingFor(model = MODEL()) {
+  return `listing_inspection_key_${providerFor(model)}`;
+}
+export function apiKeyFor(model = MODEL()) {
+  return process.env[keyEnvFor(model)] || getSetting(keySettingFor(model)) || '';
+}
+/** Where the key in effect came from: 'env' | 'dashboard' | null. */
+export function apiKeySourceFor(model = MODEL()) {
+  if (process.env[keyEnvFor(model)]) return 'env';
+  if (getSetting(keySettingFor(model))) return 'dashboard';
+  return null;
+}
+
+// Clients are cached per key, so a key pasted into the dashboard takes
+// effect on the next call without a restart.
 let _anthropic = null;
+let _anthropicKey = null;
 function anthropic() {
-  if (!_anthropic) _anthropic = new Anthropic();
+  const apiKey = apiKeyFor();
+  if (!_anthropic || _anthropicKey !== apiKey) { _anthropic = new Anthropic({ apiKey }); _anthropicKey = apiKey; }
   return _anthropic;
 }
 let _openai = null;
+let _openaiKey = null;
 function openai() {
-  if (!_openai) _openai = new OpenAI();
+  const apiKey = apiKeyFor();
+  if (!_openai || _openaiKey !== apiKey) { _openai = new OpenAI({ apiKey }); _openaiKey = apiKey; }
   return _openai;
 }
 
 export function inspectionConfigured() {
-  return !!process.env[keyEnvFor()];
+  return !!apiKeyFor();
 }
 export function inspectionEnabled() {
   return inspectionConfigured() && getSetting('listing_inspection_enabled') === '1';
@@ -321,7 +345,7 @@ async function inspectWithAnthropic(model, listing, images) {
 export async function testConnection() {
   const model = MODEL();
   const key_env = keyEnvFor(model);
-  if (!process.env[key_env]) return { ok: false, model, key_env, error: `${key_env} غير موجود في .env` };
+  if (!apiKeyFor(model)) return { ok: false, model, key_env, error: `لا يوجد مفتاح: أضف ${key_env} في .env أو الصقه هنا في اللوحة` };
   try {
     if (providerFor(model) === 'anthropic') await anthropic().models.retrieve(model);
     else await openai().models.retrieve(model);

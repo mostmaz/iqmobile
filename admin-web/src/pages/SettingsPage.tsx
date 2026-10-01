@@ -15,7 +15,7 @@ type InspectionStatus = {
   model?: string; key_env?: string;
   model_setting?: string; model_default?: string;
   models?: CatalogModel[];
-  keys?: Record<string, boolean>;
+  keys?: Record<string, { present: boolean; source: 'env' | 'dashboard' | null; hint: string | null }>;
 };
 
 const VENDOR_KEY: Record<string, string> = { openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
@@ -76,7 +76,28 @@ export function SettingsPage() {
   const stored = insp?.model_setting || '';
   const pickerValue = showCustom ? 'custom' : !stored ? '' : catalogue.some((m) => m.id === stored) ? stored : 'custom';
   const keyFor = (id: string) => VENDOR_KEY[vendorOf(id)];
-  const hasKey = (id: string) => !!insp?.keys?.[keyFor(id)];
+  const keyInfo = (id: string) => insp?.keys?.[keyFor(id)];
+  const hasKey = (id: string) => !!keyInfo(id)?.present;
+  // Paste-a-key field. The value goes to the server once and is never shown
+  // again; the status line reports presence and the last four characters.
+  const [keyDraft, setKeyDraft] = useState('');
+  const [keyMsg, setKeyMsg] = useState('');
+  async function saveKey(clear = false) {
+    if (!insp?.model) return;
+    const field = `listing_inspection_key_${vendorOf(insp.model)}`;
+    const value = clear ? '' : keyDraft.trim();
+    if (!clear && !value) return;
+    setKeyMsg('');
+    try {
+      await api('/admin/settings', { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
+      setKeyDraft('');
+      setKeyTest(null);
+      setInsp(await api<InspectionStatus>('/admin/inspection/status'));
+      setKeyMsg(clear ? 'أُزيل المفتاح.' : 'حُفظ المفتاح — اضغط «اختبر» للتأكد.');
+    } catch {
+      setKeyMsg('لم يُحفظ: مفتاح غير صالح (فراغات أو طويل جداً).');
+    }
+  }
 
   async function save() {
     await api('/admin/settings', {
@@ -182,9 +203,33 @@ export function SettingsPage() {
             <p style={{ margin: '6px 0 0', fontSize: 12.5, color: insp.model && hasKey(insp.model) ? '#9ca3af' : '#facc15' }}>
               المستخدم الآن: <code>{insp.model}</code>
               {insp.model && hasKey(insp.model)
-                ? <> — المفتاح <code>{keyFor(insp.model)}</code> موجود ✓</>
-                : <> — ⚠️ المفتاح <code>{insp.model ? keyFor(insp.model) : ''}</code> غير موجود في <code>.env</code>؛ الفحص لن يعمل حتى يُضاف.</>}
+                ? <> — المفتاح <code>{keyFor(insp.model)}</code> موجود ✓
+                    {' '}({keyInfo(insp.model)?.source === 'env' ? 'من .env على الخادم' : 'من اللوحة'}
+                    {keyInfo(insp.model)?.hint ? <>، ينتهي بـ <code>…{keyInfo(insp.model)?.hint}</code></> : null})</>
+                : <> — ⚠️ لا يوجد مفتاح <code>{insp.model ? keyFor(insp.model) : ''}</code>؛ الفحص لن يعمل حتى يُضاف.</>}
             </p>
+            {/* No shell needed: paste the vendor key here. A key in .env on
+                the server always wins over this one. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={vendorOf(insp.model || '') === 'anthropic' ? 'sk-ant-…' : 'sk-…'}
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                style={{ minWidth: 300, direction: 'ltr' }}
+              />
+              <button disabled={!keyDraft.trim()} onClick={() => saveKey(false)}>احفظ المفتاح</button>
+              {keyInfo(insp.model || '')?.source === 'dashboard' ? (
+                <button className="secondary" onClick={() => saveKey(true)}>أزل المفتاح</button>
+              ) : null}
+              {keyMsg ? <span style={{ fontSize: 12.5, color: '#9ca3af' }}>{keyMsg}</span> : null}
+            </div>
+            {keyInfo(insp.model || '')?.source === 'env' ? (
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
+                المفتاح الحالي من <code>.env</code> على الخادم؛ ما يُحفظ هنا يُستخدم فقط إذا أُزيل ذاك.
+              </p>
+            ) : null}
             {modelErr ? <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#f87171' }}>{modelErr}</p> : null}
             {/* Presence of the variable says nothing about the key being
                 right. This asks the vendor — one free call, no photos. */}
