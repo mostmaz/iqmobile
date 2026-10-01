@@ -77,7 +77,9 @@ export default function RequestsScreen({ navigation }: any) {
   // seller, not two filters.
   const [brands, setBrands] = useState<string[]>([]);
   const [band, setBand] = useState<string>('all');
-  const brandRows = useQuery({ queryKey: ['brands'], queryFn: () => DeviceCatalog.brands(), staleTime: 60 * 60_000 });
+  // Its own cache key: ['brands'] is the funnel's query of a different
+  // endpoint ({id, name} rows), and sharing it rendered blank pills here.
+  const brandRows = useQuery({ queryKey: ['catalog-brands', 'phone'], queryFn: () => DeviceCatalog.brands(), staleTime: 60 * 60_000 });
   const brandRailRef = React.useRef<ScrollView>(null);
   const bandRailRef = React.useRef<ScrollView>(null);
   const bandOf = BANDS.find((b) => b.key === band) || BANDS[0];

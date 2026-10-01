@@ -24,6 +24,7 @@ import { fullImageUrl } from '../../api/upload';
 import { arOf } from '../../lib/governorates';
 import { reviewSettled, reviewPollDelay, reviewCopy, REVIEW_GIVE_UP_MS } from '../../lib/listingReview';
 import { useTrack } from '../../analytics/track';
+import { subscribeSSE } from '../../sse/client';
 
 export default function ListingStatusScreen({ route, navigation }: any) {
   const id = Number(route.params?.id);
@@ -54,6 +55,19 @@ export default function ListingStatusScreen({ route, navigation }: any) {
   });
   const data = q.data;
   const state = data?.state;
+
+  // The operator's decision arrives live: a seller who kept this screen
+  // open while waiting sees «نُشر» / «لم يُنشر» the moment it is made,
+  // not on the next visit.
+  const refetch = q.refetch;
+  React.useEffect(() => {
+    const unsub = subscribeSSE((event: string, payload?: any) => {
+      if (!String(event).startsWith('listing.review.')) return;
+      if (payload?.listing_id && Number(payload.listing_id) !== id) return;
+      refetch();
+    });
+    return () => { unsub(); };
+  }, [id, refetch]);
 
   React.useEffect(() => {
     if (state) track('listing.status_screen', { listing_id: id, state });

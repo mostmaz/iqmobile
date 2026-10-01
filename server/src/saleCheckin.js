@@ -136,7 +136,11 @@ export function answerSaleCheckin(listingId, sellerId, answer, { salePrice = nul
   if (!l) return { error: 'not_found' };
   if (l.seller_id !== sellerId) return { error: 'forbidden' };
   if (answer !== 'sold' && answer !== 'still') return { error: 'bad_answer' };
-  const price = Number.isFinite(Number(salePrice)) && Number(salePrice) > 0 ? Math.round(Number(salePrice)) : null;
+  // Optional, and only kept when it could be a phone's price: a typo like
+  // 300000300000 is worth less than nothing to the market data.
+  const MAX_SANE_PRICE = 50_000_000;
+  const n = Number(salePrice);
+  const price = Number.isFinite(n) && n > 0 && n <= MAX_SANE_PRICE ? Math.round(n) : null;
 
   const tx = db.transaction(() => {
     let row = db.prepare('SELECT * FROM sale_checkins WHERE listing_id=? AND answer IS NULL ORDER BY round DESC LIMIT 1').get(listingId);

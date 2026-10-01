@@ -107,12 +107,15 @@ test('«انباع» closes the listing, keeps the price if given, and clears th
   assert.equal(answerSaleCheckin(l, other, 'still').error, 'forbidden');
 });
 
-test('«انباع» without a price still closes it; a price is optional', () => {
+test('«انباع» without a price still closes it; a price is optional, and an absurd one is dropped', () => {
   const s = user(); const l = listing(s); contactByCall(l, NOW - 5 * DAY);
   runSaleCheckins({ at: NOW });
   answerSaleCheckin(l, s, 'sold', { at: NOW + HOUR });
   const row = db.prepare('SELECT status, sale_price FROM phone_listings WHERE id=?').get(l);
   assert.deepEqual(row, { status: 'sold', sale_price: null });
+  const s2 = user(); const l2 = listing(s2);
+  answerSaleCheckin(l2, s2, 'sold', { salePrice: 300000300000, at: NOW });
+  assert.equal(db.prepare('SELECT sale_price FROM phone_listings WHERE id=?').get(l2).sale_price, null);
 });
 
 test('«بعده موجود» → asked again in 7 days, at most twice; silence ends it', () => {
