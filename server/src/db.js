@@ -1175,6 +1175,13 @@ addColumnIfMissing('phone_listings', 'review_hold INTEGER NOT NULL DEFAULT 0');
 //               seller told, operator can overturn
 //   deleted   = the seller deleted the listing while a row was open
 addColumnIfMissing('listing_inspections', 'action TEXT');
+// Who produced the row: 'model' (a vendor call) or 'words' (listingFlag's
+// keyword gate, which never calls anyone). The queue showed both the same
+// way, so a gate hit on «ضد الكسر» looked like an AI verdict. Old rows are
+// told apart by the gate's fixed evidence wording.
+addColumnIfMissing('listing_inspections', 'judged_by TEXT');
+db.prepare("UPDATE listing_inspections SET judged_by='words' WHERE judged_by IS NULL AND error IS NULL AND defects_json LIKE '%الوصف يذكر: «%'").run();
+db.prepare("UPDATE listing_inspections SET judged_by='model' WHERE judged_by IS NULL").run();
 // Actual transacted price (§10) — the dataset the marketplace has never had.
 addColumnIfMissing('phone_listings', 'sale_price INTEGER');
 // Idempotency for POST /listings. The mobile wizard generates one key per

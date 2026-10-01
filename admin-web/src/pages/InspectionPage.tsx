@@ -8,6 +8,7 @@ import {api, API_BASE, listingUrl, listingLinkStyle} from '../api';
 
 type Defect = { kind: string; source: 'description' | 'image'; evidence: string };
 type Row = {
+  judged_by?: 'model' | 'words' | null;
   id: number;
   listing_id: number;
   verdict: 'clean' | 'suspect' | 'defective';
@@ -27,7 +28,7 @@ type Row = {
 type Last7 = { checked: number; errors: number; clean: number; suspect: number; defective: number; held: number; rejected: number };
 type Status = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean; decide: boolean;
-  pending: number; held: number; errors: number; last7?: Last7;
+  pending: number; held: number; errors: number; errors_total?: number; pending_words?: number; last7?: Last7;
   model?: string; key_env?: string;
 };
 
@@ -120,8 +121,11 @@ export function InspectionPage() {
               ? <strong style={{ color: '#e5e7eb' }}>الذكاء الاصطناعي يقرر</strong>
               : <>يسجّل النتائج فقط — <span style={{ color: '#facc15' }}>كل الإعلانات تبقى ظاهرة</span></>}
             {' · '}<strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
+            {status.pending_words ? <span className="muted"> (منها {status.pending_words} من فلتر الكلمات، بلا ذكاء اصطناعي)</span> : null}
             {status.held > 0 ? <> · <strong style={{ color: '#fb923c' }}>{status.held}</strong> محجوب عن النشر — البائع ينتظر</> : null}
-            {status.errors > 0 ? <> · <span style={{ color: '#f87171' }}>{status.errors} فشل</span></> : null}
+            {/* Recent failures only. The all-time number was 373 rows from an
+                August key with no credit, and it read as "the check is broken". */}
+            {status.errors > 0 ? <> · <span style={{ color: '#f87171' }}>{status.errors} فشل بآخر ٧ أيام</span></> : null}
           </p>
         )}
         {status?.last7 ? (
@@ -176,6 +180,16 @@ export function InspectionPage() {
                 ) : null}
                 <span style={{ background: v.bg, color: v.fg, padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                   {v.label}
+                </span>
+                {/* Who said so. The keyword gate fires on «ضد الكسر» as readily
+                    as on «الشاشة مكسورة»; the operator should know which
+                    rows had a model look at the photos. */}
+                <span style={{
+                  padding: '2px 8px', borderRadius: 999, fontSize: 11,
+                  background: r.judged_by === 'words' ? 'rgba(148,163,184,0.18)' : 'rgba(96,165,250,0.18)',
+                  color: r.judged_by === 'words' ? '#cbd5e1' : '#93c5fd',
+                }}>
+                  {r.judged_by === 'words' ? 'فلتر الكلمات' : 'الذكاء الاصطناعي'}
                 </span>
                 <span style={{ color: '#9ca3af', fontSize: 12 }}>ثقة: {CONF_AR[r.confidence] || r.confidence}</span>
                 {act && r.status !== 'error' ? (

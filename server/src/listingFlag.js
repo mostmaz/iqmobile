@@ -41,14 +41,15 @@ export function flagListingForReview(listingId, defectList) {
       db.prepare(
         `UPDATE listing_inspections
             SET verdict='suspect', confidence='medium', defects_json=?,
-                status='pending', reviewed_at=NULL, error=NULL, created_at=?
+                status='pending', reviewed_at=NULL, error=NULL, created_at=?,
+                judged_by='words'
           WHERE id=?`,
       ).run(defects, t, existing.id);
     } else {
       db.prepare(
         `INSERT INTO listing_inspections
-           (listing_id, verdict, confidence, defects_json, status, created_at)
-         VALUES (?, 'suspect', 'medium', ?, 'pending', ?)`,
+           (listing_id, verdict, confidence, defects_json, status, created_at, judged_by)
+         VALUES (?, 'suspect', 'medium', ?, 'pending', ?, 'words')`,
       ).run(listingId, defects, t);
     }
   } catch { /* the queue is a convenience, never a gate on publishing */ }

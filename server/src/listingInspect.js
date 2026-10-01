@@ -392,12 +392,12 @@ export function applyInspectionResult(listingId, result) {
   // them. status is the human side: 'pending' until an operator looks,
   // except a rejection, which is already decided (and can be overturned).
   db.prepare(
-    `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, action, created_at)
-     VALUES(?,?,?,?,?,?,?)
+    `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, action, created_at, judged_by)
+     VALUES(?,?,?,?,?,?,?,'model')
      ON CONFLICT(listing_id) DO UPDATE SET
        verdict=excluded.verdict, confidence=excluded.confidence,
        defects_json=excluded.defects_json, status=excluded.status, action=excluded.action,
-       reviewed_at=NULL, error=NULL, created_at=excluded.created_at`,
+       reviewed_at=NULL, error=NULL, created_at=excluded.created_at, judged_by='model'`,
   ).run(
     listingId, result.verdict, result.confidence, JSON.stringify(result.defects || []),
     action === 'rejected' ? 'removed' : 'pending', action, t,
@@ -523,9 +523,9 @@ async function runInspection(listingId) {
     // dashboard instead of looking like "no listings ever get flagged".
     try {
       db.prepare(
-        `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, error, created_at)
-         VALUES(?,'clean','low','[]','error',?,?)
-         ON CONFLICT(listing_id) DO UPDATE SET status='error', error=excluded.error`,
+        `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, error, created_at, judged_by)
+         VALUES(?,'clean','low','[]','error',?,?,'model')
+         ON CONFLICT(listing_id) DO UPDATE SET status='error', error=excluded.error, judged_by='model'`,
       ).run(listingId, String(e?.message || e).slice(0, 300), now());
     } catch {}
     console.error('[inspect] failed:', e?.message);

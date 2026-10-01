@@ -3205,7 +3205,8 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
       `SELECT COUNT(*) AS n FROM listing_inspections i JOIN phone_listings l ON l.id=i.listing_id
         WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1)`,
     ),
-    inspection_errors: count("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'"),
+    // Recent failures only — see /inspection/status.
+    inspection_errors: count("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error' AND created_at > ?", Date.now() - 7 * 24 * 60 * 60 * 1000),
     devices: count("SELECT COUNT(*) AS n FROM device_suggestions WHERE status='pending'"),
     reports: count("SELECT COUNT(*) AS n FROM reports WHERE status='open'"),
     feature_requests: count("SELECT COUNT(*) AS n FROM feature_requests WHERE status='pending'"),
@@ -4199,7 +4200,17 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
         WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1)`,
     ).get().n,
     held: db.prepare('SELECT COUNT(*) AS n FROM phone_listings WHERE review_hold=1').get().n,
-    errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
+    // Failures are only news while they are recent. The all-time count held
+    // 373 rows from an August key with no credit and read as "the check is
+    // broken" two months later.
+    errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error' AND created_at > ?")
+      .get(now() - 7 * 24 * 60 * 60 * 1000).n,
+    errors_total: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
+    // How much of the pending queue is the keyword gate rather than the model.
+    pending_words: db.prepare(
+      `SELECT COUNT(*) AS n FROM listing_inspections i JOIN phone_listings l ON l.id=i.listing_id
+        WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1) AND i.judged_by='words'`,
+    ).get().n,
   });
 });
 
