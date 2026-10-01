@@ -29,11 +29,17 @@ const NOW = Date.parse('2026-09-30T12:00:00+03:00');
 let uid = 0, lid = 0, cid = 0, mid = 0;
 // users.phone is NOT NULL, so "no phone" can only mean the empty string —
 // which is what an admin-created or imported row can carry.
-function user(phone = true) {
+function user(phone = true, { installed = true } = {}) {
   const id = ++uid + 100;
   db.prepare(`INSERT INTO users(id, phone, password_hash, display_name, governorate, seller_type, created_at)
               VALUES(?,?,'x','مستخدم','Baghdad','individual',?)`)
     .run(id, phone ? `0770000${String(id).padStart(4, '0')}` : '', NOW);
+  // One day of activity: the person has the app. Accounts created from
+  // imported listings never get a row here.
+  if (installed) {
+    db.prepare(`INSERT INTO user_active_days(user_id, day, requests, first_seen, last_seen, platform, app_version)
+                VALUES(?, '2026-09-01', 1, ?, ?, 'android', '0.5.1')`).run(id, NOW - 30 * DAY, NOW - 30 * DAY);
+  }
   return id;
 }
 function listing(sellerId) {
@@ -429,4 +435,17 @@ test('the buyer reads a message written to a buyer', async () => {
   assert.match(buyer, /رد|جاوبك/);
   // Still one stable wording per person.
   assert.equal(buyer, botText({ name: 'أبو علي', device: 'iPhone 13', userId: 7, role: 'buyer' }));
+});
+
+test('a seller whose account was made from an imported listing — never installed — is not chased', () => {
+  const b = user(), s = user(true, { installed: false });
+  chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY });
+  assert.deepEqual(dueFor(s), []);
+});
+
+test('a push token counts as an install even with no activity on record', () => {
+  const b = user(), s = user(true, { installed: false });
+  db.prepare("UPDATE users SET expo_push_token='ExponentPushToken[x]' WHERE id=?").run(s);
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY });
+  assert.deepEqual(pendingNudges(db, NOW, { limit: 500, onlyNoPush: false }).filter((n) => n.user_id === s).map((n) => n.chat_id), [c]);
 });

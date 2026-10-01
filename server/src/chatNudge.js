@@ -102,6 +102,15 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
        -- owner wants everyone.
        AND (? = 0 OR (SELECT expo_push_token FROM users
                        WHERE id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END) IS NULL)
+       -- Someone who never opened the app has no inbox to open. Accounts
+       -- created from imported listings — 231 of the 1,346 sellers with an
+       -- active listing on 1 Oct 2026 — would be told «افتح التطبيق» about
+       -- an app they never installed. A push token also proves an install,
+       -- for the few who predate the activity log.
+       AND (EXISTS (SELECT 1 FROM user_active_days d
+                     WHERE d.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
+            OR (SELECT expo_push_token FROM users
+                 WHERE id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END) IS NOT NULL)
        -- A thread with no message at all never reaches here: the JOIN above
        -- needs a last message. A quick-reply chip IS a message — however
        -- fast it was tapped, the seller was asked and never saw it (owner's

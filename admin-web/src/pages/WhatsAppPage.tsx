@@ -150,6 +150,7 @@ export function WhatsAppPage() {
               رسالة واحدة لكل إعلان، للي وصلته رسالة بين ٢٤ ساعة وأسبوع وما فتحها —
               مرة وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
               البائع يستلم «مشتري راسلك»، والمشتري يستلم «البائع ردّ عليك».
+              ما ترسل لمن ما ثبّت التطبيق أصلاً (حسابات انعملت من إعلانات مستوردة).
             </div>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
               <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
