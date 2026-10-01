@@ -9,6 +9,7 @@ import { uploadLimiter } from '../limits.js';
 import { notify } from '../notify.js';
 import { pushToAdmins } from '../adminPush.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
+import { QUICK_MESSAGES } from '../quickMessages.js';
 
 const r = Router();
 
@@ -45,12 +46,6 @@ const upload = multer({
   },
 });
 
-const QUICK_MESSAGES = [
-  'هل المنتج متوفر؟',
-  'ما هو سعرك النهائي؟',
-  'هل يمكنني فحص الجهاز؟',
-  'أين الموقع؟',
-];
 r.get('/quick-messages', requireAuth(), (_req, res) => res.json(QUICK_MESSAGES));
 
 // Buyer opens (or reuses) a chat for a listing.
@@ -229,10 +224,15 @@ r.get('/chats', requireAuth(), (req, res) => {
   // buyer chats appear in the operator's own chat list with no app change.
   const sellerIds = [req.user.id, ...managedShopIds(req.user.id)];
   const sellerIn = `seller_id IN (${sellerIds.map(() => '?').join(',')})`;
-  let sql = `SELECT * FROM chats WHERE (buyer_id=? OR ${sellerIn})`;
-  const params = [req.user.id, ...sellerIds];
-  if (role === 'buyer') { sql = 'SELECT * FROM chats WHERE buyer_id=?'; params.length = 0; params.push(req.user.id); }
-  else if (role === 'seller') { sql = `SELECT * FROM chats WHERE ${sellerIn}`; params.length = 0; params.push(...sellerIds); }
+  // A thread is created the moment a buyer taps «مراسلة», before any
+  // message. The buyer sees their own draft; the seller must not — on
+  // production 898 of 3,815 threads opened in 60 days never got a word,
+  // and each one sat at the top of a seller's inbox as "لا رسائل بعد".
+  const spoken = 'EXISTS (SELECT 1 FROM chat_messages m WHERE m.chat_id = chats.id)';
+  let sql = `SELECT * FROM chats WHERE (buyer_id=? OR (${sellerIn} AND ${spoken}))`;
+  let params = [req.user.id, ...sellerIds];
+  if (role === 'buyer') { sql = 'SELECT * FROM chats WHERE buyer_id=?'; params = [req.user.id]; }
+  else if (role === 'seller') { sql = `SELECT * FROM chats WHERE ${sellerIn} AND ${spoken}`; params = [...sellerIds]; }
   if (Number.isInteger(listingId) && listingId > 0) {
     sql += ' AND listing_id=?';
     params.push(listingId);

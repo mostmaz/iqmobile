@@ -45,16 +45,21 @@ function listing(sellerId) {
   return id;
 }
 /** A chat whose last message is from `from`, `ageMs` ago, unread by the other side. */
-function chat({ buyer, seller, from, ageMs, sellerRead = 0, buyerRead = 0, closed = null }) {
+function chat({
+  buyer, seller, from, ageMs, sellerRead = 0, buyerRead = 0, closed = null,
+  body = 'السعر اخر؟', openedBeforeMs = HOUR, empty = false,
+}) {
   const id = ++cid;
   const lst = listing(seller);
   const at = NOW - ageMs;
   db.prepare(`INSERT INTO chats(id, listing_id, buyer_id, seller_id, created_at, last_message_at,
                                 buyer_last_read_at, seller_last_read_at, closed_at)
               VALUES(?,?,?,?,?,?,?,?,?)`)
-    .run(id, lst, buyer, seller, at - HOUR, at, buyerRead || null, sellerRead || null, closed);
-  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
-    .run(++mid, id, from, 'السعر اخر؟', at);
+    .run(id, lst, buyer, seller, at - openedBeforeMs, at, buyerRead || null, sellerRead || null, closed);
+  if (!empty) {
+    db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+      .run(++mid, id, from, body, at);
+  }
   return id;
 }
 
@@ -366,4 +371,36 @@ test('by default only people with NO push token are written to', () => {
 
   // The switch widens it to everyone.
   assert.equal(pendingNudges(db, NOW, { limit: 10, onlyNoPush: false }).length, 2);
+});
+
+// ── threads that were never a contact ─────────────────────────────────
+// Fresh people per test: the suite shares one database, and everything
+// above left due threads behind. `dueFor` reads the whole queue and keeps
+// one seller's rows.
+const dueFor = (sellerId) => pendingNudges(db, NOW, { limit: 500 }).filter((n) => n.user_id === sellerId);
+
+test('a thread the buyer opened and never wrote in is not chased', () => {
+  const b = user(), s = user();
+  chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, empty: true });
+  assert.deepEqual(dueFor(s), []);
+});
+
+test('a quick-reply chip fired two seconds after opening is a slip, not a question', () => {
+  const b = user(), s = user();
+  chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 2000 });
+  assert.deepEqual(dueFor(s), []);
+});
+
+test('the same chip tapped half a minute in is a real question', () => {
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 30_000 });
+  assert.deepEqual(dueFor(s).map((n) => n.chat_id), [c]);
+});
+
+test('a fast chip followed by a typed message is a conversation', () => {
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 1500 });
+  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+    .run(++mid, c, b, 'اقصد نسخة 256', NOW - 2 * DAY + 60_000);
+  assert.deepEqual(dueFor(s).map((n) => n.chat_id), [c]);
 });

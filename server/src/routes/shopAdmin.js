@@ -776,7 +776,9 @@ r.get('/shop-admin/chats', requireShopAdmin, (req, res) => {
   const adv = req.shop.shop_tier === 'advanced';
   const filter = adv ? String(req.query.filter || 'all') : 'all';
   const q = adv ? String(req.query.q || '').trim().toLowerCase() : '';
-  let sql = 'SELECT * FROM chats WHERE seller_id=?';
+  // Threads with no message yet are a buyer's unsent draft, not a contact
+  // (see GET /chats). Hidden here for the same reason.
+  let sql = 'SELECT * FROM chats WHERE seller_id=? AND EXISTS (SELECT 1 FROM chat_messages m WHERE m.chat_id = chats.id)';
   if (filter === 'closed') sql += ' AND closed_at IS NOT NULL';
   else sql += ' AND closed_at IS NULL';
   sql += ' ORDER BY last_message_at DESC LIMIT 200';
