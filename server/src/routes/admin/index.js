@@ -18,7 +18,7 @@ import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
 import {
-  parseGsmParts, partsFromHtml, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs,
+  parseGsmParts, partsFromHtml, fetchGsmPage, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs,
 } from '../../deviceSpecsWrite.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
@@ -1762,8 +1762,8 @@ r.post('/import/upload', requireAdmin, csvUpload.single('file'), (req, res) => {
 // one of these via curl (Authorization header), then passes it to the
 // in-page script as a query param.
 //
-// Scope: works only for POST /admin/import/:id/images and
-// POST /admin/device-specs/gsmarena (no other admin action). Lifetime: 30 minutes. Single-use: marked used on first
+// Scope: works only for POST /admin/import/:id/images (no other admin
+// action). Lifetime: 30 minutes. Single-use: marked used on first
 // successful upload. Stored in-memory (Map) — fine because admin
 // sessions are short and a server restart simply invalidates pending
 // tokens; the admin re-issues one.
@@ -4176,24 +4176,25 @@ r.post('/device-specs/map', requireAdmin, (req, res) => {
   res.json({ ok: true, spec_id: spec.id, device: spec.source_name, mapped: written });
 });
 
-// The sheet comes either as
-//   html:  the page's HTML (or its h1 + highlights + #specs-list fragments),
-//          parsed here — what a script on gsmarena.com itself sends, or
-//   parts: { ds: {[data-spec]: text}, pairs: [[label, value]], hl } already
-//          split by the caller.
-// Also accepts a short-lived upload token (?ut=) so a script running on
-// gsmarena.com can post the page straight here without carrying the admin
-// token — same arrangement as the Facebook image import.
-r.post('/device-specs/gsmarena', requireAdminOrUploadToken, (req, res) => {
+// The sheet comes as one of
+//   (nothing) the server fetches the GSMArena page itself — what the nightly
+//             pass uses, so nothing has to be carried between browser tabs
+//   html:     the page's HTML (or its h1 + highlights + #specs-list fragments)
+//   parts:    { ds: {[data-spec]: text}, pairs: [[label, value]], hl }
+r.post('/device-specs/gsmarena', requireAdmin, async (req, res) => {
   const { error, targets } = readSpecTargets(req.body);
   if (error) return res.status(400).json({ error });
   const page = gsmPagePath(req.body?.url);
   if (!page) return res.status(400).json({ error: 'bad_gsmarena_url' });
   let parts = req.body?.parts;
   let pageName = '';
-  if (typeof req.body?.html === 'string' && req.body.html) {
-    ({ parts, name: pageName } = partsFromHtml(req.body.html));
+  let html = typeof req.body?.html === 'string' ? req.body.html : '';
+  if (!html && !parts) {
+    const got = await fetchGsmPage(page);
+    if (!got.ok) return res.status(502).json({ error: 'gsmarena_fetch_failed', status: got.status });
+    html = got.html;
   }
+  if (html) ({ parts, name: pageName } = partsFromHtml(html));
   const name = String(req.body?.name || pageName || '').trim().slice(0, 120);
   if (!name) return res.status(400).json({ error: 'name_required' });
   const parsed = parseGsmParts(parts);

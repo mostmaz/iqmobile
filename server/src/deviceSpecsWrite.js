@@ -143,6 +143,28 @@ export function partsFromHtml(html) {
   return { name, parts: { ds, pairs, hl } };
 }
 
+/**
+ * Fetch one GSMArena device page from the server. A challenge page (no spec
+ * table) counts as a failure, so the caller never stores a blank sheet.
+ */
+export async function fetchGsmPage(page, { timeoutMs = 15000 } = {}) {
+  try {
+    const r = await fetch(`https://www.gsmarena.com/${page}`, {
+      headers: {
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36',
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'en-US,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const html = await r.text();
+    if (!r.ok || !/id="specs-list"/.test(html)) return { ok: false, status: r.status };
+    return { ok: true, html };
+  } catch (e) {
+    return { ok: false, status: 0 };
+  }
+}
+
 /** A GSMArena device page path, normalised to the form the bulk import stores ("apple_iphone_17-14000.php"). */
 export function gsmPagePath(url) {
   const m = /^(?:https?:\/\/(?:www\.|m\.)?gsmarena\.com\/)?([a-z0-9_()+.-]+-\d+\.php)$/i.exec(String(url || '').trim());

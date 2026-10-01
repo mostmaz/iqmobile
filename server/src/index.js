@@ -113,10 +113,6 @@ const CORS_ORIGINS = new Set([
   'https://play.google.com',
   'https://web.facebook.com',
   'https://www.facebook.com',
-  // The nightly catalogue pass reads spec sheets on gsmarena.com in the
-  // admin's Chrome and posts them to /admin/device-specs/gsmarena with a
-  // short-lived upload token. Same Bearer/upload-token-only argument as above.
-  'https://www.gsmarena.com',
 ]);
 app.use(cors({
   origin(origin, cb) {

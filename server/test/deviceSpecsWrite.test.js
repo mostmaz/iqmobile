@@ -149,19 +149,34 @@ test('admin endpoints: missing list, add from GSMArena, map a second spelling', 
     const map = await call('/device-specs/map', { spec_id: add.json.spec_id, models: [{ brand: 'Apple', model: 'iPhone17' }] });
     assert.equal(map.status, 200);
     assert.ok(specsFor('Apple', 'iPhone17'));
-    // A script on gsmarena.com posts the raw page with an upload token.
-    const ut = (await call('/import/upload-token', {})).json.token;
-    const viaPage = await fetch(`${base}/device-specs/gsmarena?ut=${ut}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ url: 'nothing_phone_(2)-12386.php', html: PAGE, models: [{ brand: 'Apple', model: 'Phone 2 test' }] }),
-    }).then(async (r) => ({ status: r.status, json: await r.json() }));
-    assert.equal(viaPage.status, 200);
-    assert.equal(viaPage.json.device, 'Nothing Phone (2)');
-    assert.equal(specsFor('Apple', 'Phone 2 test').battery_mah, 4700);
-    const noAuth = await fetch(`${base}/device-specs/gsmarena?ut=nope`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
-    });
-    assert.equal(noAuth.status, 401);
+    // No html/parts: the server fetches the page itself.
+    const realFetch = globalThis.fetch;
+    let asked = null;
+    globalThis.fetch = (u, o) => {
+      if (String(u).startsWith('https://www.gsmarena.com/')) {
+        asked = String(u);
+        return Promise.resolve(new Response(`<div id="specs-list">${PAGE}</div>`, { status: 200 }));
+      }
+      return realFetch(u, o);
+    };
+    try {
+      const viaServer = await call('/device-specs/gsmarena', {
+        url: 'https://www.gsmarena.com/nothing_phone_(2)-12386.php', models: [{ brand: 'Apple', model: 'Phone 2 test' }],
+      });
+      assert.equal(viaServer.status, 200);
+      assert.equal(asked, 'https://www.gsmarena.com/nothing_phone_(2)-12386.php');
+      assert.equal(viaServer.json.device, 'Nothing Phone (2)');
+      assert.equal(specsFor('Apple', 'Phone 2 test').battery_mah, 4700);
+      // A challenge page (no spec table) is a failure, not a blank sheet.
+      globalThis.fetch = (u, o) => (String(u).startsWith('https://www.gsmarena.com/')
+        ? Promise.resolve(new Response('<title>Just a moment</title>', { status: 403 })) : realFetch(u, o));
+      const blocked = await call('/device-specs/gsmarena', {
+        url: 'samsung_galaxy_a56-13603.php', models: [{ brand: 'Samsung', model: 'Galaxy A56' }],
+      });
+      assert.equal(blocked.status, 502);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
     const unknown = await call('/device-specs/map', { spec_id: add.json.spec_id, models: [{ brand: 'Nope', model: 'x' }] });
     assert.equal(unknown.status, 400);
   } finally {
