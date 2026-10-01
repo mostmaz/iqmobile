@@ -1,11 +1,13 @@
 // The AI quality check's decision path, exercised without a model or a key:
 // applyInspectionResult() takes the verdict the model would have returned
-// and must hold, queue, or leave the listing alone; resolveInspection()
-// is the operator's approve / remove on top of that.
+// and must publish, hold, reject, or merely log it; resolveInspection() is
+// the operator's approve / remove on top of that.
 //
-// The contract under test: a BAD listing is never visible to buyers while
-// it waits, its seller can still see it (as 'under_review') and is told
-// what is happening, and an approval publishes it with a fresh TTL.
+// The contract under test: with the decide switch OFF every listing stays
+// live and every result is kept; with it ON a confident good listing is
+// published, a confident bad one is not and its seller is told, anything
+// unsure is held — never visible to buyers while it waits, visible to its
+// seller as 'under_review', and an approval publishes it with a fresh TTL.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -20,7 +22,8 @@ const { db, now, setSettingValue } = await import('../src/db.js');
 const { issueToken } = await import('../src/auth.js');
 const { default: listings } = await import('../src/routes/listings.js');
 const {
-  applyInspectionResult, resolveInspection, holdEnabled, MODEL, providerFor, keyEnvFor, isValidModelId,
+  applyInspectionResult, resolveInspection, decideEnabled, decisionFor,
+  MODEL, providerFor, keyEnvFor, isValidModelId,
 } = await import('../src/listingInspect.js');
 
 const app = express();
@@ -65,16 +68,35 @@ async function call(u, method, route, body) {
   return { status: response.status, data: await response.json() };
 }
 const row = (id) => db.prepare('SELECT * FROM phone_listings WHERE id=?').get(id);
+const insRow = (id) => db.prepare('SELECT * FROM listing_inspections WHERE listing_id=?').get(id);
 const inbox = (userId) => db.prepare('SELECT kind, payload_json FROM notifications WHERE user_id=? ORDER BY id').all(userId)
   .map((n) => ({ kind: n.kind, payload: JSON.parse(n.payload_json) }));
 
-const BAD = {
-  verdict: 'defective', confidence: 'high',
-  defects: [{ kind: 'cracked_screen', source: 'image', evidence: 'الشاشة مكسورة في الزاوية' }],
+const defect = { kind: 'cracked_screen', source: 'image', evidence: 'الشاشة مكسورة في الزاوية' };
+const BAD_SURE = { verdict: 'defective', confidence: 'high', defects: [defect] };
+const BAD_UNSURE = { verdict: 'defective', confidence: 'medium', defects: [defect] };
+const GOOD = { verdict: 'clean', confidence: 'high', defects: [] };
+const UNCLEAR = {
+  verdict: 'suspect', confidence: 'medium',
+  defects: [{ kind: 'screen_defect', source: 'image', evidence: 'قد توجد بقعة على الشاشة' }],
 };
 
-test('hold is on by default', () => {
-  assert.equal(holdEnabled(), true);
+// node:test evaluates the whole module before running any test, so the
+// switch is set inside the tests, not between them.
+const decideMode = (on) => setSettingValue('listing_inspection_decide', on ? '1' : '0');
+
+test('check-only is the default; the decision rule reads as specified', () => {
+  assert.equal(db.prepare("SELECT value FROM app_settings WHERE key='listing_inspection_decide'").get().value, '0');
+  assert.equal(decideEnabled(), false);
+  assert.equal(decisionFor(BAD_SURE, false), 'logged');
+  assert.equal(decisionFor(GOOD, true), 'published');
+  assert.equal(decisionFor({ ...GOOD, confidence: 'medium' }, true), 'published');
+  assert.equal(decisionFor({ ...GOOD, confidence: 'low' }, true), 'held');
+  assert.equal(decisionFor(BAD_SURE, true), 'rejected');
+  assert.equal(decisionFor(BAD_UNSURE, true), 'held');
+  assert.equal(decisionFor({ ...BAD_SURE, confidence: 'low' }, true), 'held');
+  assert.equal(decisionFor(UNCLEAR, true), 'held');
+  assert.equal(decisionFor({ ...UNCLEAR, confidence: 'high' }, true), 'held');
 });
 
 test('the model name picks the vendor and the key it needs', () => {
@@ -101,15 +123,34 @@ test('the model name picks the vendor and the key it needs', () => {
   assert.equal(isValidModelId('gpt-6 luna; drop'), false);
 });
 
-test('a bad verdict holds the listing: hidden from buyers, visible to its seller, seller notified', async () => {
+test('check-only mode: every result is recorded, every listing stays live, nobody is told', async () => {
+  decideMode(false);
+  const seller = user('07700000000');
+  const bad = listing(seller.id);
+  const good = listing(seller.id);
+  assert.equal(applyInspectionResult(bad, BAD_SURE), 'logged');
+  assert.equal(applyInspectionResult(good, GOOD), 'logged');
+  assert.equal(row(bad).status, 'active');
+  assert.equal(row(good).status, 'active');
+  // Both rows exist for the dashboard, the good one included.
+  assert.equal(insRow(bad).action, 'logged');
+  assert.equal(insRow(bad).status, 'pending'); // an operator CAN still act
+  assert.equal(insRow(good).verdict, 'clean');
+  assert.equal(inbox(seller.id).length, 0);
+  assert.equal((await call(null, 'GET', `/listings/${bad}`)).status, 200);
+});
+
+test('decide: an unsure verdict holds the listing — hidden from buyers, visible to its seller, seller notified', async () => {
+  decideMode(true);
   const seller = user('07700000001');
   const buyer = user('07700000002');
   const id = listing(seller.id);
 
-  assert.equal(applyInspectionResult(id, BAD), 'held');
+  assert.equal(applyInspectionResult(id, BAD_UNSURE), 'held');
   const l = row(id);
   assert.equal(l.status, 'removed');
   assert.equal(l.review_hold, 1);
+  assert.equal(insRow(id).action, 'held');
 
   // Buyers (and anonymous visitors) get a 404; the seller sees under_review.
   assert.equal((await call(buyer, 'GET', `/listings/${id}`)).status, 404);
@@ -145,23 +186,24 @@ test('a bad verdict holds the listing: hidden from buyers, visible to its seller
   assert.equal(edit.status, 200);
 
   // A re-inspection of a held listing keeps it held and does not nag again.
-  assert.equal(applyInspectionResult(id, BAD), 'held');
+  assert.equal(applyInspectionResult(id, BAD_UNSURE), 'held');
   assert.equal(inbox(seller.id).length, 1);
 });
 
-test('operator approval publishes a held listing with a fresh expiry and tells the seller', async () => {
+test('decide: operator approval publishes a held listing with a fresh expiry and tells the seller', async () => {
+  decideMode(true);
   const seller = user('07700000003');
   const id = listing(seller.id);
-  applyInspectionResult(id, BAD);
+  applyInspectionResult(id, UNCLEAR);
   const before = row(id);
-  const ins = db.prepare('SELECT id FROM listing_inspections WHERE listing_id=?').get(id);
+  const ins = insRow(id);
 
   assert.equal(resolveInspection(ins.id, 'approve'), id);
   const l = row(id);
   assert.equal(l.status, 'active');
   assert.equal(l.review_hold, 0);
   assert.ok(l.expires_at > before.expires_at, 'the TTL restarts at publish time');
-  assert.equal(db.prepare('SELECT status FROM listing_inspections WHERE id=?').get(ins.id).status, 'approved');
+  assert.equal(insRow(id).status, 'approved');
   assert.deepEqual(inbox(seller.id).map((n) => n.kind), ['listing.review.pending', 'listing.review.approved']);
 
   // Public again.
@@ -171,13 +213,13 @@ test('operator approval publishes a held listing with a fresh expiry and tells t
   assert.equal(mine.data[0].inspection, null);
 });
 
-test('operator removal keeps it unpublished, clears the hold, and gives the reason', () => {
+test('decide: operator removal keeps it unpublished, clears the hold, and gives the reason', () => {
+  decideMode(true);
   const seller = user('07700000004');
   const id = listing(seller.id);
-  applyInspectionResult(id, BAD);
-  const ins = db.prepare('SELECT id FROM listing_inspections WHERE listing_id=?').get(id);
+  applyInspectionResult(id, UNCLEAR);
 
-  assert.equal(resolveInspection(ins.id, 'remove', { reason: 'الظهر مهشّم' }), id);
+  assert.equal(resolveInspection(insRow(id).id, 'remove', { reason: 'الظهر مهشّم' }), id);
   const l = row(id);
   assert.equal(l.status, 'removed');
   assert.equal(l.review_hold, 0);
@@ -186,46 +228,58 @@ test('operator removal keeps it unpublished, clears the hold, and gives the reas
   assert.equal(last.payload.reason, 'الظهر مهشّم');
 });
 
-test('good and unclear verdicts leave the listing live', () => {
+test('decide: a confident good verdict publishes; a hesitant one is held', () => {
+  decideMode(true);
   const seller = user('07700000005');
   const good = listing(seller.id);
-  assert.equal(applyInspectionResult(good, { verdict: 'clean', confidence: 'high', defects: [] }), 'clean');
+  assert.equal(applyInspectionResult(good, GOOD), 'published');
   assert.equal(row(good).status, 'active');
-
-  const unclear = listing(seller.id);
-  assert.equal(applyInspectionResult(unclear, {
-    verdict: 'suspect', confidence: 'medium',
-    defects: [{ kind: 'screen_defect', source: 'image', evidence: 'قد توجد بقعة على الشاشة' }],
-  }), 'queued');
-  assert.equal(row(unclear).status, 'active');
-  assert.equal(row(unclear).review_hold, 0);
-
-  // A hesitant "defective" is a suspect, not a reason to hide the ad.
-  const hesitant = listing(seller.id);
-  assert.equal(applyInspectionResult(hesitant, { ...BAD, confidence: 'low' }), 'queued');
-  assert.equal(row(hesitant).status, 'active');
+  assert.equal(insRow(good).action, 'published');
   assert.equal(inbox(seller.id).length, 0);
+
+  const hesitant = listing(seller.id);
+  assert.equal(applyInspectionResult(hesitant, { ...GOOD, confidence: 'low' }), 'held');
+  assert.equal(row(hesitant).status, 'removed');
+  assert.equal(row(hesitant).review_hold, 1);
 });
 
-test('with the hold switch off a bad verdict only queues the listing', () => {
-  setSettingValue('listing_inspection_hold', '0');
-  try {
-    const seller = user('07700000006');
-    const id = listing(seller.id);
-    assert.equal(applyInspectionResult(id, BAD), 'queued');
-    assert.equal(row(id).status, 'active');
-    assert.equal(inbox(seller.id).length, 0);
-  } finally {
-    setSettingValue('listing_inspection_hold', '1');
-  }
-});
-
-test('seller deleting a held listing clears the hold', async () => {
-  const seller = user('07700000007');
+test('decide: a confident bad verdict is not published, the seller is told, an operator can overturn it', async () => {
+  decideMode(true);
+  const seller = user('07700000006');
   const id = listing(seller.id);
-  applyInspectionResult(id, BAD);
-  assert.equal((await call(seller, 'DELETE', `/listings/${id}`)).status, 200);
-  assert.equal(row(id).review_hold, 0);
+  assert.equal(applyInspectionResult(id, BAD_SURE), 'rejected');
+  const l = row(id);
+  assert.equal(l.status, 'removed');
+  assert.equal(l.review_hold, 0);
+  const ins = insRow(id);
+  assert.equal(ins.action, 'rejected');
+  assert.equal(ins.status, 'removed'); // decided — not in the pending queue
+  assert.deepEqual(inbox(seller.id).map((n) => n.kind), ['listing.review.rejected']);
+  assert.equal(inbox(seller.id)[0].payload.reason, 'الشاشة مكسورة في الزاوية');
+  // Gone from the seller's list: not under review, not live.
   const all = await call(seller, 'GET', '/listings/mine?status=all');
   assert.equal(all.data.length, 0);
+
+  // The operator disagrees: approve publishes it and the seller hears.
+  assert.equal(resolveInspection(ins.id, 'approve'), id);
+  assert.equal(row(id).status, 'active');
+  assert.equal(insRow(id).status, 'approved');
+  assert.deepEqual(inbox(seller.id).map((n) => n.kind), ['listing.review.rejected', 'listing.review.approved']);
+  assert.equal((await call(null, 'GET', `/listings/${id}`)).status, 200);
+});
+
+test('seller deleting a held listing clears the hold and closes the check row', async () => {
+  decideMode(true);
+  const seller = user('07700000007');
+  const id = listing(seller.id);
+  applyInspectionResult(id, UNCLEAR);
+  assert.equal((await call(seller, 'DELETE', `/listings/${id}`)).status, 200);
+  assert.equal(row(id).review_hold, 0);
+  assert.equal(insRow(id).action, 'deleted');
+  assert.equal(insRow(id).status, 'removed');
+  const all = await call(seller, 'GET', '/listings/mine?status=all');
+  assert.equal(all.data.length, 0);
+  // A later operator "approve" must not resurrect what the seller deleted.
+  resolveInspection(insRow(id).id, 'approve');
+  assert.equal(row(id).status, 'removed');
 });

@@ -6,9 +6,10 @@ import { api } from '../api';
 // showing it unchecked matches what the server will actually do.
 // `enabled_setting` is the stored switch position, kept for diagnosis.
 type CatalogModel = { id: string; vendor: 'openai' | 'anthropic'; label: string; per_1000: number; note?: string };
+type Last7 = { checked: number; errors: number; clean: number; suspect: number; defective: number; held: number; rejected: number };
 type InspectionStatus = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean;
-  autoreject: boolean; hold: boolean; pending: number; held: number;
+  decide: boolean; pending: number; held: number; last7?: Last7;
   // The model in effect, the env var it needs, what the dashboard stored
   // ('' = default), the default, the catalogue, and which keys exist.
   model?: string; key_env?: string;
@@ -42,11 +43,10 @@ export function SettingsPage() {
   const [showCustom, setShowCustom] = useState(false);
   const [modelErr, setModelErr] = useState('');
 
-  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'autoreject' | 'hold' | 'model_setting'>>) {
+  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'decide' | 'model_setting'>>) {
     const body: Record<string, boolean | string> = {};
     if (patch.enabled !== undefined) body.listing_inspection_enabled = patch.enabled;
-    if (patch.autoreject !== undefined) body.listing_inspection_autoreject = patch.autoreject;
-    if (patch.hold !== undefined) body.listing_inspection_hold = patch.hold;
+    if (patch.decide !== undefined) body.listing_inspection_decide = patch.decide;
     if (patch.model_setting !== undefined) body.listing_inspection_model = patch.model_setting;
     setModelErr('');
     setInsp((s) => (s ? { ...s, ...patch } : s)); // optimistic
@@ -97,9 +97,9 @@ export function SettingsPage() {
       <div className="card">
         <h2>فحص الإعلانات بالذكاء الاصطناعي</h2>
         <p style={{ color: '#9ca3af', fontSize: 13.5, marginTop: 0, maxWidth: 620 }}>
-          يقرأ وصف الإعلان <strong>وصوره</strong> ويصنّف الجهاز: <strong>جيد</strong> (جديد، كالجديد، أو مستعمل بخدوش) يُنشر؛
-          <strong> سيّئ</strong> (شاشة مكسورة، لمس لا يعمل، بقعة بالشاشة، ظهر مهشّم، أو وصف يقول معطّل/لا يعمل) يُحجب
-          ويُبلَّغ البائع أن الفريق سيراجعه. يعمل بعد رفع الصور ولا يؤخّر النشر.
+          يقرأ وصف الإعلان <strong>وصوره</strong> ويصنّف الجهاز: <strong>جيد</strong> (جديد، كالجديد، أو مستعمل بخدوش) أو
+          <strong> سيّئ</strong> (شاشة مكسورة، لمس لا يعمل، بقعة بالشاشة، ظهر مهشّم، أو وصف يقول معطّل/لا يعمل).
+          يعمل بعد رفع الصور ولا يؤخّر النشر. كل نتيجة تظهر في صفحة <strong>الفحص</strong>.
         </p>
 
         {!insp ? (
@@ -182,45 +182,42 @@ export function SettingsPage() {
           </div>
         ) : null}
 
+        {/* One switch, two modes. Off: the check runs and every result lands
+            in the الفحص tab, nothing else happens. On: the verdict decides. */}
         <div style={{ marginBottom: 12, opacity: insp?.configured && insp?.enabled ? 1 : 0.5 }}>
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <input
               type="checkbox"
               disabled={!insp?.configured || !insp?.enabled}
-              checked={!!insp?.hold}
-              onChange={(e) => setInspection({ hold: e.target.checked })}
+              checked={!!insp?.decide}
+              onChange={(e) => setInspection({ decide: e.target.checked })}
               style={{ marginTop: 3 }}
             />
             <span>
-              حجب الإعلان السيّئ عن النشر حتى يراجعه موظف (يُبلَّغ البائع)
-              <span style={{ display: 'block', color: '#9ca3af', fontSize: 12.5, marginTop: 3 }}>
-                بدونه يبقى الإعلان ظاهراً ويُضاف إلى قائمة المراجعة فقط.
+              <strong>دع الذكاء الاصطناعي يقرر</strong> نشر الإعلان أو لا
+              <span style={{ display: 'block', color: '#9ca3af', fontSize: 12.5, marginTop: 3, lineHeight: 1.7 }}>
+                جيد بثقة متوسطة أو عالية → يُنشر. سيّئ بثقة عالية → لا يُنشر ويُبلَّغ البائع (تقدر تعكس القرار من صفحة الفحص).
+                غير واضح أو ثقة منخفضة → يُحجب للمراجعة ويُبلَّغ البائع أن الفريق سيراجعه.
+                <br />
+                بدون هذا الخيار: الفحص يسجّل النتيجة فقط في صفحة <strong>الفحص</strong> وكل الإعلانات تبقى ظاهرة.
               </span>
-            </span>
-          </label>
-        </div>
-
-        <div style={{ marginBottom: 12, opacity: insp?.configured && insp?.enabled ? 1 : 0.5 }}>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <input
-              type="checkbox"
-              disabled={!insp?.configured || !insp?.enabled}
-              checked={!!insp?.autoreject}
-              onChange={(e) => setInspection({ autoreject: e.target.checked })}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              حذف الإعلان تلقائياً عند وجود عيب مؤكد بثقة عالية
-              <span style={{ display: 'block', color: '#facc15', fontSize: 12.5, marginTop: 3 }}>
-                لا تُفعّله إلا بعد مراجعة النتائج لفترة — الخطأ هنا يحذف إعلان بائع سليم.
-              </span>
+              {!insp?.decide && insp?.enabled ? (
+                <span style={{ display: 'block', color: '#facc15', fontSize: 12.5, marginTop: 3 }}>
+                  راجع نتائج الفحص لفترة قبل تفعيله — الخطأ هنا يحجب إعلان بائع سليم.
+                </span>
+              ) : null}
             </span>
           </label>
         </div>
 
         {insp?.enabled ? (
           <p style={{ color: '#9ca3af', fontSize: 13, margin: 0 }}>
-            {insp.pending} إعلان بانتظار المراجعة — راجعها من صفحة <strong>الفحص</strong>.
+            آخر ٧ أيام: {insp.last7?.checked ?? 0} فحص ·{' '}
+            <span style={{ color: '#34d399' }}>{insp.last7?.clean ?? 0} سليم</span> ·{' '}
+            <span style={{ color: '#facc15' }}>{insp.last7?.suspect ?? 0} مشكوك</span> ·{' '}
+            <span style={{ color: '#f87171' }}>{insp.last7?.defective ?? 0} عيب</span>
+            {insp.pending ? <> · {insp.pending} بانتظار المراجعة</> : null}
+            {' '}— التفاصيل في صفحة <strong>الفحص</strong>.
           </p>
         ) : null}
       </div>

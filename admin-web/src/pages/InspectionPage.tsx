@@ -13,6 +13,7 @@ type Row = {
   verdict: 'clean' | 'suspect' | 'defective';
   confidence: 'low' | 'medium' | 'high';
   status: 'pending' | 'approved' | 'removed' | 'error';
+  action: 'logged' | 'published' | 'held' | 'rejected' | 'deleted' | null;
   error: string | null;
   created_at: number;
   brand: string; model: string; asking_price: number; governorate: string;
@@ -23,11 +24,22 @@ type Row = {
   defects: Defect[];
   images: string[];
 };
+type Last7 = { checked: number; errors: number; clean: number; suspect: number; defective: number; held: number; rejected: number };
 type Status = {
-  configured: boolean; enabled: boolean; enabled_setting?: boolean; autoreject: boolean;
-  hold: boolean; pending: number; held: number; errors: number;
+  configured: boolean; enabled: boolean; enabled_setting?: boolean; decide: boolean;
+  pending: number; held: number; errors: number; last7?: Last7;
   model?: string; key_env?: string;
 };
+
+// What the check DID with its verdict (listing_inspections.action).
+const ACTION_AR: Record<string, { fg: string; label: string }> = {
+  logged: { fg: '#9ca3af', label: 'سُجّل فقط — الإعلان ظاهر' },
+  published: { fg: '#34d399', label: 'نُشر' },
+  held: { fg: '#fb923c', label: 'محجوب للمراجعة' },
+  rejected: { fg: '#f87171', label: 'لم يُنشر — أُبلغ البائع' },
+  deleted: { fg: '#6b7280', label: 'حذفه البائع' },
+};
+const CONF_AR: Record<string, string> = { low: 'منخفضة', medium: 'متوسطة', high: 'عالية' };
 
 const DEFECT_AR: Record<string, string> = {
   cracked_screen: 'شاشة مكسورة',
@@ -53,7 +65,9 @@ const VERDICT_STYLE: Record<string, { bg: string; fg: string; label: string }> =
 export function InspectionPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
-  const [filter, setFilter] = useState<'pending' | 'approved' | 'removed' | 'error' | 'all'>('pending');
+  // 'all' first: every result the check produced, good ones included, is the
+  // record the operator reads to judge the model. 'pending' is the to-do.
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'removed' | 'error' | 'all'>('all');
   const [busy, setBusy] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -100,21 +114,37 @@ export function InspectionPage() {
           <p style={{ color: '#9ca3af' }}>الفحص متوقف. فعّله من صفحة الإعدادات.</p>
         ) : (
           <p style={{ color: '#9ca3af' }}>
-            الفحص يعمل{status.model ? <> (<code>{status.model}</code>)</> : null} · <strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
+            الفحص يعمل{status.model ? <> (<code>{status.model}</code>)</> : null}
+            {' · '}
+            {status.decide
+              ? <strong style={{ color: '#e5e7eb' }}>الذكاء الاصطناعي يقرر</strong>
+              : <>يسجّل النتائج فقط — <span style={{ color: '#facc15' }}>كل الإعلانات تبقى ظاهرة</span></>}
+            {' · '}<strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
             {status.held > 0 ? <> · <strong style={{ color: '#fb923c' }}>{status.held}</strong> محجوب عن النشر — البائع ينتظر</> : null}
             {status.errors > 0 ? <> · <span style={{ color: '#f87171' }}>{status.errors} فشل</span></> : null}
           </p>
         )}
+        {status?.last7 ? (
+          <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 6, marginBottom: 0 }}>
+            آخر ٧ أيام: {status.last7.checked} فحص ·{' '}
+            <span style={{ color: '#34d399' }}>{status.last7.clean} سليم</span> ·{' '}
+            <span style={{ color: '#facc15' }}>{status.last7.suspect} مشكوك</span> ·{' '}
+            <span style={{ color: '#f87171' }}>{status.last7.defective} عيب</span>
+            {status.last7.held ? <> · {status.last7.held} حُجب</> : null}
+            {status.last7.rejected ? <> · {status.last7.rejected} لم يُنشر</> : null}
+            {status.last7.errors ? <> · <span style={{ color: '#f87171' }}>{status.last7.errors} فشل</span></> : null}
+          </p>
+        ) : null}
         <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 8, marginBottom: 0, maxWidth: 640 }}>
-          <strong style={{ color: '#fb923c' }}>محجوب</strong> = الذكاء الاصطناعي حكم أن الجهاز سيّئ (شاشة مكسورة، لمس لا يعمل،
-          بقعة بالشاشة، ظهر مهشّم، أو الوصف يقول معطّل) فلم يُنشر الإعلان، والبائع أُبلغ أن الفريق سيراجعه.
-          «انشر» يُظهره للمشترين الآن؛ «لا تنشر» يبقيه مخفياً ويُبلغ البائع بالسبب.
+          كل فحص يظهر هنا بنتيجته وما فعله به. مع خيار «دع الذكاء الاصطناعي يقرر» (الإعدادات):
+          <strong style={{ color: '#f87171' }}> لم يُنشر</strong> = عيب بثقة عالية والبائع أُبلغ — «انشر» يعكس القرار؛
+          <strong style={{ color: '#fb923c' }}> محجوب</strong> = غير واضح أو ثقة منخفضة، ينتظر قرارك والبائع أُبلغ.
         </p>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {(['pending', 'approved', 'removed', 'error', 'all'] as const).map((f) => (
             <button key={f} className={filter === f ? '' : 'secondary'} onClick={() => setFilter(f)}>
-              {{ pending: 'بانتظار المراجعة', approved: 'مقبولة', removed: 'محذوفة', error: 'فشل', all: 'الكل' }[f]}
+              {{ pending: 'بانتظار المراجعة', approved: 'مقبولة', removed: 'غير منشورة / محذوفة', error: 'فشل', all: 'كل النتائج' }[f]}
             </button>
           ))}
         </div>
@@ -125,6 +155,9 @@ export function InspectionPage() {
       ) : rows.map((r) => {
         const v = VERDICT_STYLE[r.verdict] || VERDICT_STYLE.clean;
         const held = !!r.review_hold;
+        // Rejected by the check and still down: 'approve' republishes it.
+        const rejectedByAi = r.action === 'rejected' && r.status === 'removed' && r.listing_status === 'removed';
+        const act = r.action ? ACTION_AR[r.action] : null;
         return (
           <div className="card" key={r.id} style={held ? { borderColor: '#fb923c' } : undefined}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
@@ -144,7 +177,13 @@ export function InspectionPage() {
                 <span style={{ background: v.bg, color: v.fg, padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                   {v.label}
                 </span>
-                <span style={{ color: '#9ca3af', fontSize: 12 }}>ثقة: {r.confidence}</span>
+                <span style={{ color: '#9ca3af', fontSize: 12 }}>ثقة: {CONF_AR[r.confidence] || r.confidence}</span>
+                {act && r.status !== 'error' ? (
+                  <span style={{ color: act.fg, fontSize: 12 }}>→ {act.label}</span>
+                ) : null}
+                <span style={{ color: '#6b7280', fontSize: 12 }}>
+                  {new Date(r.created_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                </span>
               </div>
             </div>
 
@@ -189,9 +228,16 @@ export function InspectionPage() {
                     {held ? 'لا تنشر — أبلغ البائع' : 'احذف الإعلان'}
                   </button>
                 </>
+              ) : rejectedByAi ? (
+                <>
+                  <button disabled={busy === r.id} onClick={() => decide(r.id, 'approve', true)}>
+                    القرار خاطئ — انشر الإعلان
+                  </button>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>لم يُنشر بقرار الذكاء الاصطناعي · البائع أُبلغ</span>
+                </>
               ) : (
                 <span style={{ color: '#9ca3af', fontSize: 13 }}>
-                  {{ approved: '✓ تمت الموافقة', removed: '✕ حُذف الإعلان', error: 'فشل الفحص' }[r.status]}
+                  {{ approved: '✓ تمت الموافقة', removed: r.action === 'deleted' ? 'حذفه البائع' : '✕ غير منشور', error: 'فشل الفحص' }[r.status]}
                   {' · '}حالة الإعلان: {r.listing_status}
                 </span>
               )}

@@ -278,11 +278,8 @@ r.patch('/settings', requireAdmin, (req, res) => {
   if (req.body?.listing_inspection_enabled != null) {
     setSettingValue('listing_inspection_enabled', req.body.listing_inspection_enabled ? '1' : '0');
   }
-  if (req.body?.listing_inspection_autoreject != null) {
-    setSettingValue('listing_inspection_autoreject', req.body.listing_inspection_autoreject ? '1' : '0');
-  }
-  if (req.body?.listing_inspection_hold != null) {
-    setSettingValue('listing_inspection_hold', req.body.listing_inspection_hold ? '1' : '0');
+  if (req.body?.listing_inspection_decide != null) {
+    setSettingValue('listing_inspection_decide', req.body.listing_inspection_decide ? '1' : '0');
   }
   // The judging model. Empty string = back to the .env / built-in default.
   // Only ids with a vendor prefix we can route are stored; a typo here would
@@ -4157,8 +4154,23 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     // The stored switch position, so the Settings checkbox still reflects
     // what the operator chose even while the key is missing.
     enabled_setting: getSetting('listing_inspection_enabled') === '1',
-    autoreject: getSetting('listing_inspection_autoreject') === '1',
-    hold: getSetting('listing_inspection_hold') !== '0',
+    decide: getSetting('listing_inspection_decide') === '1',
+    // The last 7 days at a glance, every verdict included — this is the
+    // "is the model any good" number, read before switching decide on.
+    last7: (() => {
+      const since = now() - 7 * 24 * 60 * 60 * 1000;
+      const r2 = db.prepare(
+        `SELECT COUNT(*) AS checked,
+                SUM(CASE WHEN status='error' THEN 1 ELSE 0 END) AS errors,
+                SUM(CASE WHEN status!='error' AND verdict='clean' THEN 1 ELSE 0 END) AS clean,
+                SUM(CASE WHEN status!='error' AND verdict='suspect' THEN 1 ELSE 0 END) AS suspect,
+                SUM(CASE WHEN status!='error' AND verdict='defective' THEN 1 ELSE 0 END) AS defective,
+                SUM(CASE WHEN action='held' THEN 1 ELSE 0 END) AS held,
+                SUM(CASE WHEN action='rejected' THEN 1 ELSE 0 END) AS rejected
+           FROM listing_inspections WHERE created_at >= ?`,
+      ).get(since);
+      return Object.fromEntries(Object.entries(r2).map(([k, v]) => [k, Number(v) || 0]));
+    })(),
     // Must match the queue's filter below. Counting every pending row meant a
     // listing the model judged CLEAN was counted as "awaiting review" while
     // the queue deliberately hid it — the dashboard said 2 waiting and showed
@@ -4174,12 +4186,14 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
   });
 });
 
-// The queue. Defaults to flagged-and-unreviewed only — a 'clean' verdict is
-// recorded for auditing but is not something anyone needs to look at.
+// The queue. 'pending' is flagged-and-unreviewed only — a 'clean' verdict is
+// not something anyone needs to act on. 'all' is every result the check has
+// produced, clean ones included: that is how an operator judges the model
+// before letting it decide.
 r.get('/inspection/queue', requireAdmin, (req, res) => {
   const status = ['pending', 'approved', 'removed', 'error', 'all'].includes(req.query.status)
-    ? req.query.status : 'pending';
-  const where = status === 'all' ? '1=1' : 'i.status=?';
+    ? req.query.status : 'all';
+  const where = status === 'all' ? '1=1' : "i.status=? AND (i.verdict != 'clean' OR i.status='error' OR l.review_hold=1)";
   const params = status === 'all' ? [] : [status];
   const rows = db.prepare(
     `SELECT i.*, l.brand, l.model, l.asking_price, l.governorate, l.description,
@@ -4188,7 +4202,7 @@ r.get('/inspection/queue', requireAdmin, (req, res) => {
        FROM listing_inspections i
        JOIN phone_listings l ON l.id = i.listing_id
        JOIN users u ON u.id = l.seller_id
-      WHERE ${where} AND (i.verdict != 'clean' OR i.status='error' OR l.review_hold=1)
+      WHERE ${where}
       ORDER BY l.review_hold DESC, i.created_at DESC LIMIT 200`,
   ).all(...params);
   res.json(rows.map((r2) => ({

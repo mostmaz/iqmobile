@@ -13,7 +13,7 @@
 
 import { Router } from 'express';
 import { db, getSetting } from '../db.js';
-import { inspectionEnabled, holdEnabled } from '../listingInspect.js';
+import { inspectionEnabled, decideEnabled } from '../listingInspect.js';
 
 /** Whitelist the three modes so a typo'd setting cannot lock anyone out. */
 function gateMode(key, fallback) {
@@ -159,7 +159,7 @@ r.get('/app-config', (_req, res) => {
     // BAD verdict can hold it back. The post-publish screen only mentions
     // the check when it is real — it once claimed a photo review step that
     // did not exist, and copy that describes a mechanism must match it.
-    quality_check: inspectionEnabled() && holdEnabled(),
+    quality_check: inspectionEnabled() && decideEnabled(),
     // How hard the app insists on notification permission, per platform —
     // Apple forbids requiring it, Google does not. Read by every build; an
     // old build that has never heard of the key simply ignores it.

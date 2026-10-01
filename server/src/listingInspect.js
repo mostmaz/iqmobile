@@ -8,17 +8,22 @@
 //   1. meaning, not spelling — "الشاشة بيها خط", "وقع منه", "يحتاج تصليح"
 //   2. the photos themselves — a cracked screen the seller never mentioned
 //
-// What happens to a verdict (see applyInspectionResult):
-//   clean      → GOOD. Listing stays published; verdict logged for audit.
-//   suspect    → unclear. Listing stays published, lands in the review queue.
-//   defective  → BAD. With listing_inspection_hold on (default) the listing
-//                is pulled from publishing (status='removed' + review_hold=1,
-//                the same trick drafts use), the seller is told the crew will
-//                review it, and an operator approves or rejects it from the
-//                dashboard. With the hold switch off, it behaves like suspect.
-//   A low-confidence "defective" is treated as suspect: the prompt tells the
-//   model to answer suspect when unsure, so a hesitant bad verdict is not a
-//   strong enough reason to hide someone's ad.
+// Two modes, one switch (listing_inspection_decide; see applyInspectionResult):
+//
+//   CHECK ONLY (default) — every verdict is recorded and shown in the
+//   dashboard's الفحص tab; every listing stays live. suspect/defective rows
+//   sit in the review list so an operator CAN act, but nothing is forced.
+//
+//   DECIDE — the verdict has consequences:
+//     clean, medium/high confidence → published (stays live)
+//     defective, high confidence    → NOT published: status='removed', the
+//                                     seller is told, an operator can
+//                                     overturn it from the tab
+//     anything else (suspect, a hesitant defective, any low-confidence
+//     answer)                       → HELD for review: unpublished
+//                                     (status='removed' + review_hold=1, the
+//                                     same trick drafts use), seller told the
+//                                     crew will look, operator decides
 //
 // Off unless: the chosen model's API key is set AND listing_inspection_enabled=1.
 // Nothing here ever throws into a request path — every entry point is wrapped.
@@ -143,15 +148,10 @@ export function inspectionConfigured() {
 export function inspectionEnabled() {
   return inspectionConfigured() && getSetting('listing_inspection_enabled') === '1';
 }
-// Second, independent switch. With this off (the default) inspection never
-// removes a listing on its own — a held listing still waits for a human.
-export function autoRejectEnabled() {
-  return getSetting('listing_inspection_autoreject') === '1';
-}
-// Hold a BAD listing back from publishing until an operator decides. Default
-// on; off means a bad verdict only queues the listing while it stays live.
-export function holdEnabled() {
-  return getSetting('listing_inspection_hold') !== '0';
+// Second, independent switch: let the verdict decide (publish / reject /
+// hold). Off (the default) means check-only — record and show, touch nothing.
+export function decideEnabled() {
+  return getSetting('listing_inspection_decide') === '1';
 }
 
 // Schema the model's answer is constrained to. Both vendors' structured
@@ -321,39 +321,54 @@ function headline(result) {
 }
 
 /**
- * Record `result` for `listingId` and act on it: hold, remove, or leave it
- * live. Split from the model call so the decision is testable without a key.
- * Returns what was done: 'clean' | 'queued' | 'held' | 'removed' | 'skipped'.
+ * What the verdict means for the listing under the current switch.
+ * Pure, so the rule is readable and testable in one place.
+ */
+export function decisionFor(result, decide = decideEnabled()) {
+  if (!decide) return 'logged';
+  const { verdict, confidence } = result;
+  if (verdict === 'clean' && confidence !== 'low') return 'published';
+  if (verdict === 'defective' && confidence === 'high') return 'rejected';
+  return 'held';
+}
+
+/**
+ * Record `result` for `listingId` and act on it per decisionFor(). Split
+ * from the model call so the decision is testable without a key.
+ * Returns the action taken: 'logged' | 'published' | 'held' | 'rejected' |
+ * 'skipped'.
  */
 export function applyInspectionResult(listingId, result) {
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listingId);
   if (!listing) return 'skipped';
 
+  const action = decisionFor(result);
+  const t = now();
+  // Every result is kept, good ones included — the dashboard shows all of
+  // them. status is the human side: 'pending' until an operator looks,
+  // except a rejection, which is already decided (and can be overturned).
   db.prepare(
-    `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, created_at)
-     VALUES(?,?,?,?,'pending',?)
+    `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, action, created_at)
+     VALUES(?,?,?,?,?,?,?)
      ON CONFLICT(listing_id) DO UPDATE SET
        verdict=excluded.verdict, confidence=excluded.confidence,
-       defects_json=excluded.defects_json, status='pending',
+       defects_json=excluded.defects_json, status=excluded.status, action=excluded.action,
        reviewed_at=NULL, error=NULL, created_at=excluded.created_at`,
-  ).run(listingId, result.verdict, result.confidence, JSON.stringify(result.defects || []), now());
+  ).run(
+    listingId, result.verdict, result.confidence, JSON.stringify(result.defects || []),
+    action === 'rejected' ? 'removed' : 'pending', action, t,
+  );
 
-  const bad = result.verdict === 'defective' && result.confidence !== 'low';
-  const t = now();
-
-  // Only a confirmed defect at high confidence can remove a listing outright,
-  // and only when the operator has explicitly opted in to that.
-  if (autoRejectEnabled() && result.verdict === 'defective' && result.confidence === 'high') {
+  if (action === 'rejected') {
     db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?")
       .run(t, listingId);
-    db.prepare("UPDATE listing_inspections SET status='removed', reviewed_at=? WHERE listing_id=?")
-      .run(t, listingId);
+    db.prepare('UPDATE listing_inspections SET reviewed_at=? WHERE listing_id=?').run(t, listingId);
     notifyListingReview(listing.seller_id, 'rejected', listing, headline(result));
-    console.warn(`[inspect] auto-removed listing=${listingId} :: ${JSON.stringify(result.defects)}`);
-    return 'removed';
+    console.warn(`[inspect] rejected listing=${listingId} :: ${JSON.stringify(result.defects)}`);
+    return action;
   }
 
-  if (bad && holdEnabled()) {
+  if (action === 'held') {
     // Already held (re-inspection after the seller changed photos): keep it
     // held, refresh the verdict for the operator, don't notify twice.
     if (!listing.review_hold) {
@@ -363,20 +378,20 @@ export function applyInspectionResult(listingId, result) {
       pushToAdmins(
         'listing.review',
         'إعلان محجوب بانتظار المراجعة',
-        `${listing.brand} ${listing.model} — ${headline(result) || 'عيب مرصود'}`,
+        `${listing.brand} ${listing.model} — ${headline(result) || 'بحاجة لنظرة'}`,
         { listing_id: listingId },
       ).catch(() => {});
     }
-    console.log(`[inspect] held listing=${listingId} confidence=${result.confidence}`);
-    return 'held';
+    console.log(`[inspect] held listing=${listingId} verdict=${result.verdict} confidence=${result.confidence}`);
+    return action;
   }
 
-  // A listing that was held and now reads clean (photos changed) stays held —
-  // an operator still has to release it, otherwise deleting the one bad
-  // photo would be a self-service bypass. The queue keeps it visible because
-  // it lists every held listing regardless of verdict.
-  console.log(`[inspect] listing=${listingId} verdict=${result.verdict} confidence=${result.confidence}`);
-  return result.verdict === 'clean' ? 'clean' : 'queued';
+  // 'published' or 'logged': the listing is left exactly as it was. A held
+  // listing that now reads clean (photos changed) stays held — an operator
+  // still has to release it, otherwise deleting the one bad photo would be a
+  // self-service bypass. The queue lists every held listing regardless.
+  console.log(`[inspect] listing=${listingId} verdict=${result.verdict} confidence=${result.confidence} action=${action}`);
+  return action;
 }
 
 /**
@@ -390,7 +405,11 @@ export function resolveInspection(inspectionId, action, { reason } = {}) {
   if (!row) return null;
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(row.listing_id);
   const t = now();
-  const wasHeld = !!listing?.review_hold;
+  // Unpublished by the check — held for a human, or rejected outright (the
+  // operator overturning that is exactly what 'approve' is for). A listing
+  // the seller deleted since is 'deleted' on the row and stays down.
+  const wasHeld = !!listing && listing.status === 'removed'
+    && (!!listing.review_hold || row.action === 'rejected');
   let note = reason || null;
   if (!note) {
     try { note = headline({ defects: JSON.parse(row.defects_json || '[]') }); } catch { note = null; }

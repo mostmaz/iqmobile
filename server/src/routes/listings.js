@@ -1381,8 +1381,13 @@ r.delete('/:id(\\d+)', requireAuth(), (req, res) => {
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
   // review_hold cleared too: a held listing the seller deletes is gone, not
-  // "under review" forever in their list.
+  // "under review" forever in their list. Its open check row is closed the
+  // same way, so nobody reviews a listing that no longer exists and an
+  // operator's later "approve" cannot resurrect it.
   db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?").run(now(), row.id);
+  db.prepare(
+    "UPDATE listing_inspections SET status='removed', action='deleted', reviewed_at=? WHERE listing_id=? AND status IN ('pending','removed')",
+  ).run(now(), row.id);
   res.json({ ok: true });
 });
 

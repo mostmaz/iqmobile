@@ -1167,6 +1167,14 @@ addColumnIfMissing('phone_listings', 'is_draft INTEGER NOT NULL DEFAULT 0');
 // Approve → status='active', review_hold=0. Reject → stays 'removed',
 // review_hold=0. See listingInspect.js.
 addColumnIfMissing('phone_listings', 'review_hold INTEGER NOT NULL DEFAULT 0');
+// What the AI check DID with its verdict, next to the verdict itself:
+//   logged    = check-only mode; the listing was left alone
+//   published = decide mode, judged good; live
+//   held      = decide mode, unsure; unpublished until an operator decides
+//   rejected  = decide mode, judged bad with high confidence; unpublished,
+//               seller told, operator can overturn
+//   deleted   = the seller deleted the listing while a row was open
+addColumnIfMissing('listing_inspections', 'action TEXT');
 // Actual transacted price (§10) — the dataset the marketplace has never had.
 addColumnIfMissing('phone_listings', 'sale_price INTEGER');
 // Idempotency for POST /listings. The mobile wizard generates one key per
@@ -1560,16 +1568,14 @@ setSetting.run('reserve_on_confirm', '1'); // 1 = reserved, 0 = sold
 setSetting.run('shops_unlimited_listings', '1'); // 1 = shops bypass the create rate limit, 0 = shops capped like individuals
 setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore TTL; 0 = expire after listing_ttl_days
 // AI listing inspection. Both default OFF: the feature does nothing until an
-// operator turns it on in the dashboard (and it needs ANTHROPIC_API_KEY too).
-// Enabling the first switch only flags listings for review; removing a listing
-// automatically is a separate, deliberate second opt-in.
+// operator turns it on in the dashboard (and it needs the model's API key).
+// The first switch only CHECKS: every result is recorded and shown in the
+// dashboard, every listing stays live. The second lets the AI DECIDE —
+// publish, reject, or hold for a human — and is a deliberate separate opt-in
+// because a wrong decision costs a seller their ad. (The older
+// listing_inspection_hold / _autoreject keys are no longer read.)
 setSetting.run('listing_inspection_enabled', '0');
-setSetting.run('listing_inspection_autoreject', '0');
-// With inspection on, a BAD verdict holds the listing back from publishing
-// (seller notified, operator decides) instead of merely flagging it while it
-// stays live. Defaults ON because that is the point of the check — but it
-// is still inert until listing_inspection_enabled is flipped above.
-setSetting.run('listing_inspection_hold', '1');
+setSetting.run('listing_inspection_decide', '0');
 // Which model judges, chosen in the dashboard. Empty = LISTING_INSPECT_MODEL
 // from .env, else the built-in default (see listingInspect.js).
 setSetting.run('listing_inspection_model', '');

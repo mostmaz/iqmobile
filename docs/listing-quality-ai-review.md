@@ -21,14 +21,25 @@ answer `suspect`, never `defective`.
 
 ## What happens to each verdict
 
+Every check is recorded, good ones included, and listed in the dashboard's
+الفحص tab with the verdict, confidence, evidence, photos and what was done.
+
+With **دع الذكاء الاصطناعي يقرر** (`listing_inspection_decide`) **off**, that
+is all: the listing is left alone (`action = logged`). suspect/defective rows
+sit in the pending list so an operator can still act by hand.
+
+With it **on**:
+
 ```
-photos uploaded ──20 s quiet──▶ one Claude call (≤3 photos + text)
+photos uploaded ──20 s quiet──▶ one model call (≤3 photos + text)
                                    │
-            clean ─────────────────┤  stays published, logged for audit
-            suspect ───────────────┤  stays published, in the review queue
-            defective (med/high) ──┤  HELD: hidden from buyers, seller notified,
-                                   │  review queue (orange "محجوب عن النشر")
-            defective (low) ───────┘  treated as suspect
+   clean, medium/high ─────────────┤  published (action = published)
+   defective, high ────────────────┤  NOT published: status='removed', seller
+                                   │  told «لم يُنشر» + reason, operator can
+                                   │  overturn from the tab (action = rejected)
+   everything else ────────────────┘  HELD: hidden from buyers, seller told the
+     (suspect; defective low/med;      crew will look, pending list (orange
+      any low-confidence answer)       "محجوب عن النشر") (action = held)
 ```
 
 Held means `status='removed'` + `review_hold=1` on `phone_listings`, the
@@ -64,8 +75,7 @@ Seller-facing surfaces:
 | `.env` | `LISTING_INSPECT_DEBOUNCE_MS` | 20000 | wait for photo uploads to go quiet |
 | `.env` | `LISTING_INSPECT_IMAGE_MAX` | `1280x720` | photos are resized server-side to fit this (aspect kept, no crop, never enlarged) before the call |
 | settings | `listing_inspection_enabled` | 0 | master switch (dashboard → Settings) |
-| settings | `listing_inspection_hold` | 1 | bad = held. Off: bad only queues, listing stays live |
-| settings | `listing_inspection_autoreject` | 0 | bad + high confidence = removed outright, seller told |
+| settings | `listing_inspection_decide` | 0 | **off = check only**: every result recorded and shown, every listing stays live. **on = the AI decides** (table below) |
 
 Word-level gate (`listingQuality.js`) is unchanged and still runs first: a
 description with «لا يعمل» / «مسروق» / «مقفول» is refused at creation, and
