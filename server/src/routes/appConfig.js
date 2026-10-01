@@ -160,6 +160,10 @@ r.get('/app-config', (_req, res) => {
     // the check when it is real — it once claimed a photo review step that
     // did not exist, and copy that describes a mechanism must match it.
     quality_check: inspectionEnabled() && decideEnabled(),
+    // Whether a listing posted from this build (≥ 1.0.0) waits for the
+    // check before going live. The create response carries the per-listing
+    // answer; this is for copy that describes the step before posting.
+    quality_gate: inspectionEnabled(),
     // How hard the app insists on notification permission, per platform —
     // Apple forbids requiring it, Google does not. Read by every build; an
     // old build that has never heard of the key simply ignores it.

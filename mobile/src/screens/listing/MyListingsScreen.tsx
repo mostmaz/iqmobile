@@ -107,19 +107,42 @@ export default function MyListingsScreen({ navigation }: any) {
                   next, because the seller was just told «نُشر إعلانك» a
                   minute ago and now it is not in the feed. */}
               {item.status === 'under_review' ? (
-                <View style={{
-                  marginTop: -4, marginBottom: 10, marginHorizontal: 4,
-                  backgroundColor: theme.accentSoft, borderWidth: 1, borderColor: theme.accent,
-                  borderRadius: 14, padding: 12, gap: 4,
-                }}>
-                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
-                    قد لا يُنشر هذا الإعلان
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('ListingStatus', { id: item.id })}
+                  style={{
+                    marginTop: -4, marginBottom: 10, marginHorizontal: 4,
+                    backgroundColor: theme.accentSoft, borderWidth: 1, borderColor: theme.accent,
+                    borderRadius: 14, padding: 12, gap: 4,
+                  }}
+                >
+                  {/* 'checking' is the gate still deciding (the app that
+                      posted it closed before the answer); 'under_review' is
+                      a person's turn. Different waits, said differently. */}
+                  {item.review_state === 'checking' ? (
+                    <>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                        الفحص الآلي لم يكتمل بعد
+                      </Text>
+                      <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                        الإعلان غير ظاهر للمشترين حتى ينتهي فحص الصور. يكتمل خلال دقائق من تلقاء نفسه.
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                        قد لا يُنشر هذا الإعلان
+                      </Text>
+                      <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                        الفحص الآلي وجد أن حالة الجهاز تبدو غير مناسبة. الإعلان مخفي عن المشترين الآن،
+                        وسيراجعه فريقنا بأسرع وقت ويقرر نشره أو لا — يصلك تنبيه بالنتيجة.
+                      </Text>
+                    </>
+                  )}
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12, color: theme.accentDeep, textAlign: 'right', marginTop: 4 }}>
+                    تفاصيل الحالة ‹
                   </Text>
-                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
-                    الفحص الآلي وجد أن حالة الجهاز تبدو غير مناسبة. الإعلان مخفي عن المشترين الآن،
-                    وسيراجعه فريقنا بأسرع وقت ويقرر نشره أو لا — يصلك تنبيه بالنتيجة.
-                  </Text>
-                </View>
+                </TouchableOpacity>
               ) : null}
 
               {/* Photo-check notes, below the advice card. Renders nothing at

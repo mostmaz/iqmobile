@@ -238,11 +238,12 @@ export default function NotificationsScreen({ navigation }: any) {
       navigation.navigate('Sticker');
       return;
     }
-    // Quality review: the held listing lives in «إعلاناتي» with its
-    // «قيد المراجعة» notice, and a rejected one is gone from the detail
-    // route entirely — so the list, never the detail page.
+    // Quality review: the status screen holds the verdict, the reason and
+    // what to do next — and it is the one route that can show a rejected
+    // listing, which the detail page 404s for.
     if (item.kind.startsWith('listing.review.')) {
-      navigation.navigate('MyListings');
+      if (item.payload?.listing_id) navigation.navigate('ListingStatus', { id: Number(item.payload.listing_id) });
+      else navigation.navigate('MyListings');
       return;
     }
     if (item.payload?.listing_id) {

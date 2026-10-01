@@ -321,17 +321,35 @@ function expireStale() {
 
 // ─── the board ───────────────────────────────────────────────────────
 
+// The board shows a week. A request lives three weeks (TTL_MS), and a
+// buyer who asked twenty days ago has usually bought — a seller answering
+// it is wasting a reply, and a board that is mostly those stops being read.
+// The request itself stays open and reachable (its buyer's list, the
+// detail page, the push that announced it); only the board stops showing it.
+const BOARD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
 r.get('/phone-requests', optionalAuth(), (req, res) => {
   expireStale();
   const params = [];
-  let sql = "SELECT * FROM phone_requests WHERE status='open' AND expires_at > ?";
-  params.push(now());
+  let sql = "SELECT * FROM phone_requests WHERE status='open' AND expires_at > ? AND created_at > ?";
+  params.push(now(), now() - BOARD_WINDOW_MS);
 
   if (req.query.governorate) {
     const g = normalizeGovernorate(String(req.query.governorate));
     if (g && isGovernorate(g)) { sql += ' AND governorate=?'; params.push(g); }
   }
-  if (req.query.brand) { sql += ' AND brand=?'; params.push(String(req.query.brand)); }
+  // One brand or several: ?brand=Apple,Samsung. Unknown names are dropped
+  // rather than matched, so a typo cannot empty the board by accident.
+  if (req.query.brand) {
+    const brands = String(req.query.brand).split(',').map((b) => b.trim()).filter((b) => b && isBrand(b));
+    if (brands.length) { sql += ` AND brand IN (${brands.map(() => '?').join(',')})`; params.push(...brands); }
+  }
+  // Budget band, on the buyer's ceiling: a shop with 400k phones wants the
+  // requests whose max_price can pay for one.
+  const minP = Number(req.query.min_price);
+  const maxP = Number(req.query.max_price);
+  if (Number.isFinite(minP) && minP > 0) { sql += ' AND max_price >= ?'; params.push(Math.floor(minP)); }
+  if (Number.isFinite(maxP) && maxP > 0) { sql += ' AND max_price <= ?'; params.push(Math.floor(maxP)); }
   // "Only the ones I can actually fill": requests matching a brand this
   // seller has ever listed. The shops tab's default view.
   if (req.query.mine_to_answer === '1' && req.user?.id) {

@@ -47,6 +47,27 @@ export type Condition = 'new' | 'like_new' | 'used' | 'repaired' | 'refurbished'
 // get a 404 for it, like any removed listing.
 export type ListingStatus = 'active' | 'reserved' | 'sold' | 'expired' | 'removed' | 'under_review';
 
+/**
+ * The seller-facing state of the AI quality check (apps ≥ 1.0.0 wait for
+ * it before a listing goes live):
+ *   checking     — the model is looking; poll
+ *   under_review — it objected; hidden until an operator decides
+ *   published    — live (clean, or approved, or never checked)
+ *   rejected     — an operator refused it; `reason` says why
+ */
+export type ReviewState = 'checking' | 'under_review' | 'published' | 'rejected';
+export interface ListingReview {
+  id: number;
+  state: ReviewState;
+  reason: string | null;
+  checked_at: number | null;
+  decided_at: number | null;
+  listing: {
+    id: number; brand: string; model: string; asking_price: number;
+    governorate: string; status: string; image: string | null;
+  };
+}
+
 export interface ListingImage {
   id: number;
   listing_id: number;
@@ -76,6 +97,14 @@ export interface Listing {
   city?: string | null;
   description?: string | null;
   status: ListingStatus;
+  /**
+   * Where the listing stands with the quality check, for the seller's own
+   * views (GET /listings/mine, GET /listings/:id). 'checking' and
+   * 'under_review' both ride status 'under_review'; this says which.
+   */
+  review_state?: ReviewState;
+  /** On the create response only: what the app should do next. */
+  review?: { state: ReviewState } | null;
   created_at: number;
   expires_at: number;
   updated_at: number;
@@ -374,6 +403,13 @@ export const Listings = {
     api<{ ok: boolean }>(`/listings/${id}/images/${imageId}`, { method: 'DELETE' }),
   removeVideo: (id: number) => api<{ ok: boolean }>(`/listings/${id}/video`, { method: 'DELETE' }),
   renew: (id: number) => api<Listing>(`/listings/${id}/renew`, { method: 'POST' }),
+  /**
+   * The quality gate. `inspect` says "my photos are up, look now" and
+   * returns at once; `review` is what the status screen polls and shows.
+   * Both are the seller's alone (403 otherwise).
+   */
+  inspect: (id: number) => api<ListingReview>(`/listings/${id}/inspect`, { method: 'POST' }),
+  review: (id: number) => api<ListingReview>(`/listings/${id}/review`),
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),
   /**
@@ -559,10 +595,20 @@ export interface RequestBudgetVerdict {
 
 export const PhoneRequests = {
   /** The public board. `mineToAnswer` narrows to brands this seller has listed. */
-  board: (opts: { governorate?: string; brand?: string; mineToAnswer?: boolean; sort?: RequestSort } = {}) => {
+  board: (opts: {
+    governorate?: string;
+    /** One brand, or several — the board takes a comma-separated list. */
+    brand?: string | string[];
+    /** Budget band on the buyer's ceiling, IQD. */
+    minPrice?: number; maxPrice?: number;
+    mineToAnswer?: boolean; sort?: RequestSort;
+  } = {}) => {
     const q = new URLSearchParams();
     if (opts.governorate) q.set('governorate', opts.governorate);
-    if (opts.brand) q.set('brand', opts.brand);
+    const brands = Array.isArray(opts.brand) ? opts.brand.filter(Boolean) : opts.brand ? [opts.brand] : [];
+    if (brands.length) q.set('brand', brands.join(','));
+    if (opts.minPrice) q.set('min_price', String(Math.floor(opts.minPrice)));
+    if (opts.maxPrice) q.set('max_price', String(Math.floor(opts.maxPrice)));
     if (opts.mineToAnswer) q.set('mine_to_answer', '1');
     if (opts.sort && opts.sort !== 'new') q.set('sort', opts.sort);
     const qs = q.toString();

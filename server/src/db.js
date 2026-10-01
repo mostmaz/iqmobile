@@ -1167,6 +1167,20 @@ addColumnIfMissing('phone_listings', 'is_draft INTEGER NOT NULL DEFAULT 0');
 // Approve → status='active', review_hold=0. Reject → stays 'removed',
 // review_hold=0. See listingInspect.js.
 addColumnIfMissing('phone_listings', 'review_hold INTEGER NOT NULL DEFAULT 0');
+// Where a listing stands with the AI quality check, for apps that WAIT for
+// the verdict before the listing goes live (≥ 1.0.0; listingInspect.js):
+//   awaiting  = created hidden, photos still arriving
+//   checking  = the model is looking
+//   passed    = clean; published by the check
+//   unchecked = published without a verdict (check off, no photos, or the
+//               vendor failed — the seller is never blocked by our outage)
+//   review    = the model objected; hidden until an operator decides
+//   approved  = operator published it
+//   rejected  = operator (or a confident auto-reject) refused it
+// NULL for every listing that predates the gate or came from an older app.
+addColumnIfMissing('phone_listings', 'inspection_state TEXT');
+db.exec(`CREATE INDEX IF NOT EXISTS idx_listings_gate
+  ON phone_listings(inspection_state, updated_at) WHERE inspection_state IN ('awaiting','checking')`);
 // What the AI check DID with its verdict, next to the verdict itself:
 //   logged    = check-only mode; the listing was left alone
 //   published = decide mode, judged good; live
@@ -1181,6 +1195,9 @@ addColumnIfMissing('listing_inspections', 'action TEXT');
 // so the old rows still say what they were. Old rows are told apart by the
 // gate's fixed evidence wording.
 addColumnIfMissing('listing_inspections', 'judged_by TEXT');
+// What the operator wrote when refusing — shown to the seller on the
+// listing's status page, so "لم يُنشر" comes with a why.
+addColumnIfMissing('listing_inspections', 'operator_note TEXT');
 db.prepare("UPDATE listing_inspections SET judged_by='words' WHERE judged_by IS NULL AND error IS NULL AND defects_json LIKE '%الوصف يذكر: «%'").run();
 db.prepare("UPDATE listing_inspections SET judged_by='model' WHERE judged_by IS NULL").run();
 // Actual transacted price (§10) — the dataset the marketplace has never had.

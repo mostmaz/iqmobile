@@ -10,7 +10,7 @@
 // into a single offer to finish the job rather than a list of complaints.
 
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Share } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Share, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme';
@@ -23,18 +23,59 @@ import { arOf } from '../../lib/governorates';
 import { bundledBrandLogo } from '../../lib/brandLogos';
 import { Img } from '../../components/Img';
 import { useTrack } from '../../analytics/track';
+import { reviewSettled, reviewPollDelay, reviewCopy } from '../../lib/listingReview';
+import type { ListingReview } from '../../api/endpoints';
 
 export default function ListingPublishedScreen({ route, navigation }: any) {
   const {
     id, brand, model, price, governorate,
     failedPhotos = 0, remaining = [],
+    // From 1.0.0 the listing is born hidden and the AI check decides
+    // whether it goes live. True here means: wait for that answer first.
+    checking = false,
   } = route.params || {};
   const insets = useSafeAreaInsets();
   const track = useTrack();
 
+  // ── the gate ──────────────────────────────────────────────────────────
+  // Poll the verdict. 'published' → this screen turns into the success
+  // screen it always was. Anything else → the status screen, which is
+  // where a held listing lives. A minute without an answer → the status
+  // screen too, which says the push will finish the job.
+  const startedAt = React.useRef(Date.now());
+  const [waited, setWaited] = React.useState(0);
+  const gate = useQuery({
+    queryKey: ['listing-review', id],
+    queryFn: () => Listings.review(id),
+    enabled: !!checking && !!id,
+    refetchInterval: (query) => {
+      const state = (query.state.data as ListingReview | undefined)?.state;
+      if (reviewSettled(state)) return false;
+      const elapsed = Date.now() - startedAt.current;
+      setWaited(elapsed);
+      return reviewPollDelay(elapsed) ?? false;
+    },
+    refetchIntervalInBackground: false,
+  });
+  const gateState = gate.data?.state;
+  const gaveUp = !!checking && !reviewSettled(gateState) && reviewPollDelay(waited) == null;
+  const stillChecking = !!checking && !reviewSettled(gateState) && !gaveUp;
   React.useEffect(() => {
+    if (!checking) return;
+    if (gateState === 'published') {
+      track('listing.gate_passed', { listing_id: id, waited_ms: Date.now() - startedAt.current });
+      return;
+    }
+    if (reviewSettled(gateState) || gaveUp) {
+      track('listing.gate_held', { listing_id: id, state: gateState || 'timeout', waited_ms: Date.now() - startedAt.current });
+      navigation.replace('ListingStatus', { id });
+    }
+  }, [checking, gateState, gaveUp, id, navigation, track]);
+
+  React.useEffect(() => {
+    if (stillChecking) return;
     track('listing.published_screen', { listing_id: id, remaining: remaining.length, failed_photos: failedPhotos });
-  }, [id, remaining.length, failedPhotos, track]);
+  }, [id, remaining.length, failedPhotos, track, stillChecking]);
 
   const openListing = () => navigation.replace('ListingDetail', { id });
 
@@ -50,6 +91,36 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
       .catch(() => {});
     return () => { alive = false; };
   }, []);
+
+  if (stillChecking || (checking && !reviewSettled(gateState))) {
+    const c = reviewCopy('checking');
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+        <View style={{
+          width: 72, height: 72, borderRadius: 36, backgroundColor: theme.accentSoft,
+          alignItems: 'center', justifyContent: 'center', marginBottom: 18,
+        }}>
+          <ActivityIndicator size="large" color={theme.accentDeep} />
+        </View>
+        <Text maxFontSizeMultiplier={FONT_SCALE_TIGHT} style={{ fontFamily: fonts.arBold, fontSize: 21, color: theme.ink, textAlign: 'center' }}>
+          {c.title}
+        </Text>
+        <Text style={{ fontFamily: fonts.ar, fontSize: 13.5, lineHeight: 22, color: theme.subtle, textAlign: 'center', marginTop: 10 }}>
+          {c.body}
+        </Text>
+        <View style={{
+          flexDirection: 'row-reverse', alignItems: 'center', gap: 8, marginTop: 22,
+          paddingHorizontal: 14, paddingVertical: 9, borderRadius: radius.pill,
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+        }}>
+          <IconSpark size={14} color={theme.accentDeep} />
+          <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.ink }}>
+            {[brand, model].filter(Boolean).join(' ')}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -96,7 +167,9 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
               screen. Only shown when the server says the check is on — a
               BAD verdict hides the ad and the seller is told, so the step
               is real and worth a line here. */}
-          {qualityCheck ? (
+          {checking && gateState === 'published' ? (
+            <Row tone="success" text="فحص الذكاء الاصطناعي الصور والوصف ولم يجد ما يمنع النشر." />
+          ) : qualityCheck ? (
             <Row
               tone="pending"
               text="نفحص الصور آلياً خلال دقائق. إذا بدا الجهاز مكسوراً أو معطّلاً يُخفى الإعلان مؤقتاً ويصلك تنبيه، ويراجعه فريقنا بأسرع وقت."

@@ -25,6 +25,14 @@
 //                                     same trick drafts use), seller told the
 //                                     crew will look, operator decides
 //
+// Third path, for apps from 1.0.0 (the GATE; see gateApplies): the listing
+// is created HIDDEN, the app uploads its photos and asks for the verdict,
+// and the seller watches a "being checked" screen. clean → published on
+// the spot; anything else → held for an operator, and the seller is sent to
+// the listing's status page. Nothing is auto-rejected on this path — a
+// refusal is a person's call, and the seller is told by push either way.
+// The decide switch does not apply here: the gate IS the decision.
+//
 // Off unless: the chosen model's API key is set AND listing_inspection_enabled=1.
 // Nothing here ever throws into a request path — every entry point is wrapped.
 
@@ -33,8 +41,9 @@ import sharp from 'sharp';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { db, now, getSetting } from './db.js';
-import { notifyListingReview } from './notify.js';
+import { notify, notifyListingReview, versionAtLeast } from './notify.js';
 import { pushToAdmins } from './adminPush.js';
+import { announceNewListing } from './listingAnnounce.js';
 
 // The public origin the model fetches images from. Same default as the social
 // publisher — override with PUBLIC_BASE_URL if the API ever moves.
@@ -149,20 +158,25 @@ export function apiKeySourceFor(model = MODEL()) {
   return null;
 }
 
+// A seller on the gate is looking at a spinner while this runs, and the
+// SDKs' default deadline is ten minutes. A vendor that has not answered in
+// this long is treated as down: the listing publishes unchecked.
+const VENDOR_TIMEOUT_MS = Number(process.env.LISTING_INSPECT_TIMEOUT_MS) || 60_000;
+
 // Clients are cached per key, so a key pasted into the dashboard takes
 // effect on the next call without a restart.
 let _anthropic = null;
 let _anthropicKey = null;
 function anthropic() {
   const apiKey = apiKeyFor();
-  if (!_anthropic || _anthropicKey !== apiKey) { _anthropic = new Anthropic({ apiKey }); _anthropicKey = apiKey; }
+  if (!_anthropic || _anthropicKey !== apiKey) { _anthropic = new Anthropic({ apiKey, timeout: VENDOR_TIMEOUT_MS }); _anthropicKey = apiKey; }
   return _anthropic;
 }
 let _openai = null;
 let _openaiKey = null;
 function openai() {
   const apiKey = apiKeyFor();
-  if (!_openai || _openaiKey !== apiKey) { _openai = new OpenAI({ apiKey }); _openaiKey = apiKey; }
+  if (!_openai || _openaiKey !== apiKey) { _openai = new OpenAI({ apiKey, timeout: VENDOR_TIMEOUT_MS }); _openaiKey = apiKey; }
   return _openai;
 }
 
@@ -385,6 +399,7 @@ export function decisionFor(result, decide = decideEnabled()) {
 export function applyInspectionResult(listingId, result) {
   const listing = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listingId);
   if (!listing) return 'skipped';
+  if (isGated(listing)) return applyGatedResult(listing, result);
 
   const action = decisionFor(result);
   const t = now();
@@ -404,7 +419,7 @@ export function applyInspectionResult(listingId, result) {
   );
 
   if (action === 'rejected') {
-    db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?")
+    db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, inspection_state='rejected', updated_at=? WHERE id=?")
       .run(t, listingId);
     db.prepare('UPDATE listing_inspections SET reviewed_at=? WHERE listing_id=?').run(t, listingId);
     notifyListingReview(listing.seller_id, 'rejected', listing, headline(result));
@@ -416,7 +431,7 @@ export function applyInspectionResult(listingId, result) {
     // Already held (re-inspection after the seller changed photos): keep it
     // held, refresh the verdict for the operator, don't notify twice.
     if (!listing.review_hold) {
-      db.prepare("UPDATE phone_listings SET status='removed', review_hold=1, updated_at=? WHERE id=?")
+      db.prepare("UPDATE phone_listings SET status='removed', review_hold=1, inspection_state='review', updated_at=? WHERE id=?")
         .run(t, listingId);
       notifyListingReview(listing.seller_id, 'pending', listing, headline(result));
       pushToAdmins(
@@ -460,26 +475,207 @@ export function resolveInspection(inspectionId, action, { reason } = {}) {
   }
 
   if (action === 'remove') {
-    db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?")
+    db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, inspection_state='rejected', updated_at=? WHERE id=?")
       .run(t, row.listing_id);
-    db.prepare("UPDATE listing_inspections SET status='removed', reviewed_at=? WHERE id=?").run(t, row.id);
+    db.prepare("UPDATE listing_inspections SET status='removed', reviewed_at=?, operator_note=? WHERE id=?")
+      .run(t, reason || null, row.id);
     // A seller whose live ad was quietly taken down learns nothing; one
     // whose held ad was refused was promised an answer. Both get one.
     if (listing) notifyListingReview(listing.seller_id, 'rejected', listing, note);
     return row.listing_id;
   }
 
-  db.prepare("UPDATE listing_inspections SET status='approved', reviewed_at=? WHERE id=?").run(t, row.id);
+  db.prepare("UPDATE listing_inspections SET status='approved', reviewed_at=?, operator_note=? WHERE id=?")
+    .run(t, reason || null, row.id);
   if (wasHeld) {
     // Published for the first time now, so the clock starts now: the TTL it
-    // was born with has been ticking while nobody could see it.
+    // was born with has been ticking while nobody could see it, and the
+    // feed position too (bumped_at) — a phone nobody could see for a day is
+    // not a day-old listing.
     const days = Number(getSetting('listing_ttl_days')) || 30;
     db.prepare(
-      "UPDATE phone_listings SET status='active', review_hold=0, expires_at=?, updated_at=? WHERE id=?",
-    ).run(t + days * 24 * 60 * 60 * 1000, t, row.listing_id);
+      `UPDATE phone_listings SET status='active', review_hold=0, inspection_state='approved',
+              expires_at=?, bumped_at=?, updated_at=? WHERE id=?`,
+    ).run(t + days * 24 * 60 * 60 * 1000, t, t, row.listing_id);
+    // A gated listing was never visible, so nobody waiting for it has heard.
+    // A legacy held one was live at creation and was announced then.
+    if (GATE_HIDDEN.has(listing.inspection_state)) {
+      announceNewListing(db.prepare('SELECT * FROM phone_listings WHERE id=?').get(row.listing_id));
+    }
     notifyListingReview(listing.seller_id, 'approved', listing, null);
+  } else if (listing) {
+    db.prepare("UPDATE phone_listings SET inspection_state='approved', updated_at=? WHERE id=? AND inspection_state IS NOT NULL")
+      .run(t, row.listing_id);
   }
   return row.listing_id;
+}
+
+// ─── the gate: apps that wait for the verdict ──────────────────────────
+
+export const GATE_MIN_APP_VERSION = '1.0.0';
+// States in which the listing has not been seen by anyone yet.
+const GATE_HIDDEN = new Set(['awaiting', 'checking', 'review']);
+const GATE_OPEN = new Set(['awaiting', 'checking']);
+
+/** Does a listing created by this app build wait for the check? */
+export function gateApplies(appVersion) {
+  return inspectionEnabled() && versionAtLeast(appVersion, GATE_MIN_APP_VERSION);
+}
+/** Created hidden and still waiting for a verdict. */
+export function isGated(listing) {
+  return !!listing && GATE_OPEN.has(listing.inspection_state) && listing.status === 'removed' && !!listing.review_hold;
+}
+
+/**
+ * First publish of a gated listing. `state` says why: 'passed' (the model
+ * said clean) or 'unchecked' (nothing to check, check off, or the vendor
+ * failed). Narrowed to the hidden pre-state, so a listing the seller
+ * deleted in the meantime stays deleted.
+ */
+function publishGated(listing, state, t = now()) {
+  const days = Number(getSetting('listing_ttl_days')) || 30;
+  const r = db.prepare(
+    `UPDATE phone_listings SET status='active', review_hold=0, inspection_state=?,
+            expires_at=?, bumped_at=?, updated_at=?
+      WHERE id=? AND status='removed' AND review_hold=1 AND inspection_state IN ('awaiting','checking')`,
+  ).run(state, t + days * 24 * 60 * 60 * 1000, t, t, listing.id);
+  if (r.changes) announceNewListing(db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listing.id));
+  return r.changes > 0;
+}
+
+/**
+ * The verdict, for a listing that waited for it. clean (not low) →
+ * published; everything else → held for a person. No auto-reject here.
+ */
+function applyGatedResult(listing, result) {
+  const ok = result.verdict === 'clean' && result.confidence !== 'low';
+  const action = ok ? 'published' : 'held';
+  const t = now();
+  db.prepare(
+    `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, action, created_at, judged_by)
+     VALUES(?,?,?,?,'pending',?,?,'model')
+     ON CONFLICT(listing_id) DO UPDATE SET
+       verdict=excluded.verdict, confidence=excluded.confidence,
+       defects_json=excluded.defects_json, status='pending', action=excluded.action,
+       reviewed_at=NULL, error=NULL, operator_note=NULL, created_at=excluded.created_at, judged_by='model'`,
+  ).run(listing.id, result.verdict, result.confidence, JSON.stringify(result.defects || []), action, t);
+
+  if (ok) {
+    publishGated(listing, 'passed', t);
+    console.log(`[inspect] gate passed listing=${listing.id} confidence=${result.confidence}`);
+    return action;
+  }
+  db.prepare("UPDATE phone_listings SET inspection_state='review', updated_at=? WHERE id=?").run(t, listing.id);
+  // Inbox row only, no push: the seller is looking at the status screen
+  // that says exactly this. The push comes with the operator's decision.
+  notify(listing.seller_id, 'listing.review.pending',
+    { status: 'pending', listing_id: listing.id, reason: headline(result) }, null);
+  pushToAdmins(
+    'listing.review',
+    'إعلان بانتظار المراجعة',
+    `${listing.brand} ${listing.model} — ${headline(result) || 'بحاجة لنظرة'}`,
+    { listing_id: listing.id },
+  ).catch(() => {});
+  console.log(`[inspect] gate held listing=${listing.id} verdict=${result.verdict} confidence=${result.confidence}`);
+  return action;
+}
+
+const imageCount = (listingId) =>
+  db.prepare('SELECT COUNT(*) AS n FROM listing_images WHERE listing_id=?').get(listingId).n;
+
+/**
+ * The app has finished uploading and wants the verdict. Kicks the check off
+ * and returns at once; the app polls reviewFor() until the state settles.
+ * A listing with nothing to look at, or a check that is switched off, is
+ * published on the spot. `schedule` is injectable for tests.
+ */
+export function startGatedInspection(listing, schedule = (id) => inspectListingAsync(id, { delayMs: 0 })) {
+  if (!isGated(listing)) return reviewStateFor(listing);
+  if (!inspectionEnabled() || imageCount(listing.id) === 0) {
+    publishGated(listing, 'unchecked');
+    return 'published';
+  }
+  if (listing.inspection_state !== 'checking') {
+    db.prepare("UPDATE phone_listings SET inspection_state='checking', updated_at=? WHERE id=?").run(now(), listing.id);
+    schedule(listing.id);
+  }
+  return 'checking';
+}
+
+/**
+ * Backstop, from the expirer: a gated listing whose app never came back
+ * for the verdict (closed mid-upload, lost the network) or whose check died
+ * with a restart. Quiet for `staleMs` → checked now, or published if there
+ * is nothing to check. Never leaves a seller's listing hidden for good.
+ */
+export function sweepStuckGates(
+  nowTs = now(),
+  { staleMs = 3 * 60 * 1000, schedule = (id) => inspectListingAsync(id, { delayMs: 0 }) } = {},
+) {
+  const rows = db.prepare(
+    `SELECT * FROM phone_listings
+      WHERE inspection_state IN ('awaiting','checking') AND status='removed' AND review_hold=1
+        AND updated_at <= ? LIMIT 50`,
+  ).all(nowTs - staleMs);
+  const out = [];
+  for (const l of rows) {
+    if (!inspectionEnabled() || imageCount(l.id) === 0) {
+      publishGated(l, 'unchecked', nowTs);
+      out.push({ id: l.id, action: 'published' });
+      continue;
+    }
+    db.prepare("UPDATE phone_listings SET inspection_state='checking', updated_at=? WHERE id=?").run(nowTs, l.id);
+    schedule(l.id);
+    out.push({ id: l.id, action: 'checking' });
+  }
+  return out;
+}
+
+/**
+ * The seller-facing state: 'checking' | 'under_review' | 'published' |
+ * 'rejected'. Derived from inspection_state, falling back to the older
+ * columns for listings that predate it.
+ */
+export function reviewStateFor(listing) {
+  if (!listing) return null;
+  switch (listing.inspection_state) {
+    case 'awaiting': case 'checking': return 'checking';
+    case 'review': return 'under_review';
+    case 'rejected': return 'rejected';
+    case 'passed': case 'unchecked': case 'approved': return 'published';
+    default: break;
+  }
+  if (listing.review_hold) return 'under_review';
+  if (listing.status === 'removed') {
+    const ins = db.prepare("SELECT status, action FROM listing_inspections WHERE listing_id=?").get(listing.id);
+    if (ins && ins.status === 'removed' && ins.action !== 'deleted') return 'rejected';
+  }
+  return 'published';
+}
+
+/** Everything the listing's status page shows. Owner-only at the route. */
+export function reviewFor(listingId) {
+  const l = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listingId);
+  if (!l) return null;
+  const ins = db.prepare('SELECT * FROM listing_inspections WHERE listing_id=?').get(listingId);
+  const state = reviewStateFor(l);
+  let reason = null;
+  if (ins && (state === 'under_review' || state === 'rejected')) {
+    reason = ins.operator_note || null;
+    if (!reason) { try { reason = headline({ defects: JSON.parse(ins.defects_json || '[]') }); } catch { reason = null; } }
+  }
+  const img = db.prepare('SELECT image_path FROM listing_images WHERE listing_id=? ORDER BY position ASC, id ASC LIMIT 1').get(listingId);
+  return {
+    id: l.id,
+    state,
+    reason,
+    checked_at: ins?.created_at ?? null,
+    decided_at: ins?.reviewed_at ?? null,
+    listing: {
+      id: l.id, brand: l.brand, model: l.model, asking_price: l.asking_price,
+      governorate: l.governorate, status: l.status, image: img?.image_path ?? null,
+    },
+  };
 }
 
 // ─── scheduling ────────────────────────────────────────────────────────
@@ -515,8 +711,11 @@ async function runInspection(listingId) {
       .map((r) => r.image_path);
     if (images.length === 0) return; // nothing to look at yet
 
+    if (listing.inspection_state === 'awaiting') {
+      db.prepare("UPDATE phone_listings SET inspection_state='checking', updated_at=? WHERE id=?").run(now(), listingId);
+    }
     const result = await inspectListing(listing, images);
-    if (!result) return;
+    if (!result) throw new Error('model gave no answer');
     applyInspectionResult(listingId, result);
   } catch (e) {
     // Record the failure so a silently-broken key or quota shows up in the
@@ -527,6 +726,12 @@ async function runInspection(listingId) {
          VALUES(?,'clean','low','[]','error',?,?,'model')
          ON CONFLICT(listing_id) DO UPDATE SET status='error', error=excluded.error, judged_by='model'`,
       ).run(listingId, String(e?.message || e).slice(0, 300), now());
+    } catch {}
+    // A seller waiting on the gate is not made to pay for our vendor's
+    // outage: the listing goes live unchecked, the error row says so.
+    try {
+      const l = db.prepare('SELECT * FROM phone_listings WHERE id=?').get(listingId);
+      if (isGated(l)) publishGated(l, 'unchecked');
     } catch {}
     console.error('[inspect] failed:', e?.message);
   }

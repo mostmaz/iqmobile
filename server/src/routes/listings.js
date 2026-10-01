@@ -17,12 +17,12 @@ import { detectBrand } from '../importParse.js';
 import { checkListingQuality } from '../listingQuality.js';
 import { promotionPerformance } from '../promotionPerformance.js';
 import { logEvent } from '../eventLog.js';
-import { alertOnNewListing } from './savedSearches.js';
 import { pushToAdmins } from '../adminPush.js';
-import { alertWishlistOnListing } from './wishlist.js';
-import { alertRequestsOnListing } from './phoneRequests.js';
 import { alertOnPriceChange } from './priceWatches.js';
-import { inspectListingAsync } from '../listingInspect.js';
+import {
+  inspectListingAsync, gateApplies, isGated, startGatedInspection, reviewFor, reviewStateFor,
+} from '../listingInspect.js';
+import { announceNewListing } from '../listingAnnounce.js';
 import { newPriceFor } from '../newPriceRef.js';
 import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
@@ -317,8 +317,10 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
   } catch {}
   if (!isShop) {
     const HOUR = 60 * 60 * 1000;
+    // A listing waiting on the quality gate rides status='removed' +
+    // review_hold=1; it counts, or the gate would be a way round the limit.
     const last = db.prepare(
-      "SELECT created_at FROM phone_listings WHERE seller_id=? AND status != 'removed' ORDER BY created_at DESC LIMIT 1",
+      "SELECT created_at FROM phone_listings WHERE seller_id=? AND (status != 'removed' OR review_hold=1) ORDER BY created_at DESC LIMIT 1",
     ).get(req.user.id);
     if (last && Date.now() - last.created_at < HOUR) {
       return res.status(429).json({ error: 'listing_hourly_limit', retry_after_ms: HOUR - (Date.now() - last.created_at) });
@@ -435,6 +437,11 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
 
   const created = now();
   const expires = created + ttlMs();
+  // Apps from 1.0.0 wait for the AI quality check: the listing is born
+  // hidden (status='removed' + review_hold=1, the same trick a held listing
+  // uses) and goes live when the check says clean — or when the operator
+  // does. Older apps keep the old order: live now, checked after.
+  const gated = gateApplies(req.get('x-app-version'));
   const ins = db
     .prepare(
       `INSERT INTO phone_listings(
@@ -442,8 +449,8 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
         warranty_status, accessories_json, asking_price, governorate, city,
         description, status, contact_phone, contact_whatsapp,
         created_at, expires_at, updated_at, client_key, condition_details_json,
-        price_mode
-      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        price_mode, review_hold, inspection_state
+      ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     )
     .run(
       req.user.id, finalBrand, model, storage || null, color || null, condition,
@@ -459,13 +466,14 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       warranty_status || null,
       JSON.stringify(Array.isArray(accessories) ? accessories : []),
       price, governorate, city || null, description || null,
-      'active', phone, wa,
+      gated ? 'removed' : 'active', phone, wa,
       created, expires, created, clientKey,
       // Validated, not trusted: unknown questions and unknown answers are
       // dropped rather than rejected, so a newer app asking one more question
       // cannot make a listing fail to save.
       serializeConditionDetails(req.body.condition_details),
       req.body.price_mode === 'negotiable' ? 'negotiable' : 'fixed',
+      gated ? 1 : 0, gated ? 'awaiting' : null,
     );
   const row = loadListing(ins.lastInsertRowid);
   // A device suggestion filed from the picker predates the listing, so it
@@ -477,25 +485,44 @@ r.post('/', requireAuth(), createLimiter, (req, res) => {
       WHERE user_id=? AND listing_id IS NULL AND status='pending'
         AND model=? COLLATE NOCASE`,
   ).run(row.id, req.user.id, row.model);
-  // Fire saved-search + wish-list alerts after the response is sent, so
-  // notification fan-out never adds latency to (or can fail) listing creation.
-  setImmediate(() => { alertOnNewListing(row); alertWishlistOnListing(row); alertRequestsOnListing(row); });
-  // Operators watch new listings for junk names, wrong prices and worse.
-  setImmediate(() => {
-    pushToAdmins(
-      'listing.new',
-      'إعلان جديد',
-      `${row.brand} ${row.model} · ${Number(row.asking_price).toLocaleString('en-US')} د.ع · ${row.governorate}`,
-      { listing_id: row.id },
-    ).catch(() => {});
-  });
+  // Saved-search / wish-list / request alerts and the operators' push — now,
+  // for a live listing; at publish time for one waiting on the check
+  // (listingInspect.js does it), since an alert for a hidden ad is a 404.
+  if (!gated) announceNewListing(row);
   // Multiplying someone's price by a thousand is a big silent edit, so say
   // that it happened — in the log for us, and on the response so the app can
   // tell the seller what their listing actually went up at.
   if (priceScaled) {
     console.log(`[price-scale] listing ${row.id}: ${rawPrice} -> ${price} (${finalBrand} ${model})`);
   }
-  res.json({ ...attachImages([row])[0], price_corrected: priceScaled ? rawPrice : null });
+  // `review.state` tells the app what to show next: 'checking' means
+  // upload the photos, call /inspect and wait; 'published' means done.
+  res.json({
+    ...attachImages([row])[0],
+    status: gated ? 'under_review' : row.status,
+    review: { state: gated ? 'checking' : 'published' },
+    price_corrected: priceScaled ? rawPrice : null,
+  });
+});
+
+// ─── the quality gate (apps ≥ 1.0.0) ─────────────────────────────────
+// The app has uploaded its photos and wants the verdict. Starts the check
+// and answers at once with the current state; the app polls /review.
+r.post('/:id(\\d+)/inspect', requireAuth(), (req, res) => {
+  const row = loadListing(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+  startGatedInspection(row);
+  res.json(reviewFor(row.id));
+});
+// Where the listing stands: checking / under_review / published / rejected,
+// with the reason when there is one. The seller's own view, so a rejected
+// (removed) listing is still readable here — it is the one place it is.
+r.get('/:id(\\d+)/review', requireAuth(), (req, res) => {
+  const row = loadListing(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+  res.json(reviewFor(row.id));
 });
 
 // ─── browse listings ─────────────────────────────────────────────────
@@ -857,7 +884,12 @@ r.get('/mine', requireAuth(), (req, res) => {
       + `ORDER BY ${rankTs('phone_listings')} DESC`,
     ).all(req.user.id, status);
   }
-  for (const r2 of rows) if (r2.review_hold) r2.status = 'under_review';
+  for (const r2 of rows) {
+    if (r2.review_hold) r2.status = 'under_review';
+    // 'checking' vs 'under_review' matters to the card: one says "wait a
+    // moment", the other "a person will decide".
+    r2.review_state = reviewStateFor(r2);
+  }
   const withImgs = attachImages(rows);
   if (withImgs.length) {
     const ids = withImgs.map((r2) => r2.id);
@@ -1023,6 +1055,7 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
       return res.status(404).json({ error: 'not_found' });
     }
     row.status = 'under_review';
+    row.review_state = reviewStateFor(row);
   }
 
   // Log the view for the demand dashboard — but not when the seller opens
@@ -1362,7 +1395,11 @@ r.delete('/:id(\\d+)', requireAuth(), (req, res) => {
   // "under review" forever in their list. Its open check row is closed the
   // same way, so nobody reviews a listing that no longer exists and an
   // operator's later "approve" cannot resurrect it.
-  db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?").run(now(), row.id);
+  db.prepare(
+    `UPDATE phone_listings SET status='removed', review_hold=0, updated_at=?,
+            inspection_state=CASE WHEN inspection_state IN ('awaiting','checking','review') THEN NULL ELSE inspection_state END
+      WHERE id=?`,
+  ).run(now(), row.id);
   db.prepare(
     "UPDATE listing_inspections SET status='removed', action='deleted', reviewed_at=? WHERE listing_id=? AND status IN ('pending','removed')",
   ).run(now(), row.id);
@@ -1399,7 +1436,10 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
   db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(t, row.id);
   // AI defect check, after the response so the seller's upload is never
   // slowed or broken by it. No-op unless enabled + an API key is configured.
-  setImmediate(() => inspectListingAsync(row.id));
+  // A listing waiting on the gate is checked when its app asks (POST
+  // /inspect, once every photo is up) — or by the expirer's backstop if the
+  // app never comes back — not photo by photo.
+  if (!isGated(row)) setImmediate(() => inspectListingAsync(row.id));
   res.json(out);
 });
 

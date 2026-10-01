@@ -48,6 +48,18 @@ const SORTS: [RequestSort, string][] = [
   ['no_offers', 'بدون عروض'],
 ];
 
+// Budget bands, on the buyer's ceiling. A shop asks "can this request pay
+// for what I have?", so the bands follow where Iraqi phone prices cluster
+// rather than splitting the range evenly. `min`/`max` in IQD; null = open.
+type Band = { key: string; label: string; min: number | null; max: number | null };
+const BANDS: Band[] = [
+  { key: 'all', label: 'كل الميزانيات', min: null, max: null },
+  { key: 'u300', label: 'حتى ٣٠٠ ألف', min: null, max: 300_000 },
+  { key: '300-600', label: '٣٠٠–٦٠٠ ألف', min: 300_000, max: 600_000 },
+  { key: '600-1m', label: '٦٠٠ ألف – مليون', min: 600_000, max: 1_000_000 },
+  { key: '1m+', label: 'فوق مليون', min: 1_000_000, max: null },
+];
+
 export default function RequestsScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -60,6 +72,19 @@ export default function RequestsScreen({ navigation }: any) {
   const [govAr, setGovAr] = useState('');           // '' = كل المحافظات
   const [mineToAnswer, setMineToAnswer] = useState(false);
   const [sort, setSort] = useState<RequestSort>('new');
+  // Brands and budget, the two other things a seller filters demand by.
+  // Several brands at once: a shop that stocks Samsung and Xiaomi is one
+  // seller, not two filters.
+  const [brands, setBrands] = useState<string[]>([]);
+  const [band, setBand] = useState<string>('all');
+  const brandRows = useQuery({ queryKey: ['brands'], queryFn: () => DeviceCatalog.brands(), staleTime: 60 * 60_000 });
+  const brandRailRef = React.useRef<ScrollView>(null);
+  const bandRailRef = React.useRef<ScrollView>(null);
+  const bandOf = BANDS.find((b) => b.key === band) || BANDS[0];
+  const filtering = brands.length > 0 || band !== 'all' || !!govAr;
+  function toggleBrand(name: string) {
+    setBrands((cur) => (cur.includes(name) ? cur.filter((b) => b !== name) : [...cur, name]));
+  }
   // row-reverse lays the first pill at the far RIGHT of the content, but a
   // horizontal ScrollView opens at offset 0 — the LEFT edge — so the rail
   // opened on «بدون عروض». Both callbacks, as elsewhere: onContentSizeChange
@@ -67,9 +92,12 @@ export default function RequestsScreen({ navigation }: any) {
   const sortRailRef = React.useRef<ScrollView>(null);
 
   const board = useQuery({
-    queryKey: ['requests-board', govAr, mineToAnswer, sort],
+    queryKey: ['requests-board', govAr, mineToAnswer, sort, brands.join(','), band],
     queryFn: () => PhoneRequests.board({
       governorate: govAr ? GOV_AR_TO_EN[govAr] : undefined,
+      brand: brands,
+      minPrice: bandOf.min ?? undefined,
+      maxPrice: bandOf.max ?? undefined,
       mineToAnswer: mineToAnswer || undefined,
       sort,
     }),
@@ -239,6 +267,34 @@ export default function RequestsScreen({ navigation }: any) {
               <Pill key={key} active={sort === key} onPress={() => setSort(key)}>{label}</Pill>
             ))}
           </ScrollView>
+          {/* Brands — several at once. The catalogue's order, which is by
+              how much of it there is to sell. */}
+          <ScrollView
+            ref={brandRailRef}
+            horizontal showsHorizontalScrollIndicator={false}
+            onContentSizeChange={() => brandRailRef.current?.scrollToEnd({ animated: false })}
+            onLayout={() => brandRailRef.current?.scrollToEnd({ animated: false })}
+            contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2, paddingBottom: 8 }}
+          >
+            <Pill small active={brands.length === 0} onPress={() => setBrands([])}>كل الماركات</Pill>
+            {(brandRows.data || []).map((b) => (
+              <Pill key={b.brand} small active={brands.includes(b.brand)} onPress={() => toggleBrand(b.brand)}>
+                {b.brand}
+              </Pill>
+            ))}
+          </ScrollView>
+          {/* Budget band. */}
+          <ScrollView
+            ref={bandRailRef}
+            horizontal showsHorizontalScrollIndicator={false}
+            onContentSizeChange={() => bandRailRef.current?.scrollToEnd({ animated: false })}
+            onLayout={() => bandRailRef.current?.scrollToEnd({ animated: false })}
+            contentContainerStyle={{ flexDirection: 'row-reverse', gap: 6, paddingHorizontal: 2, paddingBottom: 8 }}
+          >
+            {BANDS.map((b) => (
+              <Pill key={b.key} small active={band === b.key} onPress={() => setBand(b.key)}>{b.label}</Pill>
+            ))}
+          </ScrollView>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8 }}>
             <View style={{ flex: 1 }}>
               <GovPicker valueAr={govAr} onChangeAr={setGovAr} allowAll compact />
@@ -290,7 +346,14 @@ export default function RequestsScreen({ navigation }: any) {
                 onPress={() => navigation.navigate('RequestDetail', { id: item.id })}
               />
           )}
-          ListEmptyComponent={<Empty tab={tab} onCompose={() => openCompose()} />}
+          ListEmptyComponent={(
+            <Empty
+              tab={tab}
+              filtered={tab === 'board' && filtering}
+              onCompose={() => openCompose()}
+              onClear={() => { setBrands([]); setBand('all'); setGovAr(''); }}
+            />
+          )}
         />
       )}
 
@@ -501,9 +564,16 @@ function SentOfferRow({ offer, onPress }: { offer: SentOffer; onPress: () => voi
   );
 }
 
-function Empty({ tab, onCompose }: { tab: Tab; onCompose: () => void }) {
+function Empty({ tab, filtered, onCompose, onClear }: {
+  tab: Tab; filtered?: boolean; onCompose: () => void; onClear?: () => void;
+}) {
+  // The board is the last seven days, on purpose (server, BOARD_WINDOW_MS):
+  // an older request has usually been bought. Said here so an empty board
+  // is not read as an empty marketplace.
   const copy = tab === 'board'
-    ? { title: 'ما في طلبات مفتوحة', body: 'كن أول من ينشر طلباً — يراه البائعون ويردون عليك بعروضهم.' }
+    ? filtered
+      ? { title: 'ما في طلبات تطابق الفلتر', body: 'الطلبات المعروضة هي طلبات آخر ٧ أيام. وسّع الماركة أو الميزانية أو المحافظة.' }
+      : { title: 'ما في طلبات خلال آخر ٧ أيام', body: 'كن أول من ينشر طلباً — يراه البائعون ويردون عليك بعروضهم.' }
     : tab === 'mine'
       ? { title: 'ما عندك طلبات', body: 'انشر الجهاز الذي تبحث عنه وميزانيتك، ودع البائعين يأتون إليك.' }
       : { title: 'ما قدّمت أي عرض', body: 'افتح «كل الطلبات» واطّلع على المشترين الذين يبحثون عن أجهزة لديك.' };
@@ -516,7 +586,11 @@ function Empty({ tab, onCompose }: { tab: Tab; onCompose: () => void }) {
       <Text style={{ fontFamily: fonts.ar, fontSize: 12.5, color: theme.subtle, marginTop: 6, textAlign: 'center', lineHeight: 20 }}>
         {copy.body}
       </Text>
-      {tab !== 'offers' ? (
+      {tab === 'board' && filtered && onClear ? (
+        <View style={{ marginTop: 16 }}>
+          <Btn kind="ghost" onPress={onClear}>إزالة الفلاتر</Btn>
+        </View>
+      ) : tab !== 'offers' ? (
         <View style={{ marginTop: 16 }}>
           <Btn kind="accent" onPress={onCompose}>اطلب جهازاً</Btn>
         </View>

@@ -3,6 +3,7 @@ import { db, getSetting } from './db.js';
 import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
 import { runChatNudges } from './chatNudge.js';
+import { sweepStuckGates } from './listingInspect.js';
 import { logEvent } from './eventLog.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
@@ -162,6 +163,15 @@ function tick() {
       "UPDATE listing_boosts SET status='completed' WHERE listing_id=? AND status='boosted'",
     ).run(l.id);
   }
+
+  // ─── quality-gate backstop ───────────────────────────────────────────
+  // A listing created hidden for the AI check whose app never came back for
+  // the verdict is checked (or published, if there is nothing to check)
+  // once it has been quiet for a few minutes. See listingInspect.js.
+  try {
+    const swept = sweepStuckGates(now);
+    if (swept.length) console.log(`[expirer] gate backstop: ${JSON.stringify(swept)}`);
+  } catch (e) { console.error('[expirer] gate sweep failed', e?.message); }
 
   // ─── stale "last known price" cleanup ────────────────────────────────
   // A price-aggregator device marked stale_since (dropped off every source's

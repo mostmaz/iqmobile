@@ -502,9 +502,16 @@ export default function PostListingScreen({ navigation }: any) {
           Alert.alert('الفيديو لم يُرفع', 'إعلانك منشور بدون الفيديو. يمكنك تجربة رفعه لاحقاً من تعديل الإعلان.');
         }
       }
-      return { listing, failedCount: failed.length };
+      // The quality gate (server, apps ≥ 1.0.0): the listing was created
+      // hidden and the server now has every photo that is going to arrive,
+      // so ask for the verdict. Fire-and-forget — the published screen polls
+      // for the answer, and if this call is lost the server's backstop asks
+      // on our behalf a few minutes later. Nothing here can cost the listing.
+      const checking = listing.review?.state === 'checking';
+      if (checking) Listings.inspect(listing.id).catch(() => {});
+      return { listing, failedCount: failed.length, checking };
     },
-    onSuccess: ({ listing, failedCount }) => {
+    onSuccess: ({ listing, failedCount, checking }) => {
       qc.invalidateQueries({ queryKey: ['mine'] });
       qc.invalidateQueries({ queryKey: ['browse'] });
       // safeTrack so a PostHog throw can't block navigation.replace —
@@ -549,6 +556,8 @@ export default function PostListingScreen({ navigation }: any) {
         // Whatever the checklist still has to say, as ONE offer to finish
         // rather than a list of complaints at the moment of success.
         remaining: qualityIssues.map((i) => ({ id: i.id, title: i.title })),
+        // Wait for the AI verdict before calling it published.
+        checking,
       });
     },
     // `reason` first: the server sends a widely-understood `error` code for

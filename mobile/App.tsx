@@ -131,6 +131,15 @@ function AppInner() {
         case 'seller.weekly':
           go('Main', { screen: 'Profile', params: { screen: 'MyListings' } });
           break;
+        // The quality check decided (or a person did). The status screen,
+        // not the listing: a refused listing has no detail page, and a held
+        // one needs the reason and the "what now" that live there.
+        case 'listing.review.pending':
+        case 'listing.review.approved':
+        case 'listing.review.rejected':
+          if (data?.listing_id) go('Main', { screen: 'Profile', params: { screen: 'ListingStatus', params: { id: Number(data.listing_id) } } });
+          else go('Main', { screen: 'Profile', params: { screen: 'MyListings' } });
+          break;
         // The whole sticker life — printing, posted, and the free week the
         // photo earns — lands on the one screen that shows all of it.
         case 'sticker.printing':
