@@ -312,6 +312,26 @@ async function inspectWithAnthropic(model, listing, images) {
   return text ? JSON.parse(text) : null;
 }
 
+/**
+ * Is the key on this server good for the chosen model? One free call to
+ * the vendor's model endpoint — no photos, no tokens — so the operator can
+ * press a button instead of posting a test listing and waiting.
+ * Never throws: { ok, model, key_env, error? }.
+ */
+export async function testConnection() {
+  const model = MODEL();
+  const key_env = keyEnvFor(model);
+  if (!process.env[key_env]) return { ok: false, model, key_env, error: `${key_env} غير موجود في .env` };
+  try {
+    if (providerFor(model) === 'anthropic') await anthropic().models.retrieve(model);
+    else await openai().models.retrieve(model);
+    return { ok: true, model, key_env };
+  } catch (e) {
+    const status = e?.status ? `${e.status} ` : '';
+    return { ok: false, model, key_env, error: `${status}${String(e?.message || e).slice(0, 200)}` };
+  }
+}
+
 // ─── applying a verdict ────────────────────────────────────────────────
 
 /** The headline reason, as one Arabic sentence the seller can read. */

@@ -42,6 +42,16 @@ export function SettingsPage() {
   const [customModel, setCustomModel] = useState('');
   const [showCustom, setShowCustom] = useState(false);
   const [modelErr, setModelErr] = useState('');
+  // Result of the "test the key" button: the vendor's answer, verbatim.
+  const [keyTest, setKeyTest] = useState<{ ok: boolean; model: string; error?: string } | 'busy' | null>(null);
+  async function testKey() {
+    setKeyTest('busy');
+    try {
+      setKeyTest(await api('/admin/inspection/test', { method: 'POST' }));
+    } catch (e: any) {
+      setKeyTest({ ok: false, model: insp?.model || '', error: e?.message || 'فشل الطلب' });
+    }
+  }
 
   async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'decide' | 'model_setting'>>) {
     const body: Record<string, boolean | string> = {};
@@ -176,6 +186,18 @@ export function SettingsPage() {
                 : <> — ⚠️ المفتاح <code>{insp.model ? keyFor(insp.model) : ''}</code> غير موجود في <code>.env</code>؛ الفحص لن يعمل حتى يُضاف.</>}
             </p>
             {modelErr ? <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#f87171' }}>{modelErr}</p> : null}
+            {/* Presence of the variable says nothing about the key being
+                right. This asks the vendor — one free call, no photos. */}
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              <button className="secondary" disabled={keyTest === 'busy'} onClick={testKey}>
+                {keyTest === 'busy' ? 'جارٍ الاختبار…' : 'اختبر المفتاح والنموذج'}
+              </button>
+              {keyTest && keyTest !== 'busy' ? (
+                keyTest.ok
+                  ? <span style={{ color: '#34d399', fontSize: 13 }}>✓ المفتاح يعمل و<code>{keyTest.model}</code> متاح لهذا الحساب</span>
+                  : <span style={{ color: '#f87171', fontSize: 13 }}>✕ {keyTest.error}</span>
+              ) : null}
+            </div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>
               التكلفة تقديرية لثلاث صور ووصف لكل إعلان — التفاصيل في <code>docs/listing-quality-ai-review.md</code>.
             </p>

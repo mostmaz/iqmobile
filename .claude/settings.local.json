@@ -89,7 +89,8 @@
       "Bash(node --test test/dealFlow.test.js)",
       "Bash(node --test test/dealFlow.test.js test/phoneMask.test.js)",
       "WebFetch(domain:api.anthropic.com)",
-      "Bash(tar -tzf /Users/mustafa/.claude/projects/-Users-mustafa-Downloads-IQ-Mobile-2/27df07ac-d75b-4df8-bdd0-41ab40b8aade/tool-results/webfetch-1777902725436-fn2cgc.bin)"
+      "Bash(tar -tzf /Users/mustafa/.claude/projects/-Users-mustafa-Downloads-IQ-Mobile-2/27df07ac-d75b-4df8-bdd0-41ab40b8aade/tool-results/webfetch-1777902725436-fn2cgc.bin)",
+      "Bash(rm -rf dist)"
     ]
   }
 }

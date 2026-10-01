@@ -37,7 +37,7 @@ import {
   inspectionConfigured, inspectionEnabled, inspectListingAsync, resolveInspection,
   MODEL as inspectionModel, keyEnvFor as inspectionKeyEnv,
   isValidModelId as isValidInspectionModel, MODEL_CATALOG as inspectionCatalog,
-  DEFAULT_MODEL as inspectionDefaultModel,
+  DEFAULT_MODEL as inspectionDefaultModel, testConnection as testInspectionConnection,
 } from '../../listingInspect.js';
 import { norm as modelNorm } from '../savedSearches.js';
 import { listingsAnsweringRequest } from '../../requestMatch.js';
@@ -4226,6 +4226,13 @@ r.post('/inspection/:id(\\d+)/:action(approve|remove)', requireAdmin, (req, res)
 
 // Re-run the check on one listing — useful after the seller swaps photos, or
 // to sanity-check the model on a listing you already know the answer for.
+// "Is the key right?" — answered by the vendor, not by whether a variable
+// is set. A wrong key, a key without credit, or a model id the account can't
+// see all come back here as the vendor's own error text.
+r.post('/inspection/test', requireAdmin, async (_req, res) => {
+  res.json(await testInspectionConnection());
+});
+
 r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
   // Report the real reason rather than answering "queued" for a call that the
   // gate in inspectListingAsync would silently drop.
