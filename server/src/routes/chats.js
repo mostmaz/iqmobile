@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now } from '../db.js';
+import { noteNudgeOpened, noteNudgeReplied } from '../chatNudge.js';
 import { requireAuth } from '../auth.js';
 import { uploadLimiter } from '../limits.js';
 import { notify } from '../notify.js';
@@ -264,6 +265,8 @@ r.get('/chats/:id(\\d+)/messages', requireAuth(), (req, res) => {
   // is, so the other party's unread count is unaffected.
   const col = req.user.id === chat.buyer_id ? 'buyer_last_read_at' : 'seller_last_read_at';
   db.prepare(`UPDATE chats SET ${col}=? WHERE id=?`).run(Date.now(), chat.id);
+  // If a WhatsApp reminder named this thread, this is the moment it worked.
+  noteNudgeOpened(chat.id, req.user.id);
 
   res.json(rows);
 });
@@ -299,6 +302,7 @@ r.post('/chats/:id(\\d+)/messages', requireAuth(), uploadLimiter, chatGuard, upl
     'INSERT INTO chat_messages(chat_id, sender_id, body, image_path, masked, created_at) VALUES(?,?,?,?,?,?)',
   ).run(chat.id, req.user.id, body, image_path, masked, t);
   db.prepare('UPDATE chats SET last_message_at=? WHERE id=?').run(t, chat.id);
+  noteNudgeReplied(chat.id, req.user.id, t);
 
   const msg = db.prepare(
     `SELECT m.id, m.chat_id, m.sender_id, m.body, m.image_path, m.masked, m.created_at,

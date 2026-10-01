@@ -1899,6 +1899,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_nudges_user ON chat_nudges(user_id, created_
 // triggered it.
 addColumnIfMissing('chat_nudges', 'listing_id INTEGER');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_nudges_once ON chat_nudges(user_id, listing_id)');
+// What came of it: the first time the person opened the thread the reminder
+// named, and the first time they wrote in it, after the reminder. Stamped
+// by the chat routes; read by the dashboard's outcomes card.
+addColumnIfMissing('chat_nudges', 'opened_at INTEGER');
+addColumnIfMissing('chat_nudges', 'replied_at INTEGER');
 
 // Notifications are how a seller learns a buyer wrote to them, so the app
 // asks for the permission before it will do anything else. Three modes:

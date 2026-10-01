@@ -22,22 +22,31 @@
 // naming the count, not twenty messages. Without this the first run would
 // have sent well over a thousand.
 //
-// Only 24h–7d old. The floor is the owner's rule: a day is long enough that
-// the push has plainly failed. The ceiling is where a fact turns into
-// nagging — past a week the buyer has bought elsewhere, and it also stops
-// the first run after deploy from chasing a backlog of 2,458 chats older
-// than that (measured 30 Sep 2026), which at one message per 15 minutes
-// would take a month and read as a mail-out.
+// Only 2h–7d old. Two hours is the owner's rule (1 Oct 2026, down from a
+// day): buyer interest fades fast, and a seller who has not looked in two
+// hours is not about to. The ceiling is where a fact turns into nagging —
+// past a week the buyer has bought elsewhere, and it also stops the first
+// run after deploy from chasing a backlog of 2,458 chats older than that
+// (measured 30 Sep 2026), which at one message per 15 minutes would take a
+// month and read as a mail-out.
 //
-// Daytime only. Same 09:00–21:00 Baghdad window the retention pushes use. A
-// WhatsApp at 3am about a phone is worse than silence.
+// Cancelled by opening the APP, not just the thread. Someone who has been
+// in the app since the message arrived has seen the badge; a WhatsApp on
+// top of that is a nag, and the ban risk is spent on the people who have
+// not been in at all.
+//
+// 08:00–23:00 Baghdad only. A WhatsApp at 3am about a phone is worse than
+// silence; what falls due overnight is simply still due at eight, and goes
+// out then (freshest first).
 import { db, now as dbNow, getSetting } from './db.js';
 import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
 
-export const NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
+export const NUDGE_AFTER_MS = 2 * 60 * 60 * 1000;
 export const NUDGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-export const QUIET_FROM_HOUR = 9;
-export const QUIET_TO_HOUR = 21;
+export const QUIET_FROM_HOUR = 8;
+export const QUIET_TO_HOUR = 23;
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 
 // Pacing, and why it is this shape.
 //
@@ -52,7 +61,7 @@ export const QUIET_TO_HOUR = 21;
 //     that, not rate, is what actually takes a business number down.
 //
 // So: a trickle, not a burst. One message per sweep, a sweep every 15
-// minutes, inside the 09:00–21:00 window = 48 a day at most, well under the
+// minutes, inside the 08:00–23:00 window = 60 a day at most, well under the
 // opening tier, and slow enough that a bad batch is visible in the outcome
 // log long before it becomes 200 strangers.
 export const PER_RUN_LIMIT = 1;
@@ -111,6 +120,12 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
                      WHERE d.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
             OR (SELECT expo_push_token FROM users
                  WHERE id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END) IS NOT NULL)
+       -- Opened the APP since the message arrived (any request from them,
+       -- logged per day with its last moment) → the badge did the job; the
+       -- reminder is cancelled, not merely postponed.
+       AND COALESCE((SELECT MAX(d.last_seen) FROM user_active_days d
+                      WHERE d.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END), 0)
+           < m.created_at
        -- A thread with no message at all never reaches here: the JOIN above
        -- needs a last message. A quick-reply chip IS a message — however
        -- fast it was tapped, the seller was asked and never saw it (owner's
@@ -122,13 +137,15 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
      -- the seven-day ceiling slides, the "next" name changed every few
      -- minutes as messages aged out of the window.
      ORDER BY m.created_at DESC
-     LIMIT ?
-  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0, limit * 4);
+     LIMIT 2000
+  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0);
 
   // One per person, freshest first, plus the count of everything else of
   // theirs that is waiting — so the message can say "٣ محادثات" instead of
   // arriving three times. Two buyers on the SAME listing collapse here as
   // well as in the ledger, so the count is conversations, not listings.
+  // The whole due set is read (it is bounded by the week), so the count is
+  // exact and not whatever happened to fit in the first page.
   const byUser = new Map();
   for (const r of rows) {
     const seen = byUser.get(r.user_id);
@@ -222,4 +239,125 @@ export async function runChatNudges({ at = dbNow() } = {}) {
   }
   console.log(`[chat-nudge] ${due.length} due, ${sent} ${dryRun ? 'dry-run' : 'sent'}`);
   return { considered: due.length, sent, dry_run: dryRun };
+}
+
+// ─── did it work? ──────────────────────────────────────────────────────
+//
+// Per reminder sent: did they open the thread within a day, did they answer,
+// and how long the answer took — against the same kind of question before
+// any reminder existed. Opened/replied are stamped by the chat routes the
+// moment they happen (chat_nudges.opened_at / replied_at); older rows that
+// predate the stamps are read off the chat instead.
+
+function median(xs) {
+  const a = xs.filter((x) => Number.isFinite(x)).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const mid = Math.floor(a.length / 2);
+  return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+}
+const hours = (ms) => Math.round((ms / HOUR) * 10) / 10;
+
+/**
+ * The comparison group: buyer questions in [from, to) that the seller had
+ * NOT answered within NUDGE_AFTER_MS — exactly the population a reminder
+ * is sent to — and how many of those were ever answered, and how fast.
+ */
+export function slowReplyBaseline(db_, from, to) {
+  const rows = db_.prepare(`
+    SELECT q.chat_id, q.asked,
+           (SELECT MIN(r.created_at) FROM chat_messages r
+             WHERE r.chat_id = q.chat_id AND r.sender_id = q.seller_id AND r.created_at > q.asked) AS replied
+      FROM (SELECT c.id AS chat_id, c.seller_id, MIN(m.created_at) AS asked
+              FROM chats c JOIN chat_messages m ON m.chat_id = c.id AND m.sender_id = c.buyer_id
+             WHERE m.created_at >= ? AND m.created_at < ?
+             GROUP BY c.id) q
+  `).all(from, to);
+  const slow = rows.filter((r) => !r.replied || r.replied - r.asked > NUDGE_AFTER_MS);
+  const answered = slow.filter((r) => r.replied);
+  return {
+    from, to,
+    questions: slow.length,
+    replied: answered.length,
+    replied_24h: answered.filter((r) => r.replied - r.asked <= NUDGE_AFTER_MS + DAY).length,
+    median_reply_hours: median(answered.map((r) => hours(r.replied - r.asked))),
+  };
+}
+
+/** Every reminder actually sent in the last `days`, with what came of it. */
+export function nudgeOutcomes(db_, at, { days = 30 } = {}) {
+  const since = at - days * DAY;
+  const rows = db_.prepare(`
+    SELECT n.chat_id, n.listing_id, n.user_id, n.created_at AS sent_at,
+           n.opened_at AS stamped_opened_at, n.replied_at AS stamped_replied_at,
+           CASE WHEN n.user_id = c.seller_id THEN 'seller' ELSE 'buyer' END AS role,
+           CASE WHEN n.user_id = c.seller_id THEN c.seller_last_read_at ELSE c.buyer_last_read_at END AS read_at,
+           (SELECT MAX(m.created_at) FROM chat_messages m
+             WHERE m.chat_id = n.chat_id AND m.sender_id <> n.user_id AND m.created_at <= n.created_at) AS asked_at,
+           (SELECT MIN(m.created_at) FROM chat_messages m
+             WHERE m.chat_id = n.chat_id AND m.sender_id = n.user_id AND m.created_at > n.created_at) AS first_reply_at,
+           COALESCE(NULLIF(u.shop_name, ''), u.display_name, '') AS name, l.brand, l.model
+      FROM chat_nudges n
+      JOIN chats c ON c.id = n.chat_id
+      JOIN users u ON u.id = n.user_id
+      JOIN phone_listings l ON l.id = n.listing_id
+     WHERE n.outcome = 'sent' AND n.created_at >= ?
+     ORDER BY n.created_at DESC
+  `).all(since);
+
+  const items = rows.map((r) => {
+    const opened_at = r.stamped_opened_at
+      || (r.read_at && r.read_at > r.sent_at ? r.read_at : null);
+    const replied_at = r.stamped_replied_at || r.first_reply_at || null;
+    return {
+      chat_id: r.chat_id, listing_id: r.listing_id, user_id: r.user_id, role: r.role,
+      name: r.name, device: [r.brand, r.model].filter(Boolean).join(' '),
+      sent_at: r.sent_at, asked_at: r.asked_at,
+      opened_at,
+      opened_24h: !!opened_at && opened_at - r.sent_at <= DAY,
+      replied_at,
+      replied_24h: !!replied_at && replied_at - r.sent_at <= DAY,
+      // From the question to the answer — the number the baseline measures.
+      reply_hours: replied_at && r.asked_at ? hours(replied_at - r.asked_at) : null,
+      // From the reminder to the answer — what the reminder can take credit for.
+      reply_after_hours: replied_at ? hours(replied_at - r.sent_at) : null,
+    };
+  });
+
+  // Before the first reminder ever went out: the thirty days up to it. With
+  // none sent yet, the last thirty days — so the page already shows the
+  // number the reminders will be measured against.
+  const first = db_.prepare("SELECT MIN(created_at) AS t FROM chat_nudges WHERE outcome='sent'").get().t;
+  const baselineTo = first || at;
+  const baseline = slowReplyBaseline(db_, baselineTo - 30 * DAY, baselineTo);
+
+  return {
+    since,
+    sent: items.length,
+    opened_24h: items.filter((i) => i.opened_24h).length,
+    opened_any: items.filter((i) => i.opened_at).length,
+    replied: items.filter((i) => i.replied_at).length,
+    replied_24h: items.filter((i) => i.replied_24h).length,
+    median_reply_hours: median(items.map((i) => i.reply_hours)),
+    median_reply_after_hours: median(items.map((i) => i.reply_after_hours)),
+    baseline,
+    items,
+  };
+}
+
+/**
+ * Stamps, from the chat routes. Opening the thread the reminder named, or
+ * writing in it, is recorded on the reminder the first time it happens.
+ * Never throws: a stamp must not cost anyone a message.
+ */
+export function noteNudgeOpened(chatId, userId, at = dbNow()) {
+  try {
+    db.prepare("UPDATE chat_nudges SET opened_at=? WHERE chat_id=? AND user_id=? AND outcome='sent' AND opened_at IS NULL")
+      .run(at, chatId, userId);
+  } catch { /* best-effort */ }
+}
+export function noteNudgeReplied(chatId, userId, at = dbNow()) {
+  try {
+    db.prepare("UPDATE chat_nudges SET replied_at=? WHERE chat_id=? AND user_id=? AND outcome='sent' AND replied_at IS NULL")
+      .run(at, chatId, userId);
+  } catch { /* best-effort */ }
 }

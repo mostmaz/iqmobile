@@ -27,6 +27,21 @@ type Preview = {
   by_outcome: { outcome: string; n: number }[];
 };
 
+type OutcomeItem = {
+  chat_id: number; listing_id: number; user_id: number; role: 'buyer' | 'seller';
+  name: string; device: string; sent_at: number; asked_at: number | null;
+  opened_at: number | null; opened_24h: boolean;
+  replied_at: number | null; replied_24h: boolean;
+  reply_hours: number | null; reply_after_hours: number | null;
+};
+type Outcomes = {
+  since: number; sent: number; opened_24h: number; opened_any: number;
+  replied: number; replied_24h: number;
+  median_reply_hours: number | null; median_reply_after_hours: number | null;
+  baseline: { from: number; to: number; questions: number; replied: number; replied_24h: number; median_reply_hours: number | null };
+  items: OutcomeItem[];
+};
+
 type Settings = {
   chat_nudge_enabled: boolean;
   chat_nudge_dry_run: boolean;
@@ -56,6 +71,7 @@ const CONNECTION_AR: Record<string, string> = {
 export function WhatsAppPage() {
   const [st, setSt] = useState<Status | null>(null);
   const [pv, setPv] = useState<Preview | null>(null);
+  const [oc, setOc] = useState<Outcomes | null>(null);
   const [cfg, setCfg] = useState<Settings | null>(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -63,12 +79,13 @@ export function WhatsAppPage() {
 
   const load = useCallback(async () => {
     try {
-      const [s1, s2, s3] = await Promise.all([
+      const [s1, s2, s3, s4] = await Promise.all([
         api<Status>('/admin/whatsapp/status'),
         api<Preview>('/admin/chat-nudge/preview'),
         api<Settings>('/admin/settings'),
+        api<Outcomes>('/admin/chat-nudge/outcomes'),
       ]);
-      setSt(s1); setPv(s2); setCfg(s3);
+      setSt(s1); setPv(s2); setCfg(s3); setOc(s4);
       setErr('');
     } catch (e: any) { setErr(e.message); }
   }, []);
@@ -147,8 +164,10 @@ export function WhatsAppPage() {
           <div className="card" style={{ marginTop: 12 }}>
             <div className="chart-title">تذكير المحادثات غير المقروءة</div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.9 }}>
-              رسالة واحدة لكل إعلان، للي وصلته رسالة بين ٢٤ ساعة وأسبوع وما فتحها —
-              مرة وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
+              رسالة واحدة لكل إعلان، للي وصلته رسالة من ساعتين لأسبوع وما فتحها —
+              مرة وحدة للأبد. تنلغي لحالها إذا فتح التطبيق قبل ما تطلع. إذا عنده ٣ محادثات
+              تنتظر توصله رسالة وحدة تقول ٣، مو ثلاث رسائل. رسالة وحدة كل ١٥ دقيقة كحد أقصى،
+              بين ٨ صباحاً و١١ مساءً — اللي يستحق بالليل يطلع الصبح.
               البائع يستلم «مشتري راسلك»، والمشتري يستلم «البائع ردّ عليك».
               ما ترسل لمن ما ثبّت التطبيق أصلاً (حسابات انعملت من إعلانات مستوردة).
             </div>
@@ -230,6 +249,12 @@ export function WhatsAppPage() {
               </div>
             ) : null}
           </div>
+
+          {/* Did it work? Per reminder actually sent: opened the thread
+              within a day, answered, and how long the answer took — against
+              the same kind of question (unanswered for two hours) before any
+              reminder existed. */}
+          <OutcomesCard oc={oc} />
         </>
       ) : (
         <div className="card" style={{ marginTop: 12 }}>
@@ -250,6 +275,64 @@ export function WhatsAppPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}٪` : '—');
+const hrs = (h: number | null) => (h == null ? '—' : h >= 48 ? `${Math.round(h / 24)} يوم` : `${h} س`);
+const when = (t: number | null) => (t ? new Date(t).toLocaleString('en-GB', { timeZone: 'Asia/Baghdad', hour12: false }).slice(0, 17) : '—');
+
+function OutcomesCard({ oc }: { oc: Outcomes | null }) {
+  if (!oc) return null;
+  const b = oc.baseline;
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div className="chart-title">شنو صار بعد التذكير (آخر ٣٠ يوم)</div>
+      <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 10, fontSize: 13.5 }}>
+        <span>تذكيرات انرسلت: <b>{oc.sent}</b></span>
+        <span>فتح المحادثة خلال ٢٤ ساعة: <b>{oc.opened_24h}</b> <span className="muted">({pct(oc.opened_24h, oc.sent)})</span></span>
+        <span>ردّ: <b>{oc.replied}</b> <span className="muted">({pct(oc.replied, oc.sent)} · خلال ٢٤ ساعة {oc.replied_24h})</span></span>
+        <span>وسيط وقت الرد بعد التذكير: <b>{hrs(oc.median_reply_after_hours)}</b></span>
+      </div>
+      {/* The comparison: same population (a question nobody answered within
+          two hours), measured from the question — because that is the only
+          clock both groups share. */}
+      <div className="muted" style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.9 }}>
+        للمقارنة — قبل ما يصير تذكير (أسئلة ما انردّ عليها خلال ساعتين، {when(b.from)} ← {when(b.to)}):
+        {' '}{b.questions} سؤال، انردّ على <b>{b.replied}</b> ({pct(b.replied, b.questions)})،
+        وسيط وقت الرد من السؤال <b>{hrs(b.median_reply_hours)}</b>.
+        {' '}مع التذكير: وسيط وقت الرد من السؤال <b>{hrs(oc.median_reply_hours)}</b>.
+      </div>
+      {oc.items.length ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 12 }}>
+          <thead><tr>
+            {['المستلم', 'الجهاز', 'انرسل', 'فتح المحادثة', 'ردّ', 'وقت الرد'].map((h) => (
+              <th key={h} style={{ textAlign: 'right', fontSize: 12.5, color: '#888', padding: '0 8px 8px' }}>{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {oc.items.map((i) => (
+              <tr key={i.chat_id}>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>
+                  {i.name || `#${i.user_id}`} <span className="muted">({i.role === 'buyer' ? 'مشتري' : 'بائع'})</span>
+                </td>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{i.device}</td>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)' }} dir="ltr">{when(i.sent_at)}</td>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)', color: i.opened_24h ? '#4ade80' : i.opened_at ? '#facc15' : '#f87171' }}>
+                  {i.opened_24h ? 'خلال ٢٤ ساعة' : i.opened_at ? 'بعدين' : 'لا'}
+                </td>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)', color: i.replied_at ? '#4ade80' : '#f87171' }}>
+                  {i.replied_at ? (i.replied_24h ? 'نعم، خلال ٢٤ ساعة' : 'نعم، بعدين') : 'لا'}
+                </td>
+                <td style={{ padding: '8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>
+                  {i.replied_at ? <>{hrs(i.reply_after_hours)} بعد التذكير <span className="muted">· {hrs(i.reply_hours)} من السؤال</span></> : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <div className="muted" style={{ marginTop: 8 }}>ما انرسل أي تذكير حقيقي بعد.</div>}
     </div>
   );
 }

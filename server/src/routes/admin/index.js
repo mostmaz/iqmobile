@@ -52,7 +52,7 @@ import {
   advanceSticker, decideStickerProof, stickerPageUrl, activeListingCount, stickerScans,
   STICKER_STATUSES, REWARD_DAYS, REWARD_MIN_LISTINGS,
 } from '../../shopSticker.js';
-import { pendingNudges, withinSendingHours } from '../../chatNudge.js';
+import { pendingNudges, withinSendingHours, nudgeOutcomes } from '../../chatNudge.js';
 import { sendWhatsApp, utilityProvider } from '../../whatsapp.js';
 import { startBot, botQr, botStatus, unlinkBot } from '../../whatsappBot.js';
 
@@ -2472,7 +2472,7 @@ r.post('/sticker-requests/:id(\\d+)/:action(printing|shipped|reject)', requireAd
   res.json({ ok: true });
 });
 
-// ─── the 24-hour unanswered-chat WhatsApp ────────────────────────────
+// ─── the two-hour unanswered-chat WhatsApp ───────────────────────────
 // Who it would write to RIGHT NOW, with the transport's own state beside
 // them. This exists so the switch is never flipped blind: the first real run
 // writes to strangers' WhatsApp from the business number, and a bad selection
@@ -2491,6 +2491,13 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
     sent_so_far: db.prepare('SELECT COUNT(*) AS n FROM chat_nudges').get().n,
     by_outcome: db.prepare('SELECT outcome, COUNT(*) AS n FROM chat_nudges GROUP BY outcome').all(),
   });
+});
+
+// What came of the reminders: opened within a day, answered, and how fast
+// against the same kind of question before the reminders existed.
+r.get('/chat-nudge/outcomes', requireAdmin, (req, res) => {
+  const days = Math.min(365, Math.max(1, parseInt(String(req.query.days || '30'), 10) || 30));
+  res.json(nudgeOutcomes(db, Date.now(), { days }));
 });
 
 // ─── linking the WhatsApp number ─────────────────────────────────────

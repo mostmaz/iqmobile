@@ -17,7 +17,7 @@ process.env.JWT_SECRET = 'test-secret';
 
 const { db } = await import('../src/db.js');
 const {
-  pendingNudges, withinSendingHours, NUDGE_AFTER_MS, NUDGE_MAX_AGE_MS,
+  pendingNudges, withinSendingHours, NUDGE_AFTER_MS, NUDGE_MAX_AGE_MS, nudgeOutcomes, slowReplyBaseline,
 } = await import('../src/chatNudge.js');
 
 const HOUR = 3600000, DAY = 86400000;
@@ -217,15 +217,16 @@ test('two different sellers each get their own', () => {
 
 test('nothing goes out at 3am Baghdad', () => {
   assert.equal(withinSendingHours(Date.parse('2026-09-30T03:00:00+03:00')), false);
-  assert.equal(withinSendingHours(Date.parse('2026-09-30T22:30:00+03:00')), false);
-  assert.equal(withinSendingHours(Date.parse('2026-09-30T09:00:00+03:00')), true);
-  assert.equal(withinSendingHours(Date.parse('2026-09-30T20:59:00+03:00')), true);
+  assert.equal(withinSendingHours(Date.parse('2026-09-30T23:30:00+03:00')), false);
+  assert.equal(withinSendingHours(Date.parse('2026-09-30T07:59:00+03:00')), false);
+  assert.equal(withinSendingHours(Date.parse('2026-09-30T08:00:00+03:00')), true);
+  assert.equal(withinSendingHours(Date.parse('2026-09-30T22:59:00+03:00')), true);
 });
 
 test('the window is read in Baghdad time, not the server\'s', () => {
   // 21:30 Baghdad is 18:30 UTC. A naive getHours() on a UTC server would
   // call that 18:30 and send.
-  assert.equal(withinSendingHours(Date.parse('2026-09-30T18:30:00Z')), false);
+  assert.equal(withinSendingHours(Date.parse('2026-09-30T20:30:00Z')), false);
 });
 
 // ── the Cloud API request ──────────────────────────────────────────────
@@ -448,4 +449,93 @@ test('a push token counts as an install even with no activity on record', () => 
   db.prepare("UPDATE users SET expo_push_token='ExponentPushToken[x]' WHERE id=?").run(s);
   const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY });
   assert.deepEqual(pendingNudges(db, NOW, { limit: 500, onlyNoPush: false }).filter((n) => n.user_id === s).map((n) => n.chat_id), [c]);
+});
+
+// ── the owner's timing rules (1 Oct 2026) ─────────────────────────────
+
+test('two hours unread is enough; the floor is no longer a day', () => {
+  assert.equal(NUDGE_AFTER_MS, 2 * HOUR);
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * HOUR + 60_000 });
+  assert.deepEqual(dueFor(s).map((n) => n.chat_id), [c]);
+  const b2 = user(), s2 = user();
+  chat({ buyer: b2, seller: s2, from: b2, ageMs: 90 * 60_000 });
+  assert.deepEqual(dueFor(s2), []);
+});
+
+test('opening the app after the message cancels the reminder, even without opening the thread', () => {
+  const b = user(), s = user();
+  chat({ buyer: b, seller: s, from: b, ageMs: 5 * HOUR });
+  // Any request from them an hour ago: they were in the app and saw the badge.
+  db.prepare(`INSERT INTO user_active_days(user_id, day, requests, first_seen, last_seen, platform, app_version)
+              VALUES(?, '2026-09-30', 3, ?, ?, 'android', '0.5.2')`).run(s, NOW - 2 * HOUR, NOW - HOUR);
+  assert.deepEqual(dueFor(s), []);
+  // Activity BEFORE the message does not count.
+  const b3 = user(), s3 = user();
+  const c3 = chat({ buyer: b3, seller: s3, from: b3, ageMs: 5 * HOUR });
+  db.prepare(`INSERT INTO user_active_days(user_id, day, requests, first_seen, last_seen, platform, app_version)
+              VALUES(?, '2026-09-30', 3, ?, ?, 'android', '0.5.2')`).run(s3, NOW - 8 * HOUR, NOW - 6 * HOUR);
+  assert.deepEqual(dueFor(s3).map((n) => n.chat_id), [c3]);
+});
+
+test('one reminder names every waiting thread, however many there are', () => {
+  const s = user();
+  for (let i = 0; i < 7; i++) {
+    const b = user();
+    chat({ buyer: b, seller: s, from: b, ageMs: (3 + i) * HOUR });
+  }
+  const [n] = pendingNudges(db, NOW, { limit: 500, onlyNoPush: false }).filter((x) => x.user_id === s);
+  assert.equal(n.waiting, 7);
+  // And the sweep's own page size does not truncate the count: one row out,
+  // still counted against the whole queue.
+  const one = pendingNudges(db, NOW, { limit: 1, onlyNoPush: false });
+  assert.equal(one.length, 1);
+  if (one[0].user_id === s) assert.equal(one[0].waiting, 7);
+});
+
+// ── what came of it ───────────────────────────────────────────────────
+
+test('outcomes: opened within a day, replied, and how long it took', () => {
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 10 * HOUR });
+  const sentAt = NOW - 6 * HOUR;
+  db.prepare('INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?,?)')
+    .run(c, listingOf(c), s, '0770', 'sent', sentAt);
+  // Read off the chat when nothing was stamped.
+  let o = nudgeOutcomes(db, NOW).items.find((i) => i.chat_id === c);
+  assert.equal(o.opened_at, null);
+  assert.equal(o.replied_at, null);
+  db.prepare('UPDATE chats SET seller_last_read_at=? WHERE id=?').run(sentAt + HOUR, c);
+  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+    .run(++mid, c, s, 'نعم متوفر', sentAt + 2 * HOUR);
+  o = nudgeOutcomes(db, NOW).items.find((i) => i.chat_id === c);
+  assert.equal(o.opened_24h, true);
+  assert.equal(o.replied_24h, true);
+  assert.equal(o.reply_after_hours, 2);
+  // Asked 10h ago, answered 4h ago.
+  assert.equal(o.reply_hours, 6);
+  // A stamp from the chat route wins over the derived value.
+  db.prepare('UPDATE chat_nudges SET opened_at=? WHERE chat_id=?').run(sentAt + 30 * 60_000, c);
+  o = nudgeOutcomes(db, NOW).items.find((i) => i.chat_id === c);
+  assert.equal(o.opened_at, sentAt + 30 * 60_000);
+});
+
+test('the baseline is the same slow-to-answer population, before any reminder', () => {
+  const b = user(), s = user();
+  // Answered in 20 minutes: not the population a reminder is for.
+  const fast = chat({ buyer: b, seller: s, from: b, ageMs: 20 * DAY });
+  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+    .run(++mid, fast, s, 'نعم', NOW - 20 * DAY + 20 * 60_000);
+  // Answered after a day: in.
+  const b2 = user();
+  const slow = chat({ buyer: b2, seller: s, from: b2, ageMs: 19 * DAY });
+  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+    .run(++mid, slow, s, 'نعم', NOW - 19 * DAY + DAY);
+  // Never answered: in, unanswered.
+  const b3 = user();
+  chat({ buyer: b3, seller: s, from: b3, ageMs: 18 * DAY });
+  const base = slowReplyBaseline(db, NOW - 21 * DAY, NOW - 17 * DAY);
+  assert.equal(base.questions, 2);
+  assert.equal(base.replied, 1);
+  assert.equal(base.median_reply_hours, 24);
 });
