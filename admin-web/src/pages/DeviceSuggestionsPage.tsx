@@ -23,6 +23,68 @@ type Suggestion = {
   user_phone: string | null;
 };
 type Brand = { id: number; name: string };
+type DailyReport = {
+  ran_at: number; apply: boolean;
+  summary: Record<string, number>;
+  suggestions: { pending: { id: number; from: string; note: string }[] };
+  listings: { renamed: { id: number; from: string; to: string }[] };
+  catalog: { removed: { id: number; brand: string; model: string; why: string }[] };
+} | null;
+
+// The automatic daily pass (server/src/deviceNameDaily.js) decides most of
+// this queue by itself at 04:00 Baghdad: devices already in the catalogue,
+// devices GSMArena knows, accessories and bare brands. What is left pending
+// below is what it could not decide. This card says what it did last.
+function DailyPassCard({ onRan }: { onRan: () => void }) {
+  const [rep, setRep] = useState<DailyReport>(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState('');
+  const load = useCallback(async () => {
+    try { setRep(await api<DailyReport>('/admin/device-names/daily')); } catch (e: any) { setErr(e.message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  async function run() {
+    setBusy(true); setErr('');
+    try { setRep(await api<DailyReport>('/admin/device-names/daily/run', { method: 'POST' })); onRan(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+  const s = rep?.summary || {};
+  const when = rep ? new Date(rep.ran_at).toLocaleString('en-GB', { timeZone: 'Asia/Baghdad' }) : '—';
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>التنظيف اليومي التلقائي للأسماء</h3>
+      <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+        يشتغل كل يوم الساعة 4 الفجر (بغداد): ينظّف الكتالوج، يقرر الاقتراحات الواضحة، ويصحّح أسماء وماركات الإعلانات الجديدة.
+        آخر تشغيل: <span dir="ltr">{when}</span>
+      </p>
+      {rep ? (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13.5 }}>
+          <span>إعلانات فُحصت: <b>{s.listings_scanned ?? 0}</b></span>
+          <span>أسماء صُحّحت: <b>{s.listings_renamed ?? 0}</b></span>
+          <span>اقتراحات قُبلت: <b>{(s.suggestions_approved ?? 0) + (s.suggestions_added ?? 0)}</b></span>
+          <span>أجهزة جديدة أُضيفت: <b>{(s.suggestions_added ?? 0) + (s.catalog_topped_up ?? 0)}</b></span>
+          <span>اقتراحات رُفضت: <b>{s.suggestions_rejected ?? 0}</b></span>
+          <span>صفوف كتالوج حُذفت/نُقلت: <b>{(s.catalog_removed ?? 0) + (s.catalog_moved ?? 0)}</b></span>
+          <span>بقيت للمراجعة: <b>{s.suggestions_left ?? 0}</b></span>
+        </div>
+      ) : <p className="muted" style={{ margin: 0 }}>لم يشتغل بعد.</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button disabled={busy} onClick={run}>{busy ? 'يشتغل…' : 'شغّله الآن'}</button>
+        {rep?.listings?.renamed?.length ? (
+          <button className="secondary" onClick={() => setOpen(!open)}>{open ? 'إخفاء التفاصيل' : 'التفاصيل'}</button>
+        ) : null}
+      </div>
+      {open && rep ? (
+        <div style={{ fontSize: 12.5, marginTop: 10, maxHeight: 260, overflow: 'auto' }} dir="ltr">
+          {rep.listings.renamed.map((x) => <div key={'l' + x.id}>#{x.id} {x.from} → {x.to}</div>)}
+          {rep.catalog.removed.map((x) => <div key={'c' + x.id}>catalogue −{x.brand} {x.model} ({x.why})</div>)}
+        </div>
+      ) : null}
+      {err ? <p style={{ color: '#f87171', marginBottom: 0 }}>{err}</p> : null}
+    </div>
+  );
+}
 
 function timeAgo(ts: number): string {
   const m = Math.floor((Date.now() - ts) / 60000);
@@ -73,6 +135,7 @@ export function DeviceSuggestionsPage({ onChanged }: { onChanged?: () => void })
 
   return (
     <div>
+      <DailyPassCard onRan={() => { load(); onChanged?.(); }} />
       <div className="card">
         <h2>أجهزة اقترحها البائعون</h2>
         <p className="muted" style={{ fontSize: 13.5, marginTop: 0, maxWidth: 640 }}>

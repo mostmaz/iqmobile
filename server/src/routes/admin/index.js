@@ -17,6 +17,7 @@ import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
+import { runDeviceNameDaily, lastDeviceNameReport } from '../../deviceNameDaily.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
 import { Expo } from 'expo-server-sdk';
@@ -4043,7 +4044,7 @@ r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
   // catalog — that's the whole point of the review step. Fall back to what
   // the seller submitted when a field isn't overridden.
   const brand = String(req.body?.brand || s.brand).trim();
-  const model = String(req.body?.model || s.model).trim();
+  let model = String(req.body?.model || s.model).trim();
   const type = ['phone', 'tablet', 'watch'].includes(req.body?.device_type)
     ? req.body.device_type : s.device_type;
   if (!brand || !model) return res.status(400).json({ error: 'brand_and_model_required' });
@@ -4052,10 +4053,19 @@ r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
   if (!isBrand(brand)) return res.status(400).json({ error: 'unknown_brand' });
 
   const t = now();
-  db.prepare(
-    `INSERT OR IGNORE INTO device_catalog(brand, device_type, model, source, created_at)
-     VALUES(?,?,?,'suggestion',?)`,
-  ).run(brand, type, model, t);
+  // A second spelling of a device the catalogue already holds ("ايفون 13
+  // برو", "Samsung Galaxy A26") lands on the existing row instead of
+  // becoming a near-duplicate every future seller has to choose between.
+  const same = resolveListingName(brand, model);
+  if (same.model && same.brand === brand) {
+    model = same.model;
+  } else {
+    db.prepare(
+      `INSERT OR IGNORE INTO device_catalog(brand, device_type, model, source, created_at)
+       VALUES(?,?,?,'suggestion',?)`,
+    ).run(brand, type, model, t);
+    resetCatalogCache();
+  }
   db.prepare('UPDATE device_suggestions SET status=?, reviewed_at=?, brand=?, model=?, device_type=? WHERE id=?')
     .run('approved', t, brand, model, type, s.id);
 
@@ -4072,6 +4082,20 @@ r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
       { title: 'تمت إضافة جهازك ✅', body: `${brand} ${model} صار متوفر في القائمة` });
   }
   res.json({ ok: true, brand, model, device_type: type });
+});
+
+// The daily device-name pass (deviceNameDaily.js): last report, and a
+// manual run. ?dry=1 plans without writing.
+r.get('/device-names/daily', requireAdmin, (_req, res) => {
+  res.json(lastDeviceNameReport());
+});
+r.post('/device-names/daily/run', requireAdmin, (req, res) => {
+  const dry = String(req.query.dry || '') === '1';
+  const report = runDeviceNameDaily({
+    apply: !dry,
+    backupDir: path.resolve(process.cwd(), 'data', 'backups'),
+  });
+  res.json(report);
 });
 
 r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
