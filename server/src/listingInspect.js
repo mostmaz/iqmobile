@@ -23,6 +23,8 @@
 // Off unless: the chosen model's API key is set AND listing_inspection_enabled=1.
 // Nothing here ever throws into a request path — every entry point is wrapped.
 
+import path from 'node:path';
+import sharp from 'sharp';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { db, now, getSetting } from './db.js';
@@ -38,6 +40,52 @@ const publicBase = () =>
 // description), so cap how many we send. 3 is enough to see the screen, the
 // back, and one angle; more adds cost without catching much extra.
 const MAX_IMAGES_INSPECTED = 3;
+
+// …and cap how big each one is. Photos are resized here, before the call,
+// to fit 1280×720 — long edge 1280, short edge 720, whichever way the phone
+// was held — with the aspect ratio kept. Fitting rather than cropping, so a
+// crack at the edge of the frame is never the part that gets cut off. At
+// 32-px patches that is at most ≈1,100 tokens a photo instead of ≈1,440 for
+// the 1280-long-edge upload. Override: LISTING_INSPECT_IMAGE_MAX=1280x720.
+const IMAGE_MAX = (() => {
+  const m = /^(\d{2,4})x(\d{2,4})$/i.exec(process.env.LISTING_INSPECT_IMAGE_MAX || '');
+  const long = m ? Number(m[1]) : 1280;
+  const short = m ? Number(m[2]) : 720;
+  return { long: Math.max(long, short), short: Math.min(long, short) };
+})();
+const IMAGE_JPEG_QUALITY = 80;
+// Where POST /listings/:id/images writes files (routes/listings.js UP);
+// image_path is '/uploads/<name>'.
+const UPLOADS_DIR = path.resolve('./uploads');
+
+/**
+ * The photo as the model should see it: rotated per EXIF, shrunk to fit
+ * IMAGE_MAX (orientation-aware), JPEG. Returns { data, media_type } with
+ * base64 data, or null if the file is unreadable — the caller then falls
+ * back to the public URL so a missing file never blocks the check.
+ */
+export async function prepareImage(imagePath, max = IMAGE_MAX) {
+  try {
+    const file = path.join(UPLOADS_DIR, path.basename(imagePath));
+    // rotate() first applies the EXIF orientation, so a phone photo taken
+    // upright is upright for the model and for the width/height below.
+    const img = sharp(file).rotate();
+    const meta = await img.metadata();
+    const w = meta.width || 0;
+    const h = meta.height || 0;
+    // EXIF orientations 5–8 swap the axes once rotate() has run.
+    const swapped = (meta.orientation || 1) >= 5;
+    const portrait = (swapped ? w > h : h > w);
+    const box = portrait ? { width: max.short, height: max.long } : { width: max.long, height: max.short };
+    const data = await img
+      .resize({ ...box, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: IMAGE_JPEG_QUALITY })
+      .toBuffer();
+    return { data: data.toString('base64'), media_type: 'image/jpeg' };
+  } catch {
+    return null;
+  }
+}
 
 // Which model does the judging. The name picks the vendor: gpt-* goes to
 // OpenAI, claude-* to Anthropic. Chosen in the dashboard (Settings →
@@ -192,15 +240,23 @@ function listingText(listing) {
 // model gave no answer. A refusal throws, so it lands in the dashboard as an
 // error row rather than passing as "clean".
 export async function inspectListing(listing, imagePaths) {
-  const urls = (imagePaths || []).slice(0, MAX_IMAGES_INSPECTED).map((p) => `${publicBase()}${p}`);
+  const paths = (imagePaths || []).slice(0, MAX_IMAGES_INSPECTED);
+  // Resized bytes when the file is on this disk; the public URL otherwise.
+  const images = await Promise.all(paths.map(async (p) => {
+    const prepared = await prepareImage(p);
+    return prepared || { url: `${publicBase()}${p}` };
+  }));
   const model = MODEL();
   return providerFor(model) === 'anthropic'
-    ? inspectWithAnthropic(model, listing, urls)
-    : inspectWithOpenAI(model, listing, urls);
+    ? inspectWithAnthropic(model, listing, images)
+    : inspectWithOpenAI(model, listing, images);
 }
 
-async function inspectWithOpenAI(model, listing, urls) {
-  const content = urls.map((url) => ({ type: 'image_url', image_url: { url } }));
+async function inspectWithOpenAI(model, listing, images) {
+  const content = images.map((im) => ({
+    type: 'image_url',
+    image_url: { url: im.url || `data:${im.media_type};base64,${im.data}` },
+  }));
   content.push({ type: 'text', text: listingText(listing) });
 
   const response = await openai().chat.completions.create({
@@ -228,8 +284,13 @@ async function inspectWithOpenAI(model, listing, urls) {
   return text ? JSON.parse(text) : null;
 }
 
-async function inspectWithAnthropic(model, listing, urls) {
-  const parts = urls.map((url) => ({ type: 'image', source: { type: 'url', url } }));
+async function inspectWithAnthropic(model, listing, images) {
+  const parts = images.map((im) => ({
+    type: 'image',
+    source: im.url
+      ? { type: 'url', url: im.url }
+      : { type: 'base64', media_type: im.media_type, data: im.data },
+  }));
   parts.push({ type: 'text', text: listingText(listing) });
 
   const response = await anthropic().messages.create({

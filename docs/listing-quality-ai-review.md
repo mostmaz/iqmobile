@@ -62,6 +62,7 @@ Seller-facing surfaces:
 | settings | `listing_inspection_model` | empty | **the model picker in dashboard → Settings**; `gpt-*` → OpenAI, `claude-*` → Anthropic |
 | `.env` | `LISTING_INSPECT_MODEL` | `gpt-6-luna` | fallback when the dashboard picker is on "default" |
 | `.env` | `LISTING_INSPECT_DEBOUNCE_MS` | 20000 | wait for photo uploads to go quiet |
+| `.env` | `LISTING_INSPECT_IMAGE_MAX` | `1280x720` | photos are resized server-side to fit this (aspect kept, no crop, never enlarged) before the call |
 | settings | `listing_inspection_enabled` | 0 | master switch (dashboard → Settings) |
 | settings | `listing_inspection_hold` | 1 | bad = held. Off: bad only queues, listing stays live |
 | settings | `listing_inspection_autoreject` | 0 | bad + high confidence = removed outright, seller told |
@@ -73,18 +74,22 @@ the photos.
 
 ## Cost: 1,000 listings, photos + description
 
-What one check sends, with the app's photos (1280 px long edge, 3 photos
-inspected):
+What one check sends. Photos are resized on the server to fit 1280×720
+before the call (a 4:3 phone photo lands at 960×720), 3 photos inspected:
 
-| Part | Tokens (Claude) |
-|---|---|
-| 3 photos, ⌈1280/28⌉×⌈960/28⌉ patches each, capped at 1,568 | ≈ 4,700 |
-| system prompt (cached after the first call) | ≈ 700 |
-| device line + description | ≈ 150 |
-| JSON answer | ≈ 120 output |
+| Part | Tokens (OpenAI, 32-px patches × 1.2) | Tokens (Claude, 28-px patches) |
+|---|---|---|
+| 3 photos at ≤ 1280×720 | ≈ 2,500–3,300 | ≈ 2,100–2,800 |
+| system prompt | ≈ 700 (Claude: cached after the first call) | ≈ 700 |
+| device line + description | ≈ 150 | ≈ 150 |
+| JSON answer (+ low-effort reasoning on OpenAI) | ≈ 500 output | ≈ 120 output |
 
-So ≈ 5.5k input (0.7k of it cached) and ≈ 0.12k output per listing.
-Image tokens dominate; the description is noise in the bill.
+So ≈ 3.5–4k input and ≈ 0.5k output per listing on GPT-6 Luna: **about
+$0.06 per 100 listings, $0.6 per 1,000**. The per-1,000 figures in the
+tables below were computed at the earlier 1280-long-edge size and are
+therefore slightly high (by about a quarter on the photo share); the
+ranking between models is unchanged. Image tokens dominate; the description
+is noise in the bill.
 
 ### Verified (official pricing pages fetched 1 Oct 2026)
 
