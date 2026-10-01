@@ -17,6 +17,7 @@ import { theme, fonts, radius, shadowSoft, FONT_SCALE_TIGHT } from '../../theme'
 import { Btn, fmtIQD } from '../../components/ui';
 import { IconCheck, IconSpark, IconShare, IconBell, IconChevronLeft, IconPin } from '../../components/icons';
 import { Listings } from '../../api/endpoints';
+import { getBaseUrl } from '../../api/client';
 import { timeAgoAr } from '../../lib/format';
 import { arOf } from '../../lib/governorates';
 import { bundledBrandLogo } from '../../lib/brandLogos';
@@ -36,6 +37,19 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
   }, [id, remaining.length, failedPhotos, track]);
 
   const openListing = () => navigation.replace('ListingDetail', { id });
+
+  // Is the AI quality check live on this server? Asked rather than assumed:
+  // this screen must only describe a step that really exists (see the
+  // comment on the rows below). Fails closed — no answer, no row.
+  const [qualityCheck, setQualityCheck] = React.useState(false);
+  React.useEffect(() => {
+    let alive = true;
+    fetch(`${getBaseUrl()}/app-config`)
+      .then((r) => r.json())
+      .then((cfg) => { if (alive) setQualityCheck(!!cfg?.quality_check); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -76,6 +90,16 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
             <Row
               tone="pending"
               text={`${failedPhotos} من الصور لم تُرفع بسبب الاتصال — تقدر ترفعها من «تعديل الإعلان».`}
+            />
+          ) : null}
+          {/* The AI quality check runs on the photos a few seconds after this
+              screen. Only shown when the server says the check is on — a
+              BAD verdict hides the ad and the seller is told, so the step
+              is real and worth a line here. */}
+          {qualityCheck ? (
+            <Row
+              tone="pending"
+              text="نفحص الصور آلياً خلال دقائق. إذا بدا الجهاز مكسوراً أو معطّلاً يُخفى الإعلان مؤقتاً ويصلك تنبيه، ويراجعه فريقنا بأسرع وقت."
             />
           ) : null}
           <Row tone="success" text="يصلك تنبيه فور مراسلة أول مشترٍ." />

@@ -42,7 +42,10 @@ export interface User {
 }
 
 export type Condition = 'new' | 'like_new' | 'used' | 'repaired' | 'refurbished';
-export type ListingStatus = 'active' | 'reserved' | 'sold' | 'expired' | 'removed';
+// 'under_review' is only ever seen by the listing's own seller: the AI
+// quality check held the ad back and an operator has yet to decide. Buyers
+// get a 404 for it, like any removed listing.
+export type ListingStatus = 'active' | 'reserved' | 'sold' | 'expired' | 'removed' | 'under_review';
 
 export interface ListingImage {
   id: number;

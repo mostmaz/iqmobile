@@ -1159,6 +1159,14 @@ addColumnIfMissing('users', 'shop_offer_dismissed_until INTEGER');
 // and in the shop's public listing_count. This way every existing query
 // excludes them already and only the panel goes looking.
 addColumnIfMissing('phone_listings', 'is_draft INTEGER NOT NULL DEFAULT 0');
+// A listing the AI quality check judged BAD (broken screen, dead touch,
+// shattered back, "not working" in the text) is held back from publishing
+// until an operator decides. Same trick as drafts, for the same reason:
+// status='removed' + review_hold=1 is invisible to every public query
+// already; only the seller's own list and the review queue go looking.
+// Approve → status='active', review_hold=0. Reject → stays 'removed',
+// review_hold=0. See listingInspect.js.
+addColumnIfMissing('phone_listings', 'review_hold INTEGER NOT NULL DEFAULT 0');
 // Actual transacted price (§10) — the dataset the marketplace has never had.
 addColumnIfMissing('phone_listings', 'sale_price INTEGER');
 // Idempotency for POST /listings. The mobile wizard generates one key per
@@ -1557,6 +1565,11 @@ setSetting.run('listings_never_expire', '1'); // 1 = show all listings, ignore T
 // automatically is a separate, deliberate second opt-in.
 setSetting.run('listing_inspection_enabled', '0');
 setSetting.run('listing_inspection_autoreject', '0');
+// With inspection on, a BAD verdict holds the listing back from publishing
+// (seller notified, operator decides) instead of merely flagging it while it
+// stays live. Defaults ON because that is the point of the check — but it
+// is still inert until listing_inspection_enabled is flipped above.
+setSetting.run('listing_inspection_hold', '1');
 
 // Rewarded-ad listing boost. OFF by default, like every other new switch
 // here: shipping the code must change nothing until an operator says so.

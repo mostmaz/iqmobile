@@ -7,7 +7,7 @@ import { api } from '../api';
 // `enabled_setting` is the stored switch position, kept for diagnosis.
 type InspectionStatus = {
   configured: boolean; enabled: boolean; enabled_setting?: boolean;
-  autoreject: boolean; pending: number;
+  autoreject: boolean; hold: boolean; pending: number; held: number;
 };
 
 export function SettingsPage() {
@@ -27,10 +27,11 @@ export function SettingsPage() {
     api<InspectionStatus>('/admin/inspection/status').then(setInsp).catch(() => {});
   }, []);
 
-  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'autoreject'>>) {
+  async function setInspection(patch: Partial<Pick<InspectionStatus, 'enabled' | 'autoreject' | 'hold'>>) {
     const body: Record<string, boolean> = {};
     if (patch.enabled !== undefined) body.listing_inspection_enabled = patch.enabled;
     if (patch.autoreject !== undefined) body.listing_inspection_autoreject = patch.autoreject;
+    if (patch.hold !== undefined) body.listing_inspection_hold = patch.hold;
     setInsp((s) => (s ? { ...s, ...patch } : s)); // optimistic
     try {
       await api('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) });
@@ -69,8 +70,9 @@ export function SettingsPage() {
       <div className="card">
         <h2>فحص الإعلانات بالذكاء الاصطناعي</h2>
         <p style={{ color: '#9ca3af', fontSize: 13.5, marginTop: 0, maxWidth: 620 }}>
-          يقرأ وصف الإعلان <strong>وصوره</strong> للكشف عن الأجهزة المكسورة أو المعطّلة أو المُصلَّحة —
-          شاشة مشقّقة، انبعاج، أثر ماء — حتى لو لم يذكرها البائع. يعمل بعد رفع الصور ولا يؤخّر نشر الإعلان.
+          يقرأ وصف الإعلان <strong>وصوره</strong> ويصنّف الجهاز: <strong>جيد</strong> (جديد، كالجديد، أو مستعمل بخدوش) يُنشر؛
+          <strong> سيّئ</strong> (شاشة مكسورة، لمس لا يعمل، بقعة بالشاشة، ظهر مهشّم، أو وصف يقول معطّل/لا يعمل) يُحجب
+          ويُبلَّغ البائع أن الفريق سيراجعه. يعمل بعد رفع الصور ولا يؤخّر النشر.
         </p>
 
         {!insp ? (
@@ -90,7 +92,25 @@ export function SettingsPage() {
               checked={!!insp?.enabled}
               onChange={(e) => setInspection({ enabled: e.target.checked })}
             />
-            <span>تفعيل الفحص — <strong>يُعلّم الإعلانات للمراجعة فقط</strong></span>
+            <span>تفعيل الفحص</span>
+          </label>
+        </div>
+
+        <div style={{ marginBottom: 12, opacity: insp?.configured && insp?.enabled ? 1 : 0.5 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              disabled={!insp?.configured || !insp?.enabled}
+              checked={!!insp?.hold}
+              onChange={(e) => setInspection({ hold: e.target.checked })}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              حجب الإعلان السيّئ عن النشر حتى يراجعه موظف (يُبلَّغ البائع)
+              <span style={{ display: 'block', color: '#9ca3af', fontSize: 12.5, marginTop: 3 }}>
+                بدونه يبقى الإعلان ظاهراً ويُضاف إلى قائمة المراجعة فقط.
+              </span>
+            </span>
           </label>
         </div>
 

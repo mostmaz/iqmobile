@@ -55,6 +55,7 @@ const AR = {
     sold: 'مباع',
     expired: 'منتهي',
     removed: 'محذوف',
+    under_review: 'قيد المراجعة',
     asking: 'السعر المطلوب',
     storage: 'السعة',
     color: 'اللون',

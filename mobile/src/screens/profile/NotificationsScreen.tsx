@@ -29,6 +29,13 @@ const KIND_LABEL: Record<string, string> = {
   'phone.unlocked': 'تم فتح رقم البائع',
   'rating.received': 'وصلك تقييم جديد',
   'listing.expired': 'انتهى إعلانك',
+  // AI quality check (server/src/listingInspect.js). The server only writes
+  // these rows for builds that carry these labels (LISTING_REVIEW_UI_MIN_VERSION
+  // gate in notify.js, same pattern as shop.review.*); the push always goes.
+  // Payload: listing_id, status, reason.
+  'listing.review.pending': 'إعلانك قيد المراجعة ⏳',
+  'listing.review.approved': 'نُشر إعلانك ✅',
+  'listing.review.rejected': 'لم يُنشر إعلانك',
   // Promotion review. admin/index.js has been sending these since featuring
   // shipped; without a label the inbox rendered the literal string
   // "feature.approved" — the notification worked, it just arrived looking
@@ -97,6 +104,8 @@ function labelOf(item: NotificationRow): string {
 // (chat deleted, listing removed, …) so the row never looks broken.
 function subline(item: NotificationRow): string | null {
   if(item.kind==='seller.weekly')return item.payload?.body || null;
+  // The model's (or the operator's) one-line reason, in the seller's words.
+  if (item.kind.startsWith('listing.review.')) return item.payload?.reason || null;
   // Order notifications carry their code in the payload but never showed it,
   // so "تم توصيل طلبك" never said WHICH order — useless to anyone with more
   // than one in flight.
@@ -227,6 +236,13 @@ export default function NotificationsScreen({ navigation }: any) {
     // phone request by the branch above.
     if (item.kind.startsWith('sticker.')) {
       navigation.navigate('Sticker');
+      return;
+    }
+    // Quality review: the held listing lives in «إعلاناتي» with its
+    // «قيد المراجعة» notice, and a rejected one is gone from the detail
+    // route entirely — so the list, never the detail page.
+    if (item.kind.startsWith('listing.review.')) {
+      navigation.navigate('MyListings');
       return;
     }
     if (item.payload?.listing_id) {

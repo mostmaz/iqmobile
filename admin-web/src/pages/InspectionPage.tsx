@@ -16,11 +16,17 @@ type Row = {
   error: string | null;
   created_at: number;
   brand: string; model: string; asking_price: number; governorate: string;
+  condition: string | null;
   description: string | null; listing_status: string; seller_name: string;
+  // 1 = the listing is HELD: unpublished until the operator decides here.
+  review_hold: number;
   defects: Defect[];
   images: string[];
 };
-type Status = { configured: boolean; enabled: boolean; enabled_setting?: boolean; autoreject: boolean; pending: number; errors: number };
+type Status = {
+  configured: boolean; enabled: boolean; enabled_setting?: boolean; autoreject: boolean;
+  hold: boolean; pending: number; held: number; errors: number;
+};
 
 const DEFECT_AR: Record<string, string> = {
   cracked_screen: 'شاشة مكسورة',
@@ -28,6 +34,7 @@ const DEFECT_AR: Record<string, string> = {
   dent_or_bend: 'انبعاج',
   deep_scratches: 'خدوش عميقة',
   screen_defect: 'عيب بالشاشة',
+  touch_fault: 'مشكلة باللمس',
   water_damage: 'أثر ماء',
   missing_part: 'قطعة ناقصة',
   not_powering_on: 'لا يشتغل',
@@ -59,10 +66,22 @@ export function InspectionPage() {
 
   useEffect(() => { load().catch(() => {}); }, [load]);
 
-  async function decide(id: number, action: 'approve' | 'remove') {
+  async function decide(id: number, action: 'approve' | 'remove', held: boolean) {
+    // The seller of a held listing was promised an answer, and "لم يُنشر"
+    // with no reason is not one. The model's evidence is the default; the
+    // operator can say it in their own words.
+    let reason: string | null = null;
+    if (action === 'remove' && held) {
+      const typed = window.prompt('سبب عدم النشر (يُرسل للبائع — اتركه فارغاً لاستخدام ملاحظة الفحص):', '');
+      if (typed === null) return; // cancelled
+      reason = typed.trim() || null;
+    }
     setBusy(id);
     try {
-      await api(`/admin/inspection/${id}/${action}`, { method: 'POST' });
+      await api(`/admin/inspection/${id}/${action}`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { reason } : {}),
+      });
       await load();
     } finally { setBusy(null); }
   }
@@ -80,9 +99,15 @@ export function InspectionPage() {
         ) : (
           <p style={{ color: '#9ca3af' }}>
             الفحص يعمل · <strong style={{ color: '#e5e7eb' }}>{status.pending}</strong> بانتظار المراجعة
+            {status.held > 0 ? <> · <strong style={{ color: '#fb923c' }}>{status.held}</strong> محجوب عن النشر — البائع ينتظر</> : null}
             {status.errors > 0 ? <> · <span style={{ color: '#f87171' }}>{status.errors} فشل</span></> : null}
           </p>
         )}
+        <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 8, marginBottom: 0, maxWidth: 640 }}>
+          <strong style={{ color: '#fb923c' }}>محجوب</strong> = الذكاء الاصطناعي حكم أن الجهاز سيّئ (شاشة مكسورة، لمس لا يعمل،
+          بقعة بالشاشة، ظهر مهشّم، أو الوصف يقول معطّل) فلم يُنشر الإعلان، والبائع أُبلغ أن الفريق سيراجعه.
+          «انشر» يُظهره للمشترين الآن؛ «لا تنشر» يبقيه مخفياً ويُبلغ البائع بالسبب.
+        </p>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
           {(['pending', 'approved', 'removed', 'error', 'all'] as const).map((f) => (
@@ -97,16 +122,23 @@ export function InspectionPage() {
         <div className="card"><p style={{ color: '#9ca3af', margin: 0 }}>لا توجد إعلانات في هذه القائمة.</p></div>
       ) : rows.map((r) => {
         const v = VERDICT_STYLE[r.verdict] || VERDICT_STYLE.clean;
+        const held = !!r.review_hold;
         return (
-          <div className="card" key={r.id}>
+          <div className="card" key={r.id} style={held ? { borderColor: '#fb923c' } : undefined}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <a href={listingUrl(r.listing_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}><strong style={{ fontSize: 15 }}>{r.brand} {r.model}</strong></a>
                 <span style={{ color: '#9ca3af', marginInlineStart: 10, fontSize: 13 }}>
                   #{r.listing_id} · {Number(r.asking_price).toLocaleString('en-US')} د.ع · {r.seller_name}
+                  {r.condition ? ` · الحالة المعلنة: ${r.condition}` : ''}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {held ? (
+                  <span style={{ background: 'rgba(251,146,60,0.18)', color: '#fb923c', padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+                    محجوب عن النشر
+                  </span>
+                ) : null}
                 <span style={{ background: v.bg, color: v.fg, padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
                   {v.label}
                 </span>
@@ -148,11 +180,11 @@ export function InspectionPage() {
             <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
               {r.status === 'pending' ? (
                 <>
-                  <button disabled={busy === r.id} onClick={() => decide(r.id, 'approve')}>
-                    الإعلان سليم — أبقِه
+                  <button disabled={busy === r.id} onClick={() => decide(r.id, 'approve', held)}>
+                    {held ? 'الجهاز مقبول — انشر الإعلان' : 'الإعلان سليم — أبقِه'}
                   </button>
-                  <button className="danger" disabled={busy === r.id} onClick={() => decide(r.id, 'remove')}>
-                    احذف الإعلان
+                  <button className="danger" disabled={busy === r.id} onClick={() => decide(r.id, 'remove', held)}>
+                    {held ? 'لا تنشر — أبلغ البائع' : 'احذف الإعلان'}
                   </button>
                 </>
               ) : (

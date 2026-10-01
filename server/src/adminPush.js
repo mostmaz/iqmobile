@@ -25,6 +25,8 @@ export const ADMIN_PUSH_KINDS = [
   'video.new',
   'store.chat',
   'listing.new',
+  // The AI quality check held a listing back; a seller is waiting on a human.
+  'listing.review',
   'shop.new',
   'report.new',
   'device.suggested',

@@ -79,6 +79,10 @@ function routeFor(kind?: string): string | null {
   if (kind === 'order.new') return 'Orders';
   if (kind === 'store.chat') return 'Chats';
   if (kind === 'listing.new') return 'Listings';
+  // Held listings are decided on the web dashboard (photos side by side with
+  // the model's evidence); the push text carries the fact, the tap opens the
+  // queue.
+  if (kind === 'listing.review') return null;
   if (kind === 'shop.new') return 'ShopReview';
   if (kind === 'report.new') return 'Moderation';
   if (kind === 'device.suggested') return 'Moderation';

@@ -86,18 +86,68 @@ export function versionAtLeast(v, min) {
 }
 
 export function notifyShopReview(shopId, status, title, body) {
+  notifyVersionGated(shopId, `shop.review.${status}`, { status }, title, body, REVIEW_UI_MIN_VERSION);
+}
+
+/**
+ * Inbox row only for builds that can label `kind`; the push always goes.
+ * The push carries the whole message for exactly that reason — on an older
+ * build it is the only channel that renders correctly.
+ */
+function notifyVersionGated(userId, kind, payload, title, body, minVersion) {
   const seen = db.prepare(
     `SELECT app_version FROM user_active_days
       WHERE user_id=? ORDER BY day DESC LIMIT 1`,
-  ).get(shopId)?.app_version;
+  ).get(userId)?.app_version;
 
-  if (versionAtLeast(seen, REVIEW_UI_MIN_VERSION)) {
+  if (versionAtLeast(seen, minVersion)) {
     // New enough to label the row and open the thread.
-    notify(shopId, `shop.review.${status}`, { status }, { title, body });
+    notify(userId, kind, payload, { title, body });
     return;
   }
   // Older build: push only. deliver() would also write the inbox row, so go
   // straight to the push layer instead.
-  pushTo([shopId], title, body, { kind: `shop.review.${status}` })
+  pushTo([userId], title, body, { kind, ...(payload || {}) })
     .catch(() => { /* best-effort */ });
+}
+
+// ─── listing quality review ───────────────────────────────────────────
+//
+// The AI quality check held a listing back, or an operator decided on one.
+// Same version gate as shop review: the KIND_LABEL entries for
+// listing.review.* ship in the build named here, and an older inbox would
+// render the raw key.
+const LISTING_REVIEW_UI_MIN_VERSION = '0.5.3';
+
+/**
+ * status: 'pending' (held, crew will look) | 'approved' (published) |
+ *         'rejected' (not published). `reason` is the model's or operator's
+ * one-line Arabic evidence, shown to the seller as-is.
+ */
+export function notifyListingReview(sellerId, status, listing, reason) {
+  const name = `${listing.brand} ${listing.model}`.trim();
+  const why = reason ? ` — ${reason}` : '';
+  const copy = {
+    pending: {
+      title: 'إعلانك قيد المراجعة ⏳',
+      body: `قد لا يُنشر إعلان ${name}: يبدو أن حالة الجهاز غير مناسبة${why}. سيراجعه فريقنا بأسرع وقت ويقرر.`,
+    },
+    approved: {
+      title: 'نُشر إعلانك ✅',
+      body: `راجع فريقنا إعلان ${name} ووافق عليه — صار ظاهراً للمشترين.`,
+    },
+    rejected: {
+      title: 'لم يُنشر إعلانك',
+      body: `راجع فريقنا إعلان ${name} ولم يُنشر لأن حالة الجهاز غير مناسبة${why}.`,
+    },
+  }[status];
+  if (!copy) return;
+  notifyVersionGated(
+    sellerId,
+    `listing.review.${status}`,
+    { status, listing_id: listing.id, reason: reason || null },
+    copy.title,
+    copy.body,
+    LISTING_REVIEW_UI_MIN_VERSION,
+  );
 }

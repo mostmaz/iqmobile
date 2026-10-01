@@ -104,6 +104,14 @@ GET    /notifications           POST /notifications/read-all
 GET    /events                  (SSE — chat.message, deal.*, phone.unlocked, …)
 ```
 
+New listings go through an AI quality check once their photos are up: a
+good device (new, like new, scratches) stays published; a bad one (broken
+screen, dead touch, shattered back, "not working") is held, the seller is
+notified, and an operator approves or rejects it from the dashboard. Off
+until `ANTHROPIC_API_KEY` is set and the switch is on — see
+`docs/listing-quality-ai-review.md`, which also has the per-1,000-listings
+cost comparison across models.
+
 Admin endpoints live under `/admin/*` and back the admin web app — listings,
 users, deals, reports, bypass attempts, settings, and device requests
 (`/admin/requests`, `/admin/requests/summary`, `/admin/requests/:id` — demand,

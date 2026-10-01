@@ -32,7 +32,7 @@ import { applyFeature } from '../../featuring.js';
 import { post as walletPost } from '../../wallet.js';
 import { arabicNormalizeSql, expandQuery } from '../../searchNormalize.js';
 import { alertOnPriceChange } from '../priceWatches.js';
-import { inspectionConfigured, inspectionEnabled, inspectListingAsync } from '../../listingInspect.js';
+import { inspectionConfigured, inspectionEnabled, inspectListingAsync, resolveInspection } from '../../listingInspect.js';
 import { norm as modelNorm } from '../savedSearches.js';
 import { listingsAnsweringRequest } from '../../requestMatch.js';
 import {
@@ -274,6 +274,9 @@ r.patch('/settings', requireAdmin, (req, res) => {
   }
   if (req.body?.listing_inspection_autoreject != null) {
     setSettingValue('listing_inspection_autoreject', req.body.listing_inspection_autoreject ? '1' : '0');
+  }
+  if (req.body?.listing_inspection_hold != null) {
+    setSettingValue('listing_inspection_hold', req.body.listing_inspection_hold ? '1' : '0');
   }
   // Update floor + home overlay. Free-text so the operator controls copy,
   // link and image without a deploy; stored verbatim and escaped at render.
@@ -3174,9 +3177,11 @@ r.get('/work-queue', requireAdmin, (_req, res) => {
     shop_requests: db.prepare("SELECT COUNT(*) AS n FROM shop_feature_requests WHERE status='pending'").get().n
       + db.prepare("SELECT COUNT(*) AS n FROM shop_verification_requests WHERE status='pending'").get().n,
     // Flagged listings awaiting a human verdict. Matches the الفحص queue's
-    // filter — a 'clean' verdict is logged for audit, never for review.
+    // filter — a 'clean' verdict is logged for audit, never for review, but
+    // a HELD listing is always counted: its seller is waiting on this number.
     inspection: count(
-      "SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending' AND verdict != 'clean'",
+      `SELECT COUNT(*) AS n FROM listing_inspections i JOIN phone_listings l ON l.id=i.listing_id
+        WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1)`,
     ),
     inspection_errors: count("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'"),
     devices: count("SELECT COUNT(*) AS n FROM device_suggestions WHERE status='pending'"),
@@ -4102,13 +4107,18 @@ r.get('/inspection/status', requireAdmin, (_req, res) => {
     // what the operator chose even while the key is missing.
     enabled_setting: getSetting('listing_inspection_enabled') === '1',
     autoreject: getSetting('listing_inspection_autoreject') === '1',
+    hold: getSetting('listing_inspection_hold') !== '0',
     // Must match the queue's filter below. Counting every pending row meant a
     // listing the model judged CLEAN was counted as "awaiting review" while
     // the queue deliberately hid it — the dashboard said 2 waiting and showed
     // an empty list. A clean verdict is recorded for audit, never for review.
+    // A held listing is the exception: whatever the latest verdict says, a
+    // seller is waiting for an answer on it.
     pending: db.prepare(
-      "SELECT COUNT(*) AS n FROM listing_inspections WHERE status='pending' AND verdict != 'clean'",
+      `SELECT COUNT(*) AS n FROM listing_inspections i JOIN phone_listings l ON l.id=i.listing_id
+        WHERE i.status='pending' AND (i.verdict != 'clean' OR l.review_hold=1)`,
     ).get().n,
+    held: db.prepare('SELECT COUNT(*) AS n FROM phone_listings WHERE review_hold=1').get().n,
     errors: db.prepare("SELECT COUNT(*) AS n FROM listing_inspections WHERE status='error'").get().n,
   });
 });
@@ -4122,12 +4132,13 @@ r.get('/inspection/queue', requireAdmin, (req, res) => {
   const params = status === 'all' ? [] : [status];
   const rows = db.prepare(
     `SELECT i.*, l.brand, l.model, l.asking_price, l.governorate, l.description,
-            l.status AS listing_status, l.seller_id, u.display_name AS seller_name
+            l.condition, l.status AS listing_status, l.review_hold, l.seller_id,
+            u.display_name AS seller_name
        FROM listing_inspections i
        JOIN phone_listings l ON l.id = i.listing_id
        JOIN users u ON u.id = l.seller_id
-      WHERE ${where} AND (i.verdict != 'clean' OR i.status='error')
-      ORDER BY i.created_at DESC LIMIT 200`,
+      WHERE ${where} AND (i.verdict != 'clean' OR i.status='error' OR l.review_hold=1)
+      ORDER BY l.review_hold DESC, i.created_at DESC LIMIT 200`,
   ).all(...params);
   res.json(rows.map((r2) => ({
     ...r2,
@@ -4137,19 +4148,15 @@ r.get('/inspection/queue', requireAdmin, (req, res) => {
   })));
 });
 
-// Operator decision on a flagged listing. 'approve' clears the flag and
-// leaves the listing up; 'remove' takes it down.
+// Operator decision on a flagged or held listing. 'approve' clears the flag
+// and publishes (or leaves up) the listing; 'remove' takes it down. The
+// seller is told either way — see resolveInspection. An optional `reason`
+// in the body replaces the model's evidence in that message.
 r.post('/inspection/:id(\\d+)/:action(approve|remove)', requireAdmin, (req, res) => {
-  const row = db.prepare('SELECT * FROM listing_inspections WHERE id=?').get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'not_found' });
-  const t = now();
-  if (req.params.action === 'remove') {
-    db.prepare("UPDATE phone_listings SET status='removed', updated_at=? WHERE id=?").run(t, row.listing_id);
-    db.prepare("UPDATE listing_inspections SET status='removed', reviewed_at=? WHERE id=?").run(t, row.id);
-  } else {
-    db.prepare("UPDATE listing_inspections SET status='approved', reviewed_at=? WHERE id=?").run(t, row.id);
-  }
-  res.json({ ok: true });
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 200) : null;
+  const listingId = resolveInspection(Number(req.params.id), req.params.action, { reason: reason || null });
+  if (!listingId) return res.status(404).json({ error: 'not_found' });
+  res.json({ ok: true, listing_id: listingId });
 });
 
 // Re-run the check on one listing — useful after the seller swaps photos, or
@@ -4161,7 +4168,7 @@ r.post('/inspection/listing/:id(\\d+)/rerun', requireAdmin, (req, res) => {
   if (!inspectionEnabled()) return res.status(400).json({ error: 'not_enabled' });
   const listing = db.prepare('SELECT id FROM phone_listings WHERE id=?').get(req.params.id);
   if (!listing) return res.status(404).json({ error: 'not_found' });
-  setImmediate(() => inspectListingAsync(listing.id));
+  inspectListingAsync(listing.id, { delayMs: 0 });
   res.json({ ok: true, queued: true });
 });
 

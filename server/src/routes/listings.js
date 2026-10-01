@@ -849,17 +849,26 @@ r.get('/', optionalAuth(), (req, res) => {
 r.get('/mine', requireAuth(), (req, res) => {
   const status = req.query.status || 'all';
   let rows;
+  // A listing the AI quality check held back rides status='removed' +
+  // review_hold=1 so the public never sees it — but its seller must, as
+  // 'under_review', or the ad they just posted has simply vanished.
   if (status === 'all') {
     rows = db.prepare(
-      "SELECT * FROM phone_listings WHERE seller_id=? AND status != 'removed' "
+      "SELECT * FROM phone_listings WHERE seller_id=? AND (status != 'removed' OR review_hold=1) "
+      + `ORDER BY ${rankTs('phone_listings')} DESC`,
+    ).all(req.user.id);
+  } else if (status === 'under_review') {
+    rows = db.prepare(
+      "SELECT * FROM phone_listings WHERE seller_id=? AND status='removed' AND review_hold=1 "
       + `ORDER BY ${rankTs('phone_listings')} DESC`,
     ).all(req.user.id);
   } else {
     rows = db.prepare(
-      'SELECT * FROM phone_listings WHERE seller_id=? AND status=? '
+      'SELECT * FROM phone_listings WHERE seller_id=? AND status=? AND review_hold=0 '
       + `ORDER BY ${rankTs('phone_listings')} DESC`,
     ).all(req.user.id, status);
   }
+  for (const r2 of rows) if (r2.review_hold) r2.status = 'under_review';
   const withImgs = attachImages(rows);
   if (withImgs.length) {
     const ids = withImgs.map((r2) => r2.id);
@@ -916,11 +925,16 @@ r.get('/mine', requireAuth(), (req, res) => {
   // Only for the seller's OWN listings, and only where a verdict exists.
   // Both inspection switches default off, so on most installs this attaches
   // nothing at all and the UI must render nothing — never an empty card.
+  //
+  // Only while the verdict is still PENDING. Once an operator has approved
+  // the listing the notes are moot (a human overruled them), and a removed
+  // listing is not in this list. This used to filter on status='done', a
+  // value nothing ever writes, so the notes never reached a seller at all.
   if (withImgs.length) {
     const ids = withImgs.map((r2) => r2.id);
     const rowsIns = db.prepare(
       `SELECT listing_id, verdict, confidence, defects_json FROM listing_inspections
-        WHERE listing_id IN (${ids.map(() => '?').join(',')}) AND status='done'`,
+        WHERE listing_id IN (${ids.map(() => '?').join(',')}) AND status='pending' AND verdict != 'clean'`,
     ).all(...ids);
     const byId = new Map(rowsIns.map((i) => [i.listing_id, i]));
     for (const r2 of withImgs) {
@@ -1012,7 +1026,15 @@ r.get('/compare', optionalAuth(), (req, res) => {
 
 r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   const row = loadListing(req.params.id);
-  if (!row || row.status === 'removed') return res.status(404).json({ error: 'not_found' });
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  // A held listing (AI quality check, awaiting an operator) is removed for
+  // everyone except its own seller, who sees it as 'under_review'.
+  if (row.status === 'removed') {
+    if (!(row.review_hold && req.user && req.user.id === row.seller_id)) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    row.status = 'under_review';
+  }
 
   // Log the view for the demand dashboard — but not when the seller opens
   // their own listing (they check it constantly; counting that would drown
@@ -1248,6 +1270,13 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   if (textChanged && checkListingQuality(nextModel, nextDesc)) {
     return res.status(400).json({ error: 'listing_quality' });
   }
+  // While the quality check holds a listing, its status belongs to the
+  // reviewer: PATCH status=active would otherwise be a one-line bypass.
+  // Everything else (photos, text, price) stays editable so the seller can
+  // fix what was flagged.
+  if (row.review_hold && req.body.status !== undefined) {
+    return res.status(409).json({ error: 'under_review' });
+  }
 
   const fields = [];
   const params = [];
@@ -1351,7 +1380,9 @@ r.delete('/:id(\\d+)', requireAuth(), (req, res) => {
   const row = loadListing(req.params.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
   if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
-  db.prepare("UPDATE phone_listings SET status='removed', updated_at=? WHERE id=?").run(now(), row.id);
+  // review_hold cleared too: a held listing the seller deletes is gone, not
+  // "under review" forever in their list.
+  db.prepare("UPDATE phone_listings SET status='removed', review_hold=0, updated_at=? WHERE id=?").run(now(), row.id);
   res.json({ ok: true });
 });
 

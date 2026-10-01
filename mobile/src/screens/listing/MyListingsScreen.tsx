@@ -21,6 +21,7 @@ import { FreeBoostCard } from '../../components/FreeBoostCard';
 const TABS: Array<{ key: 'all' | ListingStatus; label: string }> = [
   { key: 'all', label: 'الكل' },
   { key: 'active', label: ar.listing.active },
+  { key: 'under_review', label: ar.listing.under_review },
   { key: 'reserved', label: ar.listing.reserved },
   { key: 'sold', label: ar.listing.sold },
   { key: 'expired', label: ar.listing.expired },
@@ -99,6 +100,25 @@ export default function MyListingsScreen({ navigation }: any) {
               {SHOW_PROMOTE && (item as any).promotion ? (
                 <View style={{ marginTop: -4, marginBottom: 10, paddingHorizontal: 4 }}>
                   <PromotionPerformance promotion={(item as any).promotion} />
+                </View>
+              ) : null}
+
+              {/* Held by the AI quality check. Said plainly, with what happens
+                  next, because the seller was just told «نُشر إعلانك» a
+                  minute ago and now it is not in the feed. */}
+              {item.status === 'under_review' ? (
+                <View style={{
+                  marginTop: -4, marginBottom: 10, marginHorizontal: 4,
+                  backgroundColor: theme.accentSoft, borderWidth: 1, borderColor: theme.accent,
+                  borderRadius: 14, padding: 12, gap: 4,
+                }}>
+                  <Text style={{ fontFamily: fonts.arBold, fontSize: 12.5, color: theme.ink, textAlign: 'right' }}>
+                    قد لا يُنشر هذا الإعلان
+                  </Text>
+                  <Text style={{ fontFamily: fonts.ar, fontSize: 12, color: theme.subtle, textAlign: 'right', lineHeight: 19 }}>
+                    الفحص الآلي وجد أن حالة الجهاز تبدو غير مناسبة. الإعلان مخفي عن المشترين الآن،
+                    وسيراجعه فريقنا بأسرع وقت ويقرر نشره أو لا — يصلك تنبيه بالنتيجة.
+                  </Text>
                 </View>
               ) : null}
 

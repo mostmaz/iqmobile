@@ -25,13 +25,14 @@ Notifications.setNotificationHandler({
 });
 
 export type AdminPushKind =
-  | 'order.new' | 'video.new' | 'listing.new' | 'shop.new'
+  | 'order.new' | 'video.new' | 'listing.new' | 'listing.review' | 'shop.new'
   | 'report.new' | 'device.suggested' | 'feature.requested' | 'sticker.request';
 
 export const KIND_LABEL: Record<AdminPushKind, string> = {
   'order.new': 'طلب جديد',
   'video.new': 'فيديو بانتظار الموافقة',
   'listing.new': 'إعلان جديد',
+  'listing.review': 'إعلان محجوب بانتظار المراجعة',
   'shop.new': 'متجر جديد',
   'report.new': 'بلاغ جديد',
   'device.suggested': 'جهاز مقترح',
