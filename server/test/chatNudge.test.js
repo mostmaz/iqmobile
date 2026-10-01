@@ -385,15 +385,9 @@ test('a thread the buyer opened and never wrote in is not chased', () => {
   assert.deepEqual(dueFor(s), []);
 });
 
-test('a quick-reply chip fired two seconds after opening is a slip, not a question', () => {
+test('a quick-reply chip is a question even when tapped two seconds in', () => {
   const b = user(), s = user();
-  chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 2000 });
-  assert.deepEqual(dueFor(s), []);
-});
-
-test('the same chip tapped half a minute in is a real question', () => {
-  const b = user(), s = user();
-  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 30_000 });
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY, body: 'هل المنتج متوفر؟', openedBeforeMs: 2000 });
   assert.deepEqual(dueFor(s).map((n) => n.chat_id), [c]);
 });
 

@@ -32,7 +32,6 @@
 // Daytime only. Same 09:00–21:00 Baghdad window the retention pushes use. A
 // WhatsApp at 3am about a phone is worse than silence.
 import { db, now as dbNow, getSetting } from './db.js';
-import { QUICK_MESSAGES, ACCIDENTAL_TAP_MS } from './quickMessages.js';
 import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
 
 export const NUDGE_AFTER_MS = 24 * 60 * 60 * 1000;
@@ -100,15 +99,10 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
        -- owner wants everyone.
        AND (? = 0 OR (SELECT expo_push_token FROM users
                        WHERE id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END) IS NULL)
-       -- A thread with no message at all never reaches here (the JOIN above
-       -- needs a last message). One whose ONLY message is a quick-reply
-       -- chip fired within seconds of the thread opening is the same thing
-       -- in disguise: a thumb landing on the chip row during the screen
-       -- transition. Nobody should get a WhatsApp about it.
-       AND NOT (
-             (SELECT COUNT(*) FROM chat_messages WHERE chat_id = c.id) = 1
-             AND m.body IN (${QUICK_MESSAGES.map(() => '?').join(',')})
-             AND m.created_at - c.created_at < ?)
+       -- A thread with no message at all never reaches here: the JOIN above
+       -- needs a last message. A quick-reply chip IS a message — however
+       -- fast it was tapped, the seller was asked and never saw it (owner's
+       -- call, 1 Oct 2026; the app now stops the accidental taps itself).
      -- Freshest first. The buyer who wrote yesterday is still shopping; the
      -- one who wrote six days ago has very likely bought elsewhere, and with
      -- one message per quarter hour the queue never reaches everyone anyway.
@@ -117,8 +111,7 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
      -- minutes as messages aged out of the window.
      ORDER BY m.created_at DESC
      LIMIT ?
-  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0,
-    ...QUICK_MESSAGES, ACCIDENTAL_TAP_MS, limit * 4);
+  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0, limit * 4);
 
   // One per person, freshest first, plus the count of everything else of
   // theirs that is waiting — so the message can say "٣ محادثات" instead of
