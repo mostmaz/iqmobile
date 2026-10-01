@@ -2521,6 +2521,7 @@ r.post('/chat-nudge/test', requireAdmin, async (req, res) => {
       device: String(req.body?.device || 'iPhone 13'),
       waiting: Number(req.body?.waiting) || 1,
       userId: Number(req.body?.user_id) || 1,
+      role: req.body?.role === 'buyer' ? 'buyer' : 'seller',
     },
     { dryRun: false },
   );

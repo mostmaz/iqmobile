@@ -14,6 +14,7 @@ type Due = {
   chat_id: number; listing_id: number; user_id: number; phone: string;
   name: string; device: string; waiting: number; waiting_since: number;
   has_push_token: boolean;
+  role: 'buyer' | 'seller';
 };
 
 type Preview = {
@@ -148,6 +149,7 @@ export function WhatsAppPage() {
             <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.9 }}>
               رسالة واحدة لكل إعلان، للي وصلته رسالة بين ٢٤ ساعة وأسبوع وما فتحها —
               مرة وحدة للأبد. رسالة وحدة كل ١٥ دقيقة كحد أقصى، بين ٩ صباحاً و٩ مساءً.
+              البائع يستلم «مشتري راسلك»، والمشتري يستلم «البائع ردّ عليك».
             </div>
             <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginTop: 12, alignItems: 'center' }}>
               <label style={{ display: 'flex', gap: 7, alignItems: 'center', cursor: 'pointer' }}>
@@ -193,7 +195,7 @@ export function WhatsAppPage() {
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10 }}>
                 <thead><tr>
-                  {['المستلم', 'الهاتف', 'الجهاز', 'محادثات تنتظر', 'عنده إشعارات؟'].map((h) => (
+                  {['المستلم', 'صفته', 'الهاتف', 'الجهاز', 'محادثات تنتظر', 'عنده إشعارات؟'].map((h) => (
                     <th key={h} style={{ textAlign: 'right', fontSize: 12.5, color: '#888', padding: '0 8px 8px' }}>{h}</th>
                   ))}
                 </tr></thead>
@@ -202,6 +204,11 @@ export function WhatsAppPage() {
                     <tr key={d.chat_id}>
                       <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>
                         {d.name || `#${d.user_id}`}
+                      </td>
+                      {/* Decides the wording: a seller is told a buyer is
+                          waiting, a buyer that the seller answered. */}
+                      <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>
+                        {d.role === 'buyer' ? 'مشتري' : 'بائع'}
                       </td>
                       <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{d.phone}</td>
                       <td style={{ padding: '10px 8px', borderTop: '1px solid rgba(128,128,128,0.2)' }}>{d.device}</td>

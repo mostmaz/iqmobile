@@ -150,6 +150,24 @@ const CLOSINGS = [
   'ردّ عليه من التطبيق حتى ما تضيع الصفقة.',
 ];
 
+// The other direction. A buyer who asked about a device and never opened
+// the seller's answer is not "losing a sale"; they are about to lose the
+// phone they wanted. Same shape, different verbs, so the two readers each
+// get a message written to them.
+const FACTS_BUYER = [
+  (d) => `البائع ردّ عليك على iQ Mobile بخصوص ${d} من ٢٤ ساعة وما فتحت رده بعد.`,
+  (d) => `وصلك رد على تطبيق iQ Mobile بخصوص ${d} من أمس، وبعده ما انقرأ.`,
+  (d) => `صاحب ${d} جاوبك على iQ Mobile، وصار له يوم ينتظرك.`,
+  (d) => `من يوم وأكو رد يستناك على iQ Mobile بخصوص ${d}.`,
+];
+
+const CLOSINGS_BUYER = [
+  'افتح التطبيق وشوف الرد قبل ما ينباع الجهاز.',
+  'ادخل التطبيق وكمّل المحادثة — البائع ينتظرك.',
+  'افتح iQ Mobile وشوف الرد، الأجهزة الزينة ما تبقى.',
+  'كمّل من التطبيق حتى ما تفوتك الصفقة.',
+];
+
 /**
  * FNV-1a plus MurmurHash3's finalizer. Small, stable, and not tied to any
  * Node version's own hashing.
@@ -188,11 +206,16 @@ export function waitingPhrase(n) {
   return ` وعندك ${arNum(n)} محادثة تنتظر ردك.`;
 }
 
-export function botText({ name, device, waiting = 1, userId = 0 }) {
+/**
+ * @param role 'seller' (default) when a buyer wrote and the seller has not
+ *   looked; 'buyer' when the seller answered and the buyer has not.
+ */
+export function botText({ name, device, waiting = 1, userId = 0, role = 'seller' }) {
   const id = Number(userId) || 0;
+  const buyer = role === 'buyer';
   const who = name ? pick(OPENINGS, id, 'open')(name) : pick(OPENINGS, id, 'open')('').trim();
-  const fact = pick(FACTS, id, 'fact')(device || 'جهازك');
-  const close = pick(CLOSINGS, id, 'close');
+  const fact = pick(buyer ? FACTS_BUYER : FACTS, id, 'fact')(device || 'الجهاز');
+  const close = pick(buyer ? CLOSINGS_BUYER : CLOSINGS, id, 'close');
   return `${who}\n${fact}${waitingPhrase(waiting)}\n${close}`;
 }
 

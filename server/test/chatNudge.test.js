@@ -398,3 +398,35 @@ test('a fast chip followed by a typed message is a conversation', () => {
     .run(++mid, c, b, 'اقصد نسخة 256', NOW - 2 * DAY + 60_000);
   assert.deepEqual(dueFor(s).map((n) => n.chat_id), [c]);
 });
+
+// ── who is being chased, and what they are told ───────────────────────
+
+test('the seller is chased when the buyer wrote last, the buyer when the seller did', () => {
+  const b = user(), s = user();
+  const c1 = chat({ buyer: b, seller: s, from: b, ageMs: 2 * DAY });
+  assert.deepEqual(dueFor(s).map((n) => [n.chat_id, n.role]), [[c1, 'seller']]);
+  const b2 = user(), s2 = user();
+  const c2 = chat({ buyer: b2, seller: s2, from: s2, ageMs: 2 * DAY, body: 'نعم متوفر' });
+  assert.deepEqual(dueFor(b2).map((n) => [n.chat_id, n.role]), [[c2, 'buyer']]);
+});
+
+test('a guest buyer has no phone to write to and is skipped', () => {
+  const s = user();
+  const g = user();
+  db.prepare("UPDATE users SET is_guest=1, phone='guest:abc123' WHERE id=?").run(g);
+  chat({ buyer: g, seller: s, from: s, ageMs: 2 * DAY, body: 'نعم متوفر' });
+  assert.deepEqual(dueFor(g), []);
+});
+
+test('the buyer reads a message written to a buyer', async () => {
+  const { botText } = await import('../src/whatsapp.js');
+  const seller = botText({ name: 'أبو علي', device: 'iPhone 13', userId: 7, role: 'seller' });
+  const buyer = botText({ name: 'أبو علي', device: 'iPhone 13', userId: 7, role: 'buyer' });
+  assert.notEqual(seller, buyer);
+  assert.match(buyer, /iPhone 13/);
+  // The seller's copy talks about a customer waiting; the buyer's about a reply.
+  assert.doesNotMatch(buyer, /الزبون|يشتري من غيره|يسأل عن/);
+  assert.match(buyer, /رد|جاوبك/);
+  // Still one stable wording per person.
+  assert.equal(buyer, botText({ name: 'أبو علي', device: 'iPhone 13', userId: 7, role: 'buyer' }));
+});

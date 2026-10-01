@@ -77,6 +77,9 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
   const rows = db_.prepare(`
     SELECT c.id AS chat_id, c.listing_id,
            CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END AS user_id,
+           -- Who is being chased decides the wording: the seller is told a
+           -- buyer is waiting, the buyer that the seller answered.
+           CASE WHEN m.sender_id = c.buyer_id THEN 'seller' ELSE 'buyer' END AS role,
            m.created_at AS waiting_since,
            l.brand, l.model
       FROM chats c
@@ -127,10 +130,13 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
   const out = [];
   for (const pick of byUser.values()) {
     const u = db_.prepare(
-      'SELECT id, display_name, shop_name, phone, expo_push_token FROM users WHERE id=?',
+      'SELECT id, display_name, shop_name, phone, expo_push_token, is_guest FROM users WHERE id=?',
     ).get(pick.user_id);
-    if (!u || !u.phone) continue;
+    // A guest has no phone, only a "guest:…" placeholder — nothing to write
+    // to, and the attempt would still burn a ledger row.
+    if (!u || !u.phone || u.is_guest || u.phone.startsWith('guest:')) continue;
     out.push({
+      role: pick.role,
       chat_id: pick.chat_id,
       listing_id: pick.listing_id,
       user_id: pick.user_id,
@@ -200,7 +206,7 @@ export async function runChatNudges({ at = dbNow() } = {}) {
   let sent = 0;
   for (const n of due) {
     const r = await sendWhatsApp(n.phone, {
-      name: n.name, device: n.device, waiting: n.waiting, userId: n.user_id,
+      name: n.name, device: n.device, waiting: n.waiting, userId: n.user_id, role: n.role,
     }, { dryRun });
     record(n, r.outcome, at);
     if (r.ok) sent += 1;
