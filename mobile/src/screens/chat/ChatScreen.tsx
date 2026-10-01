@@ -43,10 +43,11 @@ export default function ChatScreen({ route, navigation }: any) {
   // threads opened in 60 days stayed empty — each one at the top of a
   // seller's inbox as "لا رسائل بعد". `id` is undefined while drafting and
   // every query below is gated on it.
-  const [chatId, setChatId] = useState<number | undefined>(params.id);
+  // Numbers, whatever the route handed over — a deep link delivers strings.
+  const [chatId, setChatId] = useState<number | undefined>(params.id ? Number(params.id) : undefined);
   const id = chatId as number;
   const isDraft = !chatId;
-  const draftListingId = isDraft ? params.listingId : undefined;
+  const draftListingId = isDraft && params.listingId ? Number(params.listingId) : undefined;
   const insets = useSafeAreaInsets();
   const kbHeight = useKeyboardHeight();
   const { user } = useAuth();
