@@ -3,7 +3,10 @@ import { db } from './db.js';
 
 const expo = new Expo();
 
-export async function pushTo(userIds, title, body, data = {}) {
+// `categoryId` names a set of action buttons the app registered
+// (expo-notifications setNotificationCategoryAsync); a build that never
+// registered it shows the push without buttons, which is harmless.
+export async function pushTo(userIds, title, body, data = {}, { categoryId = null } = {}) {
   if (!userIds || userIds.length === 0) return;
   const placeholders = userIds.map(() => '?').join(',');
   const rows = db
@@ -13,7 +16,10 @@ export async function pushTo(userIds, title, body, data = {}) {
   const messages = [];
   for (const r of rows) {
     if (!r.expo_push_token || !Expo.isExpoPushToken(r.expo_push_token)) continue;
-    messages.push({ to: r.expo_push_token, sound: 'default', channelId: 'default', title, body, data });
+    messages.push({
+      to: r.expo_push_token, sound: 'default', channelId: 'default', title, body, data,
+      ...(categoryId ? { categoryId } : {}),
+    });
   }
   if (messages.length === 0) return;
   const chunks = expo.chunkPushNotifications(messages);

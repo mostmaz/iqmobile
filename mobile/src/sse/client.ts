@@ -79,6 +79,7 @@ const EVENTS = [
   'listing.review.pending',
   'listing.review.approved',
   'listing.review.rejected',
+  'listing.sold_check',
   'request.match',
   'request.new',
   'request.offer',

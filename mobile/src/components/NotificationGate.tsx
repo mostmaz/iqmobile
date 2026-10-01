@@ -66,10 +66,22 @@ export function NotificationGate({
   const perm = useNotificationPermission();
   const [busy, setBusy] = React.useState(false);
 
+  // ONCE. The button's own success path and the "already granted" effect
+  // below both reach onGranted, and granting from the button flips `perm`
+  // to granted — so without this guard a fresh grant called it twice, and
+  // the post wizard published twice (the listing deduplicated on its
+  // idempotency key; its photos did not, and arrived doubled).
+  const fired = React.useRef(false);
+  const granted = React.useCallback(() => {
+    if (fired.current) return;
+    fired.current = true;
+    onGranted?.();
+  }, [onGranted]);
+
   // A gate that is already satisfied should get out of the way immediately.
   React.useEffect(() => {
-    if (!perm.loading && perm.granted) onGranted?.();
-  }, [perm.loading, perm.granted]);
+    if (!perm.loading && perm.granted) granted();
+  }, [perm.loading, perm.granted, granted]);
 
   const reasons = compactReasons ? REASONS.slice(0, 2) : REASONS;
   const blocked = !perm.canAskAgain && !perm.granted;
@@ -80,7 +92,7 @@ export function NotificationGate({
     try {
       if (blocked) { perm.openSettings(); return; }
       const ok = await perm.request();
-      if (ok) onGranted?.();
+      if (ok) granted();
       // If the OS said no, `perm` has already refreshed and `blocked` flips
       // this screen to the Settings route on the next render — no alert
       // needed, the button itself changes.

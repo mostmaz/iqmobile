@@ -4,6 +4,7 @@ import { emitTo } from './sse.js';
 import { nudgeStalePromotions } from './featureNudge.js';
 import { runChatNudges } from './chatNudge.js';
 import { sweepStuckGates } from './listingInspect.js';
+import { runSaleCheckins } from './saleCheckin.js';
 import { logEvent } from './eventLog.js';
 
 // Listings auto-expire after their TTL elapses; sellers can renew via PATCH.
@@ -232,4 +233,9 @@ export function startExpirer() {
 
   setTimeout(chatNudgeTick, 3 * 60 * 1000);
   setInterval(chatNudgeTick, 15 * 60 * 1000);
+  // «انباع الجهاز؟» — three days after a listing's first contact. Same
+  // quarter-hour cadence; the question is in-app, so no pacing concern.
+  const soldCheckTick = () => { try { runSaleCheckins(); } catch (e) { console.error('[expirer] sold check failed', e?.message); } };
+  setTimeout(soldCheckTick, 90 * 1000);
+  setInterval(soldCheckTick, 15 * 60 * 1000);
 }

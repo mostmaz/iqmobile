@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 
 // Two backend URLs in app.json's `extra`:
@@ -47,9 +48,14 @@ const rawBaseUrl: string =
 const baseUrl: string =
   Platform.OS !== 'android' ? rawBaseUrl.replace('10.0.2.2', 'localhost') : rawBaseUrl;
 
-// Read once at module load. Falls back to '0' rather than 'unknown' so an
-// unparseable value still sorts below every real release in a comparison.
-const APP_VERSION: string = Constants.expoConfig?.version || '0';
+// Read once at module load. The Expo config carries it in a store build; a
+// bare Debug build run from Metro has no manifest and reads undefined
+// there, so the native bundle version (Info.plist / build.gradle) is the
+// fallback — the server gates behaviour on this header (the AI quality
+// gate from 1.0.0), and a dev build reporting '0' would never see it.
+// Falls back to '0' rather than 'unknown' so an unparseable value still
+// sorts below every real release in a comparison.
+const APP_VERSION: string = Constants.expoConfig?.version || Application.nativeApplicationVersion || '0';
 
 let _token: string | null = null;
 export function setToken(token: string | null) {

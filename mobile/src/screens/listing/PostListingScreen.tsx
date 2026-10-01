@@ -669,7 +669,7 @@ export default function PostListingScreen({ navigation }: any) {
       // Don't block on `loading` — an unresolved read shouldn't stop a
       // publish; the gate simply doesn't appear that once.
       if (!perm.loading && !perm.granted) { setNotifyGateOpen(true); return; }
-      create.mutate();
+      if (!create.isPending) create.mutate();
       return;
     }
     setFieldErr(null);
@@ -1497,7 +1497,7 @@ export default function PostListingScreen({ navigation }: any) {
             compactReasons
             title="فعّل الإشعارات ليصل إليك المشتري"
             intro="سيُنشر إعلانك بعد هذه الخطوة. يراسلك المشترون عبر التطبيق — ومن دون إشعارات لن تعرف بهم، وسيتجهون إلى إعلان آخر."
-            onGranted={() => { setNotifyGateOpen(false); create.mutate(); }}
+            onGranted={() => { setNotifyGateOpen(false); if (!create.isPending) create.mutate(); }}
           />
         </View>
       </Modal>

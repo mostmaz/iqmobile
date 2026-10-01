@@ -23,6 +23,7 @@ import {
   inspectListingAsync, gateApplies, isGated, startGatedInspection, reviewFor, reviewStateFor,
 } from '../listingInspect.js';
 import { announceNewListing } from '../listingAnnounce.js';
+import { checkinStateFor, answerSaleCheckin } from '../saleCheckin.js';
 import { newPriceFor } from '../newPriceRef.js';
 import { specsFor } from '../deviceSpecs.js';
 import { queryTokens, arabicNormalizeSql } from '../searchNormalize.js';
@@ -1374,6 +1375,23 @@ r.patch('/:id(\\d+)', requireAuth(), (req, res) => {
   res.json(attachImages([updatedRow])[0]);
 });
 
+// ─── «انباع الجهاز؟» ─────────────────────────────────────────────────
+// The question the app asks three days after the first contact, and the
+// seller's answer. See saleCheckin.js.
+r.get('/:id(\\d+)/sold-check', requireAuth(), (req, res) => {
+  const row = loadListing(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  if (row.seller_id !== req.user.id) return res.status(403).json({ error: 'forbidden' });
+  res.json(checkinStateFor(db, row.id));
+});
+r.post('/:id(\\d+)/sold-check', requireAuth(), (req, res) => {
+  const out = answerSaleCheckin(Number(req.params.id), req.user.id, req.body?.answer, { salePrice: req.body?.sale_price });
+  if (out.error === 'not_found') return res.status(404).json(out);
+  if (out.error === 'forbidden') return res.status(403).json(out);
+  if (out.error) return res.status(400).json(out);
+  res.json(out);
+});
+
 // ─── renew expired listing ───────────────────────────────────────────
 r.post('/:id(\\d+)/renew', requireAuth(), (req, res) => {
   const row = loadListing(req.params.id);
@@ -1421,6 +1439,7 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
   }
   const t = now();
   const insWithHash = db.prepare('INSERT INTO listing_images(listing_id, image_path, position, created_at, image_hash) VALUES(?,?,?,?,?)');
+  const sameBytes = db.prepare('SELECT id, image_path, position FROM listing_images WHERE listing_id=? AND image_hash=?');
   let pos = existing;
   const out = [];
   for (const f of files) {
@@ -1430,6 +1449,15 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
     // failure must never break the upload, so it degrades to null.
     let hash = null;
     try { hash = crypto.createHash('sha256').update(fs.readFileSync(f.path)).digest('hex'); } catch {}
+    // The same bytes twice on one listing is a retry (a lost reply, a
+    // double submit), not a seventh photo: answer with the row that is
+    // already there and drop the duplicate file.
+    const dup = hash ? sameBytes.get(row.id, hash) : null;
+    if (dup) {
+      try { fs.unlinkSync(f.path); } catch {}
+      out.push({ id: dup.id, listing_id: row.id, image_path: dup.image_path, position: dup.position, duplicate: true });
+      continue;
+    }
     const id = insWithHash.run(row.id, p, pos++, t, hash).lastInsertRowid;
     out.push({ id, listing_id: row.id, image_path: p, position: pos - 1 });
   }

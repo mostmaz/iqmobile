@@ -23,7 +23,7 @@ import { arOf } from '../../lib/governorates';
 import { bundledBrandLogo } from '../../lib/brandLogos';
 import { Img } from '../../components/Img';
 import { useTrack } from '../../analytics/track';
-import { reviewSettled, reviewPollDelay, reviewCopy } from '../../lib/listingReview';
+import { reviewSettled, reviewPollDelay, reviewCopy, REVIEW_GIVE_UP_MS } from '../../lib/listingReview';
 import type { ListingReview } from '../../api/endpoints';
 
 export default function ListingPublishedScreen({ route, navigation }: any) {
@@ -43,22 +43,27 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
   // where a held listing lives. A minute without an answer → the status
   // screen too, which says the push will finish the job.
   const startedAt = React.useRef(Date.now());
-  const [waited, setWaited] = React.useState(0);
+  // The give-up clock lives in its own timer, NOT inside refetchInterval:
+  // a setState from inside that callback re-renders, which re-evaluates
+  // the callback, which sets state — "Maximum update depth exceeded".
+  const [gaveUp, setGaveUp] = React.useState(false);
+  React.useEffect(() => {
+    if (!checking) return;
+    const t = setTimeout(() => setGaveUp(true), REVIEW_GIVE_UP_MS);
+    return () => clearTimeout(t);
+  }, [checking]);
   const gate = useQuery({
     queryKey: ['listing-review', id],
     queryFn: () => Listings.review(id),
-    enabled: !!checking && !!id,
+    enabled: !!checking && !!id && !gaveUp,
     refetchInterval: (query) => {
       const state = (query.state.data as ListingReview | undefined)?.state;
       if (reviewSettled(state)) return false;
-      const elapsed = Date.now() - startedAt.current;
-      setWaited(elapsed);
-      return reviewPollDelay(elapsed) ?? false;
+      return reviewPollDelay(Date.now() - startedAt.current) ?? false;
     },
     refetchIntervalInBackground: false,
   });
   const gateState = gate.data?.state;
-  const gaveUp = !!checking && !reviewSettled(gateState) && reviewPollDelay(waited) == null;
   const stillChecking = !!checking && !reviewSettled(gateState) && !gaveUp;
   React.useEffect(() => {
     if (!checking) return;
@@ -66,7 +71,7 @@ export default function ListingPublishedScreen({ route, navigation }: any) {
       track('listing.gate_passed', { listing_id: id, waited_ms: Date.now() - startedAt.current });
       return;
     }
-    if (reviewSettled(gateState) || gaveUp) {
+    if (reviewSettled(gateState) || (gaveUp && !reviewSettled(gateState))) {
       track('listing.gate_held', { listing_id: id, state: gateState || 'timeout', waited_ms: Date.now() - startedAt.current });
       navigation.replace('ListingStatus', { id });
     }

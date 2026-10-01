@@ -9,7 +9,7 @@ import { I18nManager, View, ActivityIndicator, Text, LogBox } from 'react-native
 LogBox.ignoreLogs(['usePostHog was called without a PostHog client']);
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
-import { setupPushTapHandler } from './src/push/register';
+import { setupPushTapHandler, registerNotificationCategories } from './src/push/register';
 import { initMeta } from './src/analytics/meta';
 import { go } from './src/navigation/ref';
 
@@ -103,8 +103,16 @@ function AppInner() {
   // it needs) to the data payload of every push. We translate that into
   // an in-app navigation here. Adding a new kind = add a case below.
   useEffect(() => {
-    setupPushTapHandler((data) => {
+    registerNotificationCategories();
+    setupPushTapHandler((data, action) => {
       switch (data?.kind) {
+        // «انباع الجهاز؟» — the push carries two buttons; which one was
+        // pressed rides along as `action` and the screen acts on it.
+        case 'listing.sold_check':
+          if (data?.listing_id) {
+            go('Main', { screen: 'Profile', params: { screen: 'SoldCheck', params: { id: Number(data.listing_id), answer: action === 'sold' || action === 'still' ? action : undefined } } });
+          }
+          break;
         case 'request.match':
         case 'request.new':
         case 'request.offer':

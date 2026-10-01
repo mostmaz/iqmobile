@@ -36,7 +36,7 @@ function deliver(userId, kind, payload, push) {
     // on push errors — fatal under Node ≥15's default
     // unhandledRejection=throw mode. Wrap with .catch so a single
     // failed push never takes the whole process down.
-    pushTo([userId], push.title, push.body, { kind, ...(payload || {}) })
+    pushTo([userId], push.title, push.body, { kind, ...(payload || {}) }, { categoryId: push.categoryId || null })
       .catch((err) => console.error('[notify] pushTo failed', err));
   }
 }

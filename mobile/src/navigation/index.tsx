@@ -33,6 +33,7 @@ import ListingDetailScreen from '../screens/listing/ListingDetailScreen';
 import PostListingScreen from '../screens/listing/PostListingScreen';
 import ListingPublishedScreen from '../screens/listing/ListingPublishedScreen';
 import ListingStatusScreen from '../screens/listing/ListingStatusScreen';
+import SoldCheckScreen from '../screens/listing/SoldCheckScreen';
 import EditListingScreen from '../screens/listing/EditListingScreen';
 import MyListingsScreen from '../screens/listing/MyListingsScreen';
 import FeatureListingScreen from '../screens/listing/FeatureListingScreen';
@@ -82,6 +83,7 @@ function BrowseStackNav() {
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="ListingStatus" component={ListingStatusScreen} />
+      <BrowseStack.Screen name="SoldCheck" component={SoldCheckScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
@@ -136,6 +138,7 @@ function ProfileStackNav() {
       <BrowseStack.Screen name="Saved" component={SavedScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="ListingStatus" component={ListingStatusScreen} />
+      <BrowseStack.Screen name="SoldCheck" component={SoldCheckScreen} />
       <BrowseStack.Screen name="FeatureListing" component={FeatureListingScreen} />
       <BrowseStack.Screen name="FreeBoost" component={FreeBoostScreen} />
       <BrowseStack.Screen name="Shops" component={ShopsScreen} />
@@ -196,6 +199,7 @@ function SellStackNav() {
           and the one route that can show a rejected listing's reason. Its
           «تعديل» and «إعلاناتي» buttons need their routes here too. */}
       <BrowseStack.Screen name="ListingStatus" component={ListingStatusScreen} />
+      <BrowseStack.Screen name="SoldCheck" component={SoldCheckScreen} />
       <BrowseStack.Screen name="EditListing" component={EditListingScreen} />
       <BrowseStack.Screen name="MyListings" component={MyListingsScreen} />
       <BrowseStack.Screen name="ListingDetail" component={ListingDetailScreen} />

@@ -1905,6 +1905,24 @@ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_nudges_once ON chat_nudges(u
 addColumnIfMissing('chat_nudges', 'opened_at INTEGER');
 addColumnIfMissing('chat_nudges', 'replied_at INTEGER');
 
+// «انباع الجهاز؟» — one row per question asked (saleCheckin.js). round is
+// 1 for the first ask, 2 and 3 for the weekly re-asks after «بعده موجود».
+// Reversible: DROP TABLE sale_checkins (nothing else references it).
+db.exec(`
+CREATE TABLE IF NOT EXISTS sale_checkins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  listing_id INTEGER NOT NULL REFERENCES phone_listings(id) ON DELETE CASCADE,
+  seller_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  round INTEGER NOT NULL,
+  asked_at INTEGER NOT NULL,
+  answer TEXT,
+  answered_at INTEGER,
+  sale_price INTEGER,
+  UNIQUE(listing_id, round)
+);
+CREATE INDEX IF NOT EXISTS idx_sale_checkins_seller ON sale_checkins(seller_id, asked_at DESC);
+`);
+
 // Notifications are how a seller learns a buyer wrote to them, so the app
 // asks for the permission before it will do anything else. Three modes:
 //   hard — a full-screen gate; nothing is usable until the OS says yes

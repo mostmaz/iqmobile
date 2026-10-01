@@ -22,7 +22,7 @@ import { LoadFailed } from '../../components/LoadFailed';
 import { Listings, type ListingReview } from '../../api/endpoints';
 import { fullImageUrl } from '../../api/upload';
 import { arOf } from '../../lib/governorates';
-import { reviewSettled, reviewPollDelay, reviewCopy } from '../../lib/listingReview';
+import { reviewSettled, reviewPollDelay, reviewCopy, REVIEW_GIVE_UP_MS } from '../../lib/listingReview';
 import { useTrack } from '../../analytics/track';
 
 export default function ListingStatusScreen({ route, navigation }: any) {
@@ -30,7 +30,13 @@ export default function ListingStatusScreen({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const track = useTrack();
   const startedAt = React.useRef(Date.now());
+  // Its own timer, never a setState inside refetchInterval (that re-renders,
+  // re-evaluates the callback, and loops).
   const [gaveUp, setGaveUp] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setGaveUp(true), REVIEW_GIVE_UP_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   const q = useQuery({
     queryKey: ['listing-review', id],
@@ -41,10 +47,8 @@ export default function ListingStatusScreen({ route, navigation }: any) {
     // better messenger.
     refetchInterval: (query) => {
       const state = (query.state.data as ListingReview | undefined)?.state;
-      if (reviewSettled(state)) return false;
-      const d = reviewPollDelay(Date.now() - startedAt.current);
-      if (d == null) { setGaveUp(true); return false; }
-      return d;
+      if (reviewSettled(state) || gaveUp) return false;
+      return reviewPollDelay(Date.now() - startedAt.current) ?? false;
     },
     refetchIntervalInBackground: false,
   });

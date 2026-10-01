@@ -56,6 +56,12 @@ export type ListingStatus = 'active' | 'reserved' | 'sold' | 'expired' | 'remove
  *   rejected     — an operator refused it; `reason` says why
  */
 export type ReviewState = 'checking' | 'under_review' | 'published' | 'rejected';
+export interface SoldCheckState {
+  listing: { id: number; brand: string; model: string; asking_price: number; status: string; device: string };
+  rounds: number;
+  pending: { id: number; round: number; asked_at: number } | null;
+  last_answer: 'sold' | 'still' | null;
+}
 export interface ListingReview {
   id: number;
   state: ReviewState;
@@ -410,6 +416,10 @@ export const Listings = {
    */
   inspect: (id: number) => api<ListingReview>(`/listings/${id}/inspect`, { method: 'POST' }),
   review: (id: number) => api<ListingReview>(`/listings/${id}/review`),
+  /** «انباع الجهاز؟» — the question asked three days after the first contact, and the answer. */
+  soldCheck: (id: number) => api<SoldCheckState>(`/listings/${id}/sold-check`),
+  answerSoldCheck: (id: number, body: { answer: 'sold' | 'still'; sale_price?: number | null }) =>
+    api<SoldCheckState & { ok: boolean }>(`/listings/${id}/sold-check`, { method: 'POST', body: JSON.stringify(body) }),
   save: (id: number) => api(`/listings/${id}/save`, { method: 'POST' }),
   unsave: (id: number) => api(`/listings/${id}/save`, { method: 'DELETE' }),
   /**

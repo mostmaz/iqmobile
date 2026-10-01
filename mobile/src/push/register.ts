@@ -113,14 +113,35 @@ export async function syncPushTokenIfGranted() {
 // would leak listeners, so we guard with a module-level ref.
 let tapSub: Notifications.Subscription | null = null;
 
+/**
+ * The button sets a push can carry. Registered once at startup; the server
+ * names one with `categoryId` on the push and the tap handler receives
+ * which button was pressed as `action`. A build that never registered the
+ * category shows the push without buttons — harmless.
+ */
+export async function registerNotificationCategories() {
+  try {
+    await Notifications.setNotificationCategoryAsync('sold_check', [
+      { identifier: 'sold', buttonTitle: 'انباع', options: { opensAppToForeground: true } },
+      { identifier: 'still', buttonTitle: 'بعده موجود', options: { opensAppToForeground: true } },
+    ]);
+  } catch (e: any) { console.warn('notification categories failed', e?.message || e); }
+}
+
+/** A button on the push (its identifier), or null for a plain tap. */
+function actionOf(response: Notifications.NotificationResponse | null | undefined): string | null {
+  const a = response?.actionIdentifier;
+  return a && a !== Notifications.DEFAULT_ACTION_IDENTIFIER ? a : null;
+}
+
 export function setupPushTapHandler(
-  onTap: (data: Record<string, any>) => void,
+  onTap: (data: Record<string, any>, action: string | null) => void,
 ) {
   if (tapSub) return;
   tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
     const data = (response?.notification?.request?.content?.data || {}) as Record<string, any>;
     try {
-      onTap(data);
+      onTap(data, actionOf(response));
       Notifications.clearLastNotificationResponseAsync().catch(() => {});
     } catch (e) { console.warn('push tap handler failed', e); }
   });
@@ -136,7 +157,7 @@ export function setupPushTapHandler(
       if (!resp) return;
       const data = (resp.notification.request.content.data || {}) as Record<string, any>;
       try {
-        onTap(data);
+        onTap(data, actionOf(resp));
         Notifications.clearLastNotificationResponseAsync().catch(() => {});
       } catch (e) { console.warn('push cold-tap handler failed', e); }
     })

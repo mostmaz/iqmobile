@@ -36,6 +36,7 @@ const KIND_LABEL: Record<string, string> = {
   'listing.review.pending': 'إعلانك قيد المراجعة ⏳',
   'listing.review.approved': 'نُشر إعلانك ✅',
   'listing.review.rejected': 'لم يُنشر إعلانك',
+  'listing.sold_check': 'انباع الجهاز؟',
   // Promotion review. admin/index.js has been sending these since featuring
   // shipped; without a label the inbox rendered the literal string
   // "feature.approved" — the notification worked, it just arrived looking
@@ -106,6 +107,7 @@ function subline(item: NotificationRow): string | null {
   if(item.kind==='seller.weekly')return item.payload?.body || null;
   // The model's (or the operator's) one-line reason, in the seller's words.
   if (item.kind.startsWith('listing.review.')) return item.payload?.reason || null;
+  if (item.kind === 'listing.sold_check') return item.payload?.device ? `${item.payload.device} — انباع، لو بعده موجود؟` : null;
   // Order notifications carry their code in the payload but never showed it,
   // so "تم توصيل طلبك" never said WHICH order — useless to anyone with more
   // than one in flight.
@@ -243,6 +245,11 @@ export default function NotificationsScreen({ navigation }: any) {
     // listing, which the detail page 404s for.
     if (item.kind.startsWith('listing.review.')) {
       if (item.payload?.listing_id) navigation.navigate('ListingStatus', { id: Number(item.payload.listing_id) });
+      else navigation.navigate('MyListings');
+      return;
+    }
+    if (item.kind === 'listing.sold_check') {
+      if (item.payload?.listing_id) navigation.navigate('SoldCheck', { id: Number(item.payload.listing_id) });
       else navigation.navigate('MyListings');
       return;
     }
