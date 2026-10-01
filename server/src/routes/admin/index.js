@@ -17,6 +17,9 @@ import { applyStatusToStock, restoreStockForOrder } from '../../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT } from '../../orderFlow.js';
 import { audit } from '../../auditLog.js';
 import { resolveListingName, resetCatalogCache } from '../../listingNameNormalize.js';
+import {
+  parseGsmParts, gsmPagePath, upsertSpecSheet, mapModelToSpec, devicesMissingSpecs,
+} from '../../deviceSpecsWrite.js';
 import { pushTo } from '../../push.js';
 import { pushToAdmins, ADMIN_PUSH_KINDS } from '../../adminPush.js';
 import { Expo } from 'expo-server-sdk';
@@ -4108,6 +4111,92 @@ r.post('/device-suggestions/:id(\\d+)/approve', requireAdmin, (req, res) => {
       { title: 'تمت إضافة جهازك ✅', body: `${brand} ${model} صار متوفر في القائمة` });
   }
   res.json({ ok: true, brand, model, device_type: type });
+});
+
+// ─── spec sheets for new devices ─────────────────────────────────────
+// The bulk GSMArena load (tools/gsmarena + scripts/importDeviceSpecs.js)
+// covers the devices that were on sale when it ran. These endpoints let the
+// nightly pass keep up afterwards: list the live devices with no sheet,
+// reuse a sheet that already exists, or add one parsed from a GSMArena page.
+// Automatic mappings are written as 'auto' and never replace a 'manual' one.
+
+r.get('/device-specs/missing', requireAdmin, (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 300);
+  const total = db.prepare(`
+    SELECT COUNT(*) AS n FROM (
+      SELECT 1 FROM phone_listings l
+        LEFT JOIN device_spec_map m
+               ON m.brand = l.brand AND m.model_norm = LOWER(TRIM(l.model))
+       WHERE l.status IN ('active','reserved') AND m.spec_id IS NULL
+       GROUP BY l.brand, LOWER(TRIM(l.model)))`).get().n;
+  res.json({ total, devices: devicesMissingSpecs(limit) });
+});
+
+// Find an existing sheet by name or page, so a second spelling of a device
+// already on file is mapped instead of fetched again.
+r.get('/device-specs/sheets', requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  if (!q) return res.json([]);
+  const esc = q.replace(/[\\%_]/g, (c) => `\\${c}`);
+  res.json(db.prepare(`
+    SELECT id, source_name, source_url, brand, display_inches, chipset, battery_mah, announced
+      FROM device_specs
+     WHERE source_name LIKE ? ESCAPE '\\' COLLATE NOCASE OR source_url LIKE ? ESCAPE '\\' COLLATE NOCASE
+     ORDER BY source_name COLLATE NOCASE LIMIT 30`).all(`%${esc}%`, `%${esc}%`));
+});
+
+function readSpecTargets(body) {
+  const list = Array.isArray(body?.models) ? body.models : [];
+  const out = [];
+  for (const m of list.slice(0, 20)) {
+    const brand = String(m?.brand || '').trim();
+    const model = String(m?.model || '').trim();
+    if (!brand || !model) return { error: 'bad_models' };
+    if (!isBrand(brand)) return { error: 'unknown_brand' };
+    out.push({ brand, model });
+  }
+  if (!out.length) return { error: 'models_required' };
+  return { targets: out };
+}
+
+r.post('/device-specs/map', requireAdmin, (req, res) => {
+  const { error, targets } = readSpecTargets(req.body);
+  if (error) return res.status(400).json({ error });
+  const spec = db.prepare('SELECT id, source_name FROM device_specs WHERE id=?').get(Number(req.body?.spec_id));
+  if (!spec) return res.status(404).json({ error: 'spec_not_found' });
+  const confidence = req.body?.confidence === 'manual' ? 'manual' : 'auto';
+  const written = targets.filter((t) => mapModelToSpec(t.brand, t.model, spec.id, confidence));
+  res.json({ ok: true, spec_id: spec.id, device: spec.source_name, mapped: written });
+});
+
+// parts = what the browser read off the GSMArena page:
+//   ds:    { [data-spec]: text }   pairs: [[label, value], …]   hl: battery highlight HTML
+r.post('/device-specs/gsmarena', requireAdmin, (req, res) => {
+  const { error, targets } = readSpecTargets(req.body);
+  if (error) return res.status(400).json({ error });
+  const page = gsmPagePath(req.body?.url);
+  if (!page) return res.status(400).json({ error: 'bad_gsmarena_url' });
+  const name = String(req.body?.name || '').trim().slice(0, 120);
+  if (!name) return res.status(400).json({ error: 'name_required' });
+  const parsed = parseGsmParts(req.body?.parts);
+  // A page that parsed to nothing is a wrong page or a changed layout —
+  // either way a blank sheet under a listing helps nobody.
+  if (!parsed.display_inches && !parsed.chipset && !parsed.battery_mah) {
+    return res.status(422).json({ error: 'nothing_parsed' });
+  }
+  const sheet = {
+    gsm_url: page,
+    gsm_name: name,
+    gsm_brand: String(req.body?.gsm_brand || page.split('_')[0]).toLowerCase(),
+    ...parsed,
+  };
+  const confidence = req.body?.confidence === 'manual' ? 'manual' : 'auto';
+  const result = db.transaction(() => {
+    const id = upsertSpecSheet(sheet);
+    const mapped = targets.filter((t) => mapModelToSpec(t.brand, t.model, id, confidence));
+    return { id, mapped };
+  })();
+  res.json({ ok: true, spec_id: result.id, device: name, mapped: result.mapped, sheet: parsed });
 });
 
 r.post('/device-suggestions/:id(\\d+)/reject', requireAdmin, (req, res) => {
