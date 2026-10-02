@@ -1904,6 +1904,40 @@ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_nudges_once ON chat_nudges(u
 // by the chat routes; read by the dashboard's outcomes card.
 addColumnIfMissing('chat_nudges', 'opened_at INTEGER');
 addColumnIfMissing('chat_nudges', 'replied_at INTEGER');
+// One row per (chat, person), not per chat. The table was born with
+// chat_id as its PRIMARY KEY, from the days only sellers were reminded.
+// Once buyers were too (1 Oct 2026), the buyer's reminder on a chat whose
+// seller already had a row could never be written — INSERT … ON CONFLICT
+// DO NOTHING swallowed it — so the sweep found the same buyer due again
+// every quarter hour and wrote to one person five times in an hour
+// (2 Oct 2026, 11:58–12:55 Baghdad). SQLite cannot drop a primary key in
+// place, so the table is rebuilt once; the (user_id, listing_id) rule and
+// the outcome stamps survive the copy.
+if (/chat_id\s+INTEGER\s+PRIMARY\s+KEY/i.test(
+  db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_nudges'").get()?.sql || '',
+)) {
+  db.exec(`
+    CREATE TABLE chat_nudges_v2 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      listing_id INTEGER,
+      phone TEXT,
+      outcome TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      opened_at INTEGER,
+      replied_at INTEGER,
+      UNIQUE(chat_id, user_id)
+    );
+    INSERT INTO chat_nudges_v2(chat_id, user_id, listing_id, phone, outcome, created_at, opened_at, replied_at)
+      SELECT chat_id, user_id, listing_id, phone, outcome, created_at, opened_at, replied_at FROM chat_nudges;
+    DROP TABLE chat_nudges;
+    ALTER TABLE chat_nudges_v2 RENAME TO chat_nudges;
+    CREATE INDEX IF NOT EXISTS idx_chat_nudges_user ON chat_nudges(user_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_nudges_once ON chat_nudges(user_id, listing_id);
+  `);
+  console.log('[db] chat_nudges rebuilt: one row per (chat, person)');
+}
 
 // «انباع الجهاز؟» — one row per question asked (saleCheckin.js). round is
 // 1 for the first ask, 2 and 3 for the weekly re-asks after «بعده موجود».

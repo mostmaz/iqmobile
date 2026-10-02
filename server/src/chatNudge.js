@@ -38,7 +38,7 @@
 // 08:00–23:00 Baghdad only. A WhatsApp at 3am about a phone is worse than
 // silence; what falls due overnight is simply still due at eight, and goes
 // out then (freshest first).
-import { db, now as dbNow, getSetting } from './db.js';
+import { db, now as dbNow, getSetting, setSettingValue } from './db.js';
 import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
 
 export const NUDGE_AFTER_MS = 2 * 60 * 60 * 1000;
@@ -100,9 +100,12 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
        -- the recipient has not opened the thread since that message landed
        AND COALESCE(CASE WHEN m.sender_id = c.buyer_id THEN c.seller_last_read_at
                          ELSE c.buyer_last_read_at END, 0) < m.created_at
+       -- Never twice to one person about one listing (the unique index),
+       -- nor twice about one chat — belt and braces, since the ledger once
+       -- failed to hold the second party's row at all.
        AND NOT EXISTS (
              SELECT 1 FROM chat_nudges n
-              WHERE n.listing_id = c.listing_id
+              WHERE (n.listing_id = c.listing_id OR n.chat_id = c.id)
                 AND n.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
        -- Only people a push could never have reached. Someone WITH a token
        -- was already told the moment the message arrived; writing to them
@@ -188,13 +191,24 @@ export function sentInLast24h(db_, at) {
 /**
  * Record the attempt. The unique index on (user_id, listing_id) is what makes
  * "once, ever" true; DO NOTHING covers the race where two sweeps overlap.
+ *
+ * A send that cannot be recorded is the one failure this file must never
+ * hide: the sweep would find the same person due again fifteen minutes
+ * later, and did (2 Oct 2026, when chat_id was the table's primary key and
+ * a buyer's row collided with the seller's on the same chat). So the
+ * result is checked, and `false` here stops the sweep.
  */
-function record(n, outcome, at) {
-  db.prepare(`
+export function record(n, outcome, at) {
+  const r = db.prepare(`
     INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at)
     VALUES(?,?,?,?,?,?)
     ON CONFLICT DO NOTHING
   `).run(n.chat_id, n.listing_id, n.user_id, n.phone, outcome, at);
+  if (r.changes === 0) {
+    console.error(`[chat-nudge] NOT RECORDED: chat=${n.chat_id} user=${n.user_id} listing=${n.listing_id} outcome=${outcome} — stopping the sweep`);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -234,8 +248,14 @@ export async function runChatNudges({ at = dbNow() } = {}) {
     const r = await sendWhatsApp(n.phone, {
       name: n.name, device: n.device, waiting: n.waiting, userId: n.user_id, role: n.role,
     }, { dryRun });
-    record(n, r.outcome, at);
     if (r.ok) sent += 1;
+    if (!record(n, r.outcome, at)) {
+      // Something is wrong with the ledger. Better one unrecorded message
+      // than a stream of them: switch the feature off until a person looks.
+      setSettingValue('chat_nudge_enabled', '0');
+      console.error('[chat-nudge] disabled itself: a send could not be recorded');
+      return { considered: due.length, sent, skipped: 'ledger_failure' };
+    }
   }
   console.log(`[chat-nudge] ${due.length} due, ${sent} ${dryRun ? 'dry-run' : 'sent'}`);
   return { considered: due.length, sent, dry_run: dryRun };

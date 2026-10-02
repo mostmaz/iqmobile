@@ -539,3 +539,44 @@ test('the baseline is the same slow-to-answer population, before any reminder', 
   assert.equal(base.replied, 1);
   assert.equal(base.median_reply_hours, 24);
 });
+
+// ── the 2 Oct 2026 incident ───────────────────────────────────────────
+// The seller of a chat had been reminded; later the buyer of the SAME chat
+// was due. The ledger could not hold a second row for that chat, the send
+// went unrecorded, and the buyer was picked again every sweep.
+
+test('both parties of one chat get their own ledger row, and neither is picked twice', async () => {
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 5 * HOUR });
+  // The seller was reminded (recorded).
+  db.prepare('INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?,?)')
+    .run(c, listingOf(c), s, '0770', 'sent', NOW - 4 * HOUR);
+  // Then the seller answered and the buyer never opened it.
+  db.prepare('INSERT INTO chat_messages(id, chat_id, sender_id, body, masked, created_at) VALUES(?,?,?,?,0,?)')
+    .run(++mid, c, s, 'نعم متوفر', NOW - 3 * HOUR);
+  db.prepare('UPDATE chats SET seller_last_read_at=? WHERE id=?').run(NOW - 3 * HOUR, c);
+  assert.deepEqual(dueFor(b).map((n) => [n.chat_id, n.role]), [[c, 'buyer']]);
+  // The buyer's row can be written next to the seller's.
+  const r = db.prepare('INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at) VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING')
+    .run(c, listingOf(c), b, '0771', 'sent', NOW - HOUR);
+  assert.equal(r.changes, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM chat_nudges WHERE chat_id=?').get(c).n, 2);
+  // And now nobody on this chat is due.
+  assert.deepEqual(dueFor(b), []);
+  assert.deepEqual(dueFor(s), []);
+});
+
+test('a ledger row that cannot be written is reported, not swallowed', async () => {
+  const { record } = await import('../src/chatNudge.js');
+  db.exec('DELETE FROM chat_messages; DELETE FROM chats; DELETE FROM chat_nudges;');
+  const b = user(), s = user();
+  const c = chat({ buyer: b, seller: s, from: b, ageMs: 5 * HOUR });
+  const n = { chat_id: c, listing_id: listingOf(c), user_id: s, phone: '0770' };
+  assert.equal(record(n, 'sent', NOW), true);
+  // Same person, same listing again: the unique index refuses, and the
+  // caller hears about it instead of sending again next sweep.
+  assert.equal(record(n, 'sent', NOW + HOUR), false);
+  // The other party of the same chat is a different row, and is recorded.
+  assert.equal(record({ ...n, user_id: b, phone: '0771' }, 'sent', NOW + HOUR), true);
+});
