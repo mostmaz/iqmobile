@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword, issueToken, requireAuth, optionalAuth } f
 import { isGovernorate } from '../governorates.js';
 import { authLimiter, guestLimiter } from '../limits.js';
 import { sendCode, checkCode, otpRequired, otpConfigured } from '../otp.js';
+import { isReviewPhone, reviewCodeMatches } from '../reviewLogin.js';
 
 const r = Router();
 
@@ -266,6 +267,9 @@ r.post('/phone-login', authLimiter, optionalAuth(), async (req, res) => {
   if (!phone) return res.status(400).json({ error: 'bad_phone' });
 
   if (otpRequired()) {
+    // The store reviewers' demo number: same screens, a fixed code from the
+    // review notes, nothing sent. See reviewLogin.js.
+    if (isReviewPhone(phone)) return res.json({ otp_required: true, channel: 'whatsapp' });
     if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
     // One channel, no choice offered. The old code asked the caller for
     // sms|whatsapp and retried over SMS when WhatsApp failed — that made
@@ -303,6 +307,11 @@ r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
   // Six exactly — ARQAM's own validator rejects any other length, so a
   // looser check here just buys a slower, vaguer answer.
   if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: 'bad_code' });
+  if (isReviewPhone(phone)) {
+    if (!reviewCodeMatches(phone, code)) return res.status(401).json({ error: 'bad_code' });
+    const user = upsertPhoneAccount(req, phone);
+    return res.json({ token: issueToken({ id: user.id }), user: publicUser(user) });
+  }
   if (!otpConfigured()) return res.status(500).json({ error: 'otp_not_configured' });
 
   const check = await checkCode(phone, code);
