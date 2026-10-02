@@ -521,6 +521,16 @@ const GATE_OPEN = new Set(['awaiting', 'checking']);
 export function gateApplies(appVersion) {
   return inspectionEnabled() && versionAtLeast(appVersion, GATE_MIN_APP_VERSION);
 }
+
+/**
+ * Should a photo upload start the background check? Only from apps that
+ * have the gate (1.0.0 and up): older builds are not inspected at all, so
+ * their listings publish exactly as they always did. And never for a
+ * listing waiting on the gate, which is checked once, when its app asks.
+ */
+export function inspectsUpload(listing, appVersion) {
+  return gateApplies(appVersion) && !isGated(listing);
+}
 /** Created hidden and still waiting for a verdict. */
 export function isGated(listing) {
   return !!listing && GATE_OPEN.has(listing.inspection_state) && listing.status === 'removed' && !!listing.review_hold;

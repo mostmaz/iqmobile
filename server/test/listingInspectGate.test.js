@@ -23,7 +23,7 @@ const { issueToken } = await import('../src/auth.js');
 const { default: listings } = await import('../src/routes/listings.js');
 const {
   applyInspectionResult, resolveInspection, gateApplies, isGated, startGatedInspection,
-  sweepStuckGates, reviewStateFor, reviewFor, inspectionEnabled,
+  sweepStuckGates, reviewStateFor, reviewFor, inspectionEnabled, inspectsUpload,
 } = await import('../src/listingInspect.js');
 
 const app = express();
@@ -97,6 +97,19 @@ test('the gate is a version question, on top of the enabled switch', () => {
   setSettingValue('listing_inspection_enabled', '0');
   assert.equal(gateApplies('1.0.0'), false);
   setSettingValue('listing_inspection_enabled', '1');
+});
+
+test('photo uploads are inspected only from apps 1.0.0 and up', async () => {
+  const live = { status: 'active', review_hold: 0, inspection_state: null };
+  for (const v of [undefined, '', '0', '0.5.2', '0.9.9']) assert.equal(inspectsUpload(live, v), false, String(v));
+  for (const v of ['1.0.0', '1.0.1', '1.2.0', '2.0.0']) assert.equal(inspectsUpload(live, v), true, v);
+  // A listing waiting on the gate is checked once, when its app asks.
+  const waiting = { status: 'removed', review_hold: 1, inspection_state: 'awaiting' };
+  assert.equal(inspectsUpload(waiting, '1.0.0'), false);
+  // And the upload route is the one asking, with the caller's version.
+  const src = fs.readFileSync(new URL('../src/routes/listings.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(inspectsUpload\(row, req\.get\('x-app-version'\)\)\) setImmediate\(\(\) => inspectListingAsync\(row\.id\)\)/);
+  assert.equal((src.match(/inspectListingAsync\(/g) || []).length, 1, 'no other route schedules a check');
 });
 
 test('an old app posts a live listing, exactly as before', async () => {

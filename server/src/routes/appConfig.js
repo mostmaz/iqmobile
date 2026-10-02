@@ -13,7 +13,7 @@
 
 import { Router } from 'express';
 import { db, getSetting } from '../db.js';
-import { inspectionEnabled, decideEnabled } from '../listingInspect.js';
+import { inspectionEnabled } from '../listingInspect.js';
 
 /** Whitelist the three modes so a typo'd setting cannot lock anyone out. */
 function gateMode(key, fallback) {
@@ -159,7 +159,10 @@ r.get('/app-config', (_req, res) => {
     // BAD verdict can hold it back. The post-publish screen only mentions
     // the check when it is real — it once claimed a photo review step that
     // did not exist, and copy that describes a mechanism must match it.
-    quality_check: inspectionEnabled() && decideEnabled(),
+    // Always false now: only builds from 1.0.0 are inspected, and those
+    // describe the check through quality_gate. The builds that read this
+    // key are the older ones, whose listings are no longer checked.
+    quality_check: false,
     // Whether a listing posted from this build (≥ 1.0.0) waits for the
     // check before going live. The create response carries the per-listing
     // answer; this is for copy that describes the step before posting.

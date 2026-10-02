@@ -20,7 +20,7 @@ import { logEvent } from '../eventLog.js';
 import { pushToAdmins } from '../adminPush.js';
 import { alertOnPriceChange } from './priceWatches.js';
 import {
-  inspectListingAsync, gateApplies, isGated, startGatedInspection, reviewFor, reviewStateFor,
+  inspectListingAsync, gateApplies, isGated, inspectsUpload, startGatedInspection, reviewFor, reviewStateFor,
 } from '../listingInspect.js';
 import { announceNewListing } from '../listingAnnounce.js';
 import { checkinStateFor, answerSaleCheckin } from '../saleCheckin.js';
@@ -1463,11 +1463,12 @@ r.post('/:id(\\d+)/images', requireAuth(), uploadLimiter, imgUpload.array('image
   }
   db.prepare('UPDATE phone_listings SET updated_at=? WHERE id=?').run(t, row.id);
   // AI defect check, after the response so the seller's upload is never
-  // slowed or broken by it. No-op unless enabled + an API key is configured.
-  // A listing waiting on the gate is checked when its app asks (POST
-  // /inspect, once every photo is up) — or by the expirer's backstop if the
-  // app never comes back — not photo by photo.
-  if (!isGated(row)) setImmediate(() => inspectListingAsync(row.id));
+  // slowed or broken by it. Only for apps from 1.0.0 (inspectsUpload): an
+  // older build's listings are not inspected at all. A listing waiting on
+  // the gate is checked when its app asks (POST /inspect, once every photo
+  // is up) — or by the expirer's backstop if the app never comes back — not
+  // photo by photo.
+  if (inspectsUpload(row, req.get('x-app-version'))) setImmediate(() => inspectListingAsync(row.id));
   res.json(out);
 });
 
