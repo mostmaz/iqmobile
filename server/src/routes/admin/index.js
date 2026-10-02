@@ -2488,7 +2488,9 @@ r.get('/chat-nudge/preview', requireAdmin, (_req, res) => {
     // run, and a preview that showed one name changing every quarter hour
     // read as a bug rather than as a queue.
     due: pendingNudges(db, at, { limit: 200, onlyNoPush: getSetting('chat_nudge_only_no_push') !== '0' }),
-    sent_so_far: db.prepare('SELECT COUNT(*) AS n FROM chat_nudges').get().n,
+    // Messages, not ledger rows: a batched message writes one row for each
+    // chat it named, and those are not extra sends.
+    sent_so_far: db.prepare("SELECT COUNT(*) AS n FROM chat_nudges WHERE outcome != 'batched'").get().n,
     by_outcome: db.prepare('SELECT outcome, COUNT(*) AS n FROM chat_nudges GROUP BY outcome').all(),
   });
 });

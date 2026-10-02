@@ -1938,6 +1938,11 @@ if (/chat_id\s+INTEGER\s+PRIMARY\s+KEY/i.test(
   `);
   console.log('[db] chat_nudges rebuilt: one row per (chat, person)');
 }
+// The other chats a batched message named. One WhatsApp says «٣ محادثات»;
+// each of the three gets a row (outcome 'batched', batch_id → the 'sent'
+// row) so none of them is chased again by a later sweep. After the rebuild
+// above, which would otherwise drop it on a fresh database.
+addColumnIfMissing('chat_nudges', 'batch_id INTEGER');
 
 // «انباع الجهاز؟» — one row per question asked (saleCheckin.js). round is
 // 1 for the first ask, 2 and 3 for the weekly re-asks after «بعده موجود».

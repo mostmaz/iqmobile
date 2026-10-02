@@ -20,7 +20,17 @@
 //
 // ONE per person per sweep. A shop with twenty stale chats gets one message
 // naming the count, not twenty messages. Without this the first run would
-// have sent well over a thousand.
+// have sent well over a thousand. Every chat the message named is written
+// to the ledger with it ('batched'); recording only the first let the next
+// sweep chase the second, and one seller got three WhatsApps in fifty
+// minutes about one buyer's three questions (2 Oct 2026).
+//
+// ONE per person per DAY, whatever arrives after. A buyer who writes about
+// a fourth phone an hour later is news the seller will see when they open
+// the app the first message sent them to.
+//
+// A number WhatsApp says it does not know is left alone for a month, not
+// tried again with the seller's next chat.
 //
 // Only 2h–7d old. Two hours is the owner's rule (1 Oct 2026, down from a
 // day): buyer interest fades fast, and a seller who has not looked in two
@@ -47,6 +57,8 @@ export const QUIET_FROM_HOUR = 8;
 export const QUIET_TO_HOUR = 23;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
+export const PER_PERSON_COOLDOWN_MS = DAY;
+export const NOT_ON_WHATSAPP_RETRY_MS = 30 * DAY;
 
 // Pacing, and why it is this shape.
 //
@@ -107,6 +119,13 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
              SELECT 1 FROM chat_nudges n
               WHERE (n.listing_id = c.listing_id OR n.chat_id = c.id)
                 AND n.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END)
+       -- One message per person per day, and a number WhatsApp has said it
+       -- does not know is not tried again for a month.
+       AND NOT EXISTS (
+             SELECT 1 FROM chat_nudges n2
+              WHERE n2.user_id = CASE WHEN m.sender_id = c.buyer_id THEN c.seller_id ELSE c.buyer_id END
+                AND (n2.created_at > ?
+                     OR (n2.outcome IN ('not_on_whatsapp', 'bad_phone') AND n2.created_at > ?)))
        -- Only people a push could never have reached. Someone WITH a token
        -- was already told the moment the message arrived; writing to them
        -- again on WhatsApp is a second nag, and the ban risk is spent on the
@@ -141,7 +160,7 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
      -- minutes as messages aged out of the window.
      ORDER BY m.created_at DESC
      LIMIT 2000
-  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, onlyNoPush ? 1 : 0);
+  `).all(at - NUDGE_AFTER_MS, at - NUDGE_MAX_AGE_MS, at - PER_PERSON_COOLDOWN_MS, at - NOT_ON_WHATSAPP_RETRY_MS, onlyNoPush ? 1 : 0);
 
   // One per person, freshest first, plus the count of everything else of
   // theirs that is waiting — so the message can say "٣ محادثات" instead of
@@ -152,8 +171,12 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
   const byUser = new Map();
   for (const r of rows) {
     const seen = byUser.get(r.user_id);
-    if (seen) { seen.waiting += 1; continue; }
-    byUser.set(r.user_id, { ...r, waiting: 1 });
+    if (seen) {
+      seen.waiting += 1;
+      seen.others.push({ chat_id: r.chat_id, listing_id: r.listing_id });
+      continue;
+    }
+    byUser.set(r.user_id, { ...r, waiting: 1, others: [] });
   }
 
   const out = [];
@@ -173,6 +196,8 @@ export function pendingNudges(db_, at, { limit = PER_RUN_LIMIT, onlyNoPush = tru
       name: u.shop_name || u.display_name || '',
       device: [pick.brand, pick.model].filter(Boolean).join(' '),
       waiting: pick.waiting,
+      // The other chats this one message is about — recorded with it.
+      others: pick.others,
       waiting_since: pick.waiting_since,
       has_push_token: !!u.expo_push_token,
     });
@@ -209,6 +234,24 @@ export function record(n, outcome, at) {
     return false;
   }
   return true;
+}
+
+/**
+ * Mark the other chats a message named, so no later sweep chases them.
+ * Non-fatal on conflict: two buyers on one listing are two chats but one
+ * ledger key, and the first already holds it.
+ */
+export function recordBatch(n, at) {
+  if (!n.others?.length) return 0;
+  const main = db.prepare('SELECT id FROM chat_nudges WHERE user_id=? AND listing_id=?').get(n.user_id, n.listing_id);
+  const ins = db.prepare(`
+    INSERT INTO chat_nudges(chat_id, listing_id, user_id, phone, outcome, created_at, batch_id)
+    VALUES(?,?,?,?,'batched',?,?)
+    ON CONFLICT DO NOTHING
+  `);
+  let added = 0;
+  for (const o of n.others) added += ins.run(o.chat_id, o.listing_id, n.user_id, n.phone, at, main?.id ?? null).changes;
+  return added;
 }
 
 /**
@@ -256,6 +299,8 @@ export async function runChatNudges({ at = dbNow() } = {}) {
       console.error('[chat-nudge] disabled itself: a send could not be recorded');
       return { considered: due.length, sent, skipped: 'ledger_failure' };
     }
+    // Delivered (or would have been): the chats it named are now told too.
+    if (r.ok) recordBatch(n, at);
   }
   console.log(`[chat-nudge] ${due.length} due, ${sent} ${dryRun ? 'dry-run' : 'sent'}`);
   return { considered: due.length, sent, dry_run: dryRun };
@@ -371,13 +416,20 @@ export function nudgeOutcomes(db_, at, { days = 30 } = {}) {
  */
 export function noteNudgeOpened(chatId, userId, at = dbNow()) {
   try {
-    db.prepare("UPDATE chat_nudges SET opened_at=? WHERE chat_id=? AND user_id=? AND outcome='sent' AND opened_at IS NULL")
-      .run(at, chatId, userId);
+    // The chat itself, or the message that named it in a batch.
+    db.prepare(`UPDATE chat_nudges SET opened_at=?
+                 WHERE outcome='sent' AND opened_at IS NULL AND user_id=?
+                   AND (chat_id=? OR id IN (SELECT batch_id FROM chat_nudges
+                                             WHERE chat_id=? AND user_id=? AND outcome='batched'))`)
+      .run(at, userId, chatId, chatId, userId);
   } catch { /* best-effort */ }
 }
 export function noteNudgeReplied(chatId, userId, at = dbNow()) {
   try {
-    db.prepare("UPDATE chat_nudges SET replied_at=? WHERE chat_id=? AND user_id=? AND outcome='sent' AND replied_at IS NULL")
-      .run(at, chatId, userId);
+    db.prepare(`UPDATE chat_nudges SET replied_at=?
+                 WHERE outcome='sent' AND replied_at IS NULL AND user_id=?
+                   AND (chat_id=? OR id IN (SELECT batch_id FROM chat_nudges
+                                             WHERE chat_id=? AND user_id=? AND outcome='batched'))`)
+      .run(at, userId, chatId, chatId, userId);
   } catch { /* best-effort */ }
 }
