@@ -319,7 +319,13 @@ ${jsonLd(breadcrumbJsonLd([
   <div class="cta">
     <p>لتصفّح المتجر كاملاً والتواصل، حمّل تطبيق iQ Mobile</p>
     <div class="stores">
-      <a class="btn primary" href="${PLAY_URL}&referrer=shop_${u.id}">Google Play</a>
+      <!-- For a phone that HAS the app but landed here anyway — a QR
+           scanner or a chat app opening the link in its own in-app browser,
+           where the system never gets to route it. The custom scheme opens
+           the app directly; a phone without it ignores the tap and the
+           store buttons below still apply. -->
+      <a class="btn primary" href="iqmobile://shop/${u.id}">افتح في التطبيق</a>
+      <a class="btn dark" href="${PLAY_URL}&referrer=shop_${u.id}">Google Play</a>
       <a class="btn dark" href="${APPSTORE_URL}">App Store</a>
     </div>
   </div>

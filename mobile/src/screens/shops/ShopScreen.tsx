@@ -35,7 +35,9 @@ const DAY_MS = 86400000;
 export default function ShopScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const id: number = route.params?.id;
+  // Number(): a deep link (https://iqmobile.org/shop/5587) delivers the id
+  // as a string, and a string id misses every === against numeric rows.
+  const id: number = Number(route.params?.id);
   const { data: shop, isLoading } = useQuery({ queryKey: ['shop', id], queryFn: () => Shops.get(id) });
   const isOwner = !!user && user.id === id;
   // Orders on = this shop sells in-app. Only the HOUSE storefront gets the

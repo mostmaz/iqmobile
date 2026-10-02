@@ -46,11 +46,14 @@
              reach the build — this file has to say it too. -->
         <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/l"/>
         <data android:scheme="https" android:host="api.iqmobile.org" android:pathPrefix="/l"/>
+        <!-- The shop page: the printed QR sticker encodes /shop/:id. -->
+        <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/shop"/>
       </intent-filter>
       <intent-filter android:autoVerify="true" data-generated="true">
         <action android:name="android.intent.action.VIEW"/>
         <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/l"/>
         <data android:scheme="https" android:host="api.iqmobile.org" android:pathPrefix="/l"/>
+        <data android:scheme="https" android:host="iqmobile.org" android:pathPrefix="/shop"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>

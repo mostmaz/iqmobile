@@ -23,7 +23,7 @@ const extra = (Constants.expoConfig?.extra as any) || {};
 // in the console. Degrading to production means a missing manifest costs you
 // the dev-server override, not the whole app.
 const prodUrl: string = extra.apiBaseUrl ?? 'https://api.iqmobile.org';
-const rawDevUrl: string | undefined = extra.apiBaseUrlDev;
+const rawDevUrl: string | undefined = 'http://localhost:4600'; // TEMP sim test — revert
 
 // 10.0.2.2 is the Android emulator's alias for the host machine. It means
 // nothing anywhere else — an iOS simulator shares the Mac's own network

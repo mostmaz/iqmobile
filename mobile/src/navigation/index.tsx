@@ -482,7 +482,15 @@ export default function RootNav() {
         Main: {
           screens: {
             Browse: {
-              screens: { ListingDetail: 'l/:id' },
+              screens: {
+                ListingDetail: 'l/:id',
+                // The printed QR sticker and the shop share link:
+                // https://iqmobile.org/shop/:id (?src=sticker rides along as
+                // a param and is ignored). Registered in all three layers,
+                // like /l — the sticker opened Safari with the app installed
+                // until it was.
+                ShopDetail: 'shop/:id',
+              },
             },
           },
         },

@@ -218,7 +218,10 @@ app.get('/.well-known/apple-app-site-association', (_req, res) => {
   const team = process.env.APPLE_TEAM_ID;
   if (!team) return res.status(404).end();
   res.type('application/json').send(JSON.stringify({
-    applinks: { apps: [], details: [{ appID: `${team}.org.iqmobile.app`, paths: ['/l/*'] }] },
+    // Every path the app can open: listings (/l/:id, the share button) and
+    // shops (/shop/:id, the printed QR sticker). A path missing here opens
+    // Safari with the app installed — which is what the sticker did.
+    applinks: { apps: [], details: [{ appID: `${team}.org.iqmobile.app`, paths: ['/l/*', '/shop/*'] }] },
   }));
 });
 

@@ -20,7 +20,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAF8F5"
       },
-      "versionCode": 60,
+      "versionCode": 61,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -35,6 +35,11 @@
               "scheme": "https",
               "host": "api.iqmobile.org",
               "pathPrefix": "/l"
+            },
+            {
+              "scheme": "https",
+              "host": "iqmobile.org",
+              "pathPrefix": "/shop"
             }
           ],
           "category": [
@@ -55,7 +60,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "50"
+      "buildNumber": "51"
     },
     "extra": {
       "apiBaseUrl": "https://api.iqmobile.org",
