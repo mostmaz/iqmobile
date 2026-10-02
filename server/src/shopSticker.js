@@ -150,7 +150,9 @@ export function stickerStatus(shopId) {
       listings_ok: listings >= REWARD_MIN_LISTINGS,
       whatsapp: PROOF_WHATSAPP,
       status: last?.proof_status || null,
-      can_submit: !!last && last.status !== 'rejected' && !['pending', 'granted'].includes(last.proof_status),
+      // Only once the sticker is on its way: before that there is nothing
+      // on the shop's window to photograph.
+      can_submit: !!last && last.status === 'shipped' && !['pending', 'granted'].includes(last.proof_status),
       featured_until: featuredUntil,
       scans: stickerScans(u.id),
     },
@@ -285,6 +287,9 @@ export function submitStickerProof(shopId, imagePath, note = '') {
     "SELECT * FROM shop_sticker_requests WHERE shop_id=? AND status != 'rejected' ORDER BY created_at DESC LIMIT 1",
   ).get(shopId);
   if (!row) return { error: 'no_sticker_request', status: 409 };
+  // Same rule as can_submit: a proof is a photo of the sticker WE sent, so
+  // it waits until the request is marked shipped.
+  if (row.status !== 'shipped') return { error: 'not_shipped', status: 409 };
   if (row.proof_status === 'pending') return { error: 'proof_pending', status: 409 };
   if (row.proof_status === 'granted') return { error: 'already_rewarded', status: 409 };
 

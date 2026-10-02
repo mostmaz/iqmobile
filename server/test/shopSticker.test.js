@@ -47,6 +47,15 @@ function listing(sellerId, status = 'active', draft = 0) {
   return id;
 }
 
+// A request the operator has printed and shipped — the only state a proof
+// can be sent from.
+function shippedRequest(shopId, body = {}) {
+  const out = createStickerRequest(shopId, body);
+  advanceSticker(out.id, 'printing', 1);
+  advanceSticker(out.id, 'shipped', 1);
+  return out;
+}
+
 // ── asking for a sticker ───────────────────────────────────────────────
 
 test('a request needs a real address — a governorate alone is not deliverable', () => {
@@ -95,9 +104,33 @@ test('a shipped sticker cannot be walked backwards into printing', () => {
 
 // ── the free week ──────────────────────────────────────────────────────
 
+test('the proof button waits for the sticker to ship', () => {
+  const id = shop(130);
+  for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
+  const { id: reqId } = createStickerRequest(id, {});
+  assert.equal(stickerStatus(id).reward.can_submit, false);
+  assert.equal(submitStickerProof(id, '/uploads/early.jpg').error, 'not_shipped');
+
+  advanceSticker(reqId, 'printing', 1);
+  assert.equal(stickerStatus(id).reward.can_submit, false);
+  assert.equal(submitStickerProof(id, '/uploads/early.jpg').error, 'not_shipped');
+
+  advanceSticker(reqId, 'shipped', 1);
+  assert.equal(stickerStatus(id).reward.can_submit, true);
+  assert.equal(submitStickerProof(id, '/uploads/ok.jpg').ok, true);
+});
+
+test('a rejected sticker request never opens the proof button', () => {
+  const id = shop(131);
+  for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
+  const { id: reqId } = createStickerRequest(id, {});
+  advanceSticker(reqId, 'reject', 1, 'العنوان ناقص');
+  assert.equal(stickerStatus(id).reward.can_submit, false);
+});
+
 test('the device count is read from live listings, not taken on trust', () => {
   const id = shop(107);
-  createStickerRequest(id, {});
+  shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS - 1; i++) listing(id);
   // Drafts and sold stock are not stock a customer can walk in and buy.
   listing(id, 'active', 1);
@@ -114,7 +147,7 @@ test('the device count is read from live listings, not taken on trust', () => {
 
 test('a proof cannot be sent twice while the first is unreviewed', () => {
   const id = shop(108);
-  createStickerRequest(id, {});
+  shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/a.jpg');
   assert.equal(submitStickerProof(id, '/uploads/b.jpg').error, 'proof_pending');
@@ -128,7 +161,7 @@ test('there is nothing to prove without a sticker request', () => {
 
 test('granting gives exactly one week of featuring', () => {
   const id = shop(110);
-  const { id: reqId } = createStickerRequest(id, {});
+  const { id: reqId } = shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/a.jpg');
 
@@ -146,7 +179,7 @@ test('a shop that already paid for featuring keeps its days — the free week is
   // three weeks off a shop that had just paid for a month, as a reward.
   const paidUntil = NOW + 30 * DAY;
   const id = shop(111, { featured_until: paidUntil });
-  const { id: reqId } = createStickerRequest(id, {});
+  const { id: reqId } = shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/a.jpg');
   decideStickerProof(reqId, 'grant', 1);
@@ -157,7 +190,7 @@ test('a shop that already paid for featuring keeps its days — the free week is
 
 test('the same proof cannot be granted twice', () => {
   const id = shop(112);
-  const { id: reqId } = createStickerRequest(id, {});
+  const { id: reqId } = shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/a.jpg');
   decideStickerProof(reqId, 'grant', 1);
@@ -166,7 +199,7 @@ test('the same proof cannot be granted twice', () => {
 
 test('a rejected proof grants nothing and lets the shop try again', () => {
   const id = shop(113);
-  const { id: reqId } = createStickerRequest(id, {});
+  const { id: reqId } = shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/blurry.jpg');
   decideStickerProof(reqId, 'reject', 1, 'الصورة ما تبيّن الملصق');
@@ -180,9 +213,7 @@ test('a rejected proof grants nothing and lets the shop try again', () => {
 
 test('the shop is told each step, and the reward notification carries its end date', () => {
   const id = shop(114);
-  const { id: reqId } = createStickerRequest(id, {});
-  advanceSticker(reqId, 'printing', 1);
-  advanceSticker(reqId, 'shipped', 1);
+  const { id: reqId } = shippedRequest(id);
   for (let i = 0; i < REWARD_MIN_LISTINGS; i++) listing(id);
   submitStickerProof(id, '/uploads/a.jpg');
   decideStickerProof(reqId, 'grant', 1);
@@ -197,7 +228,7 @@ test('the sticker notification payload never says request_id', () => {
   // request_id is the phone-request key, and the app routes on it: a sticker
   // notification carrying one would open some buyer's request instead.
   const id = shop(115);
-  const { id: reqId } = createStickerRequest(id, {});
+  const { id: reqId } = shippedRequest(id);
   advanceSticker(reqId, 'shipped', 1);
   const row = db.prepare("SELECT payload_json FROM notifications WHERE user_id=? AND kind='sticker.shipped'").get(id);
   const payload = JSON.parse(row.payload_json);

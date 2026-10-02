@@ -36,12 +36,16 @@ export function StickerOfferCard({ status, onPress }: { status: ShopStickerStatu
   const open = status.open;
   const reward = status.reward;
   const proofPending = reward?.status === 'pending';
+  // A shipped request is no longer "open" on the server (only pending and
+  // printing are), so the shipped state is read from the latest request.
+  // Reading it off `open` meant the claim below could never show.
+  const shipped = status.last?.status === 'shipped' && !!reward?.can_submit;
   // Shipped, in their hands, and the device half already satisfied: the one
   // moment where the free week is a single photo away. Worth saying loudly.
-  const canClaim = !!open?.shipped_at && !!reward?.can_submit && !!reward?.listings_ok;
+  const canClaim = shipped && !!reward?.listings_ok;
 
   const chip = proofPending ? 'صورتك قيد المراجعة'
-    : open?.shipped_at ? 'بالطريق إلك'
+    : shipped ? 'أُرسل إلك'
       : open?.printing_at ? 'قيد الطباعة'
         : open ? 'طلبك وصلنا'
           : 'مجاناً';

@@ -93,7 +93,8 @@ export default function StickerScreen({ navigation }: any) {
         : err === 'proof_pending' ? 'عندنا صورة منك قيد المراجعة.'
           : err === 'already_rewarded' ? 'خذيت الترويج المجاني عن هذا الملصق.'
             : err === 'no_sticker_request' ? 'اطلب الملصق أول.'
-              : 'تعذّر رفع الصورة، حاول مرة ثانية.';
+              : err === 'not_shipped' ? 'تقدر تبعث الصورة بعد ما نرسلك الملصق.'
+                : 'تعذّر رفع الصورة، حاول مرة ثانية.';
       Alert.alert('ما انرفعت', msg);
     } finally {
       setUploading(false);
