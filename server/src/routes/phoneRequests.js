@@ -321,12 +321,13 @@ function expireStale() {
 
 // ─── the board ───────────────────────────────────────────────────────
 
-// The board shows a week. A request lives three weeks (TTL_MS), and a
-// buyer who asked twenty days ago has usually bought — a seller answering
-// it is wasting a reply, and a board that is mostly those stops being read.
-// The request itself stays open and reachable (its buyer's list, the
-// detail page, the push that announced it); only the board stops showing it.
-const BOARD_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// The board shows ten days (owner's call, 3 Oct 2026; it was a week). A
+// request lives three weeks (TTL_MS), and a buyer who asked twenty days ago
+// has usually bought — a seller answering it is wasting a reply, and a
+// board that is mostly those stops being read. The request itself stays
+// open and reachable (its buyer's list, the detail page, the push that
+// announced it); only the board stops showing it.
+export const BOARD_WINDOW_MS = 10 * 24 * 60 * 60 * 1000;
 
 r.get('/phone-requests', optionalAuth(), (req, res) => {
   expireStale();

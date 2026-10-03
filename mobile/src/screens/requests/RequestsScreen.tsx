@@ -569,13 +569,13 @@ function SentOfferRow({ offer, onPress }: { offer: SentOffer; onPress: () => voi
 function Empty({ tab, filtered, onCompose, onClear }: {
   tab: Tab; filtered?: boolean; onCompose: () => void; onClear?: () => void;
 }) {
-  // The board is the last seven days, on purpose (server, BOARD_WINDOW_MS):
+  // The board is the last ten days, on purpose (server, BOARD_WINDOW_MS):
   // an older request has usually been bought. Said here so an empty board
   // is not read as an empty marketplace.
   const copy = tab === 'board'
     ? filtered
-      ? { title: 'ما في طلبات تطابق الفلتر', body: 'الطلبات المعروضة هي طلبات آخر ٧ أيام. وسّع الماركة أو الميزانية أو المحافظة.' }
-      : { title: 'ما في طلبات خلال آخر ٧ أيام', body: 'كن أول من ينشر طلباً — يراه البائعون ويردون عليك بعروضهم.' }
+      ? { title: 'ما في طلبات تطابق الفلتر', body: 'الطلبات المعروضة هي طلبات آخر ١٠ أيام. وسّع الماركة أو الميزانية أو المحافظة.' }
+      : { title: 'ما في طلبات خلال آخر ١٠ أيام', body: 'كن أول من ينشر طلباً — يراه البائعون ويردون عليك بعروضهم.' }
     : tab === 'mine'
       ? { title: 'ما عندك طلبات', body: 'انشر الجهاز الذي تبحث عنه وميزانيتك، ودع البائعين يأتون إليك.' }
       : { title: 'ما قدّمت أي عرض', body: 'افتح «كل الطلبات» واطّلع على المشترين الذين يبحثون عن أجهزة لديك.' };
