@@ -15,6 +15,7 @@ import { Router } from 'express';
 import QRCode from 'qrcode';
 import { db, getSetting } from '../db.js';
 import { logEvent } from '../eventLog.js';
+import { firstViewToday } from '../scrapeGuard.js';
 
 const r = Router();
 
@@ -33,6 +34,8 @@ const GOV_AR = {
   Muthanna: 'المثنى', Salahuddin: 'صلاح الدين', Wasit: 'واسط',
 };
 import { CONDITION_AR as COND_AR } from '../conditions.js';
+
+const isApproved = (u) => (u.shop_status || 'approved') === 'approved';
 
 function esc(s) {
   return String(s == null ? '' : s)
@@ -67,7 +70,9 @@ function notFoundPage(res) {
 // admin token.
 r.get('/shop/:id(\\d+)/sticker', async (req, res) => {
   const u = db.prepare("SELECT * FROM users WHERE id=? AND seller_type='shop'").get(req.params.id);
-  if (!u) return notFoundPage(res);
+  // Approved shops only, like the sticker offer itself: a pending shop has
+  // no public page for the code to open.
+  if (!u || !isApproved(u)) return notFoundPage(res);
 
   const name = u.shop_name || u.display_name || '';
   const where = [govAr(u.governorate), u.city].filter(Boolean).join(' — ');
@@ -161,11 +166,16 @@ r.get('/shop/:id(\\d+)', (req, res) => {
   // A hit that came off the printed sticker. Logged before the 404 check is
   // pointless, so it sits here — a scan of a sticker for a deleted shop is
   // not a scan anyone can act on.
-  if (u && req.query.src === 'sticker') logEvent({ type: 'shop.sticker_scan', shop_id: u.id });
+  // Once per phone per day: the scan count is what an operator weighs when
+  // granting a sticker's free week, so a refresh must not add to it.
+  if (u && isApproved(u) && req.query.src === 'sticker' && firstViewToday(req, `scan:${u.id}`)) {
+    logEvent({ type: 'shop.sticker_scan', shop_id: u.id });
+  }
   // Hidden shops stay reachable by direct id — that is the whole point of the
   // flag (a banner links straight here); it only removes them from the
-  // directory. Only a non-existent shop 404s.
-  if (!u) return notFoundPage(res);
+  // directory. A shop still waiting for review does not exist yet for the
+  // public, exactly as on the JSON /shops/:id.
+  if (!u || !isApproved(u)) return notFoundPage(res);
 
   const neverExpire = getSetting('listings_never_expire') !== '0';
   const statusClause = neverExpire

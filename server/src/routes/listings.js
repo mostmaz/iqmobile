@@ -10,6 +10,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now, getSetting } from '../db.js';
+import { contactAllowed, firstViewToday, listRow, MAX_LIST_OFFSET } from '../scrapeGuard.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate, normalizeGovernorate } from '../governorates.js';
 import { isBrand } from '../brands.js';
@@ -182,22 +183,6 @@ function noContactSellers() {
     _noContactAt = t;
   }
   return _noContactIds;
-}
-
-// Blank the contact fields on a listing row whose seller is contact-suppressed.
-// The mobile app already hides the call/WhatsApp buttons when these are null
-// (it skips the whole action row), so no client change is needed — including
-// on builds already installed from the stores.
-function stripContact(row) {
-  if (!row) return row;
-  if (noContactSellers().has(row.seller_id)) {
-    return { ...row, contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false };
-  }
-  // Admin-made shops keep the call button only (contactChannels.js). The
-  // number stays in the DB; it is omitted from the response exactly as the
-  // no-contact case above, so installed builds never render the button.
-  if (callOnlySellers().has(row.seller_id)) return { ...row, contact_whatsapp: null };
-  return row;
 }
 
 // Same shape as noContactSellers(): the shops whose WhatsApp and chat are
@@ -636,6 +621,7 @@ r.get('/', optionalAuth(), (req, res) => {
   // so a misbehaving client can't exhaust the table in one shot.
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
   const offset = Math.max(0, Number(req.query.offset) || 0);
+  if (offset >= MAX_LIST_OFFSET) return res.json([]);
   // Rotation seed for the featured slots. The client bumps this on every
   // refresh / filter change / tab re-open (same tick that rotates banners),
   // so WHICH two featured listings hold the top slots rotates per refresh
@@ -822,7 +808,7 @@ r.get('/', optionalAuth(), (req, res) => {
   // attach a thin seller card + a computed featured flag (so the card can
   // show a "مميز" badge without trusting the client clock).
   const out = withImgs.map((row) => ({
-    ...stripContact(row),
+    ...listRow(row),
     is_featured: !!(row.featured_until && row.featured_until > nowTs),
     // Same rule, same reason: the card must not decide a badge by comparing
     // the device clock to a timestamp. A phone an hour fast would show every
@@ -1062,7 +1048,9 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // Log the view for the demand dashboard — but not when the seller opens
   // their own listing (they check it constantly; counting that would drown
   // out real buyer interest). Best-effort; never blocks the response.
-  if (!req.user || req.user.id !== row.seller_id) {
+  // Once per viewer per day: «الأكثر مشاهدة» ranks on these rows, and a
+  // refresh loop could otherwise push any listing to the top.
+  if ((!req.user || req.user.id !== row.seller_id) && firstViewToday(req, `l:${row.id}`)) {
     logEvent({
       type: 'view', listing_id: row.id, user_id: req.user?.id ?? null,
       brand: row.brand, governorate: row.governorate,
@@ -1108,8 +1096,14 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
   // steady trickle of calls to sellers about phones long since gone.
   const DEAD = new Set(['sold', 'expired']);
   const isDead = DEAD.has(row.status);
-  const hideContact = (isDead && (!req.user || req.user.id !== row.seller_id))
+  const withheld = (isDead && (!req.user || req.user.id !== row.seller_id))
     || noContactSellers().has(row.seller_id);
+  // The daily phone budget (scrapeGuard.js). Asked only when there is a
+  // number to give, so a sold listing or a no-contact shop costs nothing.
+  // Over budget the page still loads; the buttons just aren't there.
+  const hideContact = withheld
+    || (!!(row.contact_phone || row.contact_whatsapp)
+        && !contactAllowed(req, `l:${row.id}`, { ownerId: row.seller_id }));
 
   // Storefront listings answer on ONE support line instead of per-listing
   // seller contact, and take orders through the cart rather than chat.
@@ -1174,6 +1168,9 @@ r.get('/:id(\\d+)', optionalAuth(), (req, res) => {
     : null;
   res.json({
     ...withImgs,
+    // The seller's sale price and client key are theirs alone.
+    sale_price: isOwner ? (withImgs.sale_price ?? null) : undefined,
+    client_key: isOwner ? withImgs.client_key : undefined,
     video,
     orders_enabled: !!storefrontShop,
     store_chat: storeChat,
@@ -1248,11 +1245,9 @@ r.get('/:id(\\d+)/similar', optionalAuth(), (req, res) => {
      ORDER BY ABS(l.asking_price - ?) ASC, l.created_at DESC
      LIMIT 12`,
   ).all(row.brand, row.id, lo, hi, row.asking_price);
-  // Same shaping rules as the feed: suppressed sellers' numbers stay
-  // suppressed here too — this endpoint used to skip stripContact, which
-  // quietly republished no-contact numbers on every detail page's rail.
+  // Same shaping as the feed: no numbers on a rail card (listRow).
   const out = attachImages(rows).map((r2) => ({
-    ...stripContact(r2),
+    ...listRow(r2),
     seller: sellerCard(r2.seller_id),
   }));
   res.json(out);
@@ -1546,7 +1541,7 @@ r.get('/saved/mine', requireAuth(), (req, res) => {
      ORDER BY s.created_at DESC LIMIT 100`,
   ).all(req.user.id);
   const withImgs = attachImages(rows);
-  res.json(withImgs.map((r) => ({ ...stripContact(r), seller: sellerCard(r.seller_id) })));
+  res.json(withImgs.map((r) => ({ ...listRow(r), seller: sellerCard(r.seller_id) })));
 });
 
 export default r;

@@ -21,6 +21,7 @@
 // "ايفون ١٣" resolve the same way here as everywhere else.
 
 import { Router } from 'express';
+import { MAX_LIST_OFFSET } from '../scrapeGuard.js';
 import { db, now } from '../db.js';
 import { requireAuth, optionalAuth } from '../auth.js';
 import { isBrand } from '../brands.js';
@@ -360,6 +361,8 @@ r.get('/phone-requests', optionalAuth(), (req, res) => {
 
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '50'), 10) || 50));
   const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+  // Same paging floor as the listing feed (scrapeGuard.js).
+  if (offset >= MAX_LIST_OFFSET) return res.json([]);
   // The feed's quick sorts. `budget` puts the money first because that is
   // what a shop deciding whether to reply is weighing; `no_offers` is the
   // opposite view — the requests nobody has answered yet, which are the ones

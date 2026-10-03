@@ -23,6 +23,7 @@ import express from 'express';
 import compression from 'compression';
 import cors from 'cors';
 import { db } from './db.js';
+import { readLimits } from './limits.js';
 import authRoutes from './routes/auth.js';
 import listingsRoutes from './routes/listings.js';
 import boostRoutes from './routes/boosts.js';
@@ -71,6 +72,19 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
 }
 
 const app = express();
+
+// No software banner, and the basic browser protections (3 Oct 2026). The
+// "X-Powered-By: Express" header told every scanner what to try first.
+// HSTS only on HTTPS requests (nginx sets X-Forwarded-Proto, trusted below),
+// and without includeSubDomains so no other subdomain is bound by it.
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000');
+  next();
+});
 
 // Trust the single nginx hop in front of us so express-rate-limit (and
 // Sentry IP attribution) keys on the real client IP via X-Forwarded-For.
@@ -231,6 +245,9 @@ app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 // and decodes the token itself since auth here is per-route. No-op for
 // anonymous and admin traffic.
 app.use(activityTracker());
+// Read limits on the marketplace data a scraper wants (limits.js). Before
+// the routers, so it covers every GET under these paths whoever mounts them.
+app.use(['/listings', '/shops', '/phone-requests', '/users'], readLimits);
 
 app.use('/auth', authRoutes);
 app.use('/listings', listingsRoutes);

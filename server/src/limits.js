@@ -9,8 +9,9 @@
 // audience — generous enough that real users never see a 429, tight enough
 // to block credential-stuffing and disk-fill attacks.
 
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { db, getSetting } from './db.js';
+import { verifyToken } from './auth.js';
 
 const json429 = (req, res /* opts */) => {
   res.status(429).json({ error: 'rate_limited' });
@@ -97,3 +98,55 @@ export const orderLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 12,
 });
+
+// ─── reads ─────────────────────────────────────────────────────────────
+// Marketplace reads (listings, shops, the request board, ratings) had no
+// limit at all: thirty requests a second were all served (3 Oct 2026).
+// Two limiters, both per minute, both on GET only (index.js):
+//
+//   • per caller — the account behind the token, or the network for a call
+//     with no token. Every app install carries a token, so a tokenless
+//     caller is not our app and gets the small number.
+//   • per network for everyone, loose. Iraqi carriers put many phones behind
+//     one address (CGNAT), so this is a flood ceiling, not a budget.
+//
+// In memory, so a restart forgets them; nginx's limit_req is the layer that
+// survives one, and the phone budget in scrapeGuard.js lives in the DB.
+function tokenOf(req) {
+  if (req._readToken !== undefined) return req._readToken;
+  const h = req.headers.authorization || '';
+  const p = h.startsWith('Bearer ') ? verifyToken(h.slice(7)) : null;
+  req._readToken = p && p.id ? p : null;
+  return req._readToken;
+}
+const network = (req) => ipKeyGenerator(req.ip || '', 64);
+
+export const READ_LIMITS = Object.freeze({ account: 120, admin: 600, tokenless: 40, network: 600 });
+
+export const readCallerLimiter = rateLimit({
+  ...baseOpts,
+  windowMs: 60 * 1000,
+  limit: (req) => {
+    const t = tokenOf(req);
+    if (!t) return READ_LIMITS.tokenless;
+    return t.kind === 'admin' ? READ_LIMITS.admin : READ_LIMITS.account;
+  },
+  keyGenerator: (req) => {
+    const t = tokenOf(req);
+    if (!t) return `t:${network(req)}`;
+    return t.kind === 'admin' ? `a:${t.id}` : `u:${t.id}`;
+  },
+});
+
+export const readNetworkLimiter = rateLimit({
+  ...baseOpts,
+  windowMs: 60 * 1000,
+  limit: READ_LIMITS.network,
+  keyGenerator: network,
+});
+
+/** Both read limiters, GET only. Everything else passes straight through. */
+export function readLimits(req, res, next) {
+  if (req.method !== 'GET') return next();
+  readNetworkLimiter(req, res, (err) => (err ? next(err) : readCallerLimiter(req, res, next)));
+}

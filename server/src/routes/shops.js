@@ -14,6 +14,7 @@ import { uploadLimiter } from '../limits.js';
 import { logEvent } from '../eventLog.js';
 import { channelsFor } from '../contactChannels.js';
 import { rankTs } from '../listingRank.js';
+import { contactAllowed, firstViewToday, listRow } from '../scrapeGuard.js';
 
 const r = Router();
 
@@ -97,7 +98,12 @@ function attachImages(rows) {
     `SELECT id, listing_id, image_path, position FROM listing_images
      WHERE listing_id IN (${ph}) ORDER BY position ASC, id ASC`,
   ).all(...ids);
-  const byId = new Map(rows.map((x) => [x.id, { ...x, images: [], accessories: JSON.parse(x.accessories_json || '[]') }]));
+  // Raw video columns never leave through a list: an unapproved clip's path
+  // must not be discoverable (same rule as routes/listings.js). The card
+  // keeps a has_video flag; the detail route decides who sees the file.
+  const byId = new Map(rows.map(({ video_path, video_status, video_uploaded_at, ...x }) => [x.id, {
+    ...x, has_video: video_status === 'approved', images: [], accessories: JSON.parse(x.accessories_json || '[]'),
+  }]));
   for (const im of imgs) byId.get(im.listing_id)?.images.push(im);
   return Array.from(byId.values());
 }
@@ -256,8 +262,16 @@ r.get('/shops', (req, res) => {
     LIMIT 300`;
   params.push(nowTs);
   const rows = db.prepare(sql).all(...params);
-  res.json(rows.map((u) => shopCard(u, nowTs)));
+  // No numbers in the directory (3 Oct 2026). One call returned every
+  // shop's phones — 117 of 180 of them the owner's own login number — and
+  // no app build reads them here; the shop page does, within the daily
+  // phone budget below.
+  res.json(rows.map((u) => withoutNumbers(shopCard(u, nowTs))));
 });
+
+function withoutNumbers(card) {
+  return { ...card, shop_phone: null, shop_phones: [], shop_whatsapp: null };
+}
 
 // ─── shop detail (+ their listings) ──────────────────────────────────
 r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
@@ -276,7 +290,7 @@ r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
   // store_browse — it is how the hidden price-book shop gets browsed (the
   // home banner deep-links straight here), so without this row that whole
   // shop is invisible to the traffic page. Owner previews don't count.
-  if (req.user?.id !== u.id) {
+  if (req.user?.id !== u.id && firstViewToday(req, `s:${u.id}`)) {
     logEvent({ type: 'shop_view', shop_id: u.id, user_id: req.user?.id ?? null });
   }
   // Matches the browse feed's default view: sold (مباع) and expired (منتهي)
@@ -301,17 +315,17 @@ r.get('/shops/:id(\\d+)', optionalAuth(), (req, res) => {
        ${rankTs()} DESC
      LIMIT 300`,
   ).all(...(neverExpire ? [u.id, nowTs] : [u.id, nowTs, nowTs]));
+  // The shop's own numbers count against the same daily budget as a
+  // listing's (scrapeGuard.js); over it, the page loads without them.
+  const card = shopCard(u, nowTs);
+  const hasNumbers = !!(card.shop_phone || card.shop_whatsapp || card.shop_phones?.length);
+  const shown = !hasNumbers || contactAllowed(req, `s:${u.id}`, { ownerId: u.id });
   res.json({
-    ...shopCard(u, nowTs),
+    ...(shown ? card : withoutNumbers(card)),
     shop_images: shopImages(u.id),
-    // This is the list the shop page actually renders, so contact suppression
-    // has to happen here too — not just on /listings/:id. Without it the cards
-    // would still carry the number the shop page itself is hiding.
+    // Cards carry no numbers (listRow); the listing's own page does.
     listings: attachImages(listings).map((l) => ({
-      ...l,
-      ...(u.shop_no_contact
-        ? { contact_phone: null, contact_whatsapp: null, seller_phone: null, phone_visible: false }
-        : {}),
+      ...listRow(l),
       is_featured: !!(l.featured_until && l.featured_until > nowTs),
     })),
   });
