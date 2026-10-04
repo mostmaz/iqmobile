@@ -76,6 +76,11 @@ export function botLinkable() {
   } catch { return false; }
 }
 
+/** Did WhatsApp log this session out? Read from disk, never from memory. */
+export function botLoggedOut() {
+  return markedLoggedOut();
+}
+
 export function botStatus() {
   return {
     connection,

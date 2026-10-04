@@ -54,7 +54,7 @@ import {
 } from '../../shopSticker.js';
 import { pendingNudges, withinSendingHours, nudgeOutcomes } from '../../chatNudge.js';
 import { sendWhatsApp, utilityProvider } from '../../whatsapp.js';
-import { startBot, botQr, botStatus, unlinkBot } from '../../whatsappBot.js';
+import { startBot, botQr, botStatus, unlinkBot, botLoggedOut } from '../../whatsappBot.js';
 
 // Iraqi phone normaliser — duplicated from routes/listings.js so the
 // admin quick-add accepts the same input shapes (+964, 00964, with
@@ -2528,8 +2528,10 @@ r.get('/whatsapp/status', requireAdmin, async (_req, res) => {
 // first message to need it.
 r.post('/whatsapp/connect', requireAdmin, async (req, res) => {
   // A logged-out session will never connect again; clear it so this press
-  // produces a fresh QR to scan instead of a dead end.
-  if (botStatus().connection === 'logged_out') {
+  // produces a fresh QR to scan instead of a dead end. Decided by the mark
+  // on disk, not by in-memory state that can lag behind a fresh re-link —
+  // wiping a session that was just scanned would undo the operator's work.
+  if (botLoggedOut()) {
     unlinkBot();
     audit('admin', req.admin?.id ?? null, 'whatsapp.relink', { kind: 'system', id: 0 }, {});
   }

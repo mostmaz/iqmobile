@@ -26,6 +26,7 @@ test('a logged-out session is not something to resume', () => {
   assert.equal(bot.botLinkable(), false, 'credentials on disk, but marked logged out');
   assert.equal(utilityConfigured(), false, 'so the sweep records nobody');
   assert.equal(bot.botStatus().connection, 'logged_out');
+  assert.equal(bot.botLoggedOut(), true, 'read from the mark on disk');
 });
 
 test('nothing reconnects with dead credentials', async () => {
@@ -43,4 +44,5 @@ test('re-linking clears the mark', () => {
   bot.unlinkBot();
   assert.equal(fs.existsSync(path.join(AUTH, 'LOGGED_OUT')), false);
   assert.equal(bot.botStatus().connection, 'idle');
+  assert.equal(bot.botLoggedOut(), false);
 });
