@@ -37,8 +37,20 @@ export const TIERS_BY_KEY = Object.fromEntries(FEATURE_TIERS.map((t) => [t.key, 
 // What the app is actually offered.
 export const OFFERED_TIERS = FEATURE_TIERS.filter((t) => !t.hidden);
 
-// Carriers users transfer airtime from. Lowercase canonical keys.
+// Every payment carrier the system knows. Lowercase canonical keys. Kept
+// whole so requests filed under any of them still resolve and display.
 export const CARRIERS = ['asiacell', 'korek', 'qicard'];
+
+// The ones OFFERED right now. Airtime (Asiacell, Korek) switched off on
+// 4 Oct 2026, owner's call; Qi Card and the wallet balance remain. To bring
+// one back, add its key here and deploy — no app update: every build since
+// featuring launched draws its payment buttons from the served list.
+export const OFFERED_CARRIERS = ['qicard'];
+
+/** The per-carrier maps, limited to what is offered, so no client can dial a code for a carrier that is off. */
+export function offeredOnly(map) {
+  return Object.fromEntries(Object.entries(map).filter(([k]) => OFFERED_CARRIERS.includes(k)));
+}
 
 // Qi Card transfers land on this account — shown in-app once a tier is
 // chosen (qicard has no USSD template; the user transfers from their Qi

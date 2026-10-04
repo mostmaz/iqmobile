@@ -19,7 +19,7 @@ import { notify } from '../notify.js';
 import { applyStatusToStock } from '../stock.js';
 import { ORDER_STATUSES, ORDER_NEXT, orderStatusNotification } from '../orderFlow.js';
 import { parseSheet, planImport, applyImport } from '../storeImport.js';
-import { SHOP_FEATURE_TIERS, CARRIERS, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES } from '../featureTiers.js';
+import { SHOP_FEATURE_TIERS, OFFERED_CARRIERS, offeredOnly, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES } from '../featureTiers.js';
 import { pushToAdmins } from '../adminPush.js';
 import { audit } from '../auditLog.js';
 import { getShopSignals, computeShopSignals } from '../shopSignals.js';
@@ -1001,11 +1001,11 @@ r.post('/shop-admin/location', requireShopAdmin, (req, res) => {
 r.get('/shop-admin/feature-config', requireShopAdmin, (_req, res) => {
   res.json({
     tiers: SHOP_FEATURE_TIERS,
-    carriers: CARRIERS,
-    transfer_numbers: TRANSFER_NUMBERS,
-    ussd_templates: USSD_TEMPLATES,
+    carriers: OFFERED_CARRIERS,
+    transfer_numbers: offeredOnly(TRANSFER_NUMBERS),
+    ussd_templates: offeredOnly(USSD_TEMPLATES),
     qi_card: QI_CARD,
-    carrier_prefixes: CARRIER_PREFIXES,
+    carrier_prefixes: offeredOnly(CARRIER_PREFIXES),
   });
 });
 
@@ -1013,7 +1013,7 @@ r.post('/shop-admin/feature-request', requireShopAdmin, (req, res) => {
   const tier = SHOP_FEATURE_TIERS.find((t2) => t2.key === String(req.body?.tier || ''));
   if (!tier) return res.status(400).json({ error: 'bad_tier' });
   const carrier = String(req.body?.carrier || '').trim().toLowerCase();
-  if (!CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
+  if (!OFFERED_CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
   let senderPhone = null; let senderName = null;
   if (carrier === 'qicard') {
     senderName = String(req.body?.sender_name || '').trim().slice(0, 80);

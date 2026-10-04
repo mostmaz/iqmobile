@@ -26,7 +26,12 @@ export function InsightsView({ me, advanced, onReload }: { me: any; advanced: bo
 
   useEffect(() => {
     shopApi<Top[]>('/shop-admin/top-devices').then(setTop).catch(() => setTop([]));
-    shopApi<any>('/shop-admin/feature-config').then(setCfg).catch(() => {});
+    shopApi<any>('/shop-admin/feature-config').then((c) => {
+      setCfg(c);
+      // Start on a method that is actually offered — the server decides the
+      // list (Asiacell/Korek were switched off 4 Oct 2026).
+      if (c?.carriers?.length) setCarrier((cur) => (c.carriers.includes(cur) ? cur : c.carriers[0]));
+    }).catch(() => {});
     if (advanced) shopApi<Demand[]>('/shop-admin/demand').then(setDemand).catch(() => setDemand([]));
   }, [advanced]);
 

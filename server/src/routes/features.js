@@ -5,7 +5,7 @@ import { requireAuth } from '../auth.js';
 import { createLimiter } from '../limits.js';
 import { balanceOf, entriesFor, spend } from '../wallet.js';
 import { applyFeature } from '../featuring.js';
-import { OFFERED_TIERS, CARRIERS, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
+import { OFFERED_TIERS, OFFERED_CARRIERS, offeredOnly, OWNER_PHONE, TRANSFER_NUMBERS, USSD_TEMPLATES, QI_CARD, CARRIER_PREFIXES, tierFor } from '../featureTiers.js';
 
 const r = Router();
 
@@ -36,12 +36,12 @@ r.get('/features/tiers', (_req, res) => {
     featured_cap: FEATURED_CAP,
     featured_sort: 'new',
     featured_first_page_only: true,
-    carriers: CARRIERS,
+    carriers: OFFERED_CARRIERS,
     owner_phone: OWNER_PHONE,
-    transfer_numbers: TRANSFER_NUMBERS,
-    ussd_templates: USSD_TEMPLATES,
+    transfer_numbers: offeredOnly(TRANSFER_NUMBERS),
+    ussd_templates: offeredOnly(USSD_TEMPLATES),
     qi_card: QI_CARD,
-    carrier_prefixes: CARRIER_PREFIXES,
+    carrier_prefixes: offeredOnly(CARRIER_PREFIXES),
   });
 });
 
@@ -71,7 +71,7 @@ r.post('/listings/:id(\\d+)/feature-request', requireAuth(), createLimiter, (req
   // carrier button would ask for a sender number that means nothing here.
   const carrier = String(req.body?.carrier || '').trim().toLowerCase();
   const fromBalance = carrier === 'balance';
-  if (!fromBalance && !CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
+  if (!fromBalance && !OFFERED_CARRIERS.includes(carrier)) return res.status(400).json({ error: 'bad_carrier' });
 
   // Qi Card: the matcher is the sender's account NAME (their Qi app
   // shows it on the transfer); phone is optional. Airtime carriers: the
