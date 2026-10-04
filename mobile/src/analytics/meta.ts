@@ -11,7 +11,7 @@
 // use the advertising identifier (IDFA). We ask once on first launch, then
 // tell the SDK whether tracking is allowed.
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 const metaAppId = (Constants.expoConfig?.extra as any)?.metaAppId as string | undefined;
@@ -52,31 +52,72 @@ function warnIfDisabled(context: string): void {
 
 // Initialise the SDK and resolve iOS tracking consent. Safe to call multiple
 // times; the heavy work runs once. Called from App.tsx on mount.
-export async function initMeta(): Promise<void> {
-  if (!META_ENABLED) { warnIfDisabled('app events'); return; }
-  if (initialized) return;
-  initialized = true;
-  try {
-    const { Settings } = await import('react-native-fbsdk-next');
+//
+// Apple rejected 1.0.0 (3 Oct 2026, guideline 2.1) because the reviewer
+// never saw the tracking prompt on iOS 27. Two reasons, both fixed here:
+//   1. It was requested the instant App mounted, which on a cold launch is
+//      before iOS considers the app active — and iOS silently drops an ATT
+//      request from an inactive app. Now: wait until the app is active, let
+//      the first screen settle, and re-check before asking.
+//   2. The SDK auto-initialised and auto-logged from native code at launch,
+//      before the question was asked at all. Info.plist now has
+//      FacebookAutoInitEnabled / AutoLogAppEvents / AdvertiserIDCollection
+//      off; the SDK starts below, after the answer, and only then logs.
+// Every event waits for that (see logMetaEvent), so nothing is sent first.
+let ready: Promise<void> | null = null;
 
-    // On iOS, gate advertiser tracking behind the ATT prompt. Default the
-    // SDK to no-tracking first so nothing leaks before consent, then flip it
-    // on only if the user allows.
-    if (Platform.OS === 'ios') {
-      Settings.setAdvertiserTrackingEnabled(false);
-      const { requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
-      const { status } = await requestTrackingPermissionsAsync();
-      Settings.setAdvertiserTrackingEnabled(status === 'granted');
-    }
+function activeApp(): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') { sub.remove(); resolve(); }
+    });
+  });
+}
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-    // initializeSDK activates the app (logs the install/activate event that
-    // Meta uses for install attribution) using the appID/clientToken baked
-    // in by the config plugin.
-    Settings.initializeSDK();
-  } catch {
-    // Never let analytics break app start-up.
-    initialized = false;
+async function askTracking(): Promise<boolean> {
+  const { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } = await import('expo-tracking-transparency');
+  let { status } = await getTrackingPermissionsAsync();
+  if (status !== 'undetermined') return status === 'granted';
+  // Active, settled, and still active — another system alert (the
+  // notification permission) makes the app inactive, and an ATT request
+  // made under it is dropped just the same.
+  for (let i = 0; i < 5; i++) {
+    await activeApp();
+    await pause(1000);
+    if (AppState.currentState === 'active') break;
   }
+  ({ status } = await requestTrackingPermissionsAsync());
+  return status === 'granted';
+}
+
+export function initMeta(): Promise<void> {
+  if (!META_ENABLED) { warnIfDisabled('app events'); return Promise.resolve(); }
+  if (ready) return ready;
+  ready = (async () => {
+    try {
+      const { Settings } = await import('react-native-fbsdk-next');
+      let tracking = true;
+      if (Platform.OS === 'ios') {
+        // Off until the user answers; on only if they allow.
+        Settings.setAdvertiserTrackingEnabled(false);
+        Settings.setAdvertiserIDCollectionEnabled(false);
+        tracking = await askTracking();
+        Settings.setAdvertiserTrackingEnabled(tracking);
+      }
+      Settings.setAdvertiserIDCollectionEnabled(tracking);
+      // initializeSDK activates the app (the install/activate event Meta uses
+      // for attribution) with the appID/clientToken from Info.plist.
+      Settings.initializeSDK();
+      Settings.setAutoLogAppEventsEnabled(true);
+      initialized = true;
+    } catch {
+      // Never let analytics break app start-up.
+      ready = null;
+    }
+  })();
+  return ready;
 }
 
 // Log a custom App Event (e.g. 'CompleteRegistration', 'ViewContent',
@@ -84,6 +125,9 @@ export async function initMeta(): Promise<void> {
 export async function logMetaEvent(name: string, params?: Record<string, string | number>): Promise<void> {
   if (!META_ENABLED) { warnIfDisabled(`event "${name}"`); return; }
   try {
+    // Nothing goes to Meta before the tracking question is answered.
+    await initMeta();
+    if (!initialized) return;
     const { AppEventsLogger } = await import('react-native-fbsdk-next');
     if (params) AppEventsLogger.logEvent(name, params);
     else AppEventsLogger.logEvent(name);

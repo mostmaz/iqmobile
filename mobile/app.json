@@ -103,9 +103,9 @@
           "clientToken": "14185d5045ab04e8c6078ca811ab3dc7",
           "displayName": "IQ Mobile",
           "scheme": "fb1385790423425707",
-          "advertiserIDCollectionEnabled": true,
-          "autoLogAppEventsEnabled": true,
-          "isAutoInitEnabled": true,
+          "advertiserIDCollectionEnabled": false,
+          "autoLogAppEventsEnabled": false,
+          "isAutoInitEnabled": false,
           "iosUserTrackingPermission": "‏يستخدم تطبيق iQ هذا الإذن لقياس فعالية الإعلانات وتحسين تجربتك داخل التطبيق."
         }
       ],
