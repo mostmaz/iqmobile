@@ -35,12 +35,21 @@ import path from 'node:path';
 
 const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || path.resolve('./data/wa-auth');
 
+// Written when WhatsApp logs the session out, removed when the operator
+// re-links (unlinkBot wipes AUTH_DIR, and with it this). While it exists the
+// bot does not reconnect — not on a sweep, not after a restart. On 3 Oct
+// 2026 the session was logged out and every 15-minute sweep reconnected with
+// the dead credentials anyway, which is exactly the retry-forever pattern
+// that gets a number flagged.
+const LOGGED_OUT_MARK = path.join(AUTH_DIR, 'LOGGED_OUT');
+const markedLoggedOut = () => { try { return fs.existsSync(LOGGED_OUT_MARK); } catch { return false; } };
+
 let sock = null;
 let starting = null;
 let lastQr = null;        // the pairing string, until it is scanned or expires
 let lastQrAt = 0;
-let connection = 'idle';  // idle | connecting | open | close | logged_out | unavailable
-let lastError = null;
+let connection = markedLoggedOut() ? 'logged_out' : 'idle';  // idle | connecting | open | close | logged_out | unavailable
+let lastError = markedLoggedOut() ? 'logged_out' : null;
 
 /** Baileys wants a pino-shaped logger; this is the quietest valid one. */
 const silent = {
@@ -60,6 +69,9 @@ const silent = {
  */
 export function botLinkable() {
   try {
+    // A logged-out session is credentials WhatsApp no longer accepts: there
+    // is nothing to resume until someone re-links.
+    if (markedLoggedOut()) return false;
     return fs.existsSync(AUTH_DIR) && fs.readdirSync(AUTH_DIR).some((f) => f.startsWith('creds'));
   } catch { return false; }
 }
@@ -92,6 +104,9 @@ export function botQr() {
 export async function startBot() {
   if (sock && connection === 'open') return sock;
   if (starting) return starting;
+  // Logged out: do not knock on WhatsApp's door with dead credentials.
+  // Re-linking (unlinkBot, then this) is the only way back.
+  if (markedLoggedOut()) { connection = 'logged_out'; lastError = 'logged_out'; return null; }
 
   starting = (async () => {
     try {
@@ -125,6 +140,10 @@ export async function startBot() {
           connection = loggedOut ? 'logged_out' : 'close';
           sock = null;
           console.warn('[whatsapp-bot] connection closed:', lastError);
+          if (loggedOut) {
+            try { fs.writeFileSync(LOGGED_OUT_MARK, new Date().toISOString()); } catch { /* best effort */ }
+            console.error('[whatsapp-bot] LOGGED OUT — reminders paused until the number is re-linked from the dashboard');
+          }
           // Reconnect unless the phone unlinked us — retrying a logged-out
           // session forever is how a number gets flagged.
           if (!loggedOut) setTimeout(() => { startBot().catch(() => {}); }, 15_000);
@@ -151,7 +170,9 @@ export function unlinkBot() {
   try { sock?.end?.(undefined); } catch { /* already gone */ }
   sock = null;
   connection = 'idle';
+  lastError = null;
   lastQr = null;
+  // Takes the LOGGED_OUT mark with it: the next startBot links afresh.
   try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch { /* nothing to remove */ }
 }
 

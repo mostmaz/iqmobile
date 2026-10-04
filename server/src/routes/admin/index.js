@@ -2526,7 +2526,13 @@ r.get('/whatsapp/status', requireAdmin, async (_req, res) => {
 
 // Start connecting (and so start producing a QR) without waiting for the
 // first message to need it.
-r.post('/whatsapp/connect', requireAdmin, async (_req, res) => {
+r.post('/whatsapp/connect', requireAdmin, async (req, res) => {
+  // A logged-out session will never connect again; clear it so this press
+  // produces a fresh QR to scan instead of a dead end.
+  if (botStatus().connection === 'logged_out') {
+    unlinkBot();
+    audit('admin', req.admin?.id ?? null, 'whatsapp.relink', { kind: 'system', id: 0 }, {});
+  }
   await startBot();
   res.json(botStatus());
 });

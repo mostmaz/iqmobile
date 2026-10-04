@@ -49,7 +49,7 @@
 // silence; what falls due overnight is simply still due at eight, and goes
 // out then (freshest first).
 import { db, now as dbNow, getSetting, setSettingValue } from './db.js';
-import { sendWhatsApp, utilityConfigured } from './whatsapp.js';
+import { sendWhatsApp, utilityConfigured, utilityProvider } from './whatsapp.js';
 
 export const NUDGE_AFTER_MS = 2 * 60 * 60 * 1000;
 export const NUDGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -282,8 +282,11 @@ export async function runChatNudges({ at = dbNow() } = {}) {
     // Deliberately NOT recorded: an unconfigured run must not burn the
     // one-per-chat budget, or the day the template is approved every chat it
     // looked at is already marked done.
-    console.warn(`[chat-nudge] ${due.length} chats due, but no utility template configured`);
-    return { considered: due.length, sent: 0, skipped: 'unconfigured' };
+    const bot = utilityProvider?.()?.bot;
+    console.warn(bot?.connection === 'logged_out'
+      ? `[chat-nudge] ${due.length} chats due, but the WhatsApp number is logged out — re-link it from the dashboard`
+      : `[chat-nudge] ${due.length} chats due, but no utility template configured`);
+    return { considered: due.length, sent: 0, skipped: bot?.connection === 'logged_out' ? 'not_linked' : 'unconfigured' };
   }
 
   let sent = 0;
@@ -291,6 +294,13 @@ export async function runChatNudges({ at = dbNow() } = {}) {
     const r = await sendWhatsApp(n.phone, {
       name: n.name, device: n.device, waiting: n.waiting, userId: n.user_id, role: n.role,
     }, { dryRun });
+    // The bot dropped between the check above and this send. Nobody was
+    // written to, so nobody is marked reminded — 94 people were, on 3–4 Oct
+    // 2026, and lost their reminder for good. Stop and wait for a re-link.
+    if (r.outcome === 'not_linked' || r.outcome === 'unconfigured') {
+      console.warn(`[chat-nudge] stopped: ${r.outcome}, nothing recorded`);
+      return { considered: due.length, sent, skipped: r.outcome };
+    }
     if (r.ok) sent += 1;
     if (!record(n, r.outcome, at)) {
       // Something is wrong with the ledger. Better one unrecorded message
