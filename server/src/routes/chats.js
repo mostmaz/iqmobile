@@ -12,6 +12,10 @@ import { pushToAdmins } from '../adminPush.js';
 import { channelsFor, CHANNEL_COLS } from '../contactChannels.js';
 import { QUICK_MESSAGES } from '../quickMessages.js';
 
+// How fresh a read stamp must be to count as "has this chat open now":
+// three missed 3-second polls. See the send route.
+export const VIEWING_WINDOW_MS = 10_000;
+
 const r = Router();
 
 const UP = path.resolve('./uploads');
@@ -311,7 +315,17 @@ r.post('/chats/:id(\\d+)/messages', requireAuth(), uploadLimiter, chatGuard, upl
   ).get(ins.lastInsertRowid);
 
   const otherId = req.user.id === chat.buyer_id ? chat.seller_id : chat.buyer_id;
-  notify(otherId, 'chat.message', { chat_id: chat.id, message: msg }, {
+  // Is the other side looking at this chat right now? The chat screen
+  // re-reads the thread every 3 s, and every read stamps <side>_last_read_at.
+  // A stamp this fresh means the message is already on their screen (SSE and
+  // the next poll put it there), and a push on top is a banner and a sound
+  // for something they are reading — what users reported as "a notification
+  // for a message while I'm in the chat" (14 Oct 2026). The inbox row and the
+  // live event still go; only the push is skipped.
+  const otherCol = otherId === chat.buyer_id ? 'buyer_last_read_at' : 'seller_last_read_at';
+  const otherReadAt = db.prepare(`SELECT ${otherCol} AS t FROM chats WHERE id=?`).get(chat.id)?.t || 0;
+  const viewing = t - otherReadAt < VIEWING_WINDOW_MS;
+  notify(otherId, 'chat.message', { chat_id: chat.id, message: msg }, viewing ? null : {
     title: 'رسالة جديدة',
     body: body ? body.slice(0, 80) : '📷 صورة',
   });
