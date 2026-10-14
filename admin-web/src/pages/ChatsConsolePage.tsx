@@ -8,6 +8,7 @@
 // waiting on someone who has gone quiet.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, API_BASE } from '../api';
+import { ChatPartiesBar, type ChatParty } from '../components/ChatReview';
 
 type Thread = {
   id: number; buyer_id: number; buyer_name: string;
@@ -35,6 +36,7 @@ export function ChatsConsolePage() {
   const [awaiting, setAwaiting] = useState(false);
   const [open, setOpen] = useState<Thread | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [parties, setParties] = useState<ChatParty[]>([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -50,8 +52,9 @@ export function ChatsConsolePage() {
 
   const loadThread = useCallback(async (id: number) => {
     try {
-      const r = await api<{ messages: Msg[] }>(`/admin/chats/${id}/messages`);
+      const r = await api<{ messages: Msg[]; parties?: ChatParty[] }>(`/admin/chats/${id}/messages`);
       setMsgs(r.messages);
+      setParties(r.parties || []);
       setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
     } catch { /* the poll will retry */ }
   }, []);
@@ -127,6 +130,11 @@ export function ChatsConsolePage() {
               ) : null}
               <button className="secondary" style={{ marginInlineStart: 'auto' }} onClick={() => setOpen(null)}>إغلاق</button>
             </div>
+            {parties.length ? (
+              <div style={{ paddingTop: 8 }}>
+                <ChatPartiesBar parties={parties} onChanged={() => open && loadThread(open.id)} />
+              </div>
+            ) : null}
 
             <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 0' }}>
               {msgs.map((m) => {

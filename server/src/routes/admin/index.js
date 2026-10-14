@@ -1,3 +1,4 @@
+import { houseShopId } from '../../storefrontCard.js';
 import { retentionExperimentReport } from '../../retentionPolicy.js';
 import { searchQuality } from '../../searchQuality.js';
 import { listingContactAnalytics } from '../../listingContactAnalytics.js';
@@ -883,10 +884,22 @@ r.get('/reports', requireAdmin, (req, res) => {
               WHERE listing_id = l.id ORDER BY position ASC, id ASC LIMIT 1) AS cover_image
        FROM phone_listings l WHERE l.id=?`,
   );
+  // Same for chat reports: who is in the thread, so the row says more than
+  // "chat #4312" and the operator can open it straight from here.
+  const chatStmt = db.prepare(`
+    SELECT c.id, c.buyer_id, c.seller_id, c.listing_id,
+           COALESCE(b.shop_name, b.display_name) AS buyer_name, b.suspended_at AS buyer_suspended_at,
+           COALESCE(se.shop_name, se.display_name) AS seller_name, se.suspended_at AS seller_suspended_at,
+           l.brand, l.model,
+           (SELECT COUNT(*) FROM chat_messages m WHERE m.chat_id = c.id) AS message_count
+      FROM chats c JOIN users b ON b.id = c.buyer_id JOIN users se ON se.id = c.seller_id
+      LEFT JOIN phone_listings l ON l.id = c.listing_id
+     WHERE c.id=?`);
   const out = rows.map((r2) => ({
     ...r2,
     listing_id: r2.target_kind === 'listing' ? r2.target_id : null,
     listing: r2.target_kind === 'listing' ? (listStmt.get(r2.target_id) || null) : null,
+    chat: r2.target_kind === 'chat' ? (chatStmt.get(r2.target_id) || null) : null,
   }));
   res.json(out);
 });
@@ -1348,12 +1361,28 @@ r.delete('/brands/:id(\\d+)', requireAdmin, (req, res) => {
 // Sets/clears users.suspended_at. While set, requireAuth() returns 403
 // `user_suspended` for that user's token. Reverses by passing the same
 // endpoint again.
+// Ban / unban. With { suspended: true|false } it SETS the state, so a double
+// click from the chat review cannot ban and then unban; with no body it
+// toggles, as the Users page has always called it. A suspended account is
+// refused by requireAuth (403 user_suspended) on every app request.
+// The business's own accounts — the house storefront and the hidden price
+// shop — answer customers and carry the catalogue. Banning one by mistake
+// from a chat review would take the store offline, so it is refused here,
+// not merely hidden in the dashboard.
+function protectedAccount(u) {
+  return !!u && (u.id === houseShopId() || (u.seller_type === 'shop' && !!u.shop_hidden));
+}
+
 r.patch('/users/:id(\\d+)/suspend', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
-  const u = db.prepare('SELECT id, suspended_at FROM users WHERE id=?').get(id);
+  const u = db.prepare('SELECT id, suspended_at, seller_type, shop_hidden FROM users WHERE id=?').get(id);
   if (!u) return res.status(404).json({ error: 'not_found' });
-  const next = u.suspended_at ? null : now();
+  const want = typeof req.body?.suspended === 'boolean' ? req.body.suspended : !u.suspended_at;
+  if (want && protectedAccount(u)) return res.status(400).json({ error: 'protected_account' });
+  const next = want ? (u.suspended_at || now()) : null;
   db.prepare('UPDATE users SET suspended_at=? WHERE id=?').run(next, id);
+  audit('admin', req.admin?.id ?? null, next ? 'user.suspend' : 'user.unsuspend', { kind: 'user', id },
+    { from: req.body?.from || null });
   res.json({ id, suspended_at: next });
 });
 
@@ -2672,7 +2701,28 @@ r.get('/chats/:id(\\d+)/messages', requireAdmin, (req, res) => {
       FROM chat_messages m JOIN users u ON u.id = m.sender_id
      WHERE m.chat_id=? ORDER BY m.created_at ASC LIMIT 500
   `).all(chat.id);
-  res.json({ chat, messages: rows });
+  // Who is in the thread, with what the operator needs to decide a ban:
+  // name, number, whether they are already banned, and how much else they
+  // have been reported for.
+  const person = db.prepare(`
+    SELECT u.id, u.display_name, u.shop_name, u.phone, u.seller_type, u.is_guest, u.suspended_at, u.created_at, u.shop_hidden,
+           (SELECT COUNT(*) FROM reports r WHERE (r.target_kind='user' AND r.target_id=u.id)
+               OR (r.target_kind='chat' AND r.target_id IN (SELECT id FROM chats WHERE buyer_id=u.id OR seller_id=u.id)
+                   AND r.reporter_id != u.id)) AS reports_against
+      FROM users u WHERE u.id=?`);
+  const listing = chat.listing_id
+    ? db.prepare('SELECT id, brand, model, asking_price, status, seller_id FROM phone_listings WHERE id=?').get(chat.listing_id)
+    : null;
+  const parties = [['buyer', chat.buyer_id], ['seller', chat.seller_id]].map(([role, id]) => {
+    const u = person.get(id);
+    return u ? {
+      role, id: u.id, name: u.shop_name || u.display_name || '', phone: u.is_guest ? null : u.phone,
+      is_guest: !!u.is_guest, seller_type: u.seller_type, suspended_at: u.suspended_at,
+      reports_against: u.reports_against, joined_at: u.created_at,
+      protected: protectedAccount(u),
+    } : { role, id, name: '(محذوف)', phone: null, missing: true };
+  });
+  res.json({ chat, messages: rows, parties, listing });
 });
 
 r.post('/chats/:id(\\d+)/messages', requireAdmin, (req, res) => {

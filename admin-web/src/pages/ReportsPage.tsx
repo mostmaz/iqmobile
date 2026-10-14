@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {api, listingUrl, listingLinkStyle} from '../api';
+import { ChatReviewModal } from '../components/ChatReview';
 
 interface Report {
   id: number;
@@ -12,11 +13,19 @@ interface Report {
   detail: string | null;
   status: string;
   created_at: number;
+  // Chat reports: who is in the thread (server-attached), null otherwise.
+  chat?: {
+    id: number; buyer_id: number; seller_id: number;
+    buyer_name: string; seller_name: string;
+    buyer_suspended_at: number | null; seller_suspended_at: number | null;
+    brand: string | null; model: string | null; message_count: number;
+  } | null;
 }
 
 export function ReportsPage() {
   const [rows, setRows] = useState<Report[]>([]);
   const [status, setStatus] = useState('open');
+  const [review, setReview] = useState<Report | null>(null);
 
   async function load() {
     const r = await api<Report[]>(`/admin/reports?status=${status}`);
@@ -49,7 +58,17 @@ export function ReportsPage() {
                 <td>{r.reporter_name}<br/><small style={{ color: '#9ca3af' }}>{r.reporter_phone}</small></td>
                 <td>{r.target_kind === 'listing'
                   ? <a href={listingUrl(r.target_id)} target="_blank" rel="noreferrer" style={listingLinkStyle}>listing #{r.target_id}</a>
-                  : <>{r.target_kind} #{r.target_id}</>}</td>
+                  : r.target_kind === 'chat' ? (
+                    <button className="secondary" onClick={() => setReview(r)} style={{ textAlign: 'start', lineHeight: 1.5 }}>
+                      💬 محادثة #{r.target_id} — افتح
+                      {r.chat ? (
+                        <small style={{ display: 'block', color: '#9ca3af' }}>
+                          {r.chat.buyer_name}{r.chat.buyer_suspended_at ? ' 🚫' : ''} ↔ {r.chat.seller_name}{r.chat.seller_suspended_at ? ' 🚫' : ''}
+                          {r.chat.brand ? ` · ${r.chat.brand} ${r.chat.model}` : ''} · {r.chat.message_count} رسالة
+                        </small>
+                      ) : null}
+                    </button>
+                  ) : <>{r.target_kind} #{r.target_id}</>}</td>
                 <td>{r.reason}</td>
                 <td><small>{r.detail || '—'}</small></td>
                 <td><small>{new Date(r.created_at).toLocaleString()}</small></td>
@@ -66,6 +85,14 @@ export function ReportsPage() {
           </tbody>
         </table>
       </div>
+      {review ? (
+        <ChatReviewModal
+          chatId={review.target_id}
+          reporterId={review.reporter_id}
+          onClose={() => setReview(null)}
+          onChanged={load}
+        />
+      ) : null}
     </div>
   );
 }
