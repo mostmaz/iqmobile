@@ -263,7 +263,8 @@ export const Auth = {
   // Used during the "no auth" growth phase so we can populate the app.
   guest: (governorate?: string) =>
     api<{ token: string; user: User }>('/auth/guest', { method: 'POST', body: JSON.stringify({ governorate }) }),
-  me: () => api<{ user: User }>('/auth/me'),
+  // `token`: a renewed session the server hands out once ours is a week old.
+  me: () => api<{ user: User; token?: string }>('/auth/me'),
   patchMe: (body: any) => api<{ user: User }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
   // Permanent account deletion. Server cascade-removes the user row
   // and all dependent data (listings, saves, ratings, chats, files).

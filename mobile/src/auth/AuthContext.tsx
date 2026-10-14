@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(token);
           try {
             const me = await Auth.me();
+            await adoptRenewed(me.token);
             setUser(me.user);
           } catch (e: any) {
             // Distinguish three failure modes:
@@ -125,6 +126,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The server renews a session on /auth/me once it is a week old. Keeping
+  // the new token is what stops a regular from ever reaching the year-long
+  // limit — and an expired token here means a brand-new guest, with every
+  // chat and saved search left behind on the old account.
+  async function adoptRenewed(token?: string) {
+    if (!token) return;
+    await SecureStore.setItem(TOKEN_KEY, token);
+    setToken(token);
+  }
 
   const persist = useCallback(async (token: string, u: User) => {
     await SecureStore.setItem(TOKEN_KEY, token);
@@ -207,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const me = await Auth.me();
+      await adoptRenewed(me.token);
       setUser(me.user);
     } catch {}
   }, []);

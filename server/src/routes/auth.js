@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { db, now } from '../db.js';
-import { hashPassword, verifyPassword, issueToken, requireAuth, optionalAuth } from '../auth.js';
+import { hashPassword, verifyPassword, issueToken, renewedToken, requireAuth, optionalAuth } from '../auth.js';
 import { isGovernorate } from '../governorates.js';
 import { authLimiter, guestLimiter } from '../limits.js';
 import { sendCode, checkCode, otpRequired, otpConfigured } from '../otp.js';
@@ -333,10 +333,13 @@ r.post('/otp/verify', authLimiter, optionalAuth(), async (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
+// `token`, when present, replaces the one the app holds (builds from
+// 1.0.1 store it); older builds ignore it and ride on the year-long window.
 r.get('/me', requireAuth(), (req, res) => {
   const row = db.prepare('SELECT * FROM users WHERE id=?').get(req.user.id);
   if (!row) return res.status(404).json({ error: 'not_found' });
-  res.json({ user: publicUser(row) });
+  const token = renewedToken(req.user);
+  res.json({ user: publicUser(row), ...(token ? { token } : {}) });
 });
 
 r.patch('/me', requireAuth(), (req, res) => {
