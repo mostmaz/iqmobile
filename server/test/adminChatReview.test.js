@@ -85,4 +85,11 @@ test('the house store cannot be banned, from anywhere', async () => {
   assert.equal(db.prepare('SELECT suspended_at FROM users WHERE id=20').get().suspended_at, null);
 });
 
+test('a hidden business account is protected even if its type says individual', async () => {
+  db.prepare(`INSERT INTO users(id, phone, password_hash, display_name, governorate, seller_type, shop_hidden, created_at)
+              VALUES(21, '07700000021', 'x', 'Store', 'Baghdad', 'individual', 1, ?)`).run(NOW);
+  const r = await call('PATCH', '/admin/users/21/suspend', { suspended: true });
+  assert.equal(r.data.error, 'protected_account');
+});
+
 test.after(() => { server.close(); db.close(); });

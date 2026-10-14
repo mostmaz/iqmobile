@@ -1370,7 +1370,10 @@ r.delete('/brands/:id(\\d+)', requireAdmin, (req, res) => {
 // from a chat review would take the store offline, so it is refused here,
 // not merely hidden in the dashboard.
 function protectedAccount(u) {
-  return !!u && (u.id === houseShopId() || (u.seller_type === 'shop' && !!u.shop_hidden));
+  // Hidden accounts are the business's by definition (the store and the price
+  // shop are both hidden), whatever seller_type says — on 14 Oct 2026 the
+  // store's row read 'individual', and a shop-only rule left it bannable.
+  return !!u && (u.id === houseShopId() || !!u.shop_hidden);
 }
 
 r.patch('/users/:id(\\d+)/suspend', requireAdmin, (req, res) => {
