@@ -23,7 +23,7 @@ const { issueToken } = await import('../src/auth.js');
 const { default: listings } = await import('../src/routes/listings.js');
 const {
   applyInspectionResult, resolveInspection, gateApplies, isGated, startGatedInspection,
-  sweepStuckGates, reviewStateFor, reviewFor, inspectionEnabled, inspectsUpload,
+  sweepStuckGates, reviewStateFor, reviewFor, inspectionEnabled, inspectsUpload, gateDecision,
 } = await import('../src/listingInspect.js');
 
 const app = express();
@@ -70,6 +70,8 @@ const BODY = {
 const defect = { kind: 'cracked_screen', source: 'image', evidence: 'الشاشة مكسورة في الزاوية' };
 const GOOD = { verdict: 'clean', confidence: 'high', defects: [] };
 const BAD_SURE = { verdict: 'defective', confidence: 'high', defects: [defect] };
+const BAD_MEDIUM = { verdict: 'defective', confidence: 'medium', defects: [defect] };
+const BAD_LOW = { verdict: 'defective', confidence: 'low', defects: [defect] };
 const UNCLEAR = { verdict: 'suspect', confidence: 'medium', defects: [defect] };
 
 setSettingValue('listing_inspection_enabled', '1');
@@ -200,8 +202,8 @@ test('a clean verdict publishes; the seller hears nothing extra', async () => {
   assert.equal(ins.judged_by, 'model');
 });
 
-test('anything else holds for a person — even a confident defective is not auto-rejected', async () => {
-  for (const [key, verdict] of [['new-bad', BAD_SURE], ['new-unclear', UNCLEAR]]) {
+test('only a defective verdict holds for a person — and even a confident one is not auto-rejected', async () => {
+  for (const [key, verdict] of [['new-bad', BAD_SURE], ['new-bad-medium', BAD_MEDIUM]]) {
     const r = await call(seller, 'POST', '/listings', { ...BODY, client_key: key });
     const id = r.data.id;
     addImage(id);
@@ -221,12 +223,41 @@ test('anything else holds for a person — even a confident defective is not aut
   }
 });
 
+test('a suspect, or a defective the model is unsure of, publishes and waits in the queue for a look', async () => {
+  assert.equal(gateDecision(UNCLEAR), 'published');
+  assert.equal(gateDecision(BAD_LOW), 'published');
+  assert.equal(gateDecision({ verdict: 'clean', confidence: 'low', defects: [] }), 'published');
+  assert.equal(gateDecision(BAD_MEDIUM), 'held');
+  for (const [key, verdict] of [['new-unclear', UNCLEAR], ['new-bad-low', BAD_LOW]]) {
+    const r = await call(seller, 'POST', '/listings', { ...BODY, client_key: key });
+    const id = r.data.id;
+    addImage(id);
+    startGatedInspection(row(id), () => {});
+    const before = inbox(seller.id).length;
+    assert.equal(applyInspectionResult(id, verdict), 'published');
+    const l = row(id);
+    assert.equal(l.status, 'active');
+    assert.equal(l.review_hold, 0);
+    assert.equal(reviewStateFor(l), 'published');
+    assert.equal((await call(null, 'GET', `/listings/${id}`)).status, 200);
+    // The seller is not told of a doubt nobody has confirmed…
+    assert.equal(inbox(seller.id).length, before);
+    const mine = await call(seller, 'GET', '/listings/mine?status=all');
+    assert.equal(mine.data.find((x) => x.id === id).inspection, null);
+    // …but the operator still sees it, pending, in the الفحص queue.
+    const ins = db.prepare('SELECT * FROM listing_inspections WHERE listing_id=?').get(id);
+    assert.equal(ins.status, 'pending');
+    assert.equal(ins.action, 'published');
+    assert.equal(ins.verdict, verdict.verdict);
+  }
+});
+
 test('the operator approves: live, announced, seller pushed, with a fresh clock', async () => {
   const r = await call(seller, 'POST', '/listings', { ...BODY, client_key: 'new-approve' });
   const id = r.data.id;
   addImage(id);
   startGatedInspection(row(id), () => {});
-  applyInspectionResult(id, UNCLEAR);
+  applyInspectionResult(id, BAD_MEDIUM);
   const insId = db.prepare('SELECT id FROM listing_inspections WHERE listing_id=?').get(id).id;
   const t0 = Date.now();
   assert.equal(resolveInspection(insId, 'approve'), id);

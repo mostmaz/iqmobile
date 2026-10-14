@@ -938,11 +938,16 @@ r.get('/mine', requireAuth(), (req, res) => {
   // the listing the notes are moot (a human overruled them), and a removed
   // listing is not in this list. This used to filter on status='done', a
   // value nothing ever writes, so the notes never reached a seller at all.
+  //
+  // Only for a verdict that holds (gateDecision): defective, medium or high.
+  // A suspect is published, and most suspects turned out fine, so telling the
+  // seller "the photo shows a crack" on one would accuse an honest seller;
+  // the operator looks instead.
   if (withImgs.length) {
     const ids = withImgs.map((r2) => r2.id);
     const rowsIns = db.prepare(
       `SELECT listing_id, verdict, confidence, defects_json FROM listing_inspections
-        WHERE listing_id IN (${ids.map(() => '?').join(',')}) AND status='pending' AND verdict != 'clean'`,
+        WHERE listing_id IN (${ids.map(() => '?').join(',')}) AND status='pending' AND verdict = 'defective' AND confidence != 'low'`,
     ).all(...ids);
     const byId = new Map(rowsIns.map((i) => [i.listing_id, i]));
     for (const r2 of withImgs) {

@@ -27,9 +27,10 @@
 //
 // Third path, for apps from 1.0.0 (the GATE; see gateApplies): the listing
 // is created HIDDEN, the app uploads its photos and asks for the verdict,
-// and the seller watches a "being checked" screen. clean → published on
-// the spot; anything else → held for an operator, and the seller is sent to
-// the listing's status page. Nothing is auto-rejected on this path — a
+// and the seller watches a "being checked" screen. Only a defective verdict
+// (medium or high confidence) holds it for an operator; everything else is
+// published on the spot, a suspect one staying in the الفحص queue for a
+// later look (see gateDecision). Nothing is auto-rejected on this path — a
 // refusal is a person's call, and the seller is told by push either way.
 // The decide switch does not apply here: the gate IS the decision.
 //
@@ -202,7 +203,7 @@ const SCHEMA = {
     verdict: {
       type: 'string',
       enum: ['clean', 'suspect', 'defective'],
-      description: 'clean = GOOD, publish; suspect = unclear, a human should look; defective = BAD, do not publish until a human decides',
+      description: 'clean = no defect, publish; suspect = possible defect, publish and a human looks later; defective = clear defect, hold until a human decides',
     },
     confidence: { type: 'string', enum: ['low', 'medium', 'high'] },
     defects: {
@@ -216,10 +217,11 @@ const SCHEMA = {
               'cracked_screen', 'cracked_back', 'dent_or_bend', 'deep_scratches',
               'screen_defect', 'touch_fault', 'water_damage', 'missing_part',
               'not_powering_on', 'battery_fault', 'locked_account', 'repaired_before',
+              'not_a_device_photo',
             ],
           },
           source: { type: 'string', enum: ['description', 'image'] },
-          evidence: { type: 'string', description: 'One short Arabic sentence a seller would understand.' },
+          evidence: { type: 'string', description: 'One short Arabic sentence a seller would understand, naming the photo and the spot.' },
         },
         required: ['kind', 'source', 'evidence'],
         additionalProperties: false,
@@ -230,39 +232,53 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
-// Written for the model, not for humans. The explicit "do not flag" list is
-// load-bearing: without it, normal marketplace photos (a screen protector's
-// bubbles, a reflection, a case) get read as damage and the queue fills with
-// noise nobody trusts.
-const SYSTEM = `أنت مُدقّق جودة في سوق موبايلات عراقي. مهمتك: تصنيف الجهاز المعروض إلى "جيد" (يُنشر) أو "سيّئ" (يُحجب حتى يراجعه موظف).
+// Written for the model, not for humans, and rewritten on 14 Oct 2026
+// against the 96 verdicts the owner had decided by hand. The first version
+// held 49 listings the owner then published. What it got wrong, and what
+// each block below is for:
+//   • it did not know Iraqi words: «فطر بالشاشة» (a crack) read as "unclear",
+//     so a disclosed crack went out as a suspect while the owner removed it
+//   • it treated honesty as a defect: «مستبدل شاشة», «تاريخ الإصلاح غير
+//     معروف», a battery at 79%, the app's own check-in sentences
+//   • it read the screen protector, a wallpaper of shattered rock (a stock
+//     Pixel render) and the camera flash as cracks and marks
+// The owner removes visible glass damage even when the seller says «ما
+// مأثر»; repairs, replaced parts, scratches and frame knocks are published.
+const SYSTEM = `أنت مُدقّق جودة في سوق موبايلات عراقي. تقرأ إعلان جهاز (النص والصور) وتختار واحداً:
+- defective: في الجهاز عيب واضح من القائمة أدناه. يُحجب الإعلان حتى يراجعه موظف.
+- suspect: مؤشر محتمل غير مؤكد. يُنشر الإعلان ويراجعه موظف لاحقاً.
+- clean: لا عيب. يُنشر الإعلان.
+الحجب الخاطئ يؤذي بائعاً صادقاً، فلا تختر defective إلا وأنت متأكد.
 
-افحص أمرين معاً:
-1) نص الإعلان — ابحث عن المعنى لا الكلمة: "مكسور"، "عاطل"، "ما يشتغل"، "الشاشة بيها خط"، "اللمس ما يستجيب"، "وقع منه"، "يحتاج تصليح"، "البطارية ما تدوم"، "مفتوح سابقاً".
-2) الصور — انظر إلى الشاشة والظهر والأطراف.
+العيوب التي تستحق defective:
+1. كسر أو شرخ في زجاج الشاشة نفسه، حتى لو صغيراً، وحتى لو قال البائع إنه "ما مأثر".
+2. عيب في عرض الشاشة: خطوط، بقعة أو نقطة (سوداء/بيضاء/صفراء)، احتراق أو "طباعة"، منطقة لا تستجيب للمس.
+3. كسر أو تشظٍّ في الزجاج الخلفي أو في عدسة الكاميرا.
+4. الجهاز لا يشتغل، أو مقفول بحساب (آيكلاود، MDM، حساب كوكل)، أو متضرر بالماء.
+5. لا تُظهر أي صورة هاتفاً أو تابلت (إكسسوار أو شيء آخر فقط).
 
-الجهاز "سيّئ" (verdict = defective) إذا تحقق أي مما يلي بوضوح:
-- الشاشة مكسورة أو مشقّقة أو مشروخة.
-- مشكلة باللمس (لا يستجيب، يعمل وحده، منطقة ميتة).
-- بقعة أو خط أو تشوّه في الشاشة (بقعة سوداء/صفراء، خطوط، احتراق، صورة محروقة).
-- الظهر مهشّم أو مكسور أو متضرر بوضوح (زجاج متشظٍ، كاميرا مكسورة، انبعاج كبير).
-- الوصف يقول صراحة إن الجهاز مكسور، أو معطّل، أو لا يعمل، أو فيه عطل.
+مفردات عراقية: "فطر / مفطّر / بيه فطر" = شرخ أو كسر في الزجاج. "نكشة" = كسر صغير. "طابعة" = احتراق شاشة. "طمغة" = بقعة. "تفلّشت" = تكسّرت بالكامل. "ضربة / طگة / ضربات بالشاصي" = ضربة في الإطار. "اللاصق / الاسكرين / الحماية" = واقي الشاشة. "مكفول" = سليم. "مراوس" = للمبادلة.
 
-الجهاز "جيد" (verdict = clean) إذا كان:
-- جديداً أو كالجديد.
-- مستعملاً بخدوش خفيفة أو عادية على الإطار أو الظهر — الخدوش ليست عيباً.
+ليست عيوباً — لا تجعلها defective ولا suspect:
+- تصليح سابق أو قطعة مبدّلة (شاشة، بطارية، ظهر)، أو "تاريخ الإصلاح غير معروف"، أو الحالة المعلنة "مُصلَّح". هذا إفصاح والمشتري يقرر.
+- نسبة صحة البطارية مهما كانت.
+- الخدوش بكل درجاتها، تقشّر الإطار، ضربة أو انحناء بسيط في الإطار أو الشاصي.
+- الجمل الجاهزة من التطبيق: "الشاشة بلا خدوش ظاهرة"، "لم يُصلَّح ولم تُبدَّل أي قطعة"، "الهيكل فيه خدوش خفيفة على الحواف"، "تاريخ الإصلاح غير معروف".
+عطل في قطعة ثانوية يذكره البائع (واي فاي، زر، سماعة، اهتزاز) = suspect، وليس defective.
 
-لا تُعلّم الإعلان إذا كان:
-- واقي شاشة فيه فقاعات أو خدش (الواقي ليس الجهاز).
-- انعكاس ضوء، بصمات، غبار، أو صورة غير واضحة.
-- كفر/جراب، أو علامات استعمال عادية على جهاز معلن كـ"مستعمل".
-- شاشة مطفأة أو سوداء بدون كسر ظاهر.
+قراءة الصور — هنا كانت أكثر الأخطاء:
+- واقي الشاشة ليس الشاشة: حافته خط رفيع موازٍ لحافة الشاشة على بعد مليمترات، وقد يكون هو المخدوش أو المشروخ أو فيه فقاعات. إذا قال البائع إن الخدوش "باللاصق" فالعلامات على الواقي.
+- ما يُعرض على الشاشة ليس الزجاج: خلفية أو صورة فيها خطوط أو زجاج مكسور أو صخور ليست كسراً.
+- الصور الترويجية (جهاز على خلفية بيضاء، صور الشركة، العلبة) لا تدل على حالة هذا الجهاز؛ لا تحكم منها بشيء.
+- انعكاس الضوء، البصمات، الغبار، الشعر، الكفر، العدسات والفلاش وثقب الكاميرا الأمامية ليست عيوباً.
+- الكسر الحقيقي: خطوط متفرعة أو شبكية، أو خط يعبر الشاشة ويصل حافتها، أو زاوية متشظية ناقصة الزجاج، أو تشوّه في العرض حول الخط.
 
 قواعد الحكم:
-- defective: عيب من قائمة "سيّئ" تراه بوضوح أو تقرأه صراحة. اختر confidence = high عندما لا يوجد تفسير آخر معقول.
-- suspect: مؤشر محتمل لكن الصورة غير حاسمة أو النص غامض.
-- clean: لا شيء.
-إذا شككت، اختر suspect وليس defective — القرار النهائي لموظف بشري.
-اكتب evidence بجملة عربية قصيرة تصلح لعرضها على البائع.`;
+- defective + high: البائع يذكر عيباً من القائمة صراحة، أو صورة حقيقية تُظهره ولا تفسير آخر معقول.
+- defective + medium: صورة حقيقية تُظهر العيب بوضوح، وتفسير آخر ممكن لكنه بعيد.
+- suspect: علامة رفيعة أو غامضة قد تكون واقياً أو انعكاساً، أو عطل ثانوي مذكور. الإعلان سيُنشر، فإذا شككت فاختر suspect لا defective.
+- clean: لا شيء مما سبق.
+اكتب evidence لكل عيب بجملة عربية قصيرة تصلح للبائع، واذكر الصورة والموضع (مثل: "الصورة ٢: شرخ في الزاوية العليا من الشاشة").`;
 
 /** The listing as the model reads it, after the photos. */
 function listingText(listing) {
@@ -274,41 +290,58 @@ function listingText(listing) {
   ].join('\n');
 }
 
+// How hard the model thinks. 'low' (the default) keeps a check at well
+// under a cent; 'medium' and 'high' can be set from app_settings
+// (listing_inspection_effort) without a deploy.
+const EFFORTS = new Set(['low', 'medium', 'high']);
+export const EFFORT = () => {
+  const v = getSetting('listing_inspection_effort');
+  return EFFORTS.has(v) ? v : 'low';
+};
+
+// Each photo is preceded by its number, so the evidence can say which one.
+const photoLabel = (i) => `الصورة ${i + 1}`;
+
 // Ask the model about one listing. Returns the parsed result, or null if the
 // model gave no answer. A refusal throws, so it lands in the dashboard as an
-// error row rather than passing as "clean".
-export async function inspectListing(listing, imagePaths) {
+// error row rather than passing as "clean". `opts` ({ effort, system }) is
+// for scripts/evalInspection.js, which replays decided listings.
+export async function inspectListing(listing, imagePaths, opts = {}) {
   const paths = (imagePaths || []).slice(0, MAX_IMAGES_INSPECTED);
   // Resized bytes when the file is on this disk; the public URL otherwise.
   const images = await Promise.all(paths.map(async (p) => {
     const prepared = await prepareImage(p);
     return prepared || { url: `${publicBase()}${p}` };
   }));
-  const model = MODEL();
+  const model = opts.model || MODEL();
+  const call = {
+    effort: EFFORTS.has(opts.effort) ? opts.effort : EFFORT(),
+    system: opts.system || SYSTEM,
+  };
   return providerFor(model) === 'anthropic'
-    ? inspectWithAnthropic(model, listing, images)
-    : inspectWithOpenAI(model, listing, images);
+    ? inspectWithAnthropic(model, listing, images, call)
+    : inspectWithOpenAI(model, listing, images, call);
 }
 
-async function inspectWithOpenAI(model, listing, images) {
-  const content = images.map((im) => ({
-    type: 'image_url',
-    image_url: { url: im.url || `data:${im.media_type};base64,${im.data}` },
-  }));
+async function inspectWithOpenAI(model, listing, images, { effort, system }) {
+  const content = images.flatMap((im, i) => [
+    { type: 'text', text: photoLabel(i) },
+    { type: 'image_url', image_url: { url: im.url || `data:${im.media_type};base64,${im.data}` } },
+  ]);
   content.push({ type: 'text', text: listingText(listing) });
 
   const response = await openai().chat.completions.create({
     model,
     max_completion_tokens: 1024,
-    // Bounded classification, not research: the lowest effort that still
-    // reasons. Luna is a reasoning model, so "none" is not an option.
-    reasoning_effort: 'low',
+    // Bounded classification, not research. Luna is a reasoning model, so
+    // "none" is not an option.
+    reasoning_effort: effort,
     response_format: {
       type: 'json_schema',
       json_schema: { name: 'listing_quality', schema: SCHEMA, strict: true },
     },
     messages: [
-      { role: 'system', content: SYSTEM },
+      { role: 'system', content: system },
       { role: 'user', content },
     ],
   });
@@ -322,13 +355,16 @@ async function inspectWithOpenAI(model, listing, images) {
   return text ? JSON.parse(text) : null;
 }
 
-async function inspectWithAnthropic(model, listing, images) {
-  const parts = images.map((im) => ({
-    type: 'image',
-    source: im.url
-      ? { type: 'url', url: im.url }
-      : { type: 'base64', media_type: im.media_type, data: im.data },
-  }));
+async function inspectWithAnthropic(model, listing, images, { effort, system }) {
+  const parts = images.flatMap((im, i) => [
+    { type: 'text', text: photoLabel(i) },
+    {
+      type: 'image',
+      source: im.url
+        ? { type: 'url', url: im.url }
+        : { type: 'base64', media_type: im.media_type, data: im.data },
+    },
+  ]);
   parts.push({ type: 'text', text: listingText(listing) });
 
   const response = await anthropic().messages.create({
@@ -336,9 +372,8 @@ async function inspectWithAnthropic(model, listing, images) {
     max_tokens: 1024,
     // The system prompt is byte-identical every call, so caching it means we
     // only pay full price for it once per 5-minute window.
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
-    // effort low keeps this cheap; it's a bounded classification, not research.
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+    output_config: { effort, format: { type: 'json_schema', schema: SCHEMA } },
     messages: [{ role: 'user', content: parts }],
   });
 
@@ -554,12 +589,20 @@ function publishGated(listing, state, t = now()) {
 }
 
 /**
- * The verdict, for a listing that waited for it. clean (not low) →
- * published; everything else → held for a person. No auto-reject here.
+ * What the verdict means for a listing that waited for it. Only a defective
+ * verdict the model stands behind (medium or high) holds it. Until 14 Oct
+ * 2026 every non-clean verdict held: of the 49 held listings the owner later
+ * published, 33 were suspects. A suspect is now published and its row stays
+ * pending in the الفحص queue, so an operator still looks, after the fact.
  */
+export function gateDecision(result) {
+  return result?.verdict === 'defective' && result.confidence !== 'low' ? 'held' : 'published';
+}
+
+/** The verdict, for a listing that waited for it. No auto-reject here. */
 function applyGatedResult(listing, result) {
-  const ok = result.verdict === 'clean' && result.confidence !== 'low';
-  const action = ok ? 'published' : 'held';
+  const action = gateDecision(result);
+  const ok = action === 'published';
   const t = now();
   db.prepare(
     `INSERT INTO listing_inspections(listing_id, verdict, confidence, defects_json, status, action, created_at, judged_by)
@@ -572,7 +615,7 @@ function applyGatedResult(listing, result) {
 
   if (ok) {
     publishGated(listing, 'passed', t);
-    console.log(`[inspect] gate passed listing=${listing.id} confidence=${result.confidence}`);
+    console.log(`[inspect] gate passed listing=${listing.id} verdict=${result.verdict} confidence=${result.confidence}`);
     return action;
   }
   db.prepare("UPDATE phone_listings SET inspection_state='review', updated_at=? WHERE id=?").run(t, listing.id);
